@@ -59,16 +59,15 @@ The last command should return a script starting with `#!ipxe`. `pxe-dnsmasq.ser
 
 ## Optional PostgreSQL event storage
 
-Boot works with local journal logging if PostgreSQL is not configured or becomes unavailable. To store request events in PostgreSQL, create a dedicated role and database, then set its password interactively:
+Boot works with local journal logging if PostgreSQL is not configured or becomes unavailable. On this single-host installation, use PostgreSQL's local peer authentication: the database role has the same name as the `pxe-boot` system user, so no database password is needed.
 
 ```sh
-sudo -u postgres psql -c 'CREATE ROLE pxe_boot LOGIN'
-sudo -u postgres psql -c 'CREATE DATABASE pxe_boot OWNER pxe_boot'
-sudo -u postgres psql -c '\password pxe_boot'
-psql -h 127.0.0.1 -U pxe_boot -W -d pxe_boot -f deploy/sql/boot.sql
+sudo runuser -u postgres -- psql -c 'CREATE ROLE "pxe-boot" LOGIN'
+sudo runuser -u postgres -- createdb -O pxe-boot pxe_boot
+sudo runuser -u pxe-boot -- psql -d pxe_boot < deploy/sql/boot.sql
 ```
 
-Add `PXE_BOOT_DATABASE_URL=postgres://pxe_boot:URL_ENCODED_PASSWORD@127.0.0.1:5432/pxe_boot?sslmode=disable` to `/etc/pxe-platform/boot.env` and restart `pxe-boot.service`. Use URL encoding for reserved characters in the password. The Boot process does not require a database connection to answer client requests; failed inserts are written to the journal. Database creation and insert behavior need a VM smoke test.
+Add `PXE_BOOT_DATABASE_URL="host=/var/run/postgresql dbname=pxe_boot user=pxe-boot"` to `/etc/pxe-platform/boot.env` and restart `pxe-boot.service`. The Boot process does not require a database connection to answer client requests; failed inserts are written to the journal. This local database setup and fallback were verified on the Ubuntu test VM.
 
 ## Review and apply network settings
 
@@ -96,4 +95,4 @@ For each row, record the client's DHCP result, TFTP file request, iPXE HTTP menu
 | UEFI x64, Secure Boot off | Pending VM | Pending VM |
 | UEFI x64, Secure Boot on | Pending VM | Pending VM |
 
-Check HTTP with `curl` and service logs with `journalctl -u pxe-boot -u pxe-agent -u pxe-dnsmasq --no-pager`. Check database rows with `psql -h 127.0.0.1 -U pxe_boot -W -d pxe_boot -c 'SELECT kind, path, occurred_at FROM boot_events ORDER BY id DESC LIMIT 10'` once PostgreSQL is configured. Do not interpret a successful syntax check as proof that clients boot.
+Check HTTP with `curl` and service logs with `journalctl -u pxe-boot -u pxe-agent -u pxe-dnsmasq --no-pager`. Check database rows with `sudo runuser -u pxe-boot -- psql -d pxe_boot -c 'SELECT kind, path, occurred_at FROM boot_events ORDER BY id DESC LIMIT 10'` once PostgreSQL is configured. Do not interpret a successful syntax check as proof that clients boot.

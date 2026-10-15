@@ -92,7 +92,7 @@ For each row, record the client's DHCP result, TFTP file request, iPXE HTTP menu
 | Client | Full DHCP | Proxy DHCP |
 | --- | --- | --- |
 | Legacy BIOS | DHCP lease, HTTP menu and Diagnostics passed on SeaBIOS; TFTP transfer not separately recorded | Keenetic lease, dnsmasq proxy PXE request and HTTP menu passed on SeaBIOS; TFTP transfer not separately recorded |
-| UEFI x64, Secure Boot off | Firmware showed Disabled after saving; DHCP, TFTP shim and iPXE binary, HTTP menu passed on OVMF | Pending VM |
-| UEFI x64, Secure Boot on | OVMF showed Enabled before it was switched off; DHCP, TFTP shim and iPXE binary, HTTP menu passed without manual key enrollment | Keenetic lease, dnsmasq proxy on UDP 4011, TFTP shim and iPXE binary, HTTP menu passed on retry; initial attempt timed out |
+| UEFI x64, Secure Boot off | Firmware showed Disabled after saving; DHCP, TFTP shim and iPXE binary, HTTP menu passed on OVMF | First attempt timed out before TFTP; retry pending |
+| UEFI x64, Secure Boot on | User reported menu after enabling; no fresh server trace separately linked to that run | Keenetic lease, dnsmasq proxy on UDP 4011, TFTP shim and iPXE binary, HTTP menu passed after Secure Boot was enabled |
 
 Check HTTP with `curl` and service logs with `journalctl -u pxe-boot -u pxe-agent -u pxe-dnsmasq --no-pager`. Check database rows with `sudo runuser -u pxe-boot -- psql -d pxe_boot -c 'SELECT kind, path, occurred_at FROM boot_events ORDER BY id DESC LIMIT 10'` once PostgreSQL is configured. Do not interpret a successful syntax check as proof that clients boot.

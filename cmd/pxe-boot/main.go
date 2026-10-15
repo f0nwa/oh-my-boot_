@@ -4,9 +4,11 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -19,6 +21,7 @@ func main() {
 	assets := flag.String("assets", "./assets", "boot asset directory")
 	snapshot := flag.String("snapshot", "./menu.ipxe", "published menu snapshot")
 	baseURL := flag.String("base-url", "", "client-visible HTTP base URL")
+	controlSocket := flag.String("control-socket", "/run/pxe-platform-boot/control.sock", "local control socket")
 	flag.Parse()
 	if *baseURL == "" {
 		log.Fatal("-base-url is required")
@@ -27,7 +30,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	publisher, err := boot.NewPublisher(*snapshot, menu)
+	if err != nil {
+		log.Fatal(err)
+	}
 	var store boot.EventStore
+	var reader boot.EventReader
 	if dsn := os.Getenv("PXE_BOOT_DATABASE_URL"); dsn != "" {
 		pool, err := pgxpool.New(context.Background(), dsn)
 		if err != nil {
@@ -35,13 +43,36 @@ func main() {
 		}
 		defer pool.Close()
 		store = boot.PostgresStore{Pool: pool}
+		reader = boot.PostgresStore{Pool: pool}
 	}
 	recorder := boot.NewRecorder(store, log.Default())
-	handler, err := boot.NewHandler(*assets, menu, recorder.Record)
+	handler, err := boot.NewDynamicHandler(*assets, publisher, recorder.Record)
 	if err != nil {
 		log.Fatal(err)
 	}
 	server := &http.Server{Addr: *listen, Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	if err := os.MkdirAll(filepath.Dir(*controlSocket), 0750); err != nil {
+		log.Fatal(err)
+	}
+	if info, err := os.Lstat(*controlSocket); err == nil {
+		if info.Mode()&os.ModeSocket == 0 {
+			log.Fatalf("refusing to replace non-socket %s", *controlSocket)
+		}
+		if err := os.Remove(*controlSocket); err != nil {
+			log.Fatal(err)
+		}
+	} else if !os.IsNotExist(err) {
+		log.Fatal(err)
+	}
+	listener, err := net.Listen("unix", *controlSocket)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer listener.Close()
+	if err := os.Chmod(*controlSocket, 0660); err != nil {
+		log.Fatal(err)
+	}
+	controlServer := &http.Server{Handler: boot.ControlHandler(publisher, reader), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -49,6 +80,12 @@ func main() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
+		_ = controlServer.Shutdown(shutdownCtx)
+	}()
+	go func() {
+		if err := controlServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+			log.Printf("Boot control API failed: %v", err)
+		}
 	}()
 	log.Printf("PXE Boot listening on %s", *listen)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

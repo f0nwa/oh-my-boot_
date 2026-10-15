@@ -10,14 +10,26 @@ import (
 )
 
 type Event struct {
-	Kind       string
-	Path       string
-	RemoteAddr string
-	At         time.Time
+	Kind       string    `json:"kind"`
+	Path       string    `json:"path"`
+	RemoteAddr string    `json:"remote_addr"`
+	At         time.Time `json:"at"`
 }
 
 // NewHandler serves a menu snapshot and files confined to assetDir.
 func NewHandler(assetDir string, menu []byte, record func(Event)) (http.Handler, error) {
+	p, err := NewPublisher(filepath.Join(assetDir, ".legacy-menu-snapshot"), menu)
+	if err != nil {
+		return nil, err
+	}
+	return NewDynamicHandler(assetDir, p, record)
+}
+
+// NewDynamicHandler reads the current published menu for each client request.
+func NewDynamicHandler(assetDir string, publisher *Publisher, record func(Event)) (http.Handler, error) {
+	if publisher == nil {
+		return nil, fmt.Errorf("publisher is required")
+	}
 	root, err := filepath.EvalSymlinks(assetDir)
 	if err != nil {
 		return nil, fmt.Errorf("resolve asset directory: %w", err)
@@ -25,9 +37,6 @@ func NewHandler(assetDir string, menu []byte, record func(Event)) (http.Handler,
 	info, err := os.Stat(root)
 	if err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("asset directory is unavailable: %s", assetDir)
-	}
-	if len(menu) == 0 || !strings.HasPrefix(string(menu), "#!ipxe\n") {
-		return nil, fmt.Errorf("invalid iPXE menu snapshot")
 	}
 
 	mux := http.NewServeMux()
@@ -39,6 +48,7 @@ func NewHandler(assetDir string, menu []byte, record func(Event)) (http.Handler,
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
+		menu, _ := publisher.Current()
 		_, _ = w.Write(menu)
 		if record != nil {
 			record(Event{Kind: "menu", Path: r.URL.Path, RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})

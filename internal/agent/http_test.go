@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,58 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestHandlerConfigShowsOnlySuccessfulApply(t *testing.T) {
+	dir := t.TempDir()
+	runner := &fakeRunner{}
+	a, err := NewApplier(filepath.Join(dir, "dnsmasq.conf"), filepath.Join(dir, "state.json"), runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := Handler(a)
+	read := func() *httptest.ResponseRecorder {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest("GET", "/config", nil))
+		return res
+	}
+	if got := read(); got.Code != http.StatusNotFound {
+		t.Fatalf("before apply: %d", got.Code)
+	}
+	original := agentConfig()
+	if err := a.Apply(context.Background(), original); err != nil {
+		t.Fatal(err)
+	}
+	got := read()
+	if got.Code != http.StatusOK {
+		t.Fatalf("after apply: %d", got.Code)
+	}
+	var current struct {
+		Interface string `json:"interface"`
+		Mode      string `json:"mode"`
+	}
+	if err := json.Unmarshal(got.Body.Bytes(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current.Interface != original.Interface || current.Mode != original.Mode {
+		t.Fatalf("current=%+v", current)
+	}
+	runner.failOnce = true
+	changed := original
+	changed.Interface = "enp9s0"
+	if err := a.Apply(context.Background(), changed); err == nil {
+		t.Fatal("expected restart failure")
+	}
+	got = read()
+	if got.Code != http.StatusOK {
+		t.Fatalf("after failure: %d", got.Code)
+	}
+	if err := json.Unmarshal(got.Body.Bytes(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current.Interface != original.Interface {
+		t.Fatalf("failed apply changed state: %+v", current)
+	}
+}
 
 func TestHandlerRejectsMalformedApplyAndReportsStatus(t *testing.T) {
 	dir := t.TempDir()

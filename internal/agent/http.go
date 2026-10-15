@@ -16,6 +16,15 @@ func Handler(applier *Applier) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(applier.Status())
 	})
+	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
+		config, ok := applier.CurrentConfig()
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(config)
+	})
 	mux.HandleFunc("POST /apply", func(w http.ResponseWriter, r *http.Request) {
 		var c network.Config
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))

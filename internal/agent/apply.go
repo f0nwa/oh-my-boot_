@@ -31,6 +31,7 @@ type Applier struct {
 	statePath  string
 	runner     Runner
 	status     Status
+	current    network.Config
 }
 
 // NewApplier restores the last successful config after an interrupted apply.
@@ -72,7 +73,14 @@ func NewApplier(configPath, statePath string, runner Runner) (*Applier, error) {
 		return nil, fmt.Errorf("restart saved PXE dnsmasq: %w", err)
 	}
 	a.status = Status{Applied: true, Mode: previous.Mode, Interface: previous.Interface}
+	a.current = previous
 	return a, nil
+}
+
+func (a *Applier) CurrentConfig() (network.Config, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.current, a.status.Applied
 }
 
 func (a *Applier) Status() Status {
@@ -116,6 +124,7 @@ func (a *Applier) Apply(ctx context.Context, c network.Config) error {
 		return errors.Join(fmt.Errorf("save agent state: %w", err), a.rollback(ctx, previous, previousExists))
 	}
 	a.status = Status{Applied: true, Mode: c.Mode, Interface: c.Interface}
+	a.current = c
 	return nil
 }
 

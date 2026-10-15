@@ -91,7 +91,7 @@ For each row, record the client's DHCP result, TFTP file request, iPXE HTTP menu
 
 | Client | Full DHCP | Proxy DHCP |
 | --- | --- | --- |
-| Legacy BIOS | DHCP lease, HTTP menu and Diagnostics passed on SeaBIOS; TFTP transfer not separately recorded | Pending VM |
+| Legacy BIOS | DHCP lease, HTTP menu and Diagnostics passed on SeaBIOS; TFTP transfer not separately recorded | Keenetic lease, dnsmasq proxy PXE request and HTTP menu passed on SeaBIOS; TFTP transfer not separately recorded |
 | UEFI x64, Secure Boot off | Firmware showed Disabled after saving; DHCP, TFTP shim and iPXE binary, HTTP menu passed on OVMF | Pending VM |
 | UEFI x64, Secure Boot on | OVMF showed Enabled before it was switched off; DHCP, TFTP shim and iPXE binary, HTTP menu passed without manual key enrollment | Pending VM |
 

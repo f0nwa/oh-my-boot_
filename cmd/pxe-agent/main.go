@@ -16,7 +16,7 @@ import (
 func main() {
 	socket := flag.String("socket", "/run/pxe-platform/agent.sock", "local control socket")
 	config := flag.String("config-path", "/etc/pxe-platform/dnsmasq.conf", "managed dnsmasq config")
-	state := flag.String("state-path", "/var/lib/pxe-platform/network.json", "last successful network config")
+	state := flag.String("state-path", "/var/lib/pxe-platform-agent/network.json", "last successful network config")
 	flag.Parse()
 	applier, err := agent.NewApplier(*config, *state, agent.SystemRunner{})
 	if err != nil {

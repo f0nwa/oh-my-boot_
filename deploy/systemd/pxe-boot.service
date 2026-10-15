@@ -1,0 +1,23 @@
+[Unit]
+Description=PXE Platform boot HTTP service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pxe-boot
+Group=pxe-boot
+EnvironmentFile=/etc/pxe-platform/boot.env
+ExecStart=/usr/local/bin/pxe-boot -listen 0.0.0.0:8080 -assets /srv/pxe/tftp -snapshot /var/lib/pxe-platform-boot/menu.ipxe -base-url ${PXE_BOOT_BASE_URL}
+Restart=on-failure
+StateDirectory=pxe-platform-boot
+StateDirectoryMode=0750
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/srv/pxe/tftp
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

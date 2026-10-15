@@ -1,10 +1,15 @@
 # PXE Platform
 
-Самостоятельный PXE-сервис для Linux с веб-админкой. Проект не зависит от серверной части iVentoy. Исходный репозиторий Ventoy/PXE в соседнем каталоге используется только как справочный материал по iPXE.
+An independent PXE service for Linux servers. The first iteration contains a Go HTTP Boot service with a diagnostic iPXE menu, a local Go Network Agent, full DHCP and proxy-DHCP configuration for a dedicated dnsmasq instance, pinned iPXE boot assets, and optional PostgreSQL boot events.
 
-Документы проекта:
+The project is separate from the neighboring Ventoy/PXE source tree. ISO management, Windows/Ubuntu image loading, the dashboard, and user roles are planned stages; they are not implemented in this iteration. Live BIOS, UEFI and Secure Boot results await the test VM.
 
-- [Общий дизайн](docs/superpowers/specs/2026-10-15-pxe-platform-design.md)
-- [Первый этап: загрузочный контур](docs/superpowers/specs/2026-10-15-boot-foundation-design.md)
+Start with the [Ubuntu installation guide](docs/installation.md). The [architecture](docs/superpowers/specs/2026-10-15-pxe-platform-design.md) and [boot foundation design](docs/superpowers/specs/2026-10-15-boot-foundation-design.md) explain the service boundaries.
 
-Сейчас в репозитории только согласуемая спецификация. Реализация начнётся после её просмотра.
+For local verification:
+
+```sh
+go test ./...
+go vet ./...
+scripts/fetch-ipxe_test.sh
+```

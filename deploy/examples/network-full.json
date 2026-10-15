@@ -1,0 +1,10 @@
+{
+  "mode": "full",
+  "interface": "enp2s0",
+  "server_ip": "192.0.2.10",
+  "subnet": "192.0.2.0/24",
+  "dhcp_start": "192.0.2.100",
+  "dhcp_end": "192.0.2.150",
+  "boot_url": "http://192.0.2.10:8080/boot/menu.ipxe",
+  "tftp_root": "/srv/pxe/tftp"
+}

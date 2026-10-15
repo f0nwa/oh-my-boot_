@@ -1,0 +1,23 @@
+[Unit]
+Description=PXE Platform network agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/pxe-agent
+Restart=on-failure
+RuntimeDirectory=pxe-platform
+RuntimeDirectoryMode=0750
+StateDirectory=pxe-platform-agent
+StateDirectoryMode=0750
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/etc/pxe-platform /run/pxe-platform /var/lib/pxe-platform-agent
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

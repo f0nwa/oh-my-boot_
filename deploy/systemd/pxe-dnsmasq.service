@@ -1,0 +1,15 @@
+[Unit]
+Description=PXE Platform dedicated dnsmasq
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/pxe-platform/dnsmasq.conf
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/dnsmasq --no-daemon --conf-file=/etc/pxe-platform/dnsmasq.conf --pid-file=
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectHome=true
+
+# Deliberately no [Install] section: the agent starts this unit only after validation.

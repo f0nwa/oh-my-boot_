@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -105,5 +106,26 @@ func TestApplyFirstFailureLeavesServiceStopped(t *testing.T) {
 	}
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) || runner.stops != 1 {
 		t.Fatalf("first failed apply left active config or service: stat=%v stops=%d", err, runner.stops)
+	}
+}
+
+func TestNewApplierRestoresSavedServiceAfterRestart(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "dnsmasq.conf")
+	statePath := filepath.Join(dir, "state.json")
+	state, err := json.Marshal(agentConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, state, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{}
+	applier, err := NewApplier(configPath, statePath, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !applier.Status().Applied || runner.restarts != 1 || !strings.Contains(runner.tested, "dhcp-range=192.0.2.0,proxy") {
+		t.Fatalf("saved service was not restored: status=%+v restarts=%d tested=%q", applier.Status(), runner.restarts, runner.tested)
 	}
 }

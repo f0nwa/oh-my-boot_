@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"pxe-platform/internal/network"
 )
@@ -61,6 +62,14 @@ func NewApplier(configPath, statePath string, runner Runner) (*Applier, error) {
 		if err := writeAtomic(configPath, []byte(config), 0o640); err != nil {
 			return nil, fmt.Errorf("restore active dnsmasq config: %w", err)
 		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := runner.Test(ctx, configPath); err != nil {
+		return nil, fmt.Errorf("saved dnsmasq config test failed: %w", err)
+	}
+	if err := runner.Restart(ctx); err != nil {
+		return nil, fmt.Errorf("restart saved PXE dnsmasq: %w", err)
 	}
 	a.status = Status{Applied: true, Mode: previous.Mode, Interface: previous.Interface}
 	return a, nil

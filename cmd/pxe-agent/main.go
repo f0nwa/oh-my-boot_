@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"os/user"
 	"syscall"
 	"time"
 
@@ -22,12 +23,24 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	imagesUser, err := user.Lookup("pxe-images")
+	if err != nil {
+		log.Fatal(err)
+	}
+	smb := &agent.SMBManager{
+		CredentialsDir: "/etc/pxe-platform/smb",
+		UnitDir:        "/etc/systemd/system",
+		MountRoot:      "/mnt/pxe-platform-smb",
+		ImagesUID:      imagesUser.Uid,
+		ImagesGID:      imagesUser.Gid,
+		Systemctl:      agent.SMBCommandSystemctl{},
+	}
 	listener, err := agent.ListenUnix(*socket)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer listener.Close()
-	server := &http.Server{Handler: agent.Handler(applier), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Handler: agent.HandlerWithSMB(applier, smb), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

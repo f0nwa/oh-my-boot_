@@ -16,7 +16,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/etc/pxe-platform /run/pxe-platform /var/lib/pxe-platform-agent
+ReadWritePaths=/etc/pxe-platform /etc/systemd/system /mnt/pxe-platform-smb /run/pxe-platform /var/lib/pxe-platform-agent
 RestrictAddressFamilies=AF_UNIX
 
 [Install]

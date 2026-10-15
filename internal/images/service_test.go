@@ -120,6 +120,22 @@ func TestMountedScanPreservesCatalogWhenMountChanges(t *testing.T) {
 	}
 }
 
+func TestSMBScanPreservesCatalogWhenUnmounted(t *testing.T) {
+	repo := &memoryRepository{
+		storages: map[int64]Storage{1: {ID: 1, Name: "SMB", Root: realTempDir(t), Kind: "smb"}},
+		images:   map[int64]map[string]Image{1: {"old.iso": {Path: "old.iso", Present: true}}},
+		state:    map[int64]string{},
+	}
+	scanCalled := false
+	err := scanStorageWith(context.Background(), repo, 1, func(string) (string, bool) { return "", false }, func(string) ([]Image, error) {
+		scanCalled = true
+		return nil, nil
+	})
+	if err == nil || scanCalled || !repo.images[1]["old.iso"].Present || repo.state[1] != "unavailable" {
+		t.Fatalf("unmounted SMB changed catalog: err=%v scan=%v images=%+v state=%s", err, scanCalled, repo.images, repo.state[1])
+	}
+}
+
 func TestScanFailureUsesFreshContextToStoreError(t *testing.T) {
 	repo := &contextAwareRepository{memoryRepository: memoryRepository{
 		storages: map[int64]Storage{1: {ID: 1, Root: realTempDir(t), Kind: "local"}},

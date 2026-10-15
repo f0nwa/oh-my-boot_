@@ -2,10 +2,12 @@ package images
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"pxe-platform/internal/smbstorage"
 )
 
 type Catalog struct {
@@ -14,6 +16,43 @@ type Catalog struct {
 }
 
 type Store struct{ Pool *pgxpool.Pool }
+
+type ManagedStorageInput struct {
+	Name    string `json:"name"`
+	Key     string `json:"key"`
+	Server  string `json:"server"`
+	Share   string `json:"share"`
+	Subpath string `json:"subpath"`
+}
+
+func (s Store) CreateSMB(ctx context.Context, input ManagedStorageInput) (Storage, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	if input.Name == "" || len(input.Name) > 120 {
+		return Storage{}, fmt.Errorf("invalid storage name")
+	}
+	if err := smbstorage.Validate(input.Key, input.Server, input.Share, input.Subpath); err != nil {
+		return Storage{}, err
+	}
+	var storage Storage
+	err := s.Pool.QueryRow(ctx,
+		`INSERT INTO storages (name,kind,root,storage_key,server,share,subpath,state,last_error)
+		 VALUES ($1,'smb',$2,$3,$4,$5,$6,'unavailable','Ожидает подключения')
+		 RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at`,
+		input.Name, smbstorage.Root(input.Key), input.Key, input.Server, input.Share, input.Subpath,
+	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt)
+	return storage, err
+}
+
+func (s Store) DeleteSMB(ctx context.Context, id int64) error {
+	command, err := s.Pool.Exec(ctx, "DELETE FROM storages WHERE id=$1 AND kind='smb'", id)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
 
 // RecoverInterruptedScans marks jobs left in progress by a previous process as failed.
 func (s Store) RecoverInterruptedScans(ctx context.Context) error {
@@ -30,28 +69,28 @@ func (s Store) AddStorage(ctx context.Context, name, kind, root string) (Storage
 	}
 	var storage Storage
 	err = s.Pool.QueryRow(ctx,
-		"INSERT INTO storages (name,kind,root) VALUES ($1,$2,$3) RETURNING id,name,kind,root,state,last_error,last_scan_at",
+		"INSERT INTO storages (name,kind,root) VALUES ($1,$2,$3) RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at",
 		name, kind, root,
-	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.State, &storage.Error, &storage.LastScanAt)
+	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt)
 	return storage, err
 }
 
 func (s Store) Storage(ctx context.Context, id int64) (Storage, error) {
 	var storage Storage
-	err := s.Pool.QueryRow(ctx, "SELECT id,name,kind,root,state,last_error,last_scan_at FROM storages WHERE id=$1", id).
-		Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.State, &storage.Error, &storage.LastScanAt)
+	err := s.Pool.QueryRow(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at FROM storages WHERE id=$1", id).
+		Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt)
 	return storage, err
 }
 
 func (s Store) Catalog(ctx context.Context) (Catalog, error) {
 	result := Catalog{Storages: []Storage{}, Images: []Image{}}
-	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,state,last_error,last_scan_at FROM storages ORDER BY name")
+	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at FROM storages ORDER BY name")
 	if err != nil {
 		return result, err
 	}
 	for rows.Next() {
 		var storage Storage
-		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.State, &storage.Error, &storage.LastScanAt); err != nil {
+		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt); err != nil {
 			rows.Close()
 			return result, err
 		}

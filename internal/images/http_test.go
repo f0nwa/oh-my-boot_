@@ -31,6 +31,10 @@ func (r *httpRepository) MarkScanning(_ context.Context, id int64) error {
 	r.state[id] = "scanning"
 	return nil
 }
+func (r *httpRepository) CreateSMB(_ context.Context, _ ManagedStorageInput) (Storage, error) {
+	return Storage{}, nil
+}
+func (r *httpRepository) DeleteSMB(_ context.Context, _ int64) error { return nil }
 func (r *httpRepository) SaveScan(ctx context.Context, id int64, found []Image) error {
 	err := r.memoryRepository.SaveScan(ctx, id, found)
 	close(r.done)

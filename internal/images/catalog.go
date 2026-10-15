@@ -14,6 +14,10 @@ type Storage struct {
 	Name       string     `json:"name"`
 	Kind       string     `json:"kind"`
 	Root       string     `json:"root"`
+	Key        string     `json:"key,omitempty"`
+	Server     string     `json:"server,omitempty"`
+	Share      string     `json:"share,omitempty"`
+	Subpath    string     `json:"subpath,omitempty"`
 	State      string     `json:"state"`
 	Error      string     `json:"error,omitempty"`
 	LastScanAt *time.Time `json:"last_scan_at,omitempty"`

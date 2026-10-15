@@ -3,16 +3,24 @@ package images
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"pxe-platform/internal/smbstorage"
 )
 
 type APIRepository interface {
 	ScanRepository
 	Catalog(context.Context) (Catalog, error)
 	MarkScanning(context.Context, int64) error
+	CreateSMB(context.Context, ManagedStorageInput) (Storage, error)
+	DeleteSMB(context.Context, int64) error
 }
 
 type Server struct {
@@ -27,6 +35,55 @@ func NewServer(repo APIRepository) *Server {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /smb-storages", func(w http.ResponseWriter, r *http.Request) {
+		var input ManagedStorageInput
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(w, "invalid storage request", http.StatusBadRequest)
+			return
+		}
+		if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid storage request", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(input.Name) == "" || len(input.Name) > 120 || smbstorage.Validate(input.Key, input.Server, input.Share, input.Subpath) != nil {
+			http.Error(w, "invalid storage request", http.StatusBadRequest)
+			return
+		}
+		storage, err := s.repo.CreateSMB(r.Context(), input)
+		if err != nil {
+			http.Error(w, "cannot reserve storage", http.StatusConflict)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(storage)
+	})
+	mux.HandleFunc("POST /smb-storages/{id}/error", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid storage ID", http.StatusBadRequest)
+			return
+		}
+		if err := s.repo.ScanError(r.Context(), id, "Не удалось подключить SMB"); err != nil {
+			http.Error(w, "cannot mark storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("DELETE /smb-storages/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid storage ID", http.StatusBadRequest)
+			return
+		}
+		if err := s.repo.DeleteSMB(r.Context(), id); err != nil {
+			http.Error(w, "cannot delete storage", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /catalog", func(w http.ResponseWriter, r *http.Request) {
 		catalog, err := s.repo.Catalog(r.Context())
 		if err != nil {

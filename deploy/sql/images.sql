@@ -1,8 +1,12 @@
 CREATE TABLE IF NOT EXISTS storages (
  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  name TEXT NOT NULL UNIQUE,
- kind TEXT NOT NULL CHECK (kind IN ('local','mounted')),
+ kind TEXT NOT NULL CHECK (kind IN ('local','mounted','smb')),
  root TEXT NOT NULL UNIQUE,
+ storage_key TEXT UNIQUE,
+ server TEXT NOT NULL DEFAULT '',
+ share TEXT NOT NULL DEFAULT '',
+ subpath TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL DEFAULT 'unknown' CHECK (state IN ('unknown','scanning','ready','unavailable')),
  last_error TEXT NOT NULL DEFAULT '',
  last_scan_at TIMESTAMPTZ

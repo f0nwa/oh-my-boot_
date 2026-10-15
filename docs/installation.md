@@ -92,7 +92,7 @@ For each row, record the client's DHCP result, TFTP file request, iPXE HTTP menu
 | Client | Full DHCP | Proxy DHCP |
 | --- | --- | --- |
 | Legacy BIOS | DHCP lease, HTTP menu and Diagnostics passed on SeaBIOS; TFTP transfer not separately recorded | Pending VM |
-| UEFI x64, Secure Boot off | Pending VM; previous OVMF run may have had Secure Boot enabled | Pending VM |
+| UEFI x64, Secure Boot off | Firmware showed Disabled after saving; DHCP, TFTP shim and iPXE binary, HTTP menu passed on OVMF | Pending VM |
 | UEFI x64, Secure Boot on | OVMF menu reached; confirm with a fresh boot after firmware showed Secure Boot enabled | Pending VM |
 
 Check HTTP with `curl` and service logs with `journalctl -u pxe-boot -u pxe-agent -u pxe-dnsmasq --no-pager`. Check database rows with `sudo runuser -u pxe-boot -- psql -d pxe_boot -c 'SELECT kind, path, occurred_at FROM boot_events ORDER BY id DESC LIMIT 10'` once PostgreSQL is configured. Do not interpret a successful syntax check as proof that clients boot.

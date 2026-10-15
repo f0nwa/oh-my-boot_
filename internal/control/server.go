@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,7 @@ type Server struct {
 	Boot              *BootClient
 	Agent             *AgentClient
 	AllowedInterfaces map[string]bool
+	menuMu            sync.Mutex
 }
 
 type requestContext struct {

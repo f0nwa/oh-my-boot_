@@ -221,7 +221,7 @@ func (s Store) SaveActiveMenu(ctx context.Context, authorID int64, m MenuVersion
 	if _, err := tx.Exec(ctx, "UPDATE menu_versions SET active=FALSE WHERE active"); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, "INSERT INTO menu_versions (author_id,title,diagnostic_label,diagnostic_message,script,sha256,active) VALUES ($1,$2,$3,$4,$5,$6,TRUE)", authorID, m.Title, m.Label, m.Message, m.Script, m.SHA256); err != nil {
+	if _, err := tx.Exec(ctx, "INSERT INTO menu_versions (author_id,title,diagnostic_label,diagnostic_message,script,sha256,active) VALUES (NULLIF($1,0),$2,$3,$4,$5,$6,TRUE)", authorID, m.Title, m.Label, m.Message, m.Script, m.SHA256); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

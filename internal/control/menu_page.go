@@ -57,6 +57,8 @@ func (s *Server) menuRollback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersion, action string) {
+	s.menuMu.Lock()
+	defer s.menuMu.Unlock()
 	info := requestInfo(r)
 	if s.Boot == nil {
 		http.Error(w, "Boot недоступен", 503)
@@ -66,6 +68,19 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 	if err != nil {
 		http.Error(w, "Не удалось получить текущее меню", 503)
 		return
+	}
+	versions, err := s.Store.MenuVersions(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать версии меню", 503)
+		return
+	}
+	if len(versions) == 0 {
+		oldSum := sha256.Sum256(previous)
+		initial := MenuVersion{Title: "PXE Platform", Label: "Diagnostics", Message: "PXE Platform network boot is ready", Script: string(previous), SHA256: hex.EncodeToString(oldSum[:])}
+		if err := s.Store.SaveActiveMenu(r.Context(), 0, initial); err != nil {
+			http.Error(w, "Не удалось сохранить начальное меню", 503)
+			return
+		}
 	}
 	sum := sha256.Sum256([]byte(m.Script))
 	m.SHA256 = hex.EncodeToString(sum[:])

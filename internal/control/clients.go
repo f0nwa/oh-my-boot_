@@ -34,8 +34,12 @@ func socketHTTP(path string) *http.Client {
 		return (&net.Dialer{}).DialContext(ctx, "unix", path)
 	}}}
 }
-func NewBootClient(path string) *BootClient     { return &BootClient{http: socketHTTP(path)} }
-func NewAgentClient(path string) *AgentClient   { return &AgentClient{http: socketHTTP(path)} }
+func NewBootClient(path string) *BootClient { return &BootClient{http: socketHTTP(path)} }
+func NewAgentClient(path string) *AgentClient {
+	client := socketHTTP(path)
+	client.Timeout = 90 * time.Second
+	return &AgentClient{http: client}
+}
 func NewImagesClient(path string) *ImagesClient { return &ImagesClient{http: socketHTTP(path)} }
 
 func (c *ImagesClient) Catalog(ctx context.Context) (images.Catalog, error) {
@@ -50,6 +54,40 @@ func (c *ImagesClient) Scan(ctx context.Context, id int64) error {
 		return err
 	}
 	return localCall(ctx, c.http, "POST", "/scan", body, nil)
+}
+
+func (c *ImagesClient) CreateSMB(ctx context.Context, input images.ManagedStorageInput) (images.Storage, error) {
+	var storage images.Storage
+	body, err := json.Marshal(input)
+	if err != nil {
+		return storage, err
+	}
+	err = localCall(ctx, c.http, "POST", "/smb-storages", body, &storage)
+	return storage, err
+}
+
+func (c *ImagesClient) MarkSMBError(ctx context.Context, id int64) error {
+	return localCall(ctx, c.http, "POST", "/smb-storages/"+strconv.FormatInt(id, 10)+"/error", nil, nil)
+}
+
+func (c *ImagesClient) DeleteSMB(ctx context.Context, id int64) error {
+	return localCall(ctx, c.http, "DELETE", "/smb-storages/"+strconv.FormatInt(id, 10), nil, nil)
+}
+
+func (c *AgentClient) Mount(ctx context.Context, key, server, share, subpath, username, password, domain string) error {
+	body, err := json.Marshal(map[string]string{"key": key, "server": server, "share": share, "subpath": subpath, "username": username, "password": password, "domain": domain})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/smb/mount", body, nil)
+}
+
+func (c *AgentClient) Remove(ctx context.Context, key string) error {
+	body, err := json.Marshal(map[string]string{"key": key})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/smb/remove", body, nil)
 }
 
 func localCall(ctx context.Context, client *http.Client, method, path string, body []byte, out any) error {

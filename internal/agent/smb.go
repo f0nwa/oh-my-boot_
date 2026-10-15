@@ -101,7 +101,11 @@ func (m *SMBManager) Remove(ctx context.Context, key string) error {
 	target := filepath.Join(m.MountRoot, key)
 	unitPath := filepath.Join(m.UnitDir, smbUnitName(target))
 	credPath := filepath.Join(m.CredentialsDir, key+".cred")
-	if err := m.Systemctl.Run(ctx, "disable", "--now", filepath.Base(unitPath)); err != nil {
+	if _, err := os.Lstat(unitPath); err == nil {
+		if err := m.Systemctl.Run(ctx, "disable", "--now", filepath.Base(unitPath)); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
 		return err
 	}
 	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {

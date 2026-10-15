@@ -33,6 +33,11 @@ func (f *fakeImagesAPI) Scan(_ context.Context, id int64) error {
 	f.scans = append(f.scans, id)
 	return f.err
 }
+func (f *fakeImagesAPI) CreateSMB(context.Context, images.ManagedStorageInput) (images.Storage, error) {
+	return images.Storage{}, f.err
+}
+func (f *fakeImagesAPI) MarkSMBError(context.Context, int64) error { return f.err }
+func (f *fakeImagesAPI) DeleteSMB(context.Context, int64) error    { return f.err }
 
 func TestImagesPageEscapesISONameAndShowsStorage(t *testing.T) {
 	api := &fakeImagesAPI{catalog: images.Catalog{

@@ -30,6 +30,14 @@ type Storage interface {
 type ImagesAPI interface {
 	Catalog(context.Context) (images.Catalog, error)
 	Scan(context.Context, int64) error
+	CreateSMB(context.Context, images.ManagedStorageInput) (images.Storage, error)
+	MarkSMBError(context.Context, int64) error
+	DeleteSMB(context.Context, int64) error
+}
+
+type SMBMountAPI interface {
+	Mount(context.Context, string, string, string, string, string, string, string) error
+	Remove(context.Context, string) error
 }
 
 type Server struct {
@@ -37,6 +45,7 @@ type Server struct {
 	Boot              *BootClient
 	Agent             *AgentClient
 	Images            ImagesAPI
+	SMB               SMBMountAPI
 	AllowedInterfaces map[string]bool
 	menuMu            sync.Mutex
 }
@@ -68,6 +77,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	mux.HandleFunc("POST /images/scan", s.protect("images", s.imagesScan))
+	mux.HandleFunc("POST /images/smb", s.protect("smb", s.imagesSMBCreate))
+	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", s.imagesSMBRetry))
+	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", s.imagesSMBRemove))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")

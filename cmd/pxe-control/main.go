@@ -53,8 +53,9 @@ func main() {
 	if len(allowlist) == 0 {
 		log.Fatal("no allowed PXE interfaces")
 	}
-	server := &control.Server{Store: control.Store{Pool: pool}, Boot: control.NewBootClient(*bootSocket), Agent: control.NewAgentClient(*agentSocket), Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist}
-	httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
+	agentClient := control.NewAgentClient(*agentSocket)
+	server := &control.Server{Store: control.Store{Pool: pool}, Boot: control.NewBootClient(*bootSocket), Agent: agentClient, SMB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist}
+	httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 100 * time.Second, IdleTimeout: 60 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

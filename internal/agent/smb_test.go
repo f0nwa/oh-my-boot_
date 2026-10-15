@@ -115,3 +115,19 @@ func TestSMBRemoveKeepsFilesWhenSystemctlFails(t *testing.T) {
 		t.Fatalf("credentials removed before cleanup succeeded: %v", err)
 	}
 }
+
+func TestSMBRemoveCanRetryAfterCleanupFinished(t *testing.T) {
+	runner := &fakeSMBSystemctl{}
+	manager := testSMBManager(t, runner)
+	req := validSMBRequest()
+	if err := manager.Mount(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Remove(context.Background(), req.Key); err != nil {
+		t.Fatal(err)
+	}
+	runner.fail = "disable"
+	if err := manager.Remove(context.Background(), req.Key); err != nil {
+		t.Fatalf("retry after completed cleanup: %v", err)
+	}
+}

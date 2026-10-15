@@ -80,11 +80,12 @@ func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
 		return err
 	}
 	options := "credentials=" + credPath + ",ro,nosuid,nodev,noexec,uid=" + m.ImagesUID + ",gid=" + m.ImagesGID + ",file_mode=0440,dir_mode=0550"
+	source := "//" + req.Server + "/" + req.Share
 	if req.Subpath != "" {
-		options += ",prefixpath=" + req.Subpath
+		source += "/" + req.Subpath
 	}
 	unit := "[Unit]\nDescription=PXE Platform SMB ISO storage " + req.Key + "\nAfter=network-online.target\nWants=network-online.target\n\n" +
-		"[Mount]\nWhat=//" + req.Server + "/" + req.Share + "\nWhere=" + target + "\nType=cifs\nOptions=" + options + "\n\n" +
+		"[Mount]\nWhat=" + source + "\nWhere=" + target + "\nType=cifs\nOptions=" + options + "\n\n" +
 		"[Install]\nWantedBy=multi-user.target\n"
 	if err := writeAtomic(unitPath, []byte(unit), 0644); err != nil {
 		return err

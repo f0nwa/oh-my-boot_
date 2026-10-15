@@ -16,6 +16,27 @@ var (
 
 func Root(key string) string { return filepath.Join("/mnt/pxe-platform-smb", key) }
 
+// ParsePath splits a share path entered in the dashboard without normalizing
+// dot segments or empty components that could change the requested location.
+func ParsePath(value string) (server, share, subpath string, err error) {
+	value = strings.ReplaceAll(strings.TrimSpace(value), `\`, "/")
+	value = strings.TrimPrefix(value, "//")
+	parts := strings.Split(value, "/")
+	if len(parts) < 2 {
+		return "", "", "", fmt.Errorf("invalid SMB path")
+	}
+	for _, part := range parts {
+		if part == "" {
+			return "", "", "", fmt.Errorf("invalid SMB path")
+		}
+	}
+	server, share, subpath = parts[0], parts[1], strings.Join(parts[2:], "/")
+	if err := Validate("0123456789abcdef0123456789abcdef", server, share, subpath); err != nil {
+		return "", "", "", err
+	}
+	return server, share, subpath, nil
+}
+
 func Validate(key, server, share, subpath string) error {
 	if !keyPattern.MatchString(key) {
 		return fmt.Errorf("invalid storage key")

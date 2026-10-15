@@ -48,7 +48,7 @@ func TestSMBMountWritesProtectedCredentialsAndNoPasswordInUnitOrCommands(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(unit), req.Password) || !strings.Contains(string(unit), "ro,nosuid,nodev,noexec") || !strings.Contains(string(unit), "prefixpath=iso") {
+	if strings.Contains(string(unit), req.Password) || !strings.Contains(string(unit), "ro,nosuid,nodev,noexec") || !strings.Contains(string(unit), "What=//192.168.10.10/Downloads/iso\n") || strings.Contains(string(unit), "prefixpath=") {
 		t.Fatalf("unsafe or incomplete mount unit: %s", unit)
 	}
 	for _, args := range runner.calls {

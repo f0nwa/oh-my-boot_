@@ -90,7 +90,7 @@ func (f *fakeSMBMountAPI) Remove(_ context.Context, _ string) error {
 }
 
 func smbForm() url.Values {
-	return url.Values{"name": {"NAS"}, "server": {"192.168.10.10"}, "share": {"Downloads"}, "subpath": {"iso"}, "username": {"reader"}, "password": {"secret"}, "csrf": {CSRFToken("test-token")}}
+	return url.Values{"path": {"//192.168.10.10/Downloads/iso"}, "username": {"reader"}, "password": {"secret"}, "csrf": {CSRFToken("test-token")}}
 }
 
 func submitSMB(t *testing.T, s *Server, path string, form url.Values) *httptest.ResponseRecorder {
@@ -118,6 +118,9 @@ func TestSMBCreateRequiresAdminAndCSRF(t *testing.T) {
 		}
 		if tc.role == "admin" && strings.Join(events, ",") != "reserve,mount" || tc.role != "admin" && len(events) != 0 {
 			t.Fatalf("role=%s events=%v", tc.role, events)
+		}
+		if tc.role == "admin" && (api.storage.Server != "192.168.10.10" || api.storage.Share != "Downloads" || api.storage.Subpath != "iso") {
+			t.Fatalf("path parsed incorrectly: %+v", api.storage)
 		}
 	}
 	events := []string{}
@@ -170,6 +173,9 @@ func TestSMBFormIsAdminOnly(t *testing.T) {
 		hasForm := strings.Contains(res.Body.String(), `action="/images/smb"`)
 		if res.Code != http.StatusOK || hasForm != (role == "admin") {
 			t.Fatalf("role=%s status=%d hasForm=%v", role, res.Code, hasForm)
+		}
+		if role == "admin" && (!strings.Contains(res.Body.String(), `name="path"`) || strings.Contains(res.Body.String(), `name="server"`) || strings.Contains(res.Body.String(), `name="share"`) || strings.Contains(res.Body.String(), `name="subpath"`)) {
+			t.Fatal("SMB form must use one direct path field")
 		}
 	}
 }

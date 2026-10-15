@@ -33,11 +33,19 @@ func (s *Server) imagesSMBCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ошибка", http.StatusInternalServerError)
 		return
 	}
-	input := images.ManagedStorageInput{
-		Name: strings.TrimSpace(r.FormValue("name")), Key: key,
-		Server: strings.TrimSpace(r.FormValue("server")), Share: strings.TrimSpace(r.FormValue("share")),
-		Subpath: strings.TrimSpace(r.FormValue("subpath")),
+	server, share, subpath, err := smbstorage.ParsePath(r.FormValue("path"))
+	if err != nil {
+		http.Error(w, "Неверный путь SMB", http.StatusBadRequest)
+		return
 	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		name = "//" + server + "/" + share
+		if subpath != "" {
+			name += "/" + subpath
+		}
+	}
+	input := images.ManagedStorageInput{Name: name, Key: key, Server: server, Share: share, Subpath: subpath}
 	username, password, domain := r.FormValue("username"), r.FormValue("password"), r.FormValue("domain")
 	if input.Name == "" || len(input.Name) > 120 || smbstorage.Validate(key, input.Server, input.Share, input.Subpath) != nil || !validSMBFormCredential(username, false) || !validSMBFormCredential(password, false) || !validSMBFormCredential(domain, true) {
 		http.Error(w, "Неверные параметры SMB", http.StatusBadRequest)

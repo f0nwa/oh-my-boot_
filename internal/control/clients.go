@@ -1,0 +1,112 @@
+package control
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"strconv"
+	"time"
+
+	"pxe-platform/internal/boot"
+	"pxe-platform/internal/network"
+)
+
+type BootStatus struct {
+	Ready  bool   `json:"ready"`
+	SHA256 string `json:"sha256"`
+}
+type AgentStatus struct {
+	Applied   bool   `json:"applied"`
+	Mode      string `json:"mode"`
+	Interface string `json:"interface"`
+}
+type BootClient struct{ http *http.Client }
+type AgentClient struct{ http *http.Client }
+
+func socketHTTP(path string) *http.Client {
+	return &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", path)
+	}}}
+}
+func NewBootClient(path string) *BootClient   { return &BootClient{http: socketHTTP(path)} }
+func NewAgentClient(path string) *AgentClient { return &AgentClient{http: socketHTTP(path)} }
+
+func localCall(ctx context.Context, client *http.Client, method, path string, body []byte, out any) error {
+	req, err := http.NewRequestWithContext(ctx, method, "http://unix"+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		message, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
+		return fmt.Errorf("local API %s: %d %s", path, res.StatusCode, string(message))
+	}
+	if out == nil {
+		return nil
+	}
+	return json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(out)
+}
+
+func (c *BootClient) Status(ctx context.Context) (BootStatus, error) {
+	var v BootStatus
+	err := localCall(ctx, c.http, "GET", "/status", nil, &v)
+	return v, err
+}
+func (c *BootClient) CurrentMenu(ctx context.Context) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://unix/menu", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("boot menu unavailable: %d", res.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(res.Body, 256<<10+1))
+}
+func (c *BootClient) Events(ctx context.Context, limit int) ([]boot.Event, error) {
+	if limit < 1 || limit > 100 {
+		return nil, fmt.Errorf("invalid event limit")
+	}
+	var v []boot.Event
+	err := localCall(ctx, c.http, "GET", "/events?limit="+strconv.Itoa(limit), nil, &v)
+	return v, err
+}
+func (c *BootClient) Publish(ctx context.Context, script []byte) (string, error) {
+	if len(script) > 256<<10 {
+		return "", fmt.Errorf("menu too large")
+	}
+	var v struct {
+		SHA256 string `json:"sha256"`
+	}
+	err := localCall(ctx, c.http, "POST", "/publish", script, &v)
+	return v.SHA256, err
+}
+func (c *AgentClient) Status(ctx context.Context) (AgentStatus, error) {
+	var v AgentStatus
+	err := localCall(ctx, c.http, "GET", "/status", nil, &v)
+	return v, err
+}
+func (c *AgentClient) Config(ctx context.Context) (network.Config, error) {
+	var v network.Config
+	err := localCall(ctx, c.http, "GET", "/config", nil, &v)
+	return v, err
+}
+func (c *AgentClient) Apply(ctx context.Context, v network.Config) error {
+	payload, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/apply", payload, nil)
+}

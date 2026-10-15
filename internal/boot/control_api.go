@@ -19,6 +19,12 @@ func ControlHandler(p *Publisher, events EventReader) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ready": true, "sha256": hash})
 	})
+	mux.HandleFunc("GET /menu", func(w http.ResponseWriter, _ *http.Request) {
+		menu, _ := p.Current()
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(menu)
+	})
 	mux.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
 		if events == nil {
 			http.Error(w, "event store unavailable", http.StatusServiceUnavailable)

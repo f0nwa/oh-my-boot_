@@ -1,0 +1,20 @@
+[Unit]
+Description=PXE Platform HTTPS control dashboard
+After=network-online.target postgresql.service pxe-boot.service pxe-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pxe-control
+Group=pxe-control
+EnvironmentFile=/etc/pxe-platform/control.env
+ExecStart=/usr/local/bin/pxe-control -listen 192.168.10.135:8443 -tls-cert /etc/pxe-platform/control.crt -tls-key /etc/pxe-platform/control.key -boot-socket /run/pxe-platform-boot/control.sock -agent-socket /run/pxe-platform/agent.sock -allowed-interfaces ens19
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -125,3 +125,16 @@ func TestControlAPIClampsEventLimit(t *testing.T) {
 		t.Fatalf("status=%d limit=%d", res.Code, events.limit)
 	}
 }
+
+func TestControlAPIReturnsCurrentScriptForRollback(t *testing.T) {
+	script := []byte("#!ipxe\necho current\n")
+	p, err := NewPublisher(filepath.Join(t.TempDir(), "menu.ipxe"), script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := httptest.NewRecorder()
+	ControlHandler(p, nil).ServeHTTP(res, httptest.NewRequest("GET", "/menu", nil))
+	if res.Code != 200 || !bytes.Equal(res.Body.Bytes(), script) {
+		t.Fatalf("status=%d body=%q", res.Code, res.Body.String())
+	}
+}

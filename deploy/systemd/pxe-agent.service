@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-Group=root
+Group=pxe-control
 ExecStart=/usr/local/bin/pxe-agent
 Restart=on-failure
 RuntimeDirectory=pxe-platform

@@ -1,0 +1,48 @@
+package control
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+type authOnlyStore struct {
+	Storage
+	user User
+}
+
+func (a authOnlyStore) Session(context.Context, string) (User, error)              { return a.user, nil }
+func (a authOnlyStore) Audit(context.Context, int64, string, string, string) error { return nil }
+
+func TestServerRedirectsAnonymousDashboard(t *testing.T) {
+	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, httptest.NewRequest("GET", "/", nil))
+	if res.Code != http.StatusSeeOther || res.Header().Get("Location") != "/login" {
+		t.Fatalf("response=%d %q", res.Code, res.Header().Get("Location"))
+	}
+}
+
+func TestServerRejectsObserverMutation(t *testing.T) {
+	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}
+	req := httptest.NewRequest("POST", "/menu/publish", strings.NewReader("title=Test"))
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("response=%d", res.Code)
+	}
+}
+
+func TestServerRequiresCSRFForAdministratorMutation(t *testing.T) {
+	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
+	req := httptest.NewRequest("POST", "/network/apply", strings.NewReader("mode=proxy"))
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("response=%d", res.Code)
+	}
+}

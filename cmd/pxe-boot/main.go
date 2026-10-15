@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"pxe-platform/internal/boot"
 )
 
@@ -26,9 +27,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	handler, err := boot.NewHandler(*assets, menu, func(event boot.Event) {
-		log.Printf("boot event kind=%s path=%s remote=%s", event.Kind, event.Path, event.RemoteAddr)
-	})
+	var store boot.EventStore
+	if dsn := os.Getenv("PXE_BOOT_DATABASE_URL"); dsn != "" {
+		pool, err := pgxpool.New(context.Background(), dsn)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer pool.Close()
+		store = boot.PostgresStore{Pool: pool}
+	}
+	recorder := boot.NewRecorder(store, log.Default())
+	handler, err := boot.NewHandler(*assets, menu, recorder.Record)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -43,6 +52,11 @@ func main() {
 	}()
 	log.Printf("PXE Boot listening on %s", *listen)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
+		log.Printf("HTTP server failed: %v", err)
+	}
+	drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := recorder.Close(drainCtx); err != nil {
+		log.Printf("boot event drain: %v", err)
 	}
 }

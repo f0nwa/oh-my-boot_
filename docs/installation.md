@@ -91,7 +91,7 @@ For each row, record the client's DHCP result, TFTP file request, iPXE HTTP menu
 
 | Client | Full DHCP | Proxy DHCP |
 | --- | --- | --- |
-| Legacy BIOS | Pending VM | Pending VM |
+| Legacy BIOS | DHCP lease, HTTP menu and Diagnostics passed on SeaBIOS; TFTP transfer not separately recorded | Pending VM |
 | UEFI x64, Secure Boot off | Pending VM | Pending VM |
 | UEFI x64, Secure Boot on | Pending VM | Pending VM |
 

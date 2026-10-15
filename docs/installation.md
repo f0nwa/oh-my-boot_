@@ -7,7 +7,7 @@ This guide installs the boot foundation on one Ubuntu Server x86_64 host without
 - Use an isolated test network with a PXE client VM and a second NIC on the Ubuntu host. In **full** mode, the PXE service assigns addresses; keep every other DHCP server off that test network. In **proxy** mode, keep an existing DHCP server on that test network and let it assign addresses.
 - Set a static IPv4 address on the Ubuntu test NIC. The examples use the documentation subnet `192.0.2.0/24` and `enp2s0`; replace **every** sample address and interface before applying a configuration. Check the real interface with `ip -br addr`.
 - Ensure clients can reach UDP 67, 69 and 4011 and TCP 8080 on the test network. Firewall rules and VM network mode depend on the lab.
-- Actual network and Secure Boot behavior remains unverified until the Ubuntu VM and PXE client tests are available.
+- The full-DHCP BIOS and UEFI test results are recorded in [the VM test report](vm-test-2026-10-15.md). Proxy-DHCP and ISO boot remain untested.
 
 ## Build and install
 
@@ -93,6 +93,6 @@ For each row, record the client's DHCP result, TFTP file request, iPXE HTTP menu
 | --- | --- | --- |
 | Legacy BIOS | DHCP lease, HTTP menu and Diagnostics passed on SeaBIOS; TFTP transfer not separately recorded | Pending VM |
 | UEFI x64, Secure Boot off | Firmware showed Disabled after saving; DHCP, TFTP shim and iPXE binary, HTTP menu passed on OVMF | Pending VM |
-| UEFI x64, Secure Boot on | OVMF menu reached; confirm with a fresh boot after firmware showed Secure Boot enabled | Pending VM |
+| UEFI x64, Secure Boot on | OVMF showed Enabled before it was switched off; DHCP, TFTP shim and iPXE binary, HTTP menu passed without manual key enrollment | Pending VM |
 
 Check HTTP with `curl` and service logs with `journalctl -u pxe-boot -u pxe-agent -u pxe-dnsmasq --no-pager`. Check database rows with `sudo runuser -u pxe-boot -- psql -d pxe_boot -c 'SELECT kind, path, occurred_at FROM boot_events ORDER BY id DESC LIMIT 10'` once PostgreSQL is configured. Do not interpret a successful syntax check as proof that clients boot.

@@ -14,8 +14,8 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "create-admin" {
-		log.Fatal("usage: pxe-controlctl create-admin -username NAME (password from stdin)")
+	if len(os.Args) < 2 || (os.Args[1] != "create-admin" && os.Args[1] != "reset-password") {
+		log.Fatal("usage: pxe-controlctl create-admin|reset-password -username NAME (password from stdin)")
 	}
 	options := flag.NewFlagSet("create-admin", flag.ExitOnError)
 	username := options.String("username", "", "initial administrator username")
@@ -29,7 +29,7 @@ func main() {
 	if dsn == "" {
 		log.Fatal("PXE_CONTROL_DATABASE_URL is required")
 	}
-	fmt.Fprint(os.Stderr, "Пароль первого администратора (из stdin): ")
+	fmt.Fprint(os.Stderr, "Новый пароль (из stdin): ")
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
 		log.Fatal("password must end with a newline")
@@ -41,8 +41,13 @@ func main() {
 	}
 	defer pool.Close()
 	store := control.Store{Pool: pool}
-	if err := store.CreateInitialAdmin(context.Background(), *username, password); err != nil {
-		log.Fatal(err)
+	if os.Args[1]=="create-admin" {
+		if err:=store.CreateInitialAdmin(context.Background(),*username,password);err!=nil{log.Fatal(err)}
+		fmt.Fprintln(os.Stderr,"Администратор создан")
+		return
 	}
-	fmt.Fprintln(os.Stderr, "Администратор создан")
+	id,err:=store.UserID(context.Background(),*username);if err!=nil{log.Fatal(err)}
+	if err:=store.ResetPassword(context.Background(),id,password);err!=nil{log.Fatal(err)}
+	if err:=store.AuditSystem(context.Background(),"user.reset-password","ok",*username);err!=nil{log.Printf("password reset succeeded, audit failed: %v",err)}
+	fmt.Fprintln(os.Stderr,"Пароль изменён; прежние сеансы завершены")
 }

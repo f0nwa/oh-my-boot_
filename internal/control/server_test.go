@@ -36,6 +36,17 @@ func TestServerRejectsObserverMutation(t *testing.T) {
 	}
 }
 
+func TestServerRejectsObserverPasswordReset(t *testing.T) {
+	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}
+	req := httptest.NewRequest("POST", "/users/reset-password", strings.NewReader("id=1"))
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("response=%d", res.Code)
+	}
+}
+
 func TestServerRequiresCSRFForAdministratorMutation(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
 	req := httptest.NewRequest("POST", "/network/apply", strings.NewReader("mode=proxy"))

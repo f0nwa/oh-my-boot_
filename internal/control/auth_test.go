@@ -25,6 +25,12 @@ func TestAuthPasswordHash(t *testing.T) {
 	}
 }
 
+func TestAuthPasswordRequiresTwelveCharacters(t *testing.T) {
+	if _, err := HashPassword("пароль"); err == nil {
+		t.Fatal("six Cyrillic characters accepted")
+	}
+}
+
 func TestRolePermissions(t *testing.T) {
 	for _, tc := range []struct {
 		role, action string

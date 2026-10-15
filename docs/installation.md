@@ -1,6 +1,8 @@
 # Ubuntu Server: first PXE iteration
 
-This guide installs the boot foundation on one Ubuntu Server x86_64 host without containers. It serves a diagnostic iPXE menu, offers BIOS and UEFI x64 network boot files, and has separate full DHCP and proxy-DHCP configurations. ISO boot, dashboard, users and roles are later stages.
+The HTTPS dashboard and second-stage installation are described in [Control installation](control-installation.md).
+
+This guide installs the boot foundation on one Ubuntu Server x86_64 host without containers. It serves a diagnostic iPXE menu, offers BIOS and UEFI x64 network boot files, and has separate full DHCP and proxy-DHCP configurations. The dashboard, users and roles are covered in the Control guide; ISO boot remains a later stage.
 
 ## Before you start
 

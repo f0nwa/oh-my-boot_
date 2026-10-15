@@ -1,0 +1,55 @@
+# Control и HTTPS-админка на тестовой ВМ
+
+Адрес: **https://192.168.10.135:8443**. Сертификат самоподписанный, с IP в SAN; браузер попросит подтвердить доверие. Лабораторный сертификат действует 90 дней.
+
+## Службы
+
+`pxe-control` — отдельный Go-процесс и отдельная база PostgreSQL `pxe_control`. Браузер обращается только к нему. Control вызывает Boot и Agent через локальные Unix-сокеты. `pxe-boot` продолжает отдавать последнее опубликованное меню на `10.30.0.10:8080`, а `pxe-agent` — поддерживать proxy-DHCP на `ens19`, когда Control остановлен. Список интерфейсов, доступных для изменения из панели, в лаборатории содержит только `ens19`.
+
+## Установка
+
+Собрать Linux x86_64 версии `./cmd/pxe-boot`, `./cmd/pxe-agent`, `./cmd/pxe-control`, `./cmd/pxe-controlctl` с `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build`. Установить двоичные файлы в `/usr/local/bin`, а [юниты](../deploy/systemd) — в `/etc/systemd/system`. До замены Boot и Agent сохранить их текущие бинарные файлы и юниты для отката.
+
+Создать системные группу и пользователя `pxe-control`, одноимённую PostgreSQL-роль и базу `pxe_control`. Применить [схему Control](../deploy/sql/control.sql) от имени `pxe-control`. База `pxe_boot` остаётся отдельной.
+
+Настройки `/etc/pxe-platform/control.env`:
+
+```ini
+PXE_CONTROL_LISTEN=192.168.10.135:8443
+PXE_CONTROL_INTERFACES=ens19
+PXE_CONTROL_DATABASE_URL=host=/var/run/postgresql dbname=pxe_control user=pxe-control
+```
+
+Сертификат `control.crt` и ключ `control.key` находятся в `/var/lib/pxe-platform-control`; каталог принадлежит `pxe-control` и имеет права `0700`, ключ — `0600`. Для лаборатории сертификат создан с `subjectAltName=IP:192.168.10.135`. После установки выполнить `systemctl daemon-reload`, перезапустить Boot и Agent, затем включить Control. **При установке панели DHCP-режим и настройки Keenetic не меняются.**
+
+Первый администратор создан локальной командой `pxe-controlctl create-admin -username fonwa` с паролем из stdin. Пароля по умолчанию нет. При потере доступа команда `pxe-controlctl reset-password -username fonwa` принимает новый пароль из stdin и завершает прежние сеансы. Для обеих команд нужна переменная `PXE_CONTROL_DATABASE_URL` от имени системного пользователя `pxe-control`.
+
+## Проверка 15.10.2026
+
+| Проверка | Результат |
+| --- | --- |
+| HTTPS-вход и все страницы панели | 200 |
+| POST без CSRF | 403 |
+| Попытка выбрать `ens18` | 400 |
+| Предпросмотр `ens19` | 200 |
+| Повторное применение текущего proxy-DHCP | Успешно; файл dnsmasq не изменился |
+| Оператор: меню разрешено, сеть и пользователи запрещены | Проверено |
+| Наблюдатель: журнал разрешён, публикация запрещена | Проверено |
+| Отключение пользователя | Действующий сеанс перестал работать |
+| Смена пароля в панели и через локальную команду | Проверено; прежний сеанс завершён |
+| Публикация тестового меню и откат | Исходный SHA-256 меню восстановлен |
+| Boot при остановленных Control и PostgreSQL 18-main | HTTP-меню вернуло 200; службы восстановлены |
+| Boot, Agent, dnsmasq, Control после проверок | Все активны |
+
+Для проверки ролей созданы и отключены `rolecheck-operator` и `rolecheck-observer`. Их пароли не сохранялись. В аудите есть записи публикации, отката, применения сети и изменений пользователей. Новый запуск PXE-клиента после установки Control пока не проводился; прежние BIOS/UEFI/Secure Boot проверки описаны в [отчёте первого этапа](vm-test-2026-10-15.md).
+
+## Диагностика и откат
+
+```sh
+sudo systemctl status pxe-boot pxe-agent pxe-dnsmasq pxe-control
+sudo journalctl -u pxe-control -u pxe-boot -u pxe-agent -n 100 --no-pager
+curl --cacert /var/lib/pxe-platform-control/control.crt https://192.168.10.135:8443/login
+curl -fsS http://10.30.0.10:8080/boot/menu.ipxe
+```
+
+Если панель неисправна, остановить только `pxe-control`: Boot и proxy-DHCP продолжат работу. Для полного отката на тестовой ВМ прежние бинарные файлы и юниты Boot/Agent лежат в `/var/backups/pxe-platform-pre-control/`. Вернуть их, выполнить `systemctl daemon-reload` и перезапустить Boot и Agent. Файл `/etc/pxe-platform/dnsmasq.conf` при этом не редактировать.

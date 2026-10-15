@@ -16,7 +16,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-RestrictAddressFamilies=AF_INET AF_UNIX
+RestrictAddressFamilies=AF_INET AF_UNIX AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target

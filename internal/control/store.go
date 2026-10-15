@@ -189,6 +189,36 @@ func (s Store) ChangeUser(ctx context.Context, id, actorID int64, role string, e
 	return tx.Commit(ctx)
 }
 
+func (s Store) ResetPassword(ctx context.Context, id int64, password string) error {
+	hash, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var updated int64
+	if err := tx.QueryRow(ctx, "UPDATE users SET password_hash=$2 WHERE id=$1 RETURNING id", id, hash).Scan(&updated); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM sessions WHERE user_id=$1", id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s Store) UserID(ctx context.Context,username string)(int64,error){
+ var id int64;err:=s.Pool.QueryRow(ctx,"SELECT id FROM users WHERE lower(username)=lower($1)",username).Scan(&id)
+ return id,err
+}
+
+func (s Store) AuditSystem(ctx context.Context,action,result,detail string)error{
+ _,err:=s.Pool.Exec(ctx,"INSERT INTO audit_events (actor_id,action,result,detail) VALUES (NULL,$1,$2,$3)",action,result,detail)
+ return err
+}
+
 func (s Store) MenuVersions(ctx context.Context) ([]MenuVersion, error) {
 	rows, err := s.Pool.Query(ctx, "SELECT m.id,m.created_at,coalesce(u.username,'system'),m.title,m.diagnostic_label,m.diagnostic_message,m.script,m.sha256,m.active FROM menu_versions m LEFT JOIN users u ON u.id=m.author_id ORDER BY m.id DESC LIMIT 50")
 	if err != nil {

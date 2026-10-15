@@ -19,6 +19,7 @@ type Storage interface {
 	Users(context.Context) ([]User, error)
 	CreateUser(context.Context, string, string, string) error
 	ChangeUser(context.Context, int64, int64, string, bool) error
+	ResetPassword(context.Context, int64, string) error
 	MenuVersions(context.Context) ([]MenuVersion, error)
 	MenuByID(context.Context, int64) (MenuVersion, error)
 	SaveActiveMenu(context.Context, int64, MenuVersion) error
@@ -55,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /users", s.protect("users", s.usersPage))
 	mux.HandleFunc("POST /users/create", s.protect("users", s.userCreate))
 	mux.HandleFunc("POST /users/change", s.protect("users", s.userChange))
+	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -250,4 +252,29 @@ func (s *Server) userChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/users?message=Пользователь+изменён", 303)
+}
+
+func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
+	info := requestInfo(r)
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Неверный ID", 400)
+		return
+	}
+	err = s.Store.ResetPassword(r.Context(), id, r.FormValue("password"))
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	_ = s.Store.Audit(r.Context(), info.User.ID, "user.reset-password", result, fmt.Sprintf("id=%d", id))
+	if err != nil {
+		http.Error(w, "Не удалось сменить пароль: "+err.Error(), 400)
+		return
+	}
+	if id == info.User.ID {
+		http.SetCookie(w, &http.Cookie{Name: "pxe_session", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+		http.Redirect(w, r, "/login", 303)
+		return
+	}
+	http.Redirect(w, r, "/users?message=Пароль+изменён", 303)
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -29,7 +30,7 @@ func tokenHash(token string) string {
 }
 
 func HashPassword(password string) (string, error) {
-	if len(password) < 12 {
+	if utf8.RuneCountInString(password) < 12 {
 		return "", fmt.Errorf("password must have at least 12 characters")
 	}
 	salt := make([]byte, 16)

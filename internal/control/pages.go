@@ -6,8 +6,14 @@ import (
 	"net/http"
 
 	"pxe-platform/internal/boot"
+	"pxe-platform/internal/images"
 	"pxe-platform/internal/network"
 )
+
+type imageRow struct {
+	Image       images.Image
+	StorageName string
+}
 
 type pageData struct {
 	Info         requestContext
@@ -27,9 +33,32 @@ type pageData struct {
 	MenuTitle    string
 	MenuLabel    string
 	MenuMessage  string
+	ImageError   string
+	Storages     []images.Storage
+	ISOImages    []imageRow
 }
 
-var pages = template.Must(template.New("pages").Parse(`
+func storageKindLabel(kind string) string {
+	if kind == "mounted" {
+		return "Смонтированный каталог"
+	}
+	return "Локальный каталог"
+}
+
+func storageStateLabel(state string) string {
+	switch state {
+	case "ready":
+		return "Доступно"
+	case "scanning":
+		return "Сканирование"
+	case "unavailable":
+		return "Недоступно"
+	default:
+		return "Не проверено"
+	}
+}
+
+var pages = template.Must(template.New("pages").Funcs(template.FuncMap{"storageKind": storageKindLabel, "storageState": storageStateLabel}).Parse(`
 {{define "top"}}<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PXE Platform</title><style>
 :root{font-family:system-ui,-apple-system,sans-serif;color:#172437;background:#f3f6fa}*{box-sizing:border-box}body{margin:0}header{background:#122640;color:white;padding:16px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}header strong{font-size:1.2rem}nav{display:flex;gap:14px;flex-wrap:wrap}a{color:#1868aa}header a{color:#d4e7fa;text-decoration:none}header span{margin-left:auto}main{max-width:1160px;margin:28px auto;padding:0 20px}h1{font-size:1.65rem;margin:0 0 20px}h2{font-size:1.2rem}section,.card{background:white;border:1px solid #dce4ed;border-radius:12px;padding:20px;margin:0 0 20px;box-shadow:0 2px 9px #14283a09}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.grid .card{margin:0}label{display:block;font-weight:600;margin:12px 0 5px}input,select{width:100%;max-width:520px;padding:10px;border:1px solid #a9b9c9;border-radius:7px;font:inherit}button{font:inherit;background:#0b6db8;color:white;border:0;border-radius:7px;padding:10px 16px;cursor:pointer;margin-top:12px}button.secondary{background:#495e75}table{border-collapse:collapse;width:100%;font-size:.92rem}td,th{text-align:left;padding:9px;border-bottom:1px solid #e4eaf0;vertical-align:top}th{color:#516277}small,.muted{color:#596e83}.error{color:#a52d2d}.notice{padding:12px;border-radius:8px;background:#eef6ff;margin-bottom:18px}.inline{display:inline}.inline button{margin:0;padding:5px 9px}pre{overflow:auto;background:#eef3f7;padding:14px;border-radius:7px}
 </style></head><body><header><strong>PXE Platform</strong>{{if .Info.User.ID}}<nav><a href="/">Обзор</a><a href="/events">Журнал</a><a href="/network">Сеть</a><a href="/menu">Меню</a><a href="/images">Образы</a>{{if eq .Info.User.Role "admin"}}<a href="/users">Пользователи</a><a href="/audit">Аудит</a>{{end}}</nav><span>{{.Info.User.Username}} · {{.Info.User.Role}}</span><form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><button class="secondary">Выйти</button></form>{{end}}</header><main>{{if .Message}}<div class="notice">{{.Message}}</div>{{end}}{{end}}
@@ -42,7 +71,7 @@ var pages = template.Must(template.New("pages").Parse(`
 {{define "menu"}}{{template "top" .}}<h1>Загрузочное меню</h1>{{if ne .Info.User.Role "observer"}}<section><h2>Новая версия</h2><form method="post" action="/menu/publish"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><label>Заголовок</label><input name="title" value="{{.MenuTitle}}" required><label>Диагностический пункт</label><input name="label" value="{{.MenuLabel}}" required><label>Сообщение диагностики</label><input name="message" value="{{.MenuMessage}}" required><button>Опубликовать</button></form></section>{{end}}<section><h2>Версии</h2><table><tr><th>Время</th><th>Название</th><th>Автор</th><th>SHA-256</th><th>Состояние</th><th></th></tr>{{range .Versions}}<tr><td>{{.At.Format "02.01.2006 15:04"}}</td><td>{{.Title}}</td><td>{{.Author}}</td><td><small>{{.SHA256}}</small></td><td>{{if .Active}}Активна{{end}}</td><td>{{if and (not .Active) (ne $.Info.User.Role "observer")}}<form method="post" action="/menu/rollback"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="secondary">Вернуть</button></form>{{end}}</td></tr>{{end}}</table></section>{{template "bottom" .}}{{end}}
 {{define "users"}}{{template "top" .}}<h1>Пользователи</h1><section><h2>Добавить</h2><form method="post" action="/users/create"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><label>Имя</label><input name="username" required><label>Пароль, от 12 символов</label><input type="password" name="password" required><label>Роль</label><select name="role"><option value="observer">Наблюдатель</option><option value="operator">Оператор</option><option value="admin">Администратор</option></select><button>Создать</button></form></section><section><h2>Список</h2><table><tr><th>Имя</th><th>Роль и доступ</th><th></th></tr>{{range .Users}}<tr><td>{{.Username}} <small>#{{.ID}}</small></td><td><form method="post" action="/users/change"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><select name="role"><option value="observer" {{if eq .Role "observer"}}selected{{end}}>Наблюдатель</option><option value="operator" {{if eq .Role "operator"}}selected{{end}}>Оператор</option><option value="admin" {{if eq .Role "admin"}}selected{{end}}>Администратор</option></select><label><input style="width:auto" type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}> Активен</label><button>Сохранить</button></form></td></tr>{{end}}</table></section><section><h2>Сменить пароль</h2><form method="post" action="/users/reset-password"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><label>ID пользователя из списка</label><input name="id" inputmode="numeric" required><label>Новый пароль, от 12 символов</label><input name="password" type="password" required><button>Сменить пароль и завершить его сеансы</button></form></section>{{template "bottom" .}}{{end}}
 {{define "audit"}}{{template "top" .}}<h1>Аудит изменений</h1><section><table><tr><th>Время</th><th>Автор</th><th>Действие</th><th>Результат</th><th>Детали</th></tr>{{range .Audit}}<tr><td>{{.At.Format "02.01.2006 15:04:05"}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td>{{.Result}}</td><td>{{.Detail}}</td></tr>{{end}}</table></section>{{template "bottom" .}}{{end}}
-{{define "images"}}{{template "top" .}}<h1>Образы ISO</h1><section><p>Каталог и публикация ISO появятся на следующем этапе. Сейчас доступны проверка PXE, сеть и управление диагностическим меню.</p></section>{{template "bottom" .}}{{end}}
+{{define "images"}}{{template "top" .}}<h1>Образы ISO</h1>{{if .ImageError}}<section><p class="error">{{.ImageError}}</p></section>{{else}}<section><h2>Хранилища</h2>{{if .Storages}}<table><tr><th>Название</th><th>Тип</th><th>Состояние</th><th>Каталог</th><th></th></tr>{{range .Storages}}<tr><td>{{.Name}}</td><td>{{storageKind .Kind}}</td><td>{{storageState .State}}{{if .Error}} · {{.Error}}{{end}}</td><td>{{.Root}}</td><td>{{if ne $.Info.User.Role "observer"}}<form method="post" action="/images/scan"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="secondary">Обновить</button></form>{{end}}</td></tr>{{end}}</table>{{else}}<p>Хранилища пока не добавлены.</p>{{end}}</section><section><h2>Найденные ISO</h2><p class="muted">Файлы обнаружены, но ещё не проверены для сетевой загрузки.</p>{{if .ISOImages}}<table><tr><th>Хранилище</th><th>Файл</th><th>Размер, байт</th><th>Состояние</th></tr>{{range .ISOImages}}<tr><td>{{.StorageName}}</td><td>{{.Image.Path}}</td><td>{{.Image.Size}}</td><td>{{if .Image.Present}}Обнаружен, не проверен{{else}}Отсутствует{{end}}</td></tr>{{end}}</table>{{else}}<p>ISO пока не найдены.</p>{{end}}</section>{{end}}{{template "bottom" .}}{{end}}
 `))
 
 func render(w http.ResponseWriter, name string, data pageData) {

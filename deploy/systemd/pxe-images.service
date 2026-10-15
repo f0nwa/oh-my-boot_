@@ -1,0 +1,23 @@
+[Unit]
+Description=PXE Platform ISO catalog
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pxe-images
+Group=pxe-images
+EnvironmentFile=/etc/pxe-platform/images.env
+ExecStart=/usr/local/bin/pxe-images
+Restart=on-failure
+RuntimeDirectory=pxe-platform-images
+RuntimeDirectoryMode=0750
+UMask=0007
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

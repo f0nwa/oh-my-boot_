@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"pxe-platform/internal/boot"
+	"pxe-platform/internal/images"
 	"pxe-platform/internal/network"
 )
 
@@ -26,14 +27,30 @@ type AgentStatus struct {
 }
 type BootClient struct{ http *http.Client }
 type AgentClient struct{ http *http.Client }
+type ImagesClient struct{ http *http.Client }
 
 func socketHTTP(path string) *http.Client {
 	return &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", path)
 	}}}
 }
-func NewBootClient(path string) *BootClient   { return &BootClient{http: socketHTTP(path)} }
-func NewAgentClient(path string) *AgentClient { return &AgentClient{http: socketHTTP(path)} }
+func NewBootClient(path string) *BootClient     { return &BootClient{http: socketHTTP(path)} }
+func NewAgentClient(path string) *AgentClient   { return &AgentClient{http: socketHTTP(path)} }
+func NewImagesClient(path string) *ImagesClient { return &ImagesClient{http: socketHTTP(path)} }
+
+func (c *ImagesClient) Catalog(ctx context.Context) (images.Catalog, error) {
+	var v images.Catalog
+	err := localCall(ctx, c.http, "GET", "/catalog", nil, &v)
+	return v, err
+}
+
+func (c *ImagesClient) Scan(ctx context.Context, id int64) error {
+	body, err := json.Marshal(map[string]int64{"storage_id": id})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/scan", body, nil)
+}
 
 func localCall(ctx context.Context, client *http.Client, method, path string, body []byte, out any) error {
 	req, err := http.NewRequestWithContext(ctx, method, "http://unix"+path, bytes.NewReader(body))

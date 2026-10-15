@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"pxe-platform/internal/images"
 )
 
 type Storage interface {
@@ -25,10 +27,16 @@ type Storage interface {
 	SaveActiveMenu(context.Context, int64, MenuVersion) error
 }
 
+type ImagesAPI interface {
+	Catalog(context.Context) (images.Catalog, error)
+	Scan(context.Context, int64) error
+}
+
 type Server struct {
 	Store             Storage
 	Boot              *BootClient
 	Agent             *AgentClient
+	Images            ImagesAPI
 	AllowedInterfaces map[string]bool
 	menuMu            sync.Mutex
 }
@@ -59,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
+	mux.HandleFunc("POST /images/scan", s.protect("images", s.imagesScan))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
@@ -205,7 +214,44 @@ func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
-	render(w, "images", pageData{Info: requestInfo(r)})
+	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message")}
+	if s.Images == nil {
+		data.ImageError = "Сервис образов недоступен"
+	} else {
+		catalog, err := s.Images.Catalog(r.Context())
+		if err != nil {
+			data.ImageError = "Сервис образов недоступен"
+		} else {
+			data.Storages = catalog.Storages
+			names := make(map[int64]string, len(catalog.Storages))
+			for _, storage := range catalog.Storages {
+				names[storage.ID] = storage.Name
+			}
+			for _, image := range catalog.Images {
+				data.ISOImages = append(data.ISOImages, imageRow{Image: image, StorageName: names[image.StorageID]})
+			}
+		}
+	}
+	render(w, "images", data)
+}
+
+func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if err != nil || id <= 0 || s.Images == nil {
+		http.Error(w, "Неверное хранилище", http.StatusBadRequest)
+		return
+	}
+	err = s.Images.Scan(r.Context(), id)
+	result := "accepted"
+	if err != nil {
+		result = "error"
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "images.scan.requested", result, strconv.FormatInt(id, 10))
+	if err != nil {
+		http.Error(w, "Не удалось запустить сканирование", http.StatusServiceUnavailable)
+		return
+	}
+	http.Redirect(w, r, "/images?message=Сканирование+запущено", http.StatusSeeOther)
 }
 
 func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {

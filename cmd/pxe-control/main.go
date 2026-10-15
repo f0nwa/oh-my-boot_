@@ -22,6 +22,7 @@ func main() {
 	key := flag.String("tls-key", "", "TLS private key")
 	bootSocket := flag.String("boot-socket", "/run/pxe-platform-boot/control.sock", "Boot local API socket")
 	agentSocket := flag.String("agent-socket", "/run/pxe-platform/agent.sock", "Agent local API socket")
+	imagesSocket := flag.String("images-socket", "/run/pxe-platform-images/images.sock", "Images local API socket")
 	allowed := flag.String("allowed-interfaces", "", "comma-separated PXE interface allowlist")
 	flag.Parse()
 	if *listen == "" || *cert == "" || *key == "" || *allowed == "" {
@@ -52,7 +53,7 @@ func main() {
 	if len(allowlist) == 0 {
 		log.Fatal("no allowed PXE interfaces")
 	}
-	server := &control.Server{Store: control.Store{Pool: pool}, Boot: control.NewBootClient(*bootSocket), Agent: control.NewAgentClient(*agentSocket), AllowedInterfaces: allowlist}
+	server := &control.Server{Store: control.Store{Pool: pool}, Boot: control.NewBootClient(*bootSocket), Agent: control.NewAgentClient(*agentSocket), Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist}
 	httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()

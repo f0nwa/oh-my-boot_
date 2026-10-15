@@ -32,6 +32,7 @@ type ImagesAPI interface {
 	Scan(context.Context, int64) error
 	CreateSMB(context.Context, images.ManagedStorageInput) (images.Storage, error)
 	MarkSMBError(context.Context, int64) error
+	MarkSMBScanError(context.Context, int64) error
 	DeleteSMB(context.Context, int64) error
 }
 
@@ -48,6 +49,7 @@ type Server struct {
 	SMB               SMBMountAPI
 	AllowedInterfaces map[string]bool
 	menuMu            sync.Mutex
+	smbMu             sync.Mutex
 }
 
 type requestContext struct {
@@ -248,6 +250,8 @@ func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
+	s.smbMu.Lock()
+	defer s.smbMu.Unlock()
 	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
 	if err != nil || id <= 0 || s.Images == nil {
 		http.Error(w, "Неверное хранилище", http.StatusBadRequest)

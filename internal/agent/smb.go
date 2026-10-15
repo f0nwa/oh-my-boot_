@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"pxe-platform/internal/smbstorage"
 )
@@ -31,6 +32,7 @@ func (SMBCommandSystemctl) Run(ctx context.Context, args ...string) error {
 }
 
 type SMBManager struct {
+	mu             sync.Mutex
 	CredentialsDir string
 	UnitDir        string
 	MountRoot      string
@@ -40,6 +42,8 @@ type SMBManager struct {
 }
 
 func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if err := smbstorage.Validate(req.Key, req.Server, req.Share, req.Subpath); err != nil {
 		return err
 	}
@@ -92,6 +96,8 @@ func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
 }
 
 func (m *SMBManager) Remove(ctx context.Context, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if err := smbstorage.Validate(key, "127.0.0.1", "placeholder", ""); err != nil {
 		return err
 	}

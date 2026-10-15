@@ -72,6 +72,18 @@ func (s *Server) Handler() http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("POST /smb-storages/{id}/scan-error", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid storage ID", http.StatusBadRequest)
+			return
+		}
+		if err := s.repo.ScanError(r.Context(), id, "Не удалось запустить сканирование"); err != nil {
+			http.Error(w, "cannot mark scan failure", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("DELETE /smb-storages/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil || id <= 0 {

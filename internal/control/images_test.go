@@ -14,6 +14,7 @@ import (
 type fakeImagesAPI struct {
 	catalog images.Catalog
 	err     error
+	scanErr error
 	scans   []int64
 }
 
@@ -31,13 +32,17 @@ func (s *auditRecordingStore) Audit(_ context.Context, _ int64, action, result, 
 func (f *fakeImagesAPI) Catalog(context.Context) (images.Catalog, error) { return f.catalog, f.err }
 func (f *fakeImagesAPI) Scan(_ context.Context, id int64) error {
 	f.scans = append(f.scans, id)
+	if f.scanErr != nil {
+		return f.scanErr
+	}
 	return f.err
 }
 func (f *fakeImagesAPI) CreateSMB(context.Context, images.ManagedStorageInput) (images.Storage, error) {
 	return images.Storage{}, f.err
 }
-func (f *fakeImagesAPI) MarkSMBError(context.Context, int64) error { return f.err }
-func (f *fakeImagesAPI) DeleteSMB(context.Context, int64) error    { return f.err }
+func (f *fakeImagesAPI) MarkSMBError(context.Context, int64) error     { return f.err }
+func (f *fakeImagesAPI) MarkSMBScanError(context.Context, int64) error { return f.err }
+func (f *fakeImagesAPI) DeleteSMB(context.Context, int64) error        { return f.err }
 
 func TestImagesPageEscapesISONameAndShowsStorage(t *testing.T) {
 	api := &fakeImagesAPI{catalog: images.Catalog{

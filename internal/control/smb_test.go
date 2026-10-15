@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"pxe-platform/internal/images"
 )
@@ -16,6 +17,7 @@ type fakeManagedImages struct {
 	fakeImagesAPI
 	events  *[]string
 	storage images.Storage
+	deleted chan struct{}
 }
 
 func (f *fakeManagedImages) CreateSMB(_ context.Context, input images.ManagedStorageInput) (images.Storage, error) {
@@ -28,20 +30,59 @@ func (f *fakeManagedImages) MarkSMBError(_ context.Context, _ int64) error {
 	*f.events = append(*f.events, "mark-error")
 	return nil
 }
+func (f *fakeManagedImages) MarkSMBScanError(_ context.Context, _ int64) error {
+	*f.events = append(*f.events, "mark-scan-error")
+	return nil
+}
 func (f *fakeManagedImages) DeleteSMB(_ context.Context, _ int64) error {
 	*f.events = append(*f.events, "delete")
+	if f.deleted != nil {
+		close(f.deleted)
+	}
 	return nil
 }
 
 type fakeSMBMountAPI struct {
-	events    *[]string
-	mountErr  error
-	removeErr error
+	events       *[]string
+	mountErr     error
+	removeErr    error
+	mountStarted chan struct{}
+	mountRelease <-chan struct{}
 }
 
 func (f *fakeSMBMountAPI) Mount(_ context.Context, _, _, _, _, _, _, _ string) error {
 	*f.events = append(*f.events, "mount")
+	if f.mountStarted != nil {
+		close(f.mountStarted)
+	}
+	if f.mountRelease != nil {
+		<-f.mountRelease
+	}
 	return f.mountErr
+}
+
+func TestSMBRetryCannotRemountAfterConcurrentRemoval(t *testing.T) {
+	events := []string{}
+	api := &fakeManagedImages{events: &events, deleted: make(chan struct{}), fakeImagesAPI: fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Key: "0123456789abcdef0123456789abcdef", Server: "192.168.10.10", Share: "Downloads", Subpath: "iso"}}}}}
+	release := make(chan struct{})
+	mount := &fakeSMBMountAPI{events: &events, mountStarted: make(chan struct{}), mountRelease: release}
+	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, Images: api, SMB: mount}
+	retryDone := make(chan struct{})
+	go func() { submitSMB(t, s, "/images/smb/7/retry", smbForm()); close(retryDone) }()
+	<-mount.mountStarted
+	removeDone := make(chan struct{})
+	go func() { submitSMB(t, s, "/images/smb/7/remove", smbForm()); close(removeDone) }()
+	select {
+	case <-api.deleted:
+		close(release)
+		<-retryDone
+		<-removeDone
+		t.Fatal("storage deleted while retry was still mounting")
+	case <-time.After(150 * time.Millisecond):
+	}
+	close(release)
+	<-retryDone
+	<-removeDone
 }
 func (f *fakeSMBMountAPI) Remove(_ context.Context, _ string) error {
 	*f.events = append(*f.events, "remove")
@@ -118,6 +159,21 @@ func TestSMBPageEscapesFieldsAndNeverShowsPassword(t *testing.T) {
 	}
 }
 
+func TestSMBFormIsAdminOnly(t *testing.T) {
+	for _, role := range []string{"admin", "operator", "observer"} {
+		events := []string{}
+		s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: role, Enabled: true}}, Images: &fakeManagedImages{events: &events}}
+		req := httptest.NewRequest("GET", "/images", nil)
+		req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+		res := httptest.NewRecorder()
+		s.Handler().ServeHTTP(res, req)
+		hasForm := strings.Contains(res.Body.String(), `action="/images/smb"`)
+		if res.Code != http.StatusOK || hasForm != (role == "admin") {
+			t.Fatalf("role=%s status=%d hasForm=%v", role, res.Code, hasForm)
+		}
+	}
+}
+
 func TestSMBRetryAndRemoveOrder(t *testing.T) {
 	events := []string{}
 	api := &fakeManagedImages{events: &events, fakeImagesAPI: fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Key: "0123456789abcdef0123456789abcdef", Server: "192.168.10.10", Share: "Downloads", Subpath: "iso"}}}}}
@@ -129,5 +185,27 @@ func TestSMBRetryAndRemoveOrder(t *testing.T) {
 	events = []string{}
 	if res := submitSMB(t, s, "/images/smb/7/remove", smbForm()); res.Code != http.StatusSeeOther || strings.Join(events, ",") != "remove,delete" {
 		t.Fatalf("remove status=%d events=%v", res.Code, events)
+	}
+}
+
+func TestSMBChangeWaitsForRunningScan(t *testing.T) {
+	events := []string{}
+	api := &fakeManagedImages{events: &events, fakeImagesAPI: fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", State: "scanning", Key: "0123456789abcdef0123456789abcdef", Server: "192.168.10.10", Share: "Downloads", Subpath: "iso"}}}}}
+	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, Images: api, SMB: &fakeSMBMountAPI{events: &events}}
+	for _, path := range []string{"/images/smb/7/retry", "/images/smb/7/remove"} {
+		res := submitSMB(t, s, path, smbForm())
+		if res.Code != http.StatusConflict || len(events) != 0 {
+			t.Fatalf("path=%s status=%d events=%v", path, res.Code, events)
+		}
+	}
+}
+
+func TestSMBCreateReportsScanStartFailure(t *testing.T) {
+	events := []string{}
+	api := &fakeManagedImages{events: &events, fakeImagesAPI: fakeImagesAPI{scanErr: errors.New("offline")}}
+	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, Images: api, SMB: &fakeSMBMountAPI{events: &events}}
+	res := submitSMB(t, s, "/images/smb", smbForm())
+	if res.Code != http.StatusServiceUnavailable || strings.Contains(res.Body.String(), "secret") || strings.Join(events, ",") != "reserve,mount,mark-scan-error" {
+		t.Fatalf("scan failure status=%d events=%v body=%s", res.Code, events, res.Body.String())
 	}
 }

@@ -44,6 +44,12 @@ func TestManagedStorageAPIReservesAndReportsFailure(t *testing.T) {
 	if failure.Code != http.StatusNoContent || repo.state[9] != "unavailable" {
 		t.Fatalf("failure status=%d state=%s", failure.Code, repo.state[9])
 	}
+	repo.state[9] = "ready"
+	scanFailure := httptest.NewRecorder()
+	handler.ServeHTTP(scanFailure, httptest.NewRequest("POST", "/smb-storages/9/scan-error", nil))
+	if scanFailure.Code != http.StatusNoContent || repo.state[9] != "unavailable" {
+		t.Fatalf("scan-start failure status=%d state=%s", scanFailure.Code, repo.state[9])
+	}
 	removed := httptest.NewRecorder()
 	handler.ServeHTTP(removed, httptest.NewRequest("DELETE", "/smb-storages/9", nil))
 	if removed.Code != http.StatusNoContent || !repo.deleted {

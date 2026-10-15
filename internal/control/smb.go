@@ -22,6 +22,8 @@ func newSMBKey() (string, error) {
 }
 
 func (s *Server) imagesSMBCreate(w http.ResponseWriter, r *http.Request) {
+	s.smbMu.Lock()
+	defer s.smbMu.Unlock()
 	if s.Images == nil || s.SMB == nil {
 		http.Error(w, "Служба хранилищ недоступна", http.StatusServiceUnavailable)
 		return
@@ -52,7 +54,12 @@ func (s *Server) imagesSMBCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось подключить SMB. Хранилище сохранено для повторной попытки.", http.StatusServiceUnavailable)
 		return
 	}
-	_ = s.Images.Scan(r.Context(), storage.ID)
+	if err := s.Images.Scan(r.Context(), storage.ID); err != nil {
+		_ = s.Images.MarkSMBScanError(r.Context(), storage.ID)
+		s.auditSMB(r, "smb.create", "scan-error", storage.ID)
+		http.Error(w, "SMB подключено, но поиск ISO не запущен. Повторите обновление на странице образов.", http.StatusServiceUnavailable)
+		return
+	}
 	s.auditSMB(r, "smb.create", "ok", storage.ID)
 	http.Redirect(w, r, "/images?message="+url.QueryEscape("Хранилище добавлено. Сканирование запущено."), http.StatusSeeOther)
 }
@@ -75,6 +82,8 @@ func (s *Server) smbStorage(ctx context.Context, idText string) (images.Storage,
 }
 
 func (s *Server) imagesSMBRetry(w http.ResponseWriter, r *http.Request) {
+	s.smbMu.Lock()
+	defer s.smbMu.Unlock()
 	if s.SMB == nil {
 		http.Error(w, "Служба хранилищ недоступна", http.StatusServiceUnavailable)
 		return
@@ -82,6 +91,10 @@ func (s *Server) imagesSMBRetry(w http.ResponseWriter, r *http.Request) {
 	storage, ok := s.smbStorage(r.Context(), r.PathValue("id"))
 	if !ok {
 		http.Error(w, "Хранилище не найдено", http.StatusNotFound)
+		return
+	}
+	if storage.State == "scanning" {
+		http.Error(w, "Дождитесь завершения сканирования", http.StatusConflict)
 		return
 	}
 	username, password, domain := r.FormValue("username"), r.FormValue("password"), r.FormValue("domain")
@@ -95,12 +108,19 @@ func (s *Server) imagesSMBRetry(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось подключить SMB. Проверьте адрес и учётные данные.", http.StatusServiceUnavailable)
 		return
 	}
-	_ = s.Images.Scan(r.Context(), storage.ID)
+	if err := s.Images.Scan(r.Context(), storage.ID); err != nil {
+		_ = s.Images.MarkSMBScanError(r.Context(), storage.ID)
+		s.auditSMB(r, "smb.retry", "scan-error", storage.ID)
+		http.Error(w, "SMB подключено, но поиск ISO не запущен. Повторите обновление на странице образов.", http.StatusServiceUnavailable)
+		return
+	}
 	s.auditSMB(r, "smb.retry", "ok", storage.ID)
 	http.Redirect(w, r, "/images?message="+url.QueryEscape("Хранилище подключено. Сканирование запущено."), http.StatusSeeOther)
 }
 
 func (s *Server) imagesSMBRemove(w http.ResponseWriter, r *http.Request) {
+	s.smbMu.Lock()
+	defer s.smbMu.Unlock()
 	if s.SMB == nil {
 		http.Error(w, "Служба хранилищ недоступна", http.StatusServiceUnavailable)
 		return
@@ -108,6 +128,10 @@ func (s *Server) imagesSMBRemove(w http.ResponseWriter, r *http.Request) {
 	storage, ok := s.smbStorage(r.Context(), r.PathValue("id"))
 	if !ok {
 		http.Error(w, "Хранилище не найдено", http.StatusNotFound)
+		return
+	}
+	if storage.State == "scanning" {
+		http.Error(w, "Дождитесь завершения сканирования", http.StatusConflict)
 		return
 	}
 	if err := s.SMB.Remove(r.Context(), storage.Key); err != nil {

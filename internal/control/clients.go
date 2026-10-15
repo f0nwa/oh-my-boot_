@@ -70,6 +70,10 @@ func (c *ImagesClient) MarkSMBError(ctx context.Context, id int64) error {
 	return localCall(ctx, c.http, "POST", "/smb-storages/"+strconv.FormatInt(id, 10)+"/error", nil, nil)
 }
 
+func (c *ImagesClient) MarkSMBScanError(ctx context.Context, id int64) error {
+	return localCall(ctx, c.http, "POST", "/smb-storages/"+strconv.FormatInt(id, 10)+"/scan-error", nil, nil)
+}
+
 func (c *ImagesClient) DeleteSMB(ctx context.Context, id int64) error {
 	return localCall(ctx, c.http, "DELETE", "/smb-storages/"+strconv.FormatInt(id, 10), nil, nil)
 }

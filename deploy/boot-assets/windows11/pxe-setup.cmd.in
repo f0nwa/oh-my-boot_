@@ -6,8 +6,17 @@ wpeutil WaitForNetwork
 if errorlevel 1 goto failed
 
 echo PXE Platform: connecting Windows 11 installation media...
-net use Y: \\10.30.0.10\windows11iso __PXE_ISO_PASSWORD__ /user:pxe-iso /persistent:no
-if errorlevel 1 goto failed
+set /a PXE_ATTEMPT=0 >nul
+:connect_media
+set /a PXE_ATTEMPT+=1 >nul
+net use Y: \\10.30.0.10\windows11iso __PXE_ISO_PASSWORD__ /user:pxe-iso /persistent:no >nul 2>&1
+if not errorlevel 1 goto media_ready
+set PXE_NET_ERROR=%errorlevel%
+if %PXE_ATTEMPT% GEQ 12 goto failed
+echo PXE Platform: media not ready (error %PXE_NET_ERROR%); retrying %PXE_ATTEMPT%/12...
+ping -n 3 127.0.0.1 >nul
+goto connect_media
+:media_ready
 if not exist Y:\sources\install.wim goto failed
 
 echo PXE Platform: starting Windows Setup...

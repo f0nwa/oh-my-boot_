@@ -1,0 +1,18 @@
+[Unit]
+Description=Read-only Windows 11 ISO for PXE installation
+Wants=network-online.target
+After=network-online.target pxe-agent.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/pxe-platform/windows11-iso.env
+ExecStartPre=/usr/bin/mountpoint -q /mnt/pxe-platform-smb/84e4b95528e2b8c5a405adb7061bc5bf
+ExecStart=/usr/bin/mount -o loop,ro,nosuid,nodev ${ISO_PATH} /mnt/pxe-platform-iso/windows11
+ExecStartPost=/usr/local/bin/pxe-winpe-render /usr/share/pxe-platform/windows11/pxe-setup.cmd.in /etc/pxe-platform/pxe-iso-password /srv/pxe/tftp/windows11/pxe-setup.cmd
+ExecStop=/usr/bin/umount /mnt/pxe-platform-iso/windows11
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

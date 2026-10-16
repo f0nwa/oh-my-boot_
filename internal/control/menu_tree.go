@@ -158,8 +158,12 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			":ubuntu_failed\necho Ubuntu boot failed\nsleep 5\ngoto local\n")
 	case "windows10", "windows11":
 		out.WriteString(":" + profile.id + "\n" +
-			"kernel " + base + "/assets/windows/wimboot\n" +
-			"initrd " + base + "/assets/" + profile.id + "/boot.wim boot.wim\n" +
+			"kernel " + base + "/assets/windows/wimboot\n")
+		if profile.id == "windows11" {
+			out.WriteString("initrd -n winpeshl.ini " + base + "/assets/windows11/winpeshl.ini\n" +
+				"initrd -n pxe-setup.cmd " + base + "/assets/windows11/pxe-setup.cmd\n")
+		}
+		out.WriteString("initrd " + base + "/assets/" + profile.id + "/boot.wim boot.wim\n" +
 			"boot || goto " + profile.id + "_failed\n" +
 			":" + profile.id + "_failed\necho " + profile.title + " boot failed\nsleep 5\ngoto local\n")
 	}

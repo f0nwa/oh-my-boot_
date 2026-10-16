@@ -1,0 +1,21 @@
+@echo off
+echo PXE Platform: initializing network...
+wpeinit
+if errorlevel 1 goto failed
+wpeutil WaitForNetwork
+if errorlevel 1 goto failed
+
+echo PXE Platform: connecting Windows 11 installation media...
+net use Y: \\10.30.0.10\windows11iso __PXE_ISO_PASSWORD__ /user:pxe-iso /persistent:no
+if errorlevel 1 goto failed
+if not exist Y:\sources\install.wim goto failed
+
+echo PXE Platform: starting Windows Setup...
+Y:\sources\setup.exe /InstallFrom:Y:\sources\install.wim
+if errorlevel 1 goto failed
+exit /b 0
+
+:failed
+echo PXE Platform: installation media is unavailable or Setup failed.
+echo Check network connectivity and the ISO mount on the PXE server.
+cmd /k

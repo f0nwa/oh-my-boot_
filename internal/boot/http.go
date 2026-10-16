@@ -3,6 +3,7 @@ package boot
 import (
 	"fmt"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +104,13 @@ func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func
 		if name == "" || strings.Contains(name, "\\") || strings.HasPrefix(name, "/") {
 			http.NotFound(w, r)
 			return
+		}
+		if name == "windows11/pxe-setup.cmd" {
+			client, err := netip.ParseAddrPort(r.RemoteAddr)
+			if err != nil || !netip.MustParsePrefix("10.30.0.0/24").Contains(client.Addr()) {
+				http.NotFound(w, r)
+				return
+			}
 		}
 		candidate := filepath.Join(root, filepath.FromSlash(name))
 		resolved, err := filepath.EvalSymlinks(candidate)

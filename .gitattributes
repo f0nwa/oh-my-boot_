@@ -1,0 +1,2 @@
+deploy/boot-assets/windows11/*.cmd.in text eol=crlf
+deploy/boot-assets/windows11/*.ini text eol=crlf

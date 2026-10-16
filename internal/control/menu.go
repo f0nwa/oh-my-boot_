@@ -122,6 +122,8 @@ func buildMenu(title, label, message, ubuntuBase, windows10Base, windows11Base s
 	if windows11Base != "" {
 		script += ":windows11\n" +
 			"kernel " + windows11Base + "/assets/windows/wimboot\n" +
+			"initrd -n winpeshl.ini " + windows11Base + "/assets/windows11/winpeshl.ini\n" +
+			"initrd -n pxe-setup.cmd " + windows11Base + "/assets/windows11/pxe-setup.cmd\n" +
 			"initrd " + windows11Base + "/assets/windows11/boot.wim boot.wim\n" +
 			"boot || goto windows11_failed\n" +
 			":windows11_failed\n" +

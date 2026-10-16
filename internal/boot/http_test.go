@@ -64,6 +64,52 @@ func TestHandlerKeepsAssetsInsideRoot(t *testing.T) {
 	}
 }
 
+func TestWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "windows11"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "windows11", "pxe-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		remote string
+		status int
+	}{
+		{"10.30.0.7:12345", http.StatusOK},
+		{"192.168.10.55:12345", http.StatusNotFound},
+		{"[::1]:12345", http.StatusNotFound},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/assets/windows11/pxe-setup.cmd", nil)
+		req.RemoteAddr = tc.remote
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		if res.Code != tc.status {
+			t.Errorf("%s: got status %d, want %d", tc.remote, res.Code, tc.status)
+		}
+		if tc.status != http.StatusOK && strings.Contains(res.Body.String(), "limited-secret") {
+			t.Fatalf("secret reached %s", tc.remote)
+		}
+	}
+	for _, path := range []string{
+		"/assets/windows11//pxe-setup.cmd",
+		"/assets/windows11/../windows11/pxe-setup.cmd",
+		"/assets/windows11%2fpxe-setup.cmd",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.RemoteAddr = "192.168.10.55:12345"
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		if res.Code == http.StatusOK || strings.Contains(res.Body.String(), "limited-secret") {
+			t.Fatalf("alternate path %q exposed startup asset", path)
+		}
+	}
+}
+
 func TestUbuntuISOEndpointServesOnlySelectedFile(t *testing.T) {
 	assets := t.TempDir()
 	storage := t.TempDir()

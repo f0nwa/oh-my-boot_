@@ -59,6 +59,35 @@ func TestMenuFormAddsWindows10OnlyWhenSelected(t *testing.T) {
 	}
 }
 
+func TestMenuFormAddsWindows11WithoutDroppingExistingImages(t *testing.T) {
+	form := url.Values{"title": {"PXE Platform"}, "label": {"Diagnostics"}, "message": {"Ready"}, "ubuntu": {"on"}, "windows10": {"on"}, "windows11": {"on"}}
+	script, err := BuildMenuFromForm(form, "http://10.30.0.10:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"item ubuntu Ubuntu Desktop 26.04.1\n",
+		"item windows10 Windows 10 installer - WinPE\n",
+		"item windows11 Windows 11 installer - WinPE\n",
+		":windows11\n",
+		"kernel http://10.30.0.10:8080/assets/windows/wimboot\n",
+		"initrd http://10.30.0.10:8080/assets/windows11/boot.wim boot.wim\n",
+		"boot || goto windows11_failed\n",
+	} {
+		if !strings.Contains(string(script), want) {
+			t.Fatalf("missing %q in %q", want, script)
+		}
+	}
+	form.Del("windows11")
+	script, err = BuildMenuFromForm(form, "http://10.30.0.10:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(script), "item windows11") || !strings.Contains(string(script), "item windows10") || !strings.Contains(string(script), "item ubuntu") {
+		t.Fatalf("Windows 11 selection leaked or existing images disappeared: %q", script)
+	}
+}
+
 func TestMenuBuildKeepsStructuredText(t *testing.T) {
 	script, err := BuildMenu("PXE Лаборатория", "Диагностика", "Сеть готова")
 	if err != nil {

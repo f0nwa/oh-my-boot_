@@ -21,7 +21,7 @@ func safeMenuText(value string, max int) bool {
 }
 
 func BuildMenu(title, label, message string) ([]byte, error) {
-	return buildMenu(title, label, message, "", "")
+	return buildMenu(title, label, message, "", "", "")
 }
 
 // BuildUbuntuMenu adds the prepared Ubuntu Desktop boot profile to a menu.
@@ -30,7 +30,7 @@ func BuildUbuntuMenu(title, label, message, baseURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildMenu(title, label, message, base, "")
+	return buildMenu(title, label, message, base, "", "")
 }
 
 func validatedBootURL(baseURL string) (string, error) {
@@ -42,8 +42,8 @@ func validatedBootURL(baseURL string) (string, error) {
 }
 
 func BuildMenuFromForm(form url.Values, baseURL string) ([]byte, error) {
-	ubuntuBase, windows10Base := "", ""
-	if form.Get("ubuntu") == "on" || form.Get("windows10") == "on" {
+	ubuntuBase, windows10Base, windows11Base := "", "", ""
+	if form.Get("ubuntu") == "on" || form.Get("windows10") == "on" || form.Get("windows11") == "on" {
 		base, err := validatedBootURL(baseURL)
 		if err != nil {
 			return nil, err
@@ -54,11 +54,14 @@ func BuildMenuFromForm(form url.Values, baseURL string) ([]byte, error) {
 		if form.Get("windows10") == "on" {
 			windows10Base = base
 		}
+		if form.Get("windows11") == "on" {
+			windows11Base = base
+		}
 	}
-	return buildMenu(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase, windows10Base)
+	return buildMenu(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase, windows10Base, windows11Base)
 }
 
-func buildMenu(title, label, message, ubuntuBase, windows10Base string) ([]byte, error) {
+func buildMenu(title, label, message, ubuntuBase, windows10Base, windows11Base string) ([]byte, error) {
 	if !safeMenuText(title, 80) || !safeMenuText(label, 80) || !safeMenuText(message, 120) {
 		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
 	}
@@ -70,6 +73,9 @@ func buildMenu(title, label, message, ubuntuBase, windows10Base string) ([]byte,
 	}
 	if windows10Base != "" {
 		script += "item windows10 Windows 10 installer - WinPE\n"
+	}
+	if windows11Base != "" {
+		script += "item windows11 Windows 11 installer - WinPE\n"
 	}
 	script += "item local Boot local disk\n" +
 		"choose target || goto local\n" +
@@ -96,6 +102,16 @@ func buildMenu(title, label, message, ubuntuBase, windows10Base string) ([]byte,
 			"boot || goto windows10_failed\n" +
 			":windows10_failed\n" +
 			"echo Windows 10 WinPE boot failed\n" +
+			"sleep 5\n" +
+			"goto local\n"
+	}
+	if windows11Base != "" {
+		script += ":windows11\n" +
+			"kernel " + windows11Base + "/assets/windows/wimboot\n" +
+			"initrd " + windows11Base + "/assets/windows11/boot.wim boot.wim\n" +
+			"boot || goto windows11_failed\n" +
+			":windows11_failed\n" +
+			"echo Windows 11 WinPE boot failed\n" +
 			"sleep 5\n" +
 			"goto local\n"
 	}

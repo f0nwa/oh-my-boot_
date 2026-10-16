@@ -43,6 +43,7 @@ func validatedBootURL(baseURL string) (string, error) {
 
 func BuildMenuFromForm(form url.Values, baseURL string) ([]byte, error) {
 	ubuntuBase, windows10Base, windows11Base := "", "", ""
+	folders := map[string]string{}
 	if form.Get("ubuntu") == "on" || form.Get("windows10") == "on" || form.Get("windows11") == "on" {
 		base, err := validatedBootURL(baseURL)
 		if err != nil {
@@ -50,12 +51,25 @@ func BuildMenuFromForm(form url.Values, baseURL string) ([]byte, error) {
 		}
 		if form.Get("ubuntu") == "on" {
 			ubuntuBase = base
+			folders["ubuntu"] = form.Get("folder_ubuntu")
 		}
 		if form.Get("windows10") == "on" {
 			windows10Base = base
+			folders["windows10"] = form.Get("folder_windows10")
 		}
 		if form.Get("windows11") == "on" {
 			windows11Base = base
+			folders["windows11"] = form.Get("folder_windows11")
+		}
+	}
+	for _, folder := range folders {
+		if err := validateMenuFolder(folder); err != nil {
+			return nil, err
+		}
+	}
+	for _, folder := range folders {
+		if folder != "" {
+			return buildMenuTree(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase, windows10Base, windows11Base, folders)
 		}
 	}
 	return buildMenu(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase, windows10Base, windows11Base)

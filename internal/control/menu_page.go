@@ -25,6 +25,11 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 			data.MenuUbuntu = strings.Contains(version.Script, "item ubuntu Ubuntu Desktop 26.04.1\n")
 			data.MenuWindows10 = strings.Contains(version.Script, "item windows10 Windows 10 installer - WinPE\n")
 			data.MenuWindows11 = strings.Contains(version.Script, "item windows11 Windows 11 installer - WinPE\n")
+			folders := menuFolderPaths(version.Script)
+			data.MenuFolderUbuntu = folders["ubuntu"]
+			data.MenuFolderWindows10 = folders["windows10"]
+			data.MenuFolderWindows11 = folders["windows11"]
+			data.HasMenuFolders = data.MenuFolderUbuntu != "" || data.MenuFolderWindows10 != "" || data.MenuFolderWindows11 != ""
 			break
 		}
 	}

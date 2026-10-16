@@ -1,9 +1,22 @@
 package winpe
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestDeployTemplateRendersWithOneCredential(t *testing.T) {
+	templatePath := filepath.Join("..", "..", "deploy", "boot-assets", "windows11", "pxe-setup.cmd.in")
+	template, err := os.ReadFile(templatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RenderStartup(template, strings.Repeat("A", 32)); err != nil {
+		t.Fatalf("deployed WinPE template cannot be rendered: %v", err)
+	}
+}
 
 func TestRenderStartupReplacesOnlyDownstreamCredential(t *testing.T) {
 	template := []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\windows11iso __PXE_ISO_PASSWORD__ /user:pxe-iso\r\n")

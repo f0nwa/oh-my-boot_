@@ -21,26 +21,44 @@ func safeMenuText(value string, max int) bool {
 }
 
 func BuildMenu(title, label, message string) ([]byte, error) {
-	return buildMenu(title, label, message, "")
+	return buildMenu(title, label, message, "", "")
 }
 
 // BuildUbuntuMenu adds the prepared Ubuntu Desktop boot profile to a menu.
 func BuildUbuntuMenu(title, label, message, baseURL string) ([]byte, error) {
+	base, err := validatedBootURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	return buildMenu(title, label, message, base, "")
+}
+
+func validatedBootURL(baseURL string) (string, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || strings.ContainsAny(baseURL, " \t\r\n") {
-		return nil, fmt.Errorf("invalid Ubuntu boot URL")
+		return "", fmt.Errorf("invalid boot URL")
 	}
-	return buildMenu(title, label, message, strings.TrimRight(u.String(), "/"))
+	return strings.TrimRight(u.String(), "/"), nil
 }
 
 func BuildMenuFromForm(form url.Values, baseURL string) ([]byte, error) {
-	if form.Get("ubuntu") == "on" {
-		return BuildUbuntuMenu(form.Get("title"), form.Get("label"), form.Get("message"), baseURL)
+	ubuntuBase, windows10Base := "", ""
+	if form.Get("ubuntu") == "on" || form.Get("windows10") == "on" {
+		base, err := validatedBootURL(baseURL)
+		if err != nil {
+			return nil, err
+		}
+		if form.Get("ubuntu") == "on" {
+			ubuntuBase = base
+		}
+		if form.Get("windows10") == "on" {
+			windows10Base = base
+		}
 	}
-	return BuildMenu(form.Get("title"), form.Get("label"), form.Get("message"))
+	return buildMenu(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase, windows10Base)
 }
 
-func buildMenu(title, label, message, ubuntuBase string) ([]byte, error) {
+func buildMenu(title, label, message, ubuntuBase, windows10Base string) ([]byte, error) {
 	if !safeMenuText(title, 80) || !safeMenuText(label, 80) || !safeMenuText(message, 120) {
 		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
 	}
@@ -49,6 +67,9 @@ func buildMenu(title, label, message, ubuntuBase string) ([]byte, error) {
 		"item diagnostics " + label + "\n"
 	if ubuntuBase != "" {
 		script += "item ubuntu Ubuntu Desktop 26.04.1\n"
+	}
+	if windows10Base != "" {
+		script += "item windows10 Windows 10 installer - WinPE\n"
 	}
 	script += "item local Boot local disk\n" +
 		"choose target || goto local\n" +
@@ -65,6 +86,16 @@ func buildMenu(title, label, message, ubuntuBase string) ([]byte, error) {
 			"boot || goto ubuntu_failed\n" +
 			":ubuntu_failed\n" +
 			"echo Ubuntu boot failed\n" +
+			"sleep 5\n" +
+			"goto local\n"
+	}
+	if windows10Base != "" {
+		script += ":windows10\n" +
+			"kernel " + windows10Base + "/assets/windows/wimboot\n" +
+			"initrd " + windows10Base + "/assets/windows10/boot.wim boot.wim\n" +
+			"boot || goto windows10_failed\n" +
+			":windows10_failed\n" +
+			"echo Windows 10 WinPE boot failed\n" +
 			"sleep 5\n" +
 			"goto local\n"
 	}

@@ -23,6 +23,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 			data.MenuLabel = version.Label
 			data.MenuMessage = version.Message
 			data.MenuUbuntu = strings.Contains(version.Script, "item ubuntu Ubuntu Desktop 26.04.1\n")
+			data.MenuWindows10 = strings.Contains(version.Script, "item windows10 Windows 10 installer - WinPE\n")
 			break
 		}
 	}

@@ -61,6 +61,7 @@ func buildMenu(title, label, message, ubuntuBase string) ([]byte, error) {
 		script += ":ubuntu\n" +
 			"kernel " + ubuntuBase + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + ubuntuBase + "/images/ubuntu-desktop.iso ---\n" +
 			"initrd " + ubuntuBase + "/assets/ubuntu/initrd\n" +
+			"shim " + ubuntuBase + "/assets/ubuntu/bootx64.efi || goto ubuntu_failed\n" +
 			"boot || goto ubuntu_failed\n" +
 			":ubuntu_failed\n" +
 			"echo Ubuntu boot failed\n" +

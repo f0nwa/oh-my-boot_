@@ -123,8 +123,12 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 		menuTitle += " / " + node.path
 	}
 	out.WriteString("menu " + menuTitle + "\n")
+	parentLabel := "local"
 	if node.parent == nil {
 		out.WriteString("item diagnostics " + diagnosticLabel + "\n")
+	} else {
+		parentLabel = node.parent.label
+		out.WriteString("item " + parentLabel + " .. Back\n")
 	}
 	for _, child := range node.children {
 		out.WriteString("item " + child.label + " " + child.name + "\n")
@@ -132,12 +136,8 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 	for _, profile := range node.profiles {
 		out.WriteString("item " + profile.id + " " + profile.title + "\n")
 	}
-	parentLabel := "local"
 	if node.parent == nil {
 		out.WriteString("item local Boot local disk\n")
-	} else {
-		parentLabel = node.parent.label
-		out.WriteString("item " + parentLabel + " Назад\n")
 	}
 	out.WriteString("choose target || goto " + parentLabel + "\n")
 	out.WriteString("goto ${target} || goto " + parentLabel + "\n")

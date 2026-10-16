@@ -53,13 +53,13 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 	if strings.Index(got, "item windows10 ") > strings.Index(got, "item windows11 ") {
 		t.Fatal("profile order changed in shared folder")
 	}
-	if strings.Count(got, " Назад\n") != 3 {
+	if strings.Count(got, ".. Back\n") != 3 {
 		t.Fatalf("expected one Back item per folder, got script:\n%s", got)
 	}
 	for _, want := range []string{
 		"item folder_1 Linux\nitem folder_2 Windows\nitem local Boot local disk\n",
-		":folder_2\nmenu PXE Platform / Windows\nitem folder_3 Установщики\nitem menu_root Назад\nchoose target || goto menu_root\n",
-		":folder_3\nmenu PXE Platform / Windows / Установщики\nitem windows10 Windows 10 installer - WinPE\nitem windows11 Windows 11 installer - WinPE\nitem folder_2 Назад\nchoose target || goto folder_2\n",
+		":folder_2\nmenu PXE Platform / Windows\nitem menu_root .. Back\nitem folder_3 Установщики\nchoose target || goto menu_root\n",
+		":folder_3\nmenu PXE Platform / Windows / Установщики\nitem folder_2 .. Back\nitem windows10 Windows 10 installer - WinPE\nitem windows11 Windows 11 installer - WinPE\nchoose target || goto folder_2\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("navigation section missing %q", want)

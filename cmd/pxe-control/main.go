@@ -54,7 +54,7 @@ func main() {
 		log.Fatal("no allowed PXE interfaces")
 	}
 	agentClient := control.NewAgentClient(*agentSocket)
-	server := &control.Server{Store: control.Store{Pool: pool}, Boot: control.NewBootClient(*bootSocket), Agent: agentClient, SMB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist}
+	server := &control.Server{Store: control.Store{Pool: pool}, Boot: control.NewBootClient(*bootSocket), Agent: agentClient, SMB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist, BootBaseURL: os.Getenv("PXE_CONTROL_BOOT_BASE_URL")}
 	httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 100 * time.Second, IdleTimeout: 60 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
@@ -21,6 +22,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 			data.MenuTitle = version.Title
 			data.MenuLabel = version.Label
 			data.MenuMessage = version.Message
+			data.MenuUbuntu = strings.Contains(version.Script, "item ubuntu Ubuntu Desktop 26.04.1\n")
 			break
 		}
 	}
@@ -29,7 +31,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 	title, label, message := r.FormValue("title"), r.FormValue("label"), r.FormValue("message")
-	script, err := BuildMenu(title, label, message)
+	script, err := BuildMenuFromForm(r.Form, s.BootBaseURL)
 	if err != nil {
 		http.Error(w, "Недопустимый текст меню: "+err.Error(), 400)
 		return

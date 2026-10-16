@@ -48,6 +48,7 @@ type Server struct {
 	Images            ImagesAPI
 	SMB               SMBMountAPI
 	AllowedInterfaces map[string]bool
+	BootBaseURL       string
 	menuMu            sync.Mutex
 	smbMu             sync.Mutex
 }

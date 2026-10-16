@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 User=pxe-boot
 Group=pxe-control
+SupplementaryGroups=pxe-images
 EnvironmentFile=/etc/pxe-platform/boot.env
 ExecStart=/usr/local/bin/pxe-boot -listen 0.0.0.0:8080 -assets /srv/pxe/tftp -snapshot /var/lib/pxe-platform-boot/menu.ipxe -base-url ${PXE_BOOT_BASE_URL}
 Restart=on-failure

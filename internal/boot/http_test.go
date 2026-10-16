@@ -63,3 +63,71 @@ func TestHandlerKeepsAssetsInsideRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestUbuntuISOEndpointServesOnlySelectedFile(t *testing.T) {
+	assets := t.TempDir()
+	storage := t.TempDir()
+	iso := filepath.Join(storage, "ubuntu.iso")
+	if err := os.WriteFile(iso, []byte("abcdefgh"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := NewPublisher(filepath.Join(t.TempDir(), "menu.ipxe"), []byte("#!ipxe\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewDynamicHandlerWithISO(assets, p, nil, iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rangeResult := httptest.NewRecorder()
+	rangeRequest := httptest.NewRequest(http.MethodGet, "/images/ubuntu-desktop.iso", nil)
+	rangeRequest.Header.Set("Range", "bytes=2-5")
+	h.ServeHTTP(rangeResult, rangeRequest)
+	if rangeResult.Code != http.StatusPartialContent || rangeResult.Body.String() != "cdef" {
+		t.Fatalf("unexpected ISO range: %d %q", rangeResult.Code, rangeResult.Body.String())
+	}
+	for _, path := range []string{"/images/other.iso", "/images/../secret"} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, path, nil))
+		if res.Code != http.StatusNotFound && res.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("unexpected access to %s: %d", path, res.Code)
+		}
+		if strings.Contains(res.Body.String(), "abcdefgh") {
+			t.Fatalf("other path exposed ISO: %s", path)
+		}
+	}
+	if err := os.Remove(iso); err != nil {
+		t.Fatal(err)
+	}
+	missing := httptest.NewRecorder()
+	h.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/images/ubuntu-desktop.iso", nil))
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing ISO returned %d", missing.Code)
+	}
+}
+
+func TestUbuntuISOEndpointRejectsSymlink(t *testing.T) {
+	assets := t.TempDir()
+	storage := t.TempDir()
+	secret := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(secret, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(storage, "ubuntu.iso")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Fatal(err)
+	}
+	p, err := NewPublisher(filepath.Join(t.TempDir(), "menu.ipxe"), []byte("#!ipxe\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewDynamicHandlerWithISO(assets, p, nil, link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/images/ubuntu-desktop.iso", nil))
+	if res.Code != http.StatusNotFound || strings.Contains(res.Body.String(), "private") {
+		t.Fatalf("symlink exposed: %d %q", res.Code, res.Body.String())
+	}
+}

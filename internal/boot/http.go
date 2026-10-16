@@ -27,6 +27,12 @@ func NewHandler(assetDir string, menu []byte, record func(Event)) (http.Handler,
 
 // NewDynamicHandler reads the current published menu for each client request.
 func NewDynamicHandler(assetDir string, publisher *Publisher, record func(Event)) (http.Handler, error) {
+	return NewDynamicHandlerWithISO(assetDir, publisher, record, "")
+}
+
+// NewDynamicHandlerWithISO exposes one explicitly configured Ubuntu ISO.
+// The rest of its storage is never mapped into the HTTP server.
+func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func(Event), isoPath string) (http.Handler, error) {
 	if publisher == nil {
 		return nil, fmt.Errorf("publisher is required")
 	}
@@ -40,6 +46,39 @@ func NewDynamicHandler(assetDir string, publisher *Publisher, record func(Event)
 	}
 
 	mux := http.NewServeMux()
+	if isoPath != "" {
+		if !filepath.IsAbs(isoPath) {
+			return nil, fmt.Errorf("Ubuntu ISO path must be absolute")
+		}
+		mux.HandleFunc("/images/ubuntu-desktop.iso", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				w.Header().Set("Allow", "GET, HEAD")
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			info, err := os.Lstat(isoPath)
+			if err != nil || !info.Mode().IsRegular() {
+				http.NotFound(w, r)
+				return
+			}
+			file, err := os.Open(isoPath)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			defer file.Close()
+			openedInfo, err := file.Stat()
+			if err != nil || !openedInfo.Mode().IsRegular() {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/octet-stream")
+			http.ServeContent(w, r, "ubuntu-desktop.iso", openedInfo.ModTime(), file)
+			if record != nil {
+				record(Event{Kind: "iso", Path: r.URL.Path, RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
+			}
+		})
+	}
 	mux.HandleFunc("/boot/menu.ipxe", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")

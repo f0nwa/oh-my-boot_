@@ -46,7 +46,7 @@ func main() {
 		reader = boot.PostgresStore{Pool: pool}
 	}
 	recorder := boot.NewRecorder(store, log.Default())
-	handler, err := boot.NewDynamicHandler(*assets, publisher, recorder.Record)
+	handler, err := boot.NewDynamicHandlerWithISO(*assets, publisher, recorder.Record, os.Getenv("PXE_BOOT_UBUNTU_ISO"))
 	if err != nil {
 		log.Fatal(err)
 	}

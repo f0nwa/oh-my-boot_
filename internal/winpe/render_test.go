@@ -68,3 +68,17 @@ func TestRenderProfileStartupTargetsOnlySelectedISO(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderAnswerStartupRequiresXMLAndPassesItToSetup(t *testing.T) {
+	base := []byte("@echo off\r\nY:\\17\\sources\\setup.exe /InstallFrom:Y:\\17\\sources\\install.wim\r\n")
+	got, err := RenderAnswerStartup(base, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "if not exist X:\\Windows\\System32\\pxe-answer.xml goto failed\r\n") || !strings.Contains(string(got), " /Unattend:X:\\Windows\\System32\\pxe-answer.xml\r\n") {
+		t.Fatalf("answer option or required-file check missing: %q", got)
+	}
+	if _, err := RenderAnswerStartup([]byte("@echo off\r\n"), 17); err == nil {
+		t.Fatal("accepted missing Setup command")
+	}
+}

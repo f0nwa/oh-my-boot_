@@ -19,6 +19,7 @@ type WindowsISOManager struct {
 	ConfigRoot string
 	MountRoot  string
 	AssetRoot  string
+	AnswerRoot string
 	Systemctl  SMBSystemctl
 	Mounter    WindowsISOMounter
 }

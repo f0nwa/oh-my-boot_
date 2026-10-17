@@ -140,6 +140,37 @@ func TestProfileWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 	}
 }
 
+func TestWindowsAnswerAssetsAreLimitedToPXESubnet(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "windows-answers", "4")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"pxe-answer.xml", "pxe-setup.cmd"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("sensitive"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"pxe-answer.xml", "pxe-setup.cmd"} {
+		for _, tc := range []struct {
+			addr string
+			want int
+		}{{"10.30.0.7:1234", http.StatusOK}, {"192.168.10.55:1234", http.StatusNotFound}} {
+			req := httptest.NewRequest(http.MethodGet, "/assets/windows-answers/4/"+name, nil)
+			req.RemoteAddr = tc.addr
+			res := httptest.NewRecorder()
+			h.ServeHTTP(res, req)
+			if res.Code != tc.want || (tc.want == http.StatusOK && res.Header().Get("Cache-Control") != "no-store") {
+				t.Fatalf("%s %s: status=%d cache=%q", name, tc.addr, res.Code, res.Header().Get("Cache-Control"))
+			}
+		}
+	}
+}
+
 func TestUbuntuISOEndpointServesOnlySelectedFile(t *testing.T) {
 	assets := t.TempDir()
 	storage := t.TempDir()

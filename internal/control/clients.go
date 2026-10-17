@@ -58,6 +58,20 @@ func (c *AgentClient) CheckWindowsISO(ctx context.Context, req agent.WindowsISOR
 	}
 	return localCall(ctx, c.http, "POST", "/windows-iso/check", body, nil)
 }
+func (c *AgentClient) PrepareWindowsAnswer(ctx context.Context, req agent.WindowsAnswerRequest) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/windows-answer/prepare", body, nil)
+}
+func (c *AgentClient) CheckWindowsAnswer(ctx context.Context, req agent.WindowsAnswerCheck) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/windows-answer/check", body, nil)
+}
 func NewImagesClient(path string) *ImagesClient { return &ImagesClient{http: socketHTTP(path)} }
 
 func (c *ImagesClient) Catalog(ctx context.Context) (images.Catalog, error) {

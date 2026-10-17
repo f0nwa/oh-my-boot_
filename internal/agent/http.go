@@ -22,6 +22,36 @@ func HandlerWithSMB(applier *Applier, manager *SMBManager) http.Handler {
 
 func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *WindowsISOManager) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /windows-answer/prepare", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows answer preparation unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req WindowsAnswerRequest
+		if !decodeAgentRequest(w, r, &req, 2<<20) {
+			return
+		}
+		if err := windows.PrepareAnswer(r.Context(), req); err != nil {
+			http.Error(w, "Windows answer preparation failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /windows-answer/check", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows answer checking unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req WindowsAnswerCheck
+		if !decodeAgentRequest(w, r, &req, 8<<10) {
+			return
+		}
+		if err := windows.CheckAnswer(r.Context(), req); err != nil {
+			http.Error(w, "Windows answer unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /windows-iso/check", func(w http.ResponseWriter, r *http.Request) {
 		if windows == nil {
 			http.Error(w, "Windows ISO unavailable", http.StatusServiceUnavailable)
@@ -138,7 +168,11 @@ func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *Windows
 }
 
 func decodeSMBRequest(w http.ResponseWriter, r *http.Request, out any) bool {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10))
+	return decodeAgentRequest(w, r, out, 8<<10)
+}
+
+func decodeAgentRequest(w http.ResponseWriter, r *http.Request, out any, maxBytes int64) bool {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(out); err != nil {
 		http.Error(w, "invalid SMB request", http.StatusBadRequest)

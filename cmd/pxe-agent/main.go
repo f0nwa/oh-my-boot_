@@ -40,6 +40,7 @@ func main() {
 		ConfigRoot: "/etc/pxe-platform/winiso",
 		MountRoot:  "/mnt/pxe-platform-iso/profiles",
 		AssetRoot:  "/srv/pxe/tftp/windows-profiles",
+		AnswerRoot: "/srv/pxe/tftp/windows-answers",
 		Systemctl:  agent.SMBCommandSystemctl{},
 	}
 	listener, err := agent.ListenUnix(*socket)

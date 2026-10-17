@@ -106,12 +106,18 @@ func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func
 			http.NotFound(w, r)
 			return
 		}
-		if privateWinPEScript(name) {
+		if strings.HasPrefix(name, "windows-answers/") && !validWindowsAnswerAsset(name) {
+			http.NotFound(w, r)
+			return
+		}
+		private := privateWinPEScript(name) || validWindowsAnswerAsset(name)
+		if private {
 			client, err := netip.ParseAddrPort(r.RemoteAddr)
 			if err != nil || !netip.MustParsePrefix("10.30.0.0/24").Contains(client.Addr()) {
 				http.NotFound(w, r)
 				return
 			}
+			w.Header().Set("Cache-Control", "no-store")
 		}
 		candidate := filepath.Join(root, filepath.FromSlash(name))
 		resolved, err := filepath.EvalSymlinks(candidate)
@@ -135,6 +141,15 @@ func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func
 		}
 	})
 	return mux, nil
+}
+
+func validWindowsAnswerAsset(name string) bool {
+	parts := strings.Split(name, "/")
+	if len(parts) != 3 || parts[0] != "windows-answers" || (parts[2] != "pxe-answer.xml" && parts[2] != "pxe-setup.cmd") {
+		return false
+	}
+	id, err := strconv.ParseUint(parts[1], 10, 63)
+	return err == nil && id > 0 && strconv.FormatUint(id, 10) == parts[1]
 }
 
 func privateWinPEScript(name string) bool {

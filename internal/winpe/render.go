@@ -42,3 +42,22 @@ func RenderProfileStartup(template []byte, password string, profileID int64, ins
 	out = bytes.ReplaceAll(out, []byte(fileToken), []byte(installFile))
 	return out, nil
 }
+
+// RenderAnswerStartup turns a prepared ISO startup script into a strict
+// answer-file variant without changing its network credential or ISO binding.
+func RenderAnswerStartup(base []byte, profileID int64) ([]byte, error) {
+	if profileID <= 0 {
+		return nil, fmt.Errorf("invalid Windows ISO profile")
+	}
+	id := strconv.FormatInt(profileID, 10)
+	for _, installFile := range []string{"install.wim", "install.esd"} {
+		command := []byte("Y:\\" + id + "\\sources\\setup.exe /InstallFrom:Y:\\" + id + "\\sources\\" + installFile + "\r\n")
+		if bytes.Count(base, command) != 1 {
+			continue
+		}
+		replacement := append([]byte("if not exist X:\\Windows\\System32\\pxe-answer.xml goto failed\r\n"), command[:len(command)-2]...)
+		replacement = append(replacement, []byte(" /Unattend:X:\\Windows\\System32\\pxe-answer.xml\r\n")...)
+		return bytes.Replace(base, command, replacement, 1), nil
+	}
+	return nil, fmt.Errorf("prepared Windows Setup command is missing")
+}

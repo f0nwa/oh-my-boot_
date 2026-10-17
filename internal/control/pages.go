@@ -24,35 +24,36 @@ type menuWindowsProfileRow struct {
 }
 
 type pageData struct {
-	Info                requestContext
-	CSRF                string
-	Message             string
-	BootStatus          string
-	AgentStatus         string
-	EventError          string
-	Events              []boot.Event
-	Audit               []AuditEvent
-	Users               []User
-	Network             network.Config
-	OldNetwork          network.Config
-	Confirmation        string
-	HasNetwork          bool
-	Versions            []MenuVersion
-	MenuTitle           string
-	MenuLabel           string
-	MenuMessage         string
-	MenuUbuntu          bool
-	MenuWindows10       bool
-	MenuWindows11       bool
-	MenuFolderUbuntu    string
-	MenuFolderWindows10 string
-	MenuFolderWindows11 string
-	HasMenuFolders      bool
-	ImageError          string
-	Storages            []images.Storage
-	ISOImages           []imageRow
-	WindowsProfiles     []WindowsProfile
-	MenuWindowsProfiles []menuWindowsProfileRow
+	Info                  requestContext
+	CSRF                  string
+	Message               string
+	BootStatus            string
+	AgentStatus           string
+	EventError            string
+	Events                []boot.Event
+	Audit                 []AuditEvent
+	Users                 []User
+	Network               network.Config
+	OldNetwork            network.Config
+	Confirmation          string
+	HasNetwork            bool
+	Versions              []MenuVersion
+	MenuTitle             string
+	MenuLabel             string
+	MenuMessage           string
+	MenuUbuntu            bool
+	MenuWindows10         bool
+	MenuWindows11         bool
+	MenuFolderUbuntu      string
+	MenuFolderWindows10   string
+	MenuFolderWindows11   string
+	HasMenuFolders        bool
+	ImageError            string
+	Storages              []images.Storage
+	ISOImages             []imageRow
+	WindowsProfiles       []WindowsProfile
+	WindowsAnswerVariants []WindowsAnswerVariant
+	MenuWindowsProfiles   []menuWindowsProfileRow
 }
 
 func storageKindLabel(kind string) string {
@@ -97,7 +98,9 @@ var pages = template.Must(template.New("pages").Funcs(template.FuncMap{"storageK
 <section><h2>Хранилища</h2>{{if .Storages}}<table><tr><th>Название</th><th>Тип</th><th>Состояние</th><th>Расположение</th><th>Действия</th></tr>{{range .Storages}}<tr><td>{{.Name}}</td><td>{{storageKind .Kind}}</td><td>{{storageState .State}}{{if .Error}} · {{.Error}}{{end}}</td><td>{{if eq .Kind "smb"}}//{{.Server}}/{{.Share}}{{if .Subpath}}/{{.Subpath}}{{end}}{{else}}{{.Root}}{{end}}</td><td>{{if ne $.Info.User.Role "observer"}}<form method="post" action="/images/scan"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="secondary">Обновить</button></form>{{end}}{{if and (eq $.Info.User.Role "admin") (eq .Kind "smb")}}<details><summary>Повторить подключение</summary><form method="post" action="/images/smb/{{.ID}}/retry"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><label>Пользователь</label><input name="username" required autocomplete="off"><label>Пароль</label><input name="password" type="password" required autocomplete="new-password"><label>Домен, если нужен</label><input name="domain" autocomplete="off"><button>Подключить</button></form></details><form method="post" action="/images/smb/{{.ID}}/remove"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><button class="secondary">Удалить</button></form>{{end}}</td></tr>{{end}}</table>{{else}}<p>Хранилища пока не добавлены.</p>{{end}}</section>
 <section><h2>Найденные ISO</h2><p class="muted">Для Windows x64 из SMB-хранилища можно создать отдельный загрузочный профиль. Название и каталог в PXE-меню указывайте латиницей; формат ISO проверяется при подготовке.</p>{{if .ISOImages}}<table><tr><th>Хранилище</th><th>Файл</th><th>Размер, байт</th><th>Состояние</th><th>Действия</th></tr>{{range .ISOImages}}<tr><td>{{.StorageName}}</td><td>{{.Image.Path}}</td><td>{{.Image.Size}}</td><td>{{if .Unsupported}}ARM64: этот профиль поддерживает только x64{{else}}{{if .Image.Present}}Обнаружен{{else}}Отсутствует{{end}}{{end}}</td><td>{{if and .CanPrepare (ne $.Info.User.Role "observer")}}<details><summary>Создать профиль Windows</summary><form method="post" action="/images/windows-profiles"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="storage_id" value="{{.Image.StorageID}}"><input type="hidden" name="path" value="{{.Image.Path}}"><label>Название в меню</label><input name="title" placeholder="Windows 10 x64" required><label>Каталог меню</label><input name="folder" value="Windows"><button>Создать профиль</button></form></details>{{end}}</td></tr>{{end}}</table>{{else}}<p>ISO пока не найдены.</p>{{end}}</section>
 {{if .WindowsProfiles}}<section><h2>Профили Windows</h2><table><tr><th>Название</th><th>ISO</th><th>Состояние</th><th>Действия</th></tr>{{range .WindowsProfiles}}<tr><td>{{.Title}}</td><td>{{.Path}}</td><td>{{.State}}{{if .Error}} · {{.Error}}{{end}}</td><td>{{if ne $.Info.User.Role "observer"}}<form method="post" action="/images/windows-profiles/{{.ID}}/prepare"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><button class="secondary">Подготовить</button></form>{{end}}</td></tr>{{end}}</table></section>{{end}}
+{{template "answer_forms" .}}
 {{end}}{{template "bottom" .}}{{end}}
+{{define "answer_forms"}}{{range .WindowsProfiles}}{{if eq .State "ready"}}<section><h2>Сценарии установки для {{.Title}}</h2><p class="muted">Один ISO может иметь несколько XML-сценариев. Загруженный файл не показывается повторно. Компьютеры в доверенном PXE-сегменте могут получить его содержимое, включая пароли и ключи.</p>{{if ne $.Info.User.Role "observer"}}<form method="post" enctype="multipart/form-data" action="/images/windows-profiles/{{.ID}}/answers"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><label>Название пункта меню (латиницей)</label><input name="title" placeholder="Windows 11 Lab" required><label>Каталог в меню</label><input name="folder" value="{{.Folder}}"><label>Файл autounattend.xml (до 1 МиБ)</label><input name="file" type="file" accept=".xml,text/xml,application/xml" required><button>Загрузить сценарий</button></form>{{end}}{{$profileID := .ID}}{{range $.WindowsAnswerVariants}}{{if eq .ProfileID $profileID}}<p><strong>{{.Title}}</strong> · {{.State}}{{if .Error}} · {{.Error}}{{end}} · <small>SHA-256 {{.SHA256}}</small></p>{{end}}{{end}}</section>{{end}}{{end}}{{end}}
 `))
 
 func render(w http.ResponseWriter, name string, data pageData) {

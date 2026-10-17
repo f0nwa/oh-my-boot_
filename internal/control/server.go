@@ -32,6 +32,10 @@ type Storage interface {
 	WindowsProfile(context.Context, int64) (WindowsProfile, error)
 	WindowsProfiles(context.Context) ([]WindowsProfile, error)
 	SetWindowsProfileResult(context.Context, int64, string, string, string) error
+	CreateWindowsAnswer(context.Context, WindowsAnswerVariant) (WindowsAnswerVariant, error)
+	SetWindowsAnswerState(context.Context, int64, string, string) error
+	WindowsAnswers(context.Context) ([]WindowsAnswerVariant, error)
+	WindowsAnswer(context.Context, int64) (WindowsAnswerVariant, error)
 }
 
 type ImagesAPI interface {
@@ -53,6 +57,11 @@ type WindowsISOAPI interface {
 	CheckWindowsISO(context.Context, agent.WindowsISORequest) error
 }
 
+type WindowsAnswerAPI interface {
+	PrepareWindowsAnswer(context.Context, agent.WindowsAnswerRequest) error
+	CheckWindowsAnswer(context.Context, agent.WindowsAnswerCheck) error
+}
+
 type Server struct {
 	Store             Storage
 	Boot              *BootClient
@@ -60,6 +69,7 @@ type Server struct {
 	Images            ImagesAPI
 	SMB               SMBMountAPI
 	WindowsISO        WindowsISOAPI
+	WindowsAnswers    WindowsAnswerAPI
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
 	menuMu            sync.Mutex
@@ -96,6 +106,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/scan", s.protect("images", s.imagesScan))
 	mux.HandleFunc("POST /images/windows-profiles", s.protect("images", s.windowsProfileCreate))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/prepare", s.protect("images", s.windowsProfilePrepare))
+	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", s.windowsAnswerUpload))
 	mux.HandleFunc("POST /images/smb", s.protect("smb", s.imagesSMBCreate))
 	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", s.imagesSMBRetry))
 	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", s.imagesSMBRemove))
@@ -127,8 +138,15 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 			return
 		}
 		if r.Method == http.MethodPost {
-			r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
-			if err := r.ParseForm(); err != nil || !CheckCSRF(cookie.Value, r.FormValue("csrf")) {
+			var err error
+			if r.Pattern == "POST /images/windows-profiles/{id}/answers" {
+				r.Body = http.MaxBytesReader(w, r.Body, maxWindowsAnswerBytes+(32<<10))
+				err = r.ParseMultipartForm(2 << 20)
+			} else {
+				r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+				err = r.ParseForm()
+			}
+			if err != nil || !CheckCSRF(cookie.Value, r.FormValue("csrf")) {
 				_ = s.Store.Audit(r.Context(), user.ID, "denied:"+action, "csrf", "")
 				http.Error(w, "Недействительный токен формы", http.StatusForbidden)
 				return
@@ -251,6 +269,12 @@ func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
 		data.ImageError = "Не удалось прочитать профили Windows ISO"
 	} else {
 		data.WindowsProfiles = profiles
+	}
+	answers, err := s.Store.WindowsAnswers(r.Context())
+	if err != nil {
+		data.ImageError = "Не удалось прочитать сценарии Windows"
+	} else {
+		data.WindowsAnswerVariants = answers
 	}
 	if s.Images == nil {
 		data.ImageError = "Сервис образов недоступен"

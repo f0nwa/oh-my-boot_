@@ -9,12 +9,15 @@ import (
 
 const menuFolderMarker = "# pxe-platform:folders-v1 "
 const menuWindowsMarker = "# pxe-platform:winiso-v1 "
+const menuAnswerMarker = "# pxe-platform:winanswers-v1 "
 
 type menuProfile struct {
 	id           string
 	title        string
 	base         string
 	windowsISOID int64
+	answerID     int64
+	answerSHA256 string
 }
 
 type menuTreeNode struct {
@@ -117,10 +120,20 @@ func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string,
 	var out strings.Builder
 	out.WriteString("#!ipxe\n" + menuFolderMarker + base64.RawURLEncoding.EncodeToString(metadata) + "\n")
 	var selected []int64
+	var selectedAnswers []menuWindowsAnswerRef
 	for _, profile := range profiles {
-		if profile.windowsISOID > 0 {
+		if profile.answerID > 0 {
+			selectedAnswers = append(selectedAnswers, menuWindowsAnswerRef{ID: profile.answerID, ProfileID: profile.windowsISOID, SHA256: profile.answerSHA256})
+		} else if profile.windowsISOID > 0 {
 			selected = append(selected, profile.windowsISOID)
 		}
+	}
+	if len(selectedAnswers) > 0 {
+		encoded, err := json.Marshal(selectedAnswers)
+		if err != nil {
+			return nil, err
+		}
+		out.WriteString(menuAnswerMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
 	}
 	if len(selected) > 0 {
 		encoded, err := json.Marshal(selected)
@@ -173,10 +186,18 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	if profile.windowsISOID > 0 {
 		id := fmt.Sprintf("%d", profile.windowsISOID)
 		prefix := base + "/assets/windows-profiles/" + id + "/"
+		startup := prefix + "pxe-setup.cmd"
+		answer := ""
+		if profile.answerID > 0 {
+			answerPrefix := base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.answerID) + "/"
+			startup = answerPrefix + "pxe-setup.cmd"
+			answer = "initrd -n pxe-answer.xml " + answerPrefix + "pxe-answer.xml\n"
+		}
 		out.WriteString(":" + profile.id + "\n" +
 			"kernel " + base + "/assets/windows/wimboot\n" +
 			"initrd -n winpeshl.ini " + prefix + "winpeshl.ini\n" +
-			"initrd -n pxe-setup.cmd " + prefix + "pxe-setup.cmd\n" +
+			"initrd -n pxe-setup.cmd " + startup + "\n" +
+			answer +
 			"initrd " + prefix + "boot.wim boot.wim\n" +
 			"boot || goto " + profile.id + "_failed\n" +
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")

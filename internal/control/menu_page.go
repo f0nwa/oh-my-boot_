@@ -25,7 +25,13 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать профили Windows ISO", 500)
 		return
 	}
+	answers, err := s.Store.WindowsAnswers(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать сценарии Windows", 500)
+		return
+	}
 	activeWindows := map[int64]bool{}
+	activeAnswers := map[int64]menuWindowsAnswerRef{}
 	activeFolders := map[string]string{}
 	for _, version := range versions {
 		if version.Active {
@@ -37,6 +43,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 			data.MenuWindows11 = strings.Contains(version.Script, "item windows11 Windows 11 installer - WinPE\n")
 			folders := menuFolderPaths(version.Script)
 			activeWindows = menuWindowsProfileIDs(version.Script)
+			activeAnswers = menuWindowsAnswerRefs(version.Script)
 			activeFolders = folders
 			data.MenuFolderUbuntu = folders["ubuntu"]
 			data.MenuFolderWindows10 = folders["windows10"]
@@ -53,6 +60,14 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.MenuWindowsProfiles = append(data.MenuWindowsProfiles, menuWindowsProfileRow{WindowsProfile: profile, Selected: activeWindows[profile.ID], MenuFolder: folder})
 	}
+	for _, answer := range answers {
+		key := fmt.Sprintf("winanswer_%d", answer.ID)
+		folder := answer.Folder
+		if _, ok := activeAnswers[answer.ID]; ok {
+			folder = activeFolders[key]
+		}
+		data.MenuWindowsAnswers = append(data.MenuWindowsAnswers, menuWindowsAnswerRow{WindowsAnswerVariant: answer, Selected: activeAnswers[answer.ID].ID == answer.ID, MenuFolder: folder})
+	}
 	render(w, "menu", data)
 }
 
@@ -63,7 +78,12 @@ func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать профили Windows ISO", 503)
 		return
 	}
-	script, err := BuildMenuFromFormWithProfiles(r.Form, s.BootBaseURL, profiles)
+	answers, err := s.Store.WindowsAnswers(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать сценарии Windows", 503)
+		return
+	}
+	script, err := BuildMenuFromFormWithProfilesAndAnswers(r.Form, s.BootBaseURL, profiles, answers)
 	if err != nil {
 		http.Error(w, "Недопустимый текст меню: "+err.Error(), 400)
 		return
@@ -152,6 +172,33 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 
 func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) error {
 	selected := menuWindowsProfileIDs(script)
+	answerRefs := menuWindowsAnswerRefs(script)
+	answerItems := map[int64]bool{}
+	for _, line := range strings.Split(script, "\n") {
+		if !strings.HasPrefix(line, "item winanswer_") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			return fmt.Errorf("пункт сценария повреждён")
+		}
+		id, err := strconv.ParseInt(strings.TrimPrefix(fields[1], "winanswer_"), 10, 64)
+		if err != nil || id <= 0 || answerItems[id] {
+			return fmt.Errorf("пункт сценария повреждён")
+		}
+		answerItems[id] = true
+	}
+	if len(answerItems) != len(answerRefs) {
+		return fmt.Errorf("ссылки на сценарии повреждены")
+	}
+	for id := range answerItems {
+		if _, ok := answerRefs[id]; !ok {
+			return fmt.Errorf("ссылки на сценарии повреждены")
+		}
+	}
+	for _, ref := range answerRefs {
+		selected[ref.ProfileID] = true
+	}
 	if len(selected) == 0 {
 		return nil
 	}
@@ -161,6 +208,31 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) e
 	profiles, err := s.Store.WindowsProfiles(ctx)
 	if err != nil {
 		return err
+	}
+	if len(answerRefs) > 0 {
+		if s.WindowsAnswers == nil {
+			return fmt.Errorf("служба сценариев недоступна")
+		}
+		answers, err := s.Store.WindowsAnswers(ctx)
+		if err != nil {
+			return err
+		}
+		for _, answer := range answers {
+			ref, ok := answerRefs[answer.ID]
+			if !ok {
+				continue
+			}
+			if answer.State != "ready" || answer.ProfileID != ref.ProfileID || answer.SHA256 != ref.SHA256 || answer.Size <= 0 {
+				return fmt.Errorf("сценарий %d изменился или не подготовлен", answer.ID)
+			}
+			if err := s.WindowsAnswers.CheckWindowsAnswer(ctx, agent.WindowsAnswerCheck{ID: answer.ID, ProfileID: answer.ProfileID, SHA256: answer.SHA256}); err != nil {
+				return fmt.Errorf("файлы сценария %d недоступны", answer.ID)
+			}
+			delete(answerRefs, answer.ID)
+		}
+		if len(answerRefs) != 0 {
+			return fmt.Errorf("сценарий отсутствует")
+		}
 	}
 	catalog, err := s.Images.Catalog(ctx)
 	if err != nil {

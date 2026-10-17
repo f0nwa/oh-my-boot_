@@ -251,6 +251,21 @@ func TestPrepareWindowsISOAssetsCopiesOnlyBootWIMAndRendersProfile(t *testing.T)
 	if _, err := os.Stat(filepath.Join(assets, "17", "install.wim")); !os.IsNotExist(err) {
 		t.Fatalf("full installation image was copied: %v", err)
 	}
+	profileDir := filepath.Join(assets, "17")
+	info, err := os.Stat(profileDir)
+	if err != nil || info.Mode().Perm() != 0755 {
+		t.Fatalf("Boot cannot traverse generated profile directory: info=%v err=%v", info, err)
+	}
+	if err := os.Chmod(profileDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareWindowsISOAssets(mounted, assets, 17, template, []byte("[LaunchApps]\r\npxe-setup.cmd\r\n"), strings.Repeat("A", 32)); err != nil {
+		t.Fatalf("re-prepare existing profile: %v", err)
+	}
+	info, err = os.Stat(profileDir)
+	if err != nil || info.Mode().Perm() != 0755 {
+		t.Fatalf("re-prepare did not restore Boot access: info=%v err=%v", info, err)
+	}
 }
 
 func TestPrepareWindowsISOAssetsRejectsExistingSymlinkTarget(t *testing.T) {

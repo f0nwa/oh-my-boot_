@@ -196,6 +196,9 @@ func prepareWindowsISOAssets(mountedRoot, assetRoot string, profileID int64, tem
 				return "", err
 			}
 		}
+		if err := os.Chmod(final, 0755); err != nil {
+			return "", err
+		}
 		return installFile, nil
 	} else if !os.IsNotExist(err) {
 		return "", err
@@ -225,6 +228,9 @@ func prepareWindowsISOAssets(mountedRoot, assetRoot string, profileID int64, tem
 		return "", err
 	}
 	if err := os.WriteFile(filepath.Join(stage, "pxe-setup.cmd"), script, 0644); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(stage, 0755); err != nil {
 		return "", err
 	}
 	if err := os.Rename(stage, final); err != nil {

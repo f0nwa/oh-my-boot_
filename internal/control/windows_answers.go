@@ -33,6 +33,9 @@ func ValidateWindowsAnswer(data []byte) error {
 	if len(data) == 0 || len(data) > maxWindowsAnswerBytes || !utf8.Valid(data) {
 		return fmt.Errorf("invalid answer file size or encoding")
 	}
+	if bytes.HasPrefix(data, []byte{0xef, 0xbb, 0xbf}) {
+		data = data[3:]
+	}
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	depth, roots := 0, 0
 	for {

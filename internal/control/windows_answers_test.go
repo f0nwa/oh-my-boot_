@@ -10,6 +10,12 @@ func TestValidateWindowsAnswer(t *testing.T) {
 	if err := ValidateWindowsAnswer(valid); err != nil {
 		t.Fatalf("valid answer file rejected: %v", err)
 	}
+	t.Run("UTF-8 BOM", func(t *testing.T) {
+		withBOM := append([]byte{0xef, 0xbb, 0xbf}, valid...)
+		if err := ValidateWindowsAnswer(withBOM); err != nil {
+			t.Fatalf("valid answer file with BOM rejected: %v", err)
+		}
+	})
 	for _, tc := range []struct {
 		name string
 		body []byte

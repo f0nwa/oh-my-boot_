@@ -79,3 +79,20 @@ func TestWindowsAnswerRejectsMissingParentAndSymlinkTarget(t *testing.T) {
 		t.Fatal("accepted symlink variant asset target")
 	}
 }
+
+func TestWindowsAnswerAgentUnitAllowsAssetWrites(t *testing.T) {
+	unit, err := os.ReadFile("../../deploy/systemd/pxe-agent.service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(unit), "\n") {
+		if strings.HasPrefix(line, "ReadWritePaths=") {
+			for _, path := range strings.Fields(strings.TrimPrefix(line, "ReadWritePaths=")) {
+				if path == "/srv/pxe/tftp/windows-answers" {
+					return
+				}
+			}
+		}
+	}
+	t.Fatal("Agent systemd sandbox does not allow answer asset writes")
+}

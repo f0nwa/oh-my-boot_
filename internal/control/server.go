@@ -25,6 +25,7 @@ type Storage interface {
 	MenuVersions(context.Context) ([]MenuVersion, error)
 	MenuByID(context.Context, int64) (MenuVersion, error)
 	SaveActiveMenu(context.Context, int64, MenuVersion) error
+	CreateWindowsProfile(context.Context, WindowsProfileSource) (WindowsProfile, error)
 }
 
 type ImagesAPI interface {
@@ -80,6 +81,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	mux.HandleFunc("POST /images/scan", s.protect("images", s.imagesScan))
+	mux.HandleFunc("POST /images/windows-profiles", s.protect("images", s.windowsProfileCreate))
 	mux.HandleFunc("POST /images/smb", s.protect("smb", s.imagesSMBCreate))
 	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", s.imagesSMBRetry))
 	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", s.imagesSMBRemove))

@@ -36,7 +36,7 @@ func validateMenuFolder(path string) error {
 		return fmt.Errorf("menu folder nesting exceeds five levels")
 	}
 	for _, part := range parts {
-		if !safeMenuText(part, 80) {
+		if part == "." || part == ".." || !safeMenuText(part, 80) {
 			return fmt.Errorf("menu folder contains unsupported characters")
 		}
 	}

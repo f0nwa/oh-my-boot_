@@ -42,7 +42,8 @@ func (CommandWindowsISOMounter) IsMounted(ctx context.Context, target string) (b
 		return true, nil
 	}
 	var exit *exec.ExitError
-	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+	// util-linux mountpoint returns 32 when the directory is not mounted.
+	if errors.As(err, &exit) && (exit.ExitCode() == 1 || exit.ExitCode() == 32) {
 		return false, nil
 	}
 	return false, err
@@ -141,7 +142,8 @@ func resolveWindowsISOSource(allowedRoot string, req WindowsISORequest) (string,
 		}
 	}
 	info, err := os.Stat(candidate)
-	if err != nil || !info.Mode().IsRegular() || info.Size() != req.Size || !info.ModTime().Equal(req.Modified) {
+	// PostgreSQL stores the catalog timestamp to microsecond precision.
+	if err != nil || !info.Mode().IsRegular() || info.Size() != req.Size || !info.ModTime().Truncate(time.Microsecond).Equal(req.Modified.Truncate(time.Microsecond)) {
 		return "", fmt.Errorf("ISO source changed or is unavailable")
 	}
 	return candidate, nil

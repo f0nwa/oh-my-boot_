@@ -2,7 +2,8 @@
 Description=Read-only Windows ISO profile %i for PXE installation
 Wants=network-online.target
 After=network-online.target remote-fs.target
-StartLimitIntervalSec=0
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=oneshot

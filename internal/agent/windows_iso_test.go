@@ -126,6 +126,18 @@ func (f *fakeWindowsISOMounter) Unmount(context.Context, string) error {
 	return nil
 }
 
+func TestCommandWindowsISOMounterRecognizesUnmountedDirectory(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "mountpoint"), []byte("#!/bin/sh\nexit 32\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	mounted, err := (CommandWindowsISOMounter{}).IsMounted(context.Background(), t.TempDir())
+	if err != nil || mounted {
+		t.Fatalf("unmounted directory: mounted=%v, err=%v", mounted, err)
+	}
+}
+
 func TestWindowsISORuntimePreparesSelectedSourceAtStableID(t *testing.T) {
 	base := t.TempDir()
 	storage := filepath.Join(base, "key7")
@@ -165,11 +177,15 @@ func TestResolveWindowsISOSourceRejectsChangedOrEscapingFiles(t *testing.T) {
 	if err := os.WriteFile(iso, []byte("ISO"), 0444); err != nil {
 		t.Fatal(err)
 	}
+	modified := time.Date(2025, 8, 26, 6, 9, 33, 378684300, time.UTC)
+	if err := os.Chtimes(iso, modified, modified); err != nil {
+		t.Fatal(err)
+	}
 	info, err := os.Stat(iso)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "Windows/win10.iso", Size: info.Size(), Modified: info.ModTime()}
+	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "Windows/win10.iso", Size: info.Size(), Modified: info.ModTime().Truncate(time.Microsecond)}
 	got, err := resolveWindowsISOSource(base, req)
 	expected, resolveErr := filepath.EvalSymlinks(iso)
 	if err != nil || resolveErr != nil || got != expected {

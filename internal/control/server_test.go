@@ -15,6 +15,7 @@ type authOnlyStore struct {
 
 func (a authOnlyStore) Session(context.Context, string) (User, error)              { return a.user, nil }
 func (a authOnlyStore) Audit(context.Context, int64, string, string, string) error { return nil }
+func (a authOnlyStore) WindowsProfiles(context.Context) ([]WindowsProfile, error) { return []WindowsProfile{}, nil }
 
 func TestServerRedirectsAnonymousDashboard(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}

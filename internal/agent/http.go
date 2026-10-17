@@ -17,7 +17,47 @@ func Handler(applier *Applier) http.Handler {
 }
 
 func HandlerWithSMB(applier *Applier, manager *SMBManager) http.Handler {
+	return HandlerWithManagers(applier, manager, nil)
+}
+
+func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *WindowsISOManager) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /windows-iso/check", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows ISO unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req WindowsISORequest
+		if !decodeSMBRequest(w, r, &req) {
+			return
+		}
+		if err := windows.Check(r.Context(), req); err != nil {
+			http.Error(w, "Windows ISO profile unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /windows-iso/prepare", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows ISO preparation unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req WindowsISORequest
+		if !decodeSMBRequest(w, r, &req) {
+			return
+		}
+		if _, err := resolveWindowsISOSource(windows.SourceRoot, req); err != nil {
+			http.Error(w, "invalid Windows ISO source", http.StatusBadRequest)
+			return
+		}
+		result, err := windows.Prepare(r.Context(), req)
+		if err != nil {
+			http.Error(w, "Windows ISO preparation failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
+	})
 	mux.HandleFunc("POST /smb/mount", func(w http.ResponseWriter, r *http.Request) {
 		if manager == nil {
 			http.Error(w, "SMB unavailable", http.StatusServiceUnavailable)

@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -105,7 +106,7 @@ func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func
 			http.NotFound(w, r)
 			return
 		}
-		if name == "windows11/pxe-setup.cmd" {
+		if privateWinPEScript(name) {
 			client, err := netip.ParseAddrPort(r.RemoteAddr)
 			if err != nil || !netip.MustParsePrefix("10.30.0.0/24").Contains(client.Addr()) {
 				http.NotFound(w, r)
@@ -134,4 +135,16 @@ func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func
 		}
 	})
 	return mux, nil
+}
+
+func privateWinPEScript(name string) bool {
+	if name == "windows11/pxe-setup.cmd" {
+		return true
+	}
+	parts := strings.Split(name, "/")
+	if len(parts) != 3 || parts[0] != "windows-profiles" || parts[2] != "pxe-setup.cmd" {
+		return false
+	}
+	id, err := strconv.ParseUint(parts[1], 10, 63)
+	return err == nil && id > 0
 }

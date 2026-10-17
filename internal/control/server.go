@@ -5,10 +5,13 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"path"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"pxe-platform/internal/agent"
 	"pxe-platform/internal/images"
 )
 
@@ -26,6 +29,9 @@ type Storage interface {
 	MenuByID(context.Context, int64) (MenuVersion, error)
 	SaveActiveMenu(context.Context, int64, MenuVersion) error
 	CreateWindowsProfile(context.Context, WindowsProfileSource) (WindowsProfile, error)
+	WindowsProfile(context.Context, int64) (WindowsProfile, error)
+	WindowsProfiles(context.Context) ([]WindowsProfile, error)
+	SetWindowsProfileResult(context.Context, int64, string, string, string) error
 }
 
 type ImagesAPI interface {
@@ -42,16 +48,23 @@ type SMBMountAPI interface {
 	Remove(context.Context, string) error
 }
 
+type WindowsISOAPI interface {
+	PrepareWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error)
+	CheckWindowsISO(context.Context, agent.WindowsISORequest) error
+}
+
 type Server struct {
 	Store             Storage
 	Boot              *BootClient
 	Agent             *AgentClient
 	Images            ImagesAPI
 	SMB               SMBMountAPI
+	WindowsISO        WindowsISOAPI
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
 	menuMu            sync.Mutex
 	smbMu             sync.Mutex
+	windowsMu         sync.Mutex
 }
 
 type requestContext struct {
@@ -82,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	mux.HandleFunc("POST /images/scan", s.protect("images", s.imagesScan))
 	mux.HandleFunc("POST /images/windows-profiles", s.protect("images", s.windowsProfileCreate))
+	mux.HandleFunc("POST /images/windows-profiles/{id}/prepare", s.protect("images", s.windowsProfilePrepare))
 	mux.HandleFunc("POST /images/smb", s.protect("smb", s.imagesSMBCreate))
 	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", s.imagesSMBRetry))
 	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", s.imagesSMBRemove))
@@ -232,6 +246,12 @@ func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message")}
+	profiles, err := s.Store.WindowsProfiles(r.Context())
+	if err != nil {
+		data.ImageError = "Не удалось прочитать профили Windows ISO"
+	} else {
+		data.WindowsProfiles = profiles
+	}
 	if s.Images == nil {
 		data.ImageError = "Сервис образов недоступен"
 	} else {
@@ -241,11 +261,23 @@ func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
 		} else {
 			data.Storages = catalog.Storages
 			names := make(map[int64]string, len(catalog.Storages))
+			ready := make(map[int64]bool, len(catalog.Storages))
+			smb := make(map[int64]bool, len(catalog.Storages))
 			for _, storage := range catalog.Storages {
 				names[storage.ID] = storage.Name
+				ready[storage.ID] = storage.State == "ready"
+				smb[storage.ID] = storage.Kind == "smb"
 			}
 			for _, image := range catalog.Images {
-				data.ISOImages = append(data.ISOImages, imageRow{Image: image, StorageName: names[image.StorageID]})
+				unsupported := strings.Contains(strings.ToLower(path.Base(image.Path)), "arm64")
+				canPrepare := image.Present && ready[image.StorageID] && smb[image.StorageID] && !unsupported
+				for _, profile := range profiles {
+					if profile.StorageID == image.StorageID && profile.Path == image.Path {
+						canPrepare = false
+						break
+					}
+				}
+				data.ISOImages = append(data.ISOImages, imageRow{Image: image, StorageName: names[image.StorageID], CanPrepare: canPrepare, Unsupported: unsupported})
 			}
 		}
 	}

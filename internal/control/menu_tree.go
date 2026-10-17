@@ -8,11 +8,13 @@ import (
 )
 
 const menuFolderMarker = "# pxe-platform:folders-v1 "
+const menuWindowsMarker = "# pxe-platform:winiso-v1 "
 
 type menuProfile struct {
-	id    string
-	title string
-	base  string
+	id           string
+	title        string
+	base         string
+	windowsISOID int64
 }
 
 type menuTreeNode struct {
@@ -74,6 +76,13 @@ func buildMenuTree(title, diagnosticLabel, diagnosticMessage, ubuntuBase, window
 	if windows11Base != "" {
 		profiles = append(profiles, menuProfile{id: "windows11", title: "Windows 11 installer - WinPE", base: windows11Base})
 	}
+	return buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage, profiles, folders)
+}
+
+func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string) ([]byte, error) {
+	if !safeMenuText(title, 80) || !safeMenuText(diagnosticLabel, 80) || !safeMenuText(diagnosticMessage, 120) {
+		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
+	}
 	root := &menuTreeNode{label: "menu_root"}
 	nextID := 0
 	for _, profile := range profiles {
@@ -107,6 +116,19 @@ func buildMenuTree(title, diagnosticLabel, diagnosticMessage, ubuntuBase, window
 	}
 	var out strings.Builder
 	out.WriteString("#!ipxe\n" + menuFolderMarker + base64.RawURLEncoding.EncodeToString(metadata) + "\n")
+	var selected []int64
+	for _, profile := range profiles {
+		if profile.windowsISOID > 0 {
+			selected = append(selected, profile.windowsISOID)
+		}
+	}
+	if len(selected) > 0 {
+		encoded, err := json.Marshal(selected)
+		if err != nil {
+			return nil, err
+		}
+		out.WriteString(menuWindowsMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
+	}
 	writeMenuNode(&out, root, title, diagnosticLabel)
 	out.WriteString(":diagnostics\n" + "echo " + diagnosticMessage + "\n" + "sleep 3\n" + "goto local\n")
 	for _, profile := range profiles {
@@ -148,6 +170,18 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 
 func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	base := profile.base
+	if profile.windowsISOID > 0 {
+		id := fmt.Sprintf("%d", profile.windowsISOID)
+		prefix := base + "/assets/windows-profiles/" + id + "/"
+		out.WriteString(":" + profile.id + "\n" +
+			"kernel " + base + "/assets/windows/wimboot\n" +
+			"initrd -n winpeshl.ini " + prefix + "winpeshl.ini\n" +
+			"initrd -n pxe-setup.cmd " + prefix + "pxe-setup.cmd\n" +
+			"initrd " + prefix + "boot.wim boot.wim\n" +
+			"boot || goto " + profile.id + "_failed\n" +
+			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
+		return
+	}
 	switch profile.id {
 	case "ubuntu":
 		out.WriteString(":ubuntu\n" +

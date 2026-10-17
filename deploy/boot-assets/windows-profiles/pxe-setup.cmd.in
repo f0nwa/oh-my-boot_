@@ -1,0 +1,36 @@
+@echo off
+set PXE_ISO_PASSWORD=__PXE_ISO_PASSWORD__
+echo PXE Platform: initializing network...
+wpeinit
+if errorlevel 1 goto failed
+wpeutil WaitForNetwork
+if errorlevel 1 goto failed
+
+echo PXE Platform: connecting installation media...
+set /a PXE_ATTEMPT=0 >nul
+:connect_media
+set /a PXE_ATTEMPT+=1 >nul
+if %PXE_ATTEMPT% GEQ 45 goto connect_final
+net use Y: \\10.30.0.10\pxeisos %PXE_ISO_PASSWORD% /user:pxe-iso /persistent:no >nul 2>&1
+if not errorlevel 1 goto media_ready
+set PXE_NET_ERROR=%errorlevel%
+echo PXE Platform: media not ready (error %PXE_NET_ERROR%); retrying %PXE_ATTEMPT%/45...
+ping -n 3 127.0.0.1 >nul
+goto connect_media
+
+:connect_final
+net use Y: \\10.30.0.10\pxeisos %PXE_ISO_PASSWORD% /user:pxe-iso /persistent:no
+if not errorlevel 1 goto media_ready
+goto failed
+
+:media_ready
+if not exist Y:\__PXE_PROFILE_ID__\sources\__PXE_INSTALL_FILE__ goto failed
+echo PXE Platform: starting Windows Setup...
+Y:\__PXE_PROFILE_ID__\sources\setup.exe /InstallFrom:Y:\__PXE_PROFILE_ID__\sources\__PXE_INSTALL_FILE__
+if errorlevel 1 goto failed
+exit /b 0
+
+:failed
+echo PXE Platform: installation media is unavailable or Setup failed.
+echo Check network connectivity and the ISO mount on the PXE server.
+cmd /k

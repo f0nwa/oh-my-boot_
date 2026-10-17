@@ -1,12 +1,15 @@
 package control
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"pxe-platform/internal/agent"
 )
 
 func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
@@ -17,6 +20,13 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Versions = versions
+	profiles, err := s.Store.WindowsProfiles(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать профили Windows ISO", 500)
+		return
+	}
+	activeWindows := map[int64]bool{}
+	activeFolders := map[string]string{}
 	for _, version := range versions {
 		if version.Active {
 			data.MenuTitle = version.Title
@@ -26,6 +36,8 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 			data.MenuWindows10 = strings.Contains(version.Script, "item windows10 Windows 10 installer - WinPE\n")
 			data.MenuWindows11 = strings.Contains(version.Script, "item windows11 Windows 11 installer - WinPE\n")
 			folders := menuFolderPaths(version.Script)
+			activeWindows = menuWindowsProfileIDs(version.Script)
+			activeFolders = folders
 			data.MenuFolderUbuntu = folders["ubuntu"]
 			data.MenuFolderWindows10 = folders["windows10"]
 			data.MenuFolderWindows11 = folders["windows11"]
@@ -33,12 +45,25 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	for _, profile := range profiles {
+		key := fmt.Sprintf("winiso_%d", profile.ID)
+		folder := profile.Folder
+		if activeWindows[profile.ID] {
+			folder = activeFolders[key]
+		}
+		data.MenuWindowsProfiles = append(data.MenuWindowsProfiles, menuWindowsProfileRow{WindowsProfile: profile, Selected: activeWindows[profile.ID], MenuFolder: folder})
+	}
 	render(w, "menu", data)
 }
 
 func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 	title, label, message := r.FormValue("title"), r.FormValue("label"), r.FormValue("message")
-	script, err := BuildMenuFromForm(r.Form, s.BootBaseURL)
+	profiles, err := s.Store.WindowsProfiles(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать профили Windows ISO", 503)
+		return
+	}
+	script, err := BuildMenuFromFormWithProfiles(r.Form, s.BootBaseURL, profiles)
 	if err != nil {
 		http.Error(w, "Недопустимый текст меню: "+err.Error(), 400)
 		return
@@ -68,6 +93,10 @@ func (s *Server) menuRollback(w http.ResponseWriter, r *http.Request) {
 func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersion, action string) {
 	s.menuMu.Lock()
 	defer s.menuMu.Unlock()
+	if err := s.verifyMenuWindowsProfiles(r.Context(), m.Script); err != nil {
+		http.Error(w, "Профиль Windows ISO недоступен: "+err.Error(), http.StatusConflict)
+		return
+	}
 	info := requestInfo(r)
 	if s.Boot == nil {
 		http.Error(w, "Boot недоступен", 503)
@@ -119,4 +148,42 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 	}
 	_ = s.Store.Audit(r.Context(), info.User.ID, action, "ok", "sha256="+m.SHA256)
 	http.Redirect(w, r, "/menu?message=Меню+опубликовано", 303)
+}
+
+func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) error {
+	selected := menuWindowsProfileIDs(script)
+	if len(selected) == 0 {
+		return nil
+	}
+	if s.Images == nil || s.WindowsISO == nil {
+		return fmt.Errorf("службы образов недоступны")
+	}
+	profiles, err := s.Store.WindowsProfiles(ctx)
+	if err != nil {
+		return err
+	}
+	catalog, err := s.Images.Catalog(ctx)
+	if err != nil {
+		return err
+	}
+	for _, p := range profiles {
+		if !selected[p.ID] {
+			continue
+		}
+		if p.State != "ready" || (p.InstallFile != "install.wim" && p.InstallFile != "install.esd") {
+			return fmt.Errorf("профиль %d не подготовлен", p.ID)
+		}
+		current, err := SelectWindowsISO(catalog, p.StorageID, p.Path, p.Title, p.Folder)
+		if err != nil || current.StorageRoot != p.StorageRoot || current.Size != p.Size || !current.Modified.Equal(p.Modified) {
+			return fmt.Errorf("исходный ISO профиля %d изменился", p.ID)
+		}
+		if err := s.WindowsISO.CheckWindowsISO(ctx, agent.WindowsISORequest{ID: p.ID, StorageRoot: p.StorageRoot, RelativePath: p.Path, Size: p.Size, Modified: p.Modified}); err != nil {
+			return fmt.Errorf("файлы профиля %d недоступны", p.ID)
+		}
+		delete(selected, p.ID)
+	}
+	if len(selected) != 0 {
+		return fmt.Errorf("профиль отсутствует")
+	}
+	return nil
 }

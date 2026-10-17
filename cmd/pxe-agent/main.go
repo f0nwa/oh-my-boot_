@@ -35,12 +35,19 @@ func main() {
 		ImagesGID:      imagesUser.Gid,
 		Systemctl:      agent.SMBCommandSystemctl{},
 	}
+	windows := &agent.WindowsISOManager{
+		SourceRoot: "/mnt/pxe-platform-smb",
+		ConfigRoot: "/etc/pxe-platform/winiso",
+		MountRoot:  "/mnt/pxe-platform-iso/profiles",
+		AssetRoot:  "/srv/pxe/tftp/windows-profiles",
+		Systemctl:  agent.SMBCommandSystemctl{},
+	}
 	listener, err := agent.ListenUnix(*socket)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer listener.Close()
-	server := &http.Server{Handler: agent.HandlerWithSMB(applier, smb), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Handler: agent.HandlerWithManagers(applier, smb, windows), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

@@ -1,0 +1,16 @@
+[Unit]
+Description=Read-only Windows ISO profile %i for PXE installation
+Wants=network-online.target
+After=network-online.target remote-fs.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/pxe-winiso-prepare %i
+ExecStop=/usr/bin/umount /mnt/pxe-platform-iso/profiles/%i
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

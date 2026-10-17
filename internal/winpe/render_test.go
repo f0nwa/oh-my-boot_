@@ -48,3 +48,23 @@ func TestRenderStartupRejectsUnsafePasswordAndTemplate(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderProfileStartupTargetsOnlySelectedISO(t *testing.T) {
+	template := []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\pxeisos __PXE_ISO_PASSWORD__ /user:pxe-iso\r\nif not exist Y:\\__PXE_PROFILE_ID__\\sources\\__PXE_INSTALL_FILE__ goto failed\r\nY:\\__PXE_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__PXE_PROFILE_ID__\\sources\\__PXE_INSTALL_FILE__\r\n")
+	got, err := RenderProfileStartup(template, strings.Repeat("A", 32), 17, "install.esd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(got)
+	if !strings.Contains(text, `Y:\17\sources\install.esd`) || !strings.Contains(text, `\\10.30.0.10\pxeisos`) || strings.Contains(text, "__PXE_") {
+		t.Fatalf("profile was not rendered safely: %s", text)
+	}
+	for _, bad := range []struct {
+		id   int64
+		file string
+	}{{0, "install.wim"}, {17, "../install.wim"}, {17, "install.swm"}} {
+		if _, err := RenderProfileStartup(template, strings.Repeat("A", 32), bad.id, bad.file); err == nil {
+			t.Fatalf("accepted unsafe profile render: %+v", bad)
+		}
+	}
+}

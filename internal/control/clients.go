@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"pxe-platform/internal/agent"
 	"pxe-platform/internal/boot"
 	"pxe-platform/internal/images"
 	"pxe-platform/internal/network"
@@ -37,8 +38,25 @@ func socketHTTP(path string) *http.Client {
 func NewBootClient(path string) *BootClient { return &BootClient{http: socketHTTP(path)} }
 func NewAgentClient(path string) *AgentClient {
 	client := socketHTTP(path)
-	client.Timeout = 90 * time.Second
+	client.Timeout = 5 * time.Minute
 	return &AgentClient{http: client}
+}
+
+func (c *AgentClient) PrepareWindowsISO(ctx context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
+	var result agent.WindowsISOResult
+	body, err := json.Marshal(req)
+	if err != nil {
+		return result, err
+	}
+	err = localCall(ctx, c.http, "POST", "/windows-iso/prepare", body, &result)
+	return result, err
+}
+func (c *AgentClient) CheckWindowsISO(ctx context.Context, req agent.WindowsISORequest) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/windows-iso/check", body, nil)
 }
 func NewImagesClient(path string) *ImagesClient { return &ImagesClient{http: socketHTTP(path)} }
 

@@ -142,6 +142,17 @@ func (s *Server) imagesSMBRemove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Дождитесь завершения сканирования", http.StatusConflict)
 		return
 	}
+	profiles, err := s.Store.WindowsProfiles(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить профили ISO", http.StatusServiceUnavailable)
+		return
+	}
+	for _, profile := range profiles {
+		if profile.StorageID == storage.ID {
+			http.Error(w, "Хранилище используется профилем Windows ISO", http.StatusConflict)
+			return
+		}
+	}
 	if err := s.SMB.Remove(r.Context(), storage.Key); err != nil {
 		s.auditSMB(r, "smb.remove", "error", storage.ID)
 		http.Error(w, "Не удалось отключить SMB. Запись сохранена для повторной попытки.", http.StatusServiceUnavailable)

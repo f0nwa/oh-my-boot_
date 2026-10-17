@@ -110,6 +110,36 @@ func TestWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 	}
 }
 
+func TestProfileWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "windows-profiles", "17")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pxe-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		remote string
+		want   int
+	}{{"10.30.0.7:12345", http.StatusOK}, {"192.168.10.55:12345", http.StatusNotFound}} {
+		req := httptest.NewRequest(http.MethodGet, "/assets/windows-profiles/17/pxe-setup.cmd", nil)
+		req.RemoteAddr = tc.remote
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		if res.Code != tc.want {
+			t.Fatalf("remote=%s status=%d want=%d", tc.remote, res.Code, tc.want)
+		}
+		if tc.want != http.StatusOK && strings.Contains(res.Body.String(), "limited-secret") {
+			t.Fatalf("startup script leaked to %s", tc.remote)
+		}
+	}
+}
+
 func TestUbuntuISOEndpointServesOnlySelectedFile(t *testing.T) {
 	assets := t.TempDir()
 	storage := t.TempDir()

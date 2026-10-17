@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"pxe-platform/internal/agent"
 	"pxe-platform/internal/images"
 )
 
@@ -59,14 +60,64 @@ func (s *Server) windowsProfileCreate(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/images?message=Профиль+создан", http.StatusSeeOther)
 }
 
+func (s *Server) windowsProfilePrepare(w http.ResponseWriter, r *http.Request) {
+	s.windowsMu.Lock()
+	defer s.windowsMu.Unlock()
+	if s.Images == nil || s.WindowsISO == nil {
+		http.Error(w, "Подготовка Windows ISO недоступна", http.StatusServiceUnavailable)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, "Неверный профиль", http.StatusBadRequest)
+		return
+	}
+	profile, err := s.Store.WindowsProfile(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Профиль не найден", http.StatusNotFound)
+		return
+	}
+	catalog, err := s.Images.Catalog(r.Context())
+	if err != nil {
+		http.Error(w, "Каталог ISO недоступен", http.StatusServiceUnavailable)
+		return
+	}
+	current, err := SelectWindowsISO(catalog, profile.StorageID, profile.Path, profile.Title, profile.Folder)
+	if err != nil || current.StorageRoot != profile.StorageRoot || current.Size != profile.Size || !current.Modified.Equal(profile.Modified) {
+		_ = s.Store.SetWindowsProfileResult(r.Context(), id, "unavailable", "", "Исходный ISO изменился или недоступен")
+		http.Error(w, "Исходный ISO изменился или недоступен; обновите каталог", http.StatusConflict)
+		return
+	}
+	if err := s.Store.SetWindowsProfileResult(r.Context(), id, "preparing", "", ""); err != nil {
+		http.Error(w, "Не удалось начать подготовку", http.StatusServiceUnavailable)
+		return
+	}
+	result, err := s.WindowsISO.PrepareWindowsISO(r.Context(), agent.WindowsISORequest{ID: id, StorageRoot: current.StorageRoot, RelativePath: current.Path, Size: current.Size, Modified: current.Modified})
+	if err != nil {
+		_ = s.Store.SetWindowsProfileResult(r.Context(), id, "error", "", "Не удалось подготовить ISO")
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-profile.prepare", "error", fmt.Sprintf("id=%d", id))
+		http.Error(w, "Не удалось подготовить ISO", http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.Store.SetWindowsProfileResult(r.Context(), id, "ready", result.InstallFile, ""); err != nil {
+		http.Error(w, "Не удалось сохранить результат подготовки", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-profile.prepare", "ok", fmt.Sprintf("id=%d", id))
+	http.Redirect(w, r, "/images?message=ISO+подготовлен", http.StatusSeeOther)
+}
+
 // SelectWindowsISO resolves a form selection against the current Images catalog.
 // The browser supplies only a storage ID and relative path, never a host path.
 func SelectWindowsISO(catalog images.Catalog, storageID int64, imagePath, title, folder string) (WindowsProfileSource, error) {
-	if storageID <= 0 || !safeMenuText(title, 80) || validateMenuFolder(folder) != nil {
+	if storageID <= 0 || !safeMenuText(title, 80) || !isASCII(title) || validateMenuFolder(folder) != nil || !isASCII(folder) {
 		return WindowsProfileSource{}, fmt.Errorf("invalid Windows profile selection")
 	}
 	if imagePath == "" || path.IsAbs(imagePath) || path.Clean(imagePath) != imagePath || strings.ContainsAny(imagePath, "\\\x00") || !strings.EqualFold(path.Ext(imagePath), ".iso") {
 		return WindowsProfileSource{}, fmt.Errorf("invalid ISO path")
+	}
+	if strings.Contains(strings.ToLower(path.Base(imagePath)), "arm64") {
+		return WindowsProfileSource{}, fmt.Errorf("ARM64 ISO is not supported by the x64 profile")
 	}
 	for _, component := range strings.Split(imagePath, "/") {
 		if component == "" || component == "." || component == ".." {
@@ -80,7 +131,7 @@ func SelectWindowsISO(catalog images.Catalog, storageID int64, imagePath, title,
 			break
 		}
 	}
-	if storage == nil || storage.State != "ready" || !filepath.IsAbs(storage.Root) {
+	if storage == nil || storage.Kind != "smb" || storage.State != "ready" || !filepath.IsAbs(storage.Root) {
 		return WindowsProfileSource{}, fmt.Errorf("ISO storage is unavailable")
 	}
 	for _, image := range catalog.Images {

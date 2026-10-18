@@ -31,6 +31,7 @@ func main() {
 		CredentialsDir: "/etc/pxe-platform/smb",
 		UnitDir:        "/etc/systemd/system",
 		MountRoot:      "/mnt/pxe-platform-smb",
+		UploadRoot:     "/mnt/pxe-platform-smb-upload",
 		ImagesUID:      imagesUser.Uid,
 		ImagesGID:      imagesUser.Gid,
 		Systemctl:      agent.SMBCommandSystemctl{},

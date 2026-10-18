@@ -16,6 +16,8 @@ var (
 
 func Root(key string) string { return filepath.Join("/mnt/pxe-platform-smb", key) }
 
+func UploadRoot(key string) string { return filepath.Join("/mnt/pxe-platform-smb-upload", key) }
+
 // ParsePath splits a share path entered in the dashboard without normalizing
 // dot segments or empty components that could change the requested location.
 func ParsePath(value string) (server, share, subpath string, err error) {

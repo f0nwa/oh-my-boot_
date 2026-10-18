@@ -107,6 +107,30 @@ func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *Windows
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("POST /smb/enable-upload", func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "SMB unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			Key     string `json:"key"`
+			Server  string `json:"server"`
+			Share   string `json:"share"`
+			Subpath string `json:"subpath"`
+		}
+		if !decodeSMBRequest(w, r, &req) {
+			return
+		}
+		if err := smbstorage.Validate(req.Key, req.Server, req.Share, req.Subpath); err != nil {
+			http.Error(w, "invalid SMB request", http.StatusBadRequest)
+			return
+		}
+		if err := manager.EnableUpload(r.Context(), req.Key, req.Server, req.Share, req.Subpath); err != nil {
+			http.Error(w, "SMB upload mount failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /smb/remove", func(w http.ResponseWriter, r *http.Request) {
 		if manager == nil {
 			http.Error(w, "SMB unavailable", http.StatusServiceUnavailable)

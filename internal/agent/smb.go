@@ -36,9 +36,62 @@ type SMBManager struct {
 	CredentialsDir string
 	UnitDir        string
 	MountRoot      string
+	UploadRoot     string
 	ImagesUID      string
 	ImagesGID      string
 	Systemctl      SMBSystemctl
+}
+
+func (m *SMBManager) EnableUpload(ctx context.Context, key, server, share, subpath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := smbstorage.Validate(key, server, share, subpath); err != nil {
+		return err
+	}
+	if m.Systemctl == nil || m.UploadRoot == "" || m.ImagesUID == "" || m.ImagesGID == "" {
+		return fmt.Errorf("SMB upload mount manager is not configured")
+	}
+	readUnitPath := filepath.Join(m.UnitDir, smbUnitName(filepath.Join(m.MountRoot, key)))
+	readUnit, err := os.ReadFile(readUnitPath)
+	if err != nil {
+		return err
+	}
+	source := "//" + server + "/" + share
+	if subpath != "" {
+		source += "/" + subpath
+	}
+	if !strings.Contains(string(readUnit), "What="+source+"\n") {
+		return fmt.Errorf("SMB upload source does not match existing storage")
+	}
+	credPath := filepath.Join(m.CredentialsDir, key+".cred")
+	if info, err := os.Lstat(credPath); err != nil || !info.Mode().IsRegular() {
+		return fmt.Errorf("SMB credentials unavailable")
+	}
+	target := filepath.Join(m.UploadRoot, key)
+	unitName := smbUnitName(target)
+	unitPath := filepath.Join(m.UnitDir, unitName)
+	if info, err := os.Lstat(unitPath); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("refusing to replace non-regular upload mount unit")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	} else {
+		if err := os.MkdirAll(target, 0755); err != nil {
+			return err
+		}
+		options := "credentials=" + credPath + ",rw,nosuid,nodev,noexec,uid=" + m.ImagesUID + ",gid=" + m.ImagesGID + ",file_mode=0640,dir_mode=0750"
+		unit := "[Unit]\nDescription=PXE Platform SMB ISO upload " + key + "\nAfter=network-online.target\nWants=network-online.target\n\n" +
+			"[Mount]\nWhat=" + source + "\nWhere=" + target + "\nType=cifs\nOptions=" + options + "\n\n" +
+			"[Install]\nWantedBy=multi-user.target\n"
+		if err := writeAtomic(unitPath, []byte(unit), 0644); err != nil {
+			return err
+		}
+	}
+	if err := m.Systemctl.Run(ctx, "daemon-reload"); err != nil {
+		return err
+	}
+	return m.Systemctl.Run(ctx, "enable", "--now", unitName)
 }
 
 func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
@@ -57,6 +110,31 @@ func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
 	unitName := smbUnitName(target)
 	unitPath := filepath.Join(m.UnitDir, unitName)
 	credPath := filepath.Join(m.CredentialsDir, req.Key+".cred")
+	source := "//" + req.Server + "/" + req.Share
+	if req.Subpath != "" {
+		source += "/" + req.Subpath
+	}
+	var uploadUnitName string
+	if m.UploadRoot != "" {
+		uploadUnitName = smbUnitName(filepath.Join(m.UploadRoot, req.Key))
+		uploadUnitPath := filepath.Join(m.UnitDir, uploadUnitName)
+		if info, err := os.Lstat(uploadUnitPath); err == nil {
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("refusing to replace non-regular upload mount unit")
+			}
+			unit, err := os.ReadFile(uploadUnitPath)
+			if err != nil || !strings.Contains(string(unit), "What="+source+"\n") {
+				return fmt.Errorf("existing upload mount source differs from SMB storage")
+			}
+			if err := m.Systemctl.Run(ctx, "stop", uploadUnitName); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		} else {
+			uploadUnitName = ""
+		}
+	}
 	if err := os.MkdirAll(m.CredentialsDir, 0700); err != nil {
 		return err
 	}
@@ -80,10 +158,6 @@ func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
 		return err
 	}
 	options := "credentials=" + credPath + ",ro,nosuid,nodev,noexec,uid=" + m.ImagesUID + ",gid=" + m.ImagesGID + ",file_mode=0440,dir_mode=0550"
-	source := "//" + req.Server + "/" + req.Share
-	if req.Subpath != "" {
-		source += "/" + req.Subpath
-	}
 	unit := "[Unit]\nDescription=PXE Platform SMB ISO storage " + req.Key + "\nAfter=network-online.target\nWants=network-online.target\n\n" +
 		"[Mount]\nWhat=" + source + "\nWhere=" + target + "\nType=cifs\nOptions=" + options + "\n\n" +
 		"[Install]\nWantedBy=multi-user.target\n"
@@ -93,7 +167,13 @@ func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
 	if err := m.Systemctl.Run(ctx, "daemon-reload"); err != nil {
 		return err
 	}
-	return m.Systemctl.Run(ctx, "enable", "--now", unitName)
+	if err := m.Systemctl.Run(ctx, "enable", "--now", unitName); err != nil {
+		return err
+	}
+	if uploadUnitName != "" {
+		return m.Systemctl.Run(ctx, "enable", "--now", uploadUnitName)
+	}
+	return nil
 }
 
 func (m *SMBManager) Remove(ctx context.Context, key string) error {
@@ -108,6 +188,23 @@ func (m *SMBManager) Remove(ctx context.Context, key string) error {
 	target := filepath.Join(m.MountRoot, key)
 	unitPath := filepath.Join(m.UnitDir, smbUnitName(target))
 	credPath := filepath.Join(m.CredentialsDir, key+".cred")
+	if m.UploadRoot != "" {
+		uploadTarget := filepath.Join(m.UploadRoot, key)
+		uploadUnitPath := filepath.Join(m.UnitDir, smbUnitName(uploadTarget))
+		if _, err := os.Lstat(uploadUnitPath); err == nil {
+			if err := m.Systemctl.Run(ctx, "disable", "--now", filepath.Base(uploadUnitPath)); err != nil {
+				return err
+			}
+			if err := os.Remove(uploadTarget); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			if err := os.Remove(uploadUnitPath); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
 	if _, err := os.Lstat(unitPath); err == nil {
 		if err := m.Systemctl.Run(ctx, "disable", "--now", filepath.Base(unitPath)); err != nil {
 			return err

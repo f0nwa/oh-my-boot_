@@ -16,7 +16,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/etc/pxe-platform /etc/systemd/system /mnt/pxe-platform-smb /run/pxe-platform /var/lib/pxe-platform-agent /srv/pxe/tftp/windows-answers
+ReadWritePaths=/etc/pxe-platform /etc/systemd/system /mnt/pxe-platform-smb /mnt/pxe-platform-smb-upload /run/pxe-platform /var/lib/pxe-platform-agent /srv/pxe/tftp/windows-answers
 RestrictAddressFamilies=AF_UNIX
 
 [Install]

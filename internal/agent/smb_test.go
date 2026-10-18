@@ -24,7 +24,7 @@ func (f *fakeSMBSystemctl) Run(_ context.Context, args ...string) error {
 func testSMBManager(t *testing.T, runner *fakeSMBSystemctl) *SMBManager {
 	t.Helper()
 	base := t.TempDir()
-	return &SMBManager{CredentialsDir: filepath.Join(base, "creds"), UnitDir: filepath.Join(base, "units"), MountRoot: filepath.Join(base, "mounts"), ImagesUID: "123", ImagesGID: "456", Systemctl: runner}
+	return &SMBManager{CredentialsDir: filepath.Join(base, "creds"), UnitDir: filepath.Join(base, "units"), MountRoot: filepath.Join(base, "mounts"), UploadRoot: filepath.Join(base, "uploads"), ImagesUID: "123", ImagesGID: "456", Systemctl: runner}
 }
 
 func validSMBRequest() SMBMountRequest {
@@ -55,6 +55,113 @@ func TestSMBMountWritesProtectedCredentialsAndNoPasswordInUnitOrCommands(t *test
 		if strings.Contains(strings.Join(args, " "), req.Password) {
 			t.Fatalf("password in systemctl arguments: %q", args)
 		}
+	}
+}
+
+func TestSMBUploadMountUsesExistingCredentialsWithoutChangingReadMount(t *testing.T) {
+	runner := &fakeSMBSystemctl{}
+	manager := testSMBManager(t, runner)
+	req := validSMBRequest()
+	if err := manager.Mount(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	readUnit := filepath.Join(manager.UnitDir, smbUnitName(filepath.Join(manager.MountRoot, req.Key)))
+	before, err := os.ReadFile(readUnit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.EnableUpload(context.Background(), req.Key, req.Server, req.Share, req.Subpath); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(readUnit)
+	if err != nil || string(before) != string(after) {
+		t.Fatalf("read-only mount changed: %v", err)
+	}
+	uploadUnit := filepath.Join(manager.UnitDir, smbUnitName(filepath.Join(manager.UploadRoot, req.Key)))
+	unit, err := os.ReadFile(uploadUnit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(unit), "rw,nosuid,nodev,noexec") || !strings.Contains(string(unit), "What=//192.168.10.10/Downloads/iso\n") || strings.Contains(string(unit), req.Password) {
+		t.Fatalf("upload mount options or credentials unsafe: %s", unit)
+	}
+}
+
+func TestSMBUploadMountCanRetryAfterSystemctlFailure(t *testing.T) {
+	runner := &fakeSMBSystemctl{fail: "enable"}
+	manager := testSMBManager(t, runner)
+	req := validSMBRequest()
+	runner.fail = ""
+	if err := manager.Mount(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	runner.fail = "enable"
+	if err := manager.EnableUpload(context.Background(), req.Key, req.Server, req.Share, req.Subpath); err == nil {
+		t.Fatal("expected mount failure")
+	}
+	runner.fail = ""
+	if err := manager.EnableUpload(context.Background(), req.Key, req.Server, req.Share, req.Subpath); err != nil {
+		t.Fatal(err)
+	}
+	enables := 0
+	for _, call := range runner.calls {
+		if len(call) == 3 && call[0] == "enable" && strings.Contains(call[2], "uploads") {
+			enables++
+		}
+	}
+	if enables != 2 {
+		t.Fatalf("want two upload mount attempts, got %d", enables)
+	}
+}
+
+func TestSMBRemoveCleansUpUploadMount(t *testing.T) {
+	runner := &fakeSMBSystemctl{}
+	manager := testSMBManager(t, runner)
+	req := validSMBRequest()
+	if err := manager.Mount(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.EnableUpload(context.Background(), req.Key, req.Server, req.Share, req.Subpath); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Remove(context.Background(), req.Key); err != nil {
+		t.Fatal(err)
+	}
+	uploadUnit := filepath.Join(manager.UnitDir, smbUnitName(filepath.Join(manager.UploadRoot, req.Key)))
+	if _, err := os.Stat(uploadUnit); !os.IsNotExist(err) {
+		t.Fatalf("upload unit remains: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(manager.UploadRoot, req.Key)); !os.IsNotExist(err) {
+		t.Fatalf("upload mount directory remains: %v", err)
+	}
+}
+
+func TestSMBReconnectRestartsPreviouslyEnabledUploadMount(t *testing.T) {
+	runner := &fakeSMBSystemctl{}
+	manager := testSMBManager(t, runner)
+	req := validSMBRequest()
+	if err := manager.Mount(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.EnableUpload(context.Background(), req.Key, req.Server, req.Share, req.Subpath); err != nil {
+		t.Fatal(err)
+	}
+	req.Password = "new-password"
+	if err := manager.Mount(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	uploadUnitName := smbUnitName(filepath.Join(manager.UploadRoot, req.Key))
+	stopped, started := false, 0
+	for _, call := range runner.calls {
+		if len(call) == 2 && call[0] == "stop" && call[1] == uploadUnitName {
+			stopped = true
+		}
+		if len(call) == 3 && call[0] == "enable" && call[2] == uploadUnitName {
+			started++
+		}
+	}
+	if !stopped || started != 2 {
+		t.Fatalf("upload mount was not refreshed after credentials change: %v", runner.calls)
 	}
 }
 

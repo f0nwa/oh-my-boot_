@@ -37,6 +37,11 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 		"menu PXE Platform / Windows\n",
 		"menu PXE Platform / Windows / Установщики\n",
 		"item ubuntu Ubuntu Desktop 26.04.1\n",
+		"iseq ${platform} efi && goto ubuntu_efi || goto ubuntu_boot\n" +
+			":ubuntu_efi\n" +
+			"shim http://10.30.0.10:8080/assets/ubuntu/bootx64.efi || goto ubuntu_failed\n" +
+			":ubuntu_boot\n" +
+			"boot || goto ubuntu_failed\n",
 		"item windows10 Windows 10 installer - WinPE\n",
 		"item windows11 Windows 11 installer - WinPE\n",
 		"kernel http://10.30.0.10:8080/assets/windows/wimboot\n",

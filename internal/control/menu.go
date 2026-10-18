@@ -99,15 +99,7 @@ func buildMenu(title, label, message, ubuntuBase, windows10Base, windows11Base s
 		"sleep 3\n" +
 		"goto local\n"
 	if ubuntuBase != "" {
-		script += ":ubuntu\n" +
-			"kernel " + ubuntuBase + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + ubuntuBase + "/images/ubuntu-desktop.iso ---\n" +
-			"initrd " + ubuntuBase + "/assets/ubuntu/initrd\n" +
-			"shim " + ubuntuBase + "/assets/ubuntu/bootx64.efi || goto ubuntu_failed\n" +
-			"boot || goto ubuntu_failed\n" +
-			":ubuntu_failed\n" +
-			"echo Ubuntu boot failed\n" +
-			"sleep 5\n" +
-			"goto local\n"
+		script += ubuntuBootScript(ubuntuBase)
 	}
 	if windows10Base != "" {
 		script += ":windows10\n" +
@@ -134,4 +126,19 @@ func buildMenu(title, label, message, ubuntuBase, windows10Base, windows11Base s
 	script += ":local\n" +
 		"exit\n"
 	return []byte(script), nil
+}
+
+func ubuntuBootScript(base string) string {
+	return ":ubuntu\n" +
+		"kernel " + base + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + base + "/images/ubuntu-desktop.iso ---\n" +
+		"initrd " + base + "/assets/ubuntu/initrd\n" +
+		"iseq ${platform} efi && goto ubuntu_efi || goto ubuntu_boot\n" +
+		":ubuntu_efi\n" +
+		"shim " + base + "/assets/ubuntu/bootx64.efi || goto ubuntu_failed\n" +
+		":ubuntu_boot\n" +
+		"boot || goto ubuntu_failed\n" +
+		":ubuntu_failed\n" +
+		"echo Ubuntu boot failed\n" +
+		"sleep 5\n" +
+		"goto local\n"
 }

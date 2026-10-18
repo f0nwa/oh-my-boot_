@@ -129,8 +129,11 @@ func TestUbuntuMenuLoadsKernelInitrdAndISOOverHTTP(t *testing.T) {
 		"item ubuntu Ubuntu Desktop 26.04.1\n",
 		"kernel http://10.30.0.10:8080/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=http://10.30.0.10:8080/images/ubuntu-desktop.iso ---\n",
 		"initrd http://10.30.0.10:8080/assets/ubuntu/initrd\n",
-		"shim http://10.30.0.10:8080/assets/ubuntu/bootx64.efi || goto ubuntu_failed\n",
-		"boot || goto ubuntu_failed\n",
+		"iseq ${platform} efi && goto ubuntu_efi || goto ubuntu_boot\n" +
+			":ubuntu_efi\n" +
+			"shim http://10.30.0.10:8080/assets/ubuntu/bootx64.efi || goto ubuntu_failed\n" +
+			":ubuntu_boot\n" +
+			"boot || goto ubuntu_failed\n",
 	} {
 		if !strings.Contains(string(script), want) {
 			t.Fatalf("missing %q in %q", want, script)

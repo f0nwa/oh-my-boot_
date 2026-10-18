@@ -205,12 +205,7 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	}
 	switch profile.id {
 	case "ubuntu":
-		out.WriteString(":ubuntu\n" +
-			"kernel " + base + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + base + "/images/ubuntu-desktop.iso ---\n" +
-			"initrd " + base + "/assets/ubuntu/initrd\n" +
-			"shim " + base + "/assets/ubuntu/bootx64.efi || goto ubuntu_failed\n" +
-			"boot || goto ubuntu_failed\n" +
-			":ubuntu_failed\necho Ubuntu boot failed\nsleep 5\ngoto local\n")
+		out.WriteString(ubuntuBootScript(base))
 	case "windows10", "windows11":
 		out.WriteString(":" + profile.id + "\n" +
 			"kernel " + base + "/assets/windows/wimboot\n")

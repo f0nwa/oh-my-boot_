@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"path"
@@ -92,18 +93,24 @@ func (s *Server) windowsProfilePrepare(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось начать подготовку", http.StatusServiceUnavailable)
 		return
 	}
-	result, err := s.WindowsISO.PrepareWindowsISO(r.Context(), agent.WindowsISORequest{ID: id, StorageRoot: current.StorageRoot, RelativePath: current.Path, Size: current.Size, Modified: current.Modified})
+	// Preparing continues after a browser disconnect so the saved state reflects
+	// the work performed by the systemd unit.
+	prepareCtx, cancelPrepare := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Minute)
+	defer cancelPrepare()
+	result, err := s.WindowsISO.PrepareWindowsISO(prepareCtx, agent.WindowsISORequest{ID: id, StorageRoot: current.StorageRoot, RelativePath: current.Path, Size: current.Size, Modified: current.Modified})
+	finalCtx, cancelFinal := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
+	defer cancelFinal()
 	if err != nil {
-		_ = s.Store.SetWindowsProfileResult(r.Context(), id, "error", "", "Не удалось подготовить ISO")
-		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-profile.prepare", "error", fmt.Sprintf("id=%d", id))
+		_ = s.Store.SetWindowsProfileResult(finalCtx, id, "error", "", "Не удалось подготовить ISO")
+		_ = s.Store.Audit(finalCtx, requestInfo(r).User.ID, "windows-profile.prepare", "error", fmt.Sprintf("id=%d", id))
 		http.Error(w, "Не удалось подготовить ISO", http.StatusServiceUnavailable)
 		return
 	}
-	if err := s.Store.SetWindowsProfileResult(r.Context(), id, "ready", result.InstallFile, ""); err != nil {
+	if err := s.Store.SetWindowsProfileResult(finalCtx, id, "ready", result.InstallFile, ""); err != nil {
 		http.Error(w, "Не удалось сохранить результат подготовки", http.StatusServiceUnavailable)
 		return
 	}
-	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-profile.prepare", "ok", fmt.Sprintf("id=%d", id))
+	_ = s.Store.Audit(finalCtx, requestInfo(r).User.ID, "windows-profile.prepare", "ok", fmt.Sprintf("id=%d", id))
 	http.Redirect(w, r, "/images?message=ISO+подготовлен", http.StatusSeeOther)
 }
 

@@ -50,6 +50,27 @@ type recordingWindowsISOAPI struct {
 	req agent.WindowsISORequest
 }
 
+type cancelingWindowsISOAPI struct {
+	cancel context.CancelFunc
+}
+
+func (a cancelingWindowsISOAPI) PrepareWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error) {
+	a.cancel()
+	return agent.WindowsISOResult{InstallFile: "install.wim"}, nil
+}
+func (a cancelingWindowsISOAPI) CheckWindowsISO(context.Context, agent.WindowsISORequest) error {
+	return nil
+}
+
+type contextCheckingProfileStore struct{ *recordingWindowsProfileStore }
+
+func (s contextCheckingProfileStore) SetWindowsProfileResult(ctx context.Context, id int64, state, installFile, lastError string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.recordingWindowsProfileStore.SetWindowsProfileResult(ctx, id, state, installFile, lastError)
+}
+
 func (a *recordingWindowsISOAPI) PrepareWindowsISO(_ context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
 	a.req = req
 	return agent.WindowsISOResult{InstallFile: "install.wim"}, nil
@@ -74,6 +95,26 @@ func TestWindowsProfilePrepareUsesSavedSourceFingerprint(t *testing.T) {
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusSeeOther || store.state != "ready" || store.install != "install.wim" || preparer.req.ID != 17 || preparer.req.Size != source.Size || !preparer.req.Modified.Equal(modified) {
 		t.Fatalf("status=%d stored=%s/%s agent=%+v body=%s", res.Code, store.state, store.install, preparer.req, res.Body.String())
+	}
+}
+
+func TestWindowsProfilePreparePersistsResultAfterBrowserDisconnect(t *testing.T) {
+	modified := time.Date(2026, 10, 18, 20, 53, 51, 0, time.UTC)
+	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/pxe-platform-smb/key7", Path: "Windows11.ISO", Size: 8748939264, Modified: modified, Title: "Windows 11 26H2", Folder: "Windows"}
+	record := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 3, WindowsProfileSource: source, State: "pending"}}
+	store := contextCheckingProfileStore{record}
+	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Root: source.StorageRoot, State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: source.Path, Size: source.Size, Modified: source.Modified, Present: true}}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := &Server{Store: store, Images: api, WindowsISO: cancelingWindowsISOAPI{cancel: cancel}}
+	form := url.Values{"csrf": {CSRFToken("test-token")}}
+	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles/3/prepare", strings.NewReader(form.Encode())).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, req)
+	if record.state != "ready" || record.install != "install.wim" {
+		t.Fatalf("status=%d stored=%s/%s body=%s", res.Code, record.state, record.install, res.Body.String())
 	}
 }
 

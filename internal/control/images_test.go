@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,10 +13,13 @@ import (
 )
 
 type fakeImagesAPI struct {
-	catalog images.Catalog
-	err     error
-	scanErr error
-	scans   []int64
+	catalog        images.Catalog
+	err            error
+	scanErr        error
+	scans          []int64
+	uploaded       string
+	selectedFolder string
+	folders        []string
 }
 
 type auditRecordingStore struct {
@@ -40,9 +44,19 @@ func (f *fakeImagesAPI) Scan(_ context.Context, id int64) error {
 func (f *fakeImagesAPI) CreateSMB(context.Context, images.ManagedStorageInput) (images.Storage, error) {
 	return images.Storage{}, f.err
 }
-func (f *fakeImagesAPI) MarkSMBError(context.Context, int64) error     { return f.err }
-func (f *fakeImagesAPI) MarkSMBScanError(context.Context, int64) error { return f.err }
-func (f *fakeImagesAPI) DeleteSMB(context.Context, int64) error        { return f.err }
+func (f *fakeImagesAPI) MarkSMBError(context.Context, int64) error        { return f.err }
+func (f *fakeImagesAPI) MarkSMBScanError(context.Context, int64) error    { return f.err }
+func (f *fakeImagesAPI) DeleteSMB(context.Context, int64) error           { return f.err }
+func (f *fakeImagesAPI) Folders(context.Context, int64) ([]string, error) { return f.folders, f.err }
+func (f *fakeImagesAPI) UploadISO(_ context.Context, _ int64, folder, name string, body io.Reader, _ int64) (images.UploadResult, error) {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return images.UploadResult{}, err
+	}
+	f.uploaded = string(data)
+	f.selectedFolder = folder
+	return images.UploadResult{Path: folder + "/" + name, Size: int64(len(data))}, f.err
+}
 
 func TestImagesPageEscapesISONameAndShowsStorage(t *testing.T) {
 	api := &fakeImagesAPI{catalog: images.Catalog{

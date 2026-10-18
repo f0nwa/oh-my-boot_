@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -80,6 +81,36 @@ func (c *ImagesClient) Catalog(ctx context.Context) (images.Catalog, error) {
 	return v, err
 }
 
+func (c *ImagesClient) Folders(ctx context.Context, id int64) ([]string, error) {
+	var folders []string
+	client := &http.Client{Transport: c.http.Transport, Timeout: 30 * time.Second}
+	err := localCall(ctx, client, "GET", "/smb-storages/"+strconv.FormatInt(id, 10)+"/folders", nil, &folders)
+	return folders, err
+}
+
+func (c *ImagesClient) UploadISO(ctx context.Context, id int64, folder, name string, body io.Reader, size int64) (images.UploadResult, error) {
+	var result images.UploadResult
+	query := url.Values{"folder": {folder}, "name": {name}}
+	path := "/smb-storages/" + strconv.FormatInt(id, 10) + "/upload?" + query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix"+path, io.NopCloser(body))
+	if err != nil {
+		return result, err
+	}
+	req.ContentLength = size
+	client := &http.Client{Transport: c.http.Transport}
+	res, err := client.Do(req)
+	if err != nil {
+		return result, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		message, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
+		return result, fmt.Errorf("image upload: %d %s", res.StatusCode, string(message))
+	}
+	err = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&result)
+	return result, err
+}
+
 func (c *ImagesClient) Scan(ctx context.Context, id int64) error {
 	body, err := json.Marshal(map[string]int64{"storage_id": id})
 	if err != nil {
@@ -116,6 +147,14 @@ func (c *AgentClient) Mount(ctx context.Context, key, server, share, subpath, us
 		return err
 	}
 	return localCall(ctx, c.http, "POST", "/smb/mount", body, nil)
+}
+
+func (c *AgentClient) EnableUpload(ctx context.Context, key, server, share, subpath string) error {
+	body, err := json.Marshal(map[string]string{"key": key, "server": server, "share": share, "subpath": subpath})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/smb/enable-upload", body, nil)
 }
 
 func (c *AgentClient) Remove(ctx context.Context, key string) error {

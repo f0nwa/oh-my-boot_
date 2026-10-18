@@ -88,6 +88,12 @@ func (f *fakeSMBMountAPI) Remove(_ context.Context, _ string) error {
 	*f.events = append(*f.events, "remove")
 	return f.removeErr
 }
+func (f *fakeSMBMountAPI) EnableUpload(_ context.Context, _, _, _, _ string) error {
+	if f.events != nil {
+		*f.events = append(*f.events, "enable-upload")
+	}
+	return f.mountErr
+}
 
 func smbForm() url.Values {
 	return url.Values{"path": {"//192.168.10.10/Downloads/iso"}, "username": {"reader"}, "password": {"secret"}, "csrf": {CSRFToken("test-token")}}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
 	"strconv"
@@ -40,6 +41,8 @@ type Storage interface {
 
 type ImagesAPI interface {
 	Catalog(context.Context) (images.Catalog, error)
+	Folders(context.Context, int64) ([]string, error)
+	UploadISO(context.Context, int64, string, string, io.Reader, int64) (images.UploadResult, error)
 	Scan(context.Context, int64) error
 	CreateSMB(context.Context, images.ManagedStorageInput) (images.Storage, error)
 	MarkSMBError(context.Context, int64) error
@@ -49,6 +52,7 @@ type ImagesAPI interface {
 
 type SMBMountAPI interface {
 	Mount(context.Context, string, string, string, string, string, string, string) error
+	EnableUpload(context.Context, string, string, string, string) error
 	Remove(context.Context, string) error
 }
 
@@ -103,6 +107,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
+	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
+	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
+	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
 	mux.HandleFunc("POST /images/scan", s.protect("images", s.imagesScan))
 	mux.HandleFunc("POST /images/windows-profiles", s.protect("images", s.windowsProfileCreate))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/prepare", s.protect("images", s.windowsProfilePrepare))
@@ -139,14 +146,25 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 		}
 		if r.Method == http.MethodPost {
 			var err error
-			if r.Pattern == "POST /images/windows-profiles/{id}/answers" {
+			if r.Pattern == "POST /images/upload/{id}" {
+				if r.ContentLength <= 0 || r.ContentLength > images.MaxISOBytes {
+					http.Error(w, "Недопустимый размер ISO", http.StatusBadRequest)
+					return
+				}
+				if !CheckCSRF(cookie.Value, r.Header.Get("X-CSRF-Token")) {
+					_ = s.Store.Audit(r.Context(), user.ID, "denied:"+action, "csrf", "")
+					http.Error(w, "Недействительный токен формы", http.StatusForbidden)
+					return
+				}
+				r.Body = http.MaxBytesReader(w, r.Body, images.MaxISOBytes)
+			} else if r.Pattern == "POST /images/windows-profiles/{id}/answers" {
 				r.Body = http.MaxBytesReader(w, r.Body, maxWindowsAnswerBytes+(32<<10))
 				err = r.ParseMultipartForm(2 << 20)
 			} else {
 				r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 				err = r.ParseForm()
 			}
-			if err != nil || !CheckCSRF(cookie.Value, r.FormValue("csrf")) {
+			if r.Pattern != "POST /images/upload/{id}" && (err != nil || !CheckCSRF(cookie.Value, r.FormValue("csrf"))) {
 				_ = s.Store.Audit(r.Context(), user.ID, "denied:"+action, "csrf", "")
 				http.Error(w, "Недействительный токен формы", http.StatusForbidden)
 				return

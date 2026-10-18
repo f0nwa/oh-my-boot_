@@ -21,20 +21,26 @@ type APIRepository interface {
 	MarkScanning(context.Context, int64) error
 	CreateSMB(context.Context, ManagedStorageInput) (Storage, error)
 	DeleteSMB(context.Context, int64) error
+	RecordUpload(context.Context, Image) error
 }
 
 type Server struct {
-	repo   APIRepository
-	mu     sync.Mutex
-	active map[int64]bool
+	repo          APIRepository
+	mu            sync.Mutex
+	active        map[int64]bool
+	uploads       map[int64]bool
+	uploadRoot    func(string) string
+	mountIdentity func(string) (string, bool)
 }
 
 func NewServer(repo APIRepository) *Server {
-	return &Server{repo: repo, active: map[int64]bool{}}
+	return &Server{repo: repo, active: map[int64]bool{}, uploads: map[int64]bool{}, uploadRoot: smbstorage.UploadRoot, mountIdentity: MountIdentity}
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /smb-storages/{id}/folders", s.folders)
+	mux.HandleFunc("POST /smb-storages/{id}/upload", s.uploadISO)
 	mux.HandleFunc("POST /smb-storages", func(w http.ResponseWriter, r *http.Request) {
 		var input ManagedStorageInput
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))

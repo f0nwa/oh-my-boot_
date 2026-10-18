@@ -150,6 +150,14 @@ func (s Store) SaveScan(ctx context.Context, id int64, found []Image) error {
 	return tx.Commit(ctx)
 }
 
+func (s Store) RecordUpload(ctx context.Context, image Image) error {
+	_, err := s.Pool.Exec(ctx,
+		"INSERT INTO images (storage_id,path,size_bytes,modified_at,present) VALUES ($1,$2,$3,$4,TRUE) ON CONFLICT (storage_id,path) DO UPDATE SET size_bytes=EXCLUDED.size_bytes,modified_at=EXCLUDED.modified_at,present=TRUE",
+		image.StorageID, image.Path, image.Size, image.Modified,
+	)
+	return err
+}
+
 func (s Store) ScanError(ctx context.Context, id int64, message string) error {
 	if len(message) > 500 {
 		message = message[:500]

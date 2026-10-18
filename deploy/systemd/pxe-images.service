@@ -15,6 +15,7 @@ RuntimeDirectoryMode=0750
 UMask=0007
 NoNewPrivileges=true
 ProtectSystem=strict
+ReadWritePaths=/mnt/pxe-platform-smb-upload
 ProtectHome=true
 PrivateTmp=true
 RestrictAddressFamilies=AF_UNIX

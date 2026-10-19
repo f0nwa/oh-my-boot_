@@ -302,8 +302,8 @@ func inspectINF(name string, raw []byte) (INF, []string) {
 	ids := map[string]bool{}
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(strings.SplitN(line, ";", 2)[0])
-		if strings.HasPrefix(strings.ToLower(line), "class=") {
-			inf.Class = strings.Trim(strings.TrimSpace(strings.SplitN(line, "=", 2)[1]), `"`)
+		if keyValue := strings.SplitN(line, "=", 2); len(keyValue) == 2 && strings.EqualFold(strings.TrimSpace(keyValue[0]), "class") {
+			inf.Class = strings.Trim(strings.TrimSpace(keyValue[1]), `"`)
 		}
 		for _, ref := range driverFileRef.FindAllString(line, -1) {
 			refs[strings.ToLower(ref)] = true

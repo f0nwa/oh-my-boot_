@@ -63,6 +63,21 @@ func TestExtractCanonicalPackage(t *testing.T) {
 	}
 }
 
+func TestInspectINFClassWithSpaces(t *testing.T) {
+	archive := testZIP(t, map[string]string{
+		"netkvm.inf": strings.Replace(testINF, "Class=Net", "Class = Net", 1),
+		"net.cat":    "cat",
+		"net.sys":    "sys",
+	})
+	inventory, err := InspectZIP(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := inventory.INFs[0].Class; got != "Net" {
+		t.Fatalf("driver class = %q, want Net", got)
+	}
+}
+
 func TestExtractRejectsUnsafePaths(t *testing.T) {
 	for _, name := range []string{"../driver.inf", "/driver.inf", "C:/driver.inf", "foo\\driver.inf", "a/./driver.inf", "a//driver.inf"} {
 		t.Run(name, func(t *testing.T) {

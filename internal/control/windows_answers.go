@@ -72,6 +72,8 @@ func ValidateWindowsAnswer(data []byte) error {
 }
 
 func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
+	s.windowsMu.Lock()
+	defer s.windowsMu.Unlock()
 	if s.WindowsAnswers == nil {
 		http.Error(w, "Подготовка сценариев недоступна", http.StatusServiceUnavailable)
 		return

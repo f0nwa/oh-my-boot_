@@ -59,3 +59,14 @@ func (s Store) SetDriverConfigResult(ctx context.Context, id int64, state string
 	}
 	return nil
 }
+
+func (s Store) DeleteDriverConfig(ctx context.Context, id int64) error {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM winpe_driver_configs WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}

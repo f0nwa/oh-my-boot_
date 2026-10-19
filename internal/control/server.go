@@ -34,16 +34,19 @@ type Storage interface {
 	WindowsProfile(context.Context, int64) (WindowsProfile, error)
 	WindowsProfiles(context.Context) ([]WindowsProfile, error)
 	SetWindowsProfileResult(context.Context, int64, string, string, string) error
+	DeleteWindowsProfile(context.Context, int64) error
 	CreateWindowsAnswer(context.Context, WindowsAnswerVariant) (WindowsAnswerVariant, error)
 	SetWindowsAnswerState(context.Context, int64, string, string) error
 	WindowsAnswers(context.Context) ([]WindowsAnswerVariant, error)
 	WindowsAnswer(context.Context, int64) (WindowsAnswerVariant, error)
+	DeleteWindowsAnswer(context.Context, int64) error
 	CreateDriverPackage(context.Context, drivers.Inventory) error
 	DriverPackages(context.Context) ([]DriverPackage, error)
 	CreateDriverConfig(context.Context, DriverConfig) (DriverConfig, error)
 	DriverConfigs(context.Context) ([]DriverConfig, error)
 	DriverConfig(context.Context, int64) (DriverConfig, error)
 	SetDriverConfigResult(context.Context, int64, string, agent.DriverBuildResult, string) error
+	DeleteDriverConfig(context.Context, int64) error
 }
 
 type ImagesAPI interface {
@@ -83,6 +86,12 @@ type DriverConfigAPI interface {
 	CheckDriverConfig(context.Context, agent.DriverBuildCheck) error
 }
 
+type AssetCleanupAPI interface {
+	RemoveWindowsProfile(context.Context, int64) error
+	RemoveWindowsAnswer(context.Context, int64) error
+	RemoveDriverConfig(context.Context, int64, string, bool) error
+}
+
 type Server struct {
 	Store             Storage
 	Boot              *BootClient
@@ -93,6 +102,7 @@ type Server struct {
 	WindowsAnswers    WindowsAnswerAPI
 	DriverPackages    DriverPackageAPI
 	DriverConfigs     DriverConfigAPI
+	Cleanup           AssetCleanupAPI
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
 	menuMu            sync.Mutex
@@ -130,6 +140,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))
 	mux.HandleFunc("POST /drivers/configs", s.protect("images", s.driverConfigCreate))
 	mux.HandleFunc("POST /drivers/configs/{id}/prepare", s.protect("images", s.driverConfigPrepare))
+	mux.HandleFunc("POST /drivers/configs/{id}/delete", s.protect("images", s.driverConfigDelete))
 	mux.HandleFunc("GET /assets/driver-upload.js", s.driverUploadScript)
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
@@ -137,7 +148,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/scan", s.protect("images", s.imagesScan))
 	mux.HandleFunc("POST /images/windows-profiles", s.protect("images", s.windowsProfileCreate))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/prepare", s.protect("images", s.windowsProfilePrepare))
+	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("images", s.windowsProfileDelete))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", s.windowsAnswerUpload))
+	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("images", s.windowsAnswerDelete))
 	mux.HandleFunc("POST /images/smb", s.protect("smb", s.imagesSMBCreate))
 	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", s.imagesSMBRetry))
 	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", s.imagesSMBRemove))

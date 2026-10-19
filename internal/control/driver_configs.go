@@ -96,6 +96,8 @@ func SelectDriverConfig(form url.Values, profiles []WindowsProfile, answers []Wi
 }
 
 func (s *Server) driverConfigCreate(w http.ResponseWriter, r *http.Request) {
+	s.windowsMu.Lock()
+	defer s.windowsMu.Unlock()
 	profiles, err := s.Store.WindowsProfiles(r.Context())
 	if err != nil {
 		http.Error(w, "Профили ISO недоступны", http.StatusServiceUnavailable)

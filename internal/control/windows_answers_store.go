@@ -51,3 +51,14 @@ func (s Store) WindowsAnswer(ctx context.Context, id int64) (WindowsAnswerVarian
 	).Scan(&v.ID, &v.ProfileID, &v.Title, &v.Folder, &v.SHA256, &v.Size, &v.State, &v.Error)
 	return v, err
 }
+
+func (s Store) DeleteWindowsAnswer(ctx context.Context, id int64) error {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM windows_answer_variants WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}

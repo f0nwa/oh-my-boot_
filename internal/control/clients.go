@@ -93,6 +93,34 @@ func (c *AgentClient) CheckDriverConfig(ctx context.Context, check agent.DriverB
 	return localCall(ctx, client, "POST", "/winpe-drivers/check-config", body, nil)
 }
 
+func (c *AgentClient) RemoveDriverConfig(ctx context.Context, id int64, key string, removeWIM bool) error {
+	body, err := json.Marshal(struct {
+		ID        int64  `json:"id"`
+		WIMKey    string `json:"wim_key"`
+		RemoveWIM bool   `json:"remove_wim"`
+	}{id, key, removeWIM})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/winpe-drivers/remove-config", body, nil)
+}
+
+func (c *AgentClient) RemoveWindowsProfile(ctx context.Context, id int64) error {
+	body, err := json.Marshal(map[string]int64{"id": id})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/windows-iso/remove", body, nil)
+}
+
+func (c *AgentClient) RemoveWindowsAnswer(ctx context.Context, id int64) error {
+	body, err := json.Marshal(map[string]int64{"id": id})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/windows-answer/remove", body, nil)
+}
+
 func (c *AgentClient) PrepareWindowsISO(ctx context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
 	var result agent.WindowsISOResult
 	body, err := json.Marshal(req)

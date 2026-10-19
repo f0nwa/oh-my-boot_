@@ -56,3 +56,14 @@ func (s Store) SetWindowsProfileResult(ctx context.Context, id int64, state, ins
 	}
 	return nil
 }
+
+func (s Store) DeleteWindowsProfile(ctx context.Context, id int64) error {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM windows_profiles WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}

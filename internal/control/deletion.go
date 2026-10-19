@@ -1,0 +1,213 @@
+package control
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+)
+
+func deletionID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, "Неверный номер записи", http.StatusBadRequest)
+		return 0, false
+	}
+	return id, true
+}
+
+func (s *Server) activeMenuContains(r *http.Request, key string) (bool, error) {
+	versions, err := s.Store.MenuVersions(r.Context())
+	if err != nil {
+		return false, err
+	}
+	for _, version := range versions {
+		if version.Active {
+			return strings.Contains(version.Script, "item "+key+" ") || strings.Contains(version.Script, ":"+key+"\n"), nil
+		}
+	}
+	return false, nil
+}
+
+func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
+	id, ok := deletionID(w, r)
+	if !ok {
+		return
+	}
+	s.menuMu.Lock()
+	defer s.menuMu.Unlock()
+	s.windowsMu.Lock()
+	defer s.windowsMu.Unlock()
+	if s.Cleanup == nil {
+		http.Error(w, "Очистка файлов недоступна", http.StatusServiceUnavailable)
+		return
+	}
+	config, err := s.Store.DriverConfig(r.Context(), id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.Error(w, "Конфигурация не найдена", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Не удалось прочитать конфигурацию", http.StatusServiceUnavailable)
+		return
+	}
+	active, err := s.activeMenuContains(r, fmt.Sprintf("windriver_%d", id))
+	if err != nil {
+		http.Error(w, "Не удалось проверить меню", http.StatusServiceUnavailable)
+		return
+	}
+	if active {
+		http.Error(w, "Сначала снимите пункт с публикации меню", http.StatusConflict)
+		return
+	}
+	configs, err := s.Store.DriverConfigs(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить общие файлы", http.StatusServiceUnavailable)
+		return
+	}
+	removeWIM := config.Build.WIMKey != ""
+	for _, other := range configs {
+		if other.ID != id && other.Build.WIMKey != "" && other.Build.WIMKey == config.Build.WIMKey {
+			removeWIM = false
+			break
+		}
+	}
+	if err := s.Cleanup.RemoveDriverConfig(r.Context(), id, config.Build.WIMKey, removeWIM); err != nil {
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.delete", "error", fmt.Sprintf("id=%d cleanup", id))
+		http.Error(w, "Не удалось удалить подготовленные файлы", http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.Store.DeleteDriverConfig(r.Context(), id); err != nil {
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.delete", "error", fmt.Sprintf("id=%d database", id))
+		http.Error(w, "Не удалось удалить запись", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.delete", "ok", fmt.Sprintf("id=%d", id))
+	http.Redirect(w, r, "/drivers?message=Конфигурация+удалена", http.StatusSeeOther)
+}
+
+func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
+	id, ok := deletionID(w, r)
+	if !ok {
+		return
+	}
+	s.menuMu.Lock()
+	defer s.menuMu.Unlock()
+	s.windowsMu.Lock()
+	defer s.windowsMu.Unlock()
+	if s.Cleanup == nil {
+		http.Error(w, "Очистка файлов недоступна", http.StatusServiceUnavailable)
+		return
+	}
+	_, err := s.Store.WindowsAnswer(r.Context(), id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.Error(w, "Сценарий не найден", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Не удалось прочитать сценарий", http.StatusServiceUnavailable)
+		return
+	}
+	active, err := s.activeMenuContains(r, fmt.Sprintf("winanswer_%d", id))
+	if err != nil {
+		http.Error(w, "Не удалось проверить меню", http.StatusServiceUnavailable)
+		return
+	}
+	if active {
+		http.Error(w, "Сначала снимите пункт с публикации меню", http.StatusConflict)
+		return
+	}
+	configs, err := s.Store.DriverConfigs(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить зависимости", http.StatusServiceUnavailable)
+		return
+	}
+	for _, config := range configs {
+		if config.AnswerID == id {
+			http.Error(w, fmt.Sprintf("Сначала удалите конфигурацию драйверов № %d", config.ID), http.StatusConflict)
+			return
+		}
+	}
+	if err := s.Cleanup.RemoveWindowsAnswer(r.Context(), id); err != nil {
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.delete", "error", fmt.Sprintf("id=%d cleanup", id))
+		http.Error(w, "Не удалось удалить подготовленные файлы", http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.Store.DeleteWindowsAnswer(r.Context(), id); err != nil {
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.delete", "error", fmt.Sprintf("id=%d database", id))
+		http.Error(w, "Не удалось удалить запись", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.delete", "ok", fmt.Sprintf("id=%d", id))
+	http.Redirect(w, r, "/images?message=Сценарий+удалён", http.StatusSeeOther)
+}
+
+func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
+	id, ok := deletionID(w, r)
+	if !ok {
+		return
+	}
+	s.menuMu.Lock()
+	defer s.menuMu.Unlock()
+	s.windowsMu.Lock()
+	defer s.windowsMu.Unlock()
+	if s.Cleanup == nil {
+		http.Error(w, "Очистка файлов недоступна", http.StatusServiceUnavailable)
+		return
+	}
+	_, err := s.Store.WindowsProfile(r.Context(), id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.Error(w, "Профиль не найден", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Не удалось прочитать профиль", http.StatusServiceUnavailable)
+		return
+	}
+	active, err := s.activeMenuContains(r, fmt.Sprintf("winiso_%d", id))
+	if err != nil {
+		http.Error(w, "Не удалось проверить меню", http.StatusServiceUnavailable)
+		return
+	}
+	if active {
+		http.Error(w, "Сначала снимите пункт с публикации меню", http.StatusConflict)
+		return
+	}
+	answers, err := s.Store.WindowsAnswers(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить сценарии", http.StatusServiceUnavailable)
+		return
+	}
+	for _, answer := range answers {
+		if answer.ProfileID == id {
+			http.Error(w, fmt.Sprintf("Сначала удалите XML-сценарий № %d", answer.ID), http.StatusConflict)
+			return
+		}
+	}
+	configs, err := s.Store.DriverConfigs(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить конфигурации", http.StatusServiceUnavailable)
+		return
+	}
+	for _, config := range configs {
+		if config.ProfileID == id {
+			http.Error(w, fmt.Sprintf("Сначала удалите конфигурацию драйверов № %d", config.ID), http.StatusConflict)
+			return
+		}
+	}
+	if err := s.Cleanup.RemoveWindowsProfile(r.Context(), id); err != nil {
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-profile.delete", "error", fmt.Sprintf("id=%d cleanup", id))
+		http.Error(w, "Не удалось удалить подготовленные файлы", http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.Store.DeleteWindowsProfile(r.Context(), id); err != nil {
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-profile.delete", "error", fmt.Sprintf("id=%d database", id))
+		http.Error(w, "Не удалось удалить запись", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-profile.delete", "ok", fmt.Sprintf("id=%d", id))
+	http.Redirect(w, r, "/images?message=Профиль+удалён", http.StatusSeeOther)
+}

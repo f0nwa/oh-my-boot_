@@ -3,7 +3,9 @@ package winpe
 import (
 	"bytes"
 	"fmt"
+	"path"
 	"strconv"
+	"strings"
 )
 
 const passwordToken = "__PXE_ISO_PASSWORD__"
@@ -60,4 +62,44 @@ func RenderAnswerStartup(base []byte, profileID int64) ([]byte, error) {
 		return bytes.Replace(base, command, replacement, 1), nil
 	}
 	return nil, fmt.Errorf("prepared Windows Setup command is missing")
+}
+
+// RenderDriverStartup adds selected INF loads before WinPE initializes the
+// network. The original SMB mapping and Setup command remain in the script.
+func RenderDriverStartup(base []byte, infPaths []string) ([]byte, error) {
+	needle := []byte("\r\nwpeinit\r\n")
+	if len(infPaths) == 0 || len(infPaths) > 128 || bytes.Count(base, needle) != 1 || bytes.Contains(base, []byte(":driver_failed")) {
+		return nil, fmt.Errorf("invalid WinPE startup script or driver selection")
+	}
+	var added strings.Builder
+	added.WriteString("\r\nset PXE_DRIVER_LOG=X:\\pxe-driver.log\r\necho PXE Platform: loading WinPE drivers...\r\n")
+	for _, name := range infPaths {
+		if !safeDriverBatchPath(name) {
+			return nil, fmt.Errorf("INF path cannot be used in WinPE startup")
+		}
+		windowsPath := strings.ReplaceAll(name, "/", `\`)
+		added.WriteString(`drvload "X:\Windows\System32\` + windowsPath + "\" >>%PXE_DRIVER_LOG% 2>&1\r\n")
+		added.WriteString("if errorlevel 1 goto driver_failed\r\n")
+	}
+	added.WriteString("wpeinit\r\n")
+	out := bytes.Replace(base, needle, []byte(added.String()), 1)
+	out = append(out, []byte("\r\n:driver_failed\r\necho PXE Platform: a selected WinPE driver failed to load.\r\ntype %PXE_DRIVER_LOG%\r\ncmd /k\r\n")...)
+	return out, nil
+}
+
+func safeDriverBatchPath(name string) bool {
+	if name == "" || path.IsAbs(name) || path.Clean(name) != name || strings.ContainsAny(name, `\"%!^&|<>:`) {
+		return false
+	}
+	for _, r := range name {
+		if r < 32 || r > 126 {
+			return false
+		}
+	}
+	for _, part := range strings.Split(name, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
 }

@@ -62,6 +62,38 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("POST /winpe-drivers/prepare", func(w http.ResponseWriter, r *http.Request) {
+		if driverManager == nil {
+			http.Error(w, "driver configuration unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req DriverBuildRequest
+		if !decodeAgentRequest(w, r, &req, 64<<10) {
+			return
+		}
+		result, err := driverManager.PrepareConfig(r.Context(), req)
+		if err != nil {
+			http.Error(w, "driver configuration failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
+	})
+	mux.HandleFunc("POST /winpe-drivers/check-config", func(w http.ResponseWriter, r *http.Request) {
+		if driverManager == nil {
+			http.Error(w, "driver configuration unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var check DriverBuildCheck
+		if !decodeAgentRequest(w, r, &check, 64<<10) {
+			return
+		}
+		if err := driverManager.CheckConfig(r.Context(), check.Request, check.Result); err != nil {
+			http.Error(w, "driver configuration unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /windows-answer/prepare", func(w http.ResponseWriter, r *http.Request) {
 		if windows == nil {
 			http.Error(w, "Windows answer preparation unavailable", http.StatusServiceUnavailable)

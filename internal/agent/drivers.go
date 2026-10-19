@@ -22,6 +22,8 @@ type DriverManager struct {
 	ConfigRoot  string
 	ProfileRoot string
 	AnswerRoot  string
+	Runner      DriverCommandRunner
+	FreeBytes   func(string) (uint64, error)
 }
 
 func (m *DriverManager) Import(ctx context.Context, src io.Reader, size int64) (drivers.Inventory, error) {

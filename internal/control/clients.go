@@ -73,6 +73,26 @@ func (c *AgentClient) CheckDriverPackage(ctx context.Context, hash string) error
 	return localCall(ctx, c.http, "POST", "/winpe-drivers/check", body, nil)
 }
 
+func (c *AgentClient) PrepareDriverConfig(ctx context.Context, req agent.DriverBuildRequest) (agent.DriverBuildResult, error) {
+	var result agent.DriverBuildResult
+	body, err := json.Marshal(req)
+	if err != nil {
+		return result, err
+	}
+	client := &http.Client{Transport: c.http.Transport, Timeout: 15 * time.Minute}
+	err = localCall(ctx, client, "POST", "/winpe-drivers/prepare", body, &result)
+	return result, err
+}
+
+func (c *AgentClient) CheckDriverConfig(ctx context.Context, check agent.DriverBuildCheck) error {
+	body, err := json.Marshal(check)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Transport: c.http.Transport, Timeout: 5 * time.Minute}
+	return localCall(ctx, client, "POST", "/winpe-drivers/check-config", body, nil)
+}
+
 func (c *AgentClient) PrepareWindowsISO(ctx context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
 	var result agent.WindowsISOResult
 	body, err := json.Marshal(req)

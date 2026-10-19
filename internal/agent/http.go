@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	"pxe-platform/internal/drivers"
 	"pxe-platform/internal/smbstorage"
@@ -27,6 +28,24 @@ func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *Windows
 
 func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *WindowsISOManager, driverManager *DriverManager) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /winpe-drivers/config-key/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if driverManager == nil {
+			http.Error(w, "driver configuration unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid driver configuration ID", http.StatusBadRequest)
+			return
+		}
+		key, err := driverManager.ConfigWIMKey(id)
+		if err != nil {
+			http.Error(w, "driver configuration manifest unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"wim_key": key})
+	})
 	mux.HandleFunc("POST /winpe-drivers/remove-config", func(w http.ResponseWriter, r *http.Request) {
 		if driverManager == nil {
 			http.Error(w, "driver configuration unavailable", http.StatusServiceUnavailable)

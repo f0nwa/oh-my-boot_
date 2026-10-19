@@ -90,11 +90,17 @@ type AssetCleanupAPI interface {
 	RemoveWindowsProfile(context.Context, int64) error
 	RemoveWindowsAnswer(context.Context, int64) error
 	RemoveDriverConfig(context.Context, int64, string, bool) error
+	DriverConfigWIMKey(context.Context, int64) (string, error)
+}
+
+type MenuReader interface {
+	CurrentMenu(context.Context) ([]byte, error)
 }
 
 type Server struct {
 	Store             Storage
 	Boot              *BootClient
+	DeletionMenu      MenuReader
 	Agent             *AgentClient
 	Images            ImagesAPI
 	SMB               SMBMountAPI

@@ -8,7 +8,7 @@ import (
 )
 
 func TestRemoveWindowsProfileLeavesSourceISO(t *testing.T) {
-	base := t.TempDir()
+	base := canonicalTestDir(t)
 	configRoot, mountRoot, assetRoot := filepath.Join(base, "configs"), filepath.Join(base, "mounts"), filepath.Join(base, "assets")
 	for _, root := range []string{configRoot, mountRoot, assetRoot} {
 		if err := os.Mkdir(root, 0755); err != nil {
@@ -49,7 +49,7 @@ func TestRemoveWindowsProfileLeavesSourceISO(t *testing.T) {
 }
 
 func TestRemoveWindowsAnswerRejectsSymlink(t *testing.T) {
-	root, outside := t.TempDir(), t.TempDir()
+	root, outside := canonicalTestDir(t), canonicalTestDir(t)
 	if err := os.Symlink(outside, filepath.Join(root, "4")); err != nil {
 		t.Fatal(err)
 	}
@@ -59,5 +59,32 @@ func TestRemoveWindowsAnswerRejectsSymlink(t *testing.T) {
 	}
 	if _, err := os.Stat(outside); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func canonicalTestDir(t *testing.T) string {
+	t.Helper()
+	path, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestRemoveWindowsProfileRejectsMountSymlinkBeforeStoppingUnit(t *testing.T) {
+	base := canonicalTestDir(t)
+	configRoot, mountRoot, assetRoot := filepath.Join(base, "configs"), filepath.Join(base, "mounts"), filepath.Join(base, "assets")
+	for _, root := range []string{configRoot, mountRoot, assetRoot} {
+		if err := os.Mkdir(root, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(base, filepath.Join(mountRoot, "17")); err != nil {
+		t.Fatal(err)
+	}
+	systemctl := &fakeWindowsISOSystemctl{}
+	m := &WindowsISOManager{ConfigRoot: configRoot, MountRoot: mountRoot, AssetRoot: assetRoot, Systemctl: systemctl}
+	if err := m.RemoveProfile(context.Background(), 17); err == nil || len(systemctl.calls) != 0 {
+		t.Fatalf("unsafe target accepted or unit stopped: %v, %v", err, systemctl.calls)
 	}
 }

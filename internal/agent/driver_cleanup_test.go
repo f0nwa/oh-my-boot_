@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestRemoveDriverConfigPreservesSharedWIM(t *testing.T) {
-	base := t.TempDir()
+	base := canonicalTestDir(t)
 	configRoot, wimRoot := filepath.Join(base, "configs"), filepath.Join(base, "wims")
 	for _, root := range []string{configRoot, wimRoot} {
 		if err := os.Mkdir(root, 0755); err != nil {
@@ -41,7 +42,7 @@ func TestRemoveDriverConfigPreservesSharedWIM(t *testing.T) {
 }
 
 func TestRemoveManagedDirectoryRejectsSymlinks(t *testing.T) {
-	root, outside := t.TempDir(), t.TempDir()
+	root, outside := canonicalTestDir(t), canonicalTestDir(t)
 	if err := os.Symlink(outside, filepath.Join(root, "3")); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func TestRemoveManagedDirectoryRejectsSymlinks(t *testing.T) {
 }
 
 func TestAgentRemoveDriverConfigEndpointValidatesAndRemoves(t *testing.T) {
-	configRoot, wimRoot := t.TempDir(), t.TempDir()
+	configRoot, wimRoot := canonicalTestDir(t), canonicalTestDir(t)
 	key := strings.Repeat("a", 64)
 	if err := os.Mkdir(filepath.Join(configRoot, "3"), 0755); err != nil {
 		t.Fatal(err)
@@ -75,5 +76,28 @@ func TestAgentRemoveDriverConfigEndpointValidatesAndRemoves(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(wimRoot, key)); !os.IsNotExist(err) {
 		t.Fatalf("WIM remains: %v", err)
+	}
+}
+
+func TestDriverConfigWIMKeyReadsManifestAfterDatabaseWriteFailure(t *testing.T) {
+	root := canonicalTestDir(t)
+	dir := filepath.Join(root, "7")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	key := strings.Repeat("a", 64)
+	content, err := json.Marshal(driverConfigManifest{Request: DriverBuildRequest{ConfigID: 7}, Result: DriverBuildResult{WIMKey: key}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "build.json"), content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	m := &DriverManager{ConfigRoot: root}
+	if got, err := m.ConfigWIMKey(7); err != nil || got != key {
+		t.Fatalf("manifest key=%q err=%v", got, err)
+	}
+	if got, err := m.ConfigWIMKey(8); err != nil || got != "" {
+		t.Fatalf("missing config key=%q err=%v", got, err)
 	}
 }

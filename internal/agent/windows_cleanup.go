@@ -47,12 +47,14 @@ func requirePlainDirectory(root string) error {
 	if root == "" || !filepath.IsAbs(root) {
 		return fmt.Errorf("managed asset root is invalid")
 	}
-	info, err := os.Lstat(root)
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("managed asset root is not a plain directory")
+	for part := filepath.Clean(root); part != string(filepath.Separator); part = filepath.Dir(part) {
+		info, err := os.Lstat(part)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("managed asset root has a non-directory or symlink component")
+		}
 	}
 	return nil
 }
@@ -93,10 +95,17 @@ func (m *WindowsISOManager) RemoveProfile(ctx context.Context, id int64) error {
 	if m.Systemctl == nil {
 		return fmt.Errorf("systemd control is unavailable")
 	}
+	target := filepath.Join(m.MountRoot, name)
+	if info, err := os.Lstat(target); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("Windows ISO mount target is unsafe")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	if err := m.Systemctl.Run(ctx, "disable", "--now", "pxe-winiso@"+name+".service"); err != nil {
 		return err
 	}
-	target := filepath.Join(m.MountRoot, name)
 	if info, err := os.Lstat(target); err == nil {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("Windows ISO mount target is unsafe")

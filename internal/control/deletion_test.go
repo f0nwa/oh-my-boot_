@@ -2,6 +2,9 @@ package control
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,7 +23,44 @@ type deletionStore struct {
 	deleted  []string
 }
 
-func (s *deletionStore) MenuVersions(context.Context) ([]MenuVersion, error) { return s.versions, nil }
+func (s *deletionStore) MenuVersions(context.Context) ([]MenuVersion, error) {
+	if len(s.versions) == 0 {
+		s.versions = []MenuVersion{{Active: true, Script: "#!ipxe\n"}}
+	}
+	versions := append([]MenuVersion(nil), s.versions...)
+	for i := range versions {
+		if versions[i].SHA256 == "" {
+			sum := sha256.Sum256([]byte(versions[i].Script))
+			versions[i].SHA256 = hex.EncodeToString(sum[:])
+		}
+	}
+	return versions, nil
+}
+
+type deletionMenuReader struct {
+	store    *deletionStore
+	override []byte
+}
+
+func (m deletionMenuReader) CurrentMenu(ctx context.Context) ([]byte, error) {
+	if m.override != nil {
+		return m.override, nil
+	}
+	versions, err := m.store.MenuVersions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, version := range versions {
+		if version.Active {
+			return []byte(version.Script), nil
+		}
+	}
+	return nil, fmt.Errorf("active menu missing")
+}
+
+func deletionTestServer(store *deletionStore, cleaner *deletionCleaner) *Server {
+	return &Server{Store: store, Cleanup: cleaner, DeletionMenu: deletionMenuReader{store: store}}
+}
 func (s *deletionStore) WindowsProfiles(context.Context) ([]WindowsProfile, error) {
 	return s.profiles, nil
 }
@@ -84,9 +124,14 @@ func (s *deletionStore) DeleteDriverConfig(_ context.Context, id int64) error {
 }
 
 type deletionCleaner struct {
-	calls     []string
-	fail      bool
-	removeWIM bool
+	calls       []string
+	fail        bool
+	removeWIM   bool
+	manifestKey string
+}
+
+func (c *deletionCleaner) DriverConfigWIMKey(context.Context, int64) (string, error) {
+	return c.manifestKey, nil
 }
 
 func (c *deletionCleaner) RemoveWindowsProfile(context.Context, int64) error {
@@ -125,7 +170,7 @@ func submitDeletion(t *testing.T, s *Server, path string) *httptest.ResponseReco
 func TestDeleteDriverConfigBlocksActiveThenCleans(t *testing.T) {
 	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, configs: []DriverConfig{{ID: 3, ProfileID: 17, State: "ready", Build: agent.DriverBuildResult{WIMKey: strings.Repeat("a", 64)}}}}
 	c := &deletionCleaner{}
-	server := &Server{Store: s, Cleanup: c}
+	server := deletionTestServer(s, c)
 	s.versions = []MenuVersion{{Active: true, Script: "item windriver_3 Windows test\n"}}
 	if res := submitDeletion(t, server, "/drivers/configs/3/delete"); res.Code != http.StatusConflict || len(c.calls) != 0 {
 		t.Fatalf("active status=%d cleanup=%v", res.Code, c.calls)
@@ -143,7 +188,7 @@ func TestDeleteDriverConfigKeepsSharedWIMAndDoesNotDeleteOnCleanupFailure(t *tes
 	key := strings.Repeat("a", 64)
 	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, configs: []DriverConfig{{ID: 2, Build: agent.DriverBuildResult{WIMKey: key}}, {ID: 3, Build: agent.DriverBuildResult{WIMKey: key}}}}
 	c := &deletionCleaner{fail: true}
-	server := &Server{Store: s, Cleanup: c}
+	server := deletionTestServer(s, c)
 	if res := submitDeletion(t, server, "/drivers/configs/2/delete"); res.Code != http.StatusServiceUnavailable || len(s.deleted) != 0 || c.removeWIM {
 		t.Fatalf("cleanup failure status=%d deleted=%v removeWIM=%v", res.Code, s.deleted, c.removeWIM)
 	}
@@ -156,10 +201,29 @@ func TestDeleteDriverConfigKeepsSharedWIMAndDoesNotDeleteOnCleanupFailure(t *tes
 	}
 }
 
+func TestDeleteFailsClosedWhenBootMenuDiffersFromDatabase(t *testing.T) {
+	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, configs: []DriverConfig{{ID: 3}}, versions: []MenuVersion{{Active: true, Script: "#!ipxe\n"}}}
+	c := &deletionCleaner{}
+	server := deletionTestServer(s, c)
+	server.DeletionMenu = deletionMenuReader{store: s, override: []byte("#!ipxe\nitem windriver_3 Test\n")}
+	if res := submitDeletion(t, server, "/drivers/configs/3/delete"); res.Code != http.StatusServiceUnavailable || len(c.calls) != 0 || len(s.deleted) != 0 {
+		t.Fatalf("mismatched menu status=%d cleanup=%v deleted=%v", res.Code, c.calls, s.deleted)
+	}
+}
+
+func TestDeleteDriverConfigUsesAgentManifestWhenDatabaseMissedBuild(t *testing.T) {
+	key := strings.Repeat("b", 64)
+	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, configs: []DriverConfig{{ID: 3}}}
+	c := &deletionCleaner{manifestKey: key}
+	if res := submitDeletion(t, deletionTestServer(s, c), "/drivers/configs/3/delete"); res.Code != http.StatusSeeOther || !c.removeWIM {
+		t.Fatalf("manifest recovery status=%d removeWIM=%v", res.Code, c.removeWIM)
+	}
+}
+
 func TestDeleteProfileAndAnswerBlockDependencies(t *testing.T) {
 	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4, ProfileID: 17}}, configs: []DriverConfig{{ID: 3, ProfileID: 17, AnswerID: 4}}}
 	c := &deletionCleaner{}
-	server := &Server{Store: s, Cleanup: c}
+	server := deletionTestServer(s, c)
 	for _, path := range []string{"/images/windows-profiles/17/delete", "/images/windows-answers/4/delete"} {
 		if res := submitDeletion(t, server, path); res.Code != http.StatusConflict {
 			t.Fatalf("%s status=%d", path, res.Code)

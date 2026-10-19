@@ -1,9 +1,12 @@
 package control
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -20,16 +23,40 @@ func deletionID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 }
 
 func (s *Server) activeMenuContains(r *http.Request, key string) (bool, error) {
+	reader := s.DeletionMenu
+	if reader == nil {
+		reader = s.Boot
+	}
+	if reader == nil {
+		return false, fmt.Errorf("boot menu unavailable")
+	}
+	live, err := reader.CurrentMenu(r.Context())
+	if err != nil {
+		return false, fmt.Errorf("boot menu unavailable: %w", err)
+	}
+	if len(live) == 0 || len(live) > 256<<10 {
+		return false, fmt.Errorf("boot menu is empty or too large")
+	}
 	versions, err := s.Store.MenuVersions(r.Context())
 	if err != nil {
 		return false, err
 	}
 	for _, version := range versions {
 		if version.Active {
-			return strings.Contains(version.Script, "item "+key+" ") || strings.Contains(version.Script, ":"+key+"\n"), nil
+			sum := sha256.Sum256(live)
+			if hex.EncodeToString(sum[:]) != version.SHA256 || string(live) != version.Script {
+				return false, fmt.Errorf("boot menu differs from active database version")
+			}
+			for _, line := range strings.Split(version.Script, "\n") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 && fields[0] == "item" && fields[1] == key {
+					return true, nil
+				}
+			}
+			return false, nil
 		}
 	}
-	return false, nil
+	return false, fmt.Errorf("active menu version unavailable")
 }
 
 func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
@@ -68,14 +95,22 @@ func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось проверить общие файлы", http.StatusServiceUnavailable)
 		return
 	}
-	removeWIM := config.Build.WIMKey != ""
+	wimKey := config.Build.WIMKey
+	if wimKey == "" {
+		wimKey, err = s.Cleanup.DriverConfigWIMKey(r.Context(), id)
+		if err != nil {
+			http.Error(w, "Не удалось проверить подготовленные файлы", http.StatusServiceUnavailable)
+			return
+		}
+	}
+	removeWIM := wimKey != ""
 	for _, other := range configs {
-		if other.ID != id && other.Build.WIMKey != "" && other.Build.WIMKey == config.Build.WIMKey {
+		if other.ID != id && wimKey != "" && (other.Build.WIMKey == wimKey || (other.Build.WIMKey == "" && reflect.DeepEqual(other.PackageINFs, config.PackageINFs))) {
 			removeWIM = false
 			break
 		}
 	}
-	if err := s.Cleanup.RemoveDriverConfig(r.Context(), id, config.Build.WIMKey, removeWIM); err != nil {
+	if err := s.Cleanup.RemoveDriverConfig(r.Context(), id, wimKey, removeWIM); err != nil {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.delete", "error", fmt.Sprintf("id=%d cleanup", id))
 		http.Error(w, "Не удалось удалить подготовленные файлы", http.StatusServiceUnavailable)
 		return

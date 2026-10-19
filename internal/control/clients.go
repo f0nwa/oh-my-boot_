@@ -105,6 +105,14 @@ func (c *AgentClient) RemoveDriverConfig(ctx context.Context, id int64, key stri
 	return localCall(ctx, c.http, "POST", "/winpe-drivers/remove-config", body, nil)
 }
 
+func (c *AgentClient) DriverConfigWIMKey(ctx context.Context, id int64) (string, error) {
+	var result struct {
+		WIMKey string `json:"wim_key"`
+	}
+	err := localCall(ctx, c.http, "GET", "/winpe-drivers/config-key/"+strconv.FormatInt(id, 10), nil, &result)
+	return result.WIMKey, err
+}
+
 func (c *AgentClient) RemoveWindowsProfile(ctx context.Context, id int64) error {
 	body, err := json.Marshal(map[string]int64{"id": id})
 	if err != nil {

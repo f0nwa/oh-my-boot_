@@ -3,6 +3,8 @@ package control
 import (
 	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
@@ -57,6 +59,29 @@ func driverMenuFixture() (WindowsProfile, WindowsAnswerVariant, []DriverConfig) 
 		{ID: 2, ProfileID: 17, AnswerID: 31, Title: "Windows 11 Laptop B", Folder: "Windows/Laptops", State: "ready", PackageINFs: []agent.SelectedINF{{PackageSHA256: strings.Repeat("f", 64), INFPath: "storage.inf"}}, Build: agent.DriverBuildResult{WIMKey: strings.Repeat("1", 64), WIMSHA256: strings.Repeat("2", 64), ScriptSHA256: strings.Repeat("3", 64)}},
 	}
 	return profile, answer, configs
+}
+
+func TestMenuDistinguishesDuplicateDriverConfigTitles(t *testing.T) {
+	profile, answer, configs := driverMenuFixture()
+	configs[0].Title = "Windows 11 VirtIO Net SCSI test"
+	configs[1].Title = configs[0].Title
+	store := driverMenuStore{windowsMenuPageStore: windowsMenuPageStore{
+		menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}},
+		profiles:      []WindowsProfile{profile}, answers: []WindowsAnswerVariant{answer},
+	}, configs: configs}
+	s := &Server{Store: store}
+	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+	}
+	for _, want := range []string{"#1", "#2", "net.inf", "storage.inf"} {
+		if !strings.Contains(res.Body.String(), want) {
+			t.Errorf("missing %q", want)
+		}
+	}
 }
 
 func TestDriverMenuRendersSeparateEntriesAndFolders(t *testing.T) {

@@ -216,4 +216,10 @@ func TestAdminPagesExposeRecordDeletionActions(t *testing.T) {
 			t.Fatalf("%s missing %s: %d %s", tc.page, tc.action, res.Code, res.Body.String())
 		}
 	}
+	data.WindowsProfiles[0].State = "unavailable"
+	res := httptest.NewRecorder()
+	render(res, "images", data)
+	if !strings.Contains(res.Body.String(), `action="/images/windows-answers/4/delete"`) || strings.Contains(res.Body.String(), `action="/images/windows-profiles/17/answers"`) {
+		t.Fatalf("unavailable parent hid deletion or allowed upload: %d %s", res.Code, res.Body.String())
+	}
 }

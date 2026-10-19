@@ -25,6 +25,9 @@ func (m *DriverManager) ConfigWIMKey(id int64) (string, error) {
 	}
 	file := filepath.Join(dir, "build.json")
 	info, err = os.Lstat(file)
+	if os.IsNotExist(err) {
+		return "", nil
+	}
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return "", fmt.Errorf("driver configuration manifest is unsafe")
 	}

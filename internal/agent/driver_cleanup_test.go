@@ -100,4 +100,10 @@ func TestDriverConfigWIMKeyReadsManifestAfterDatabaseWriteFailure(t *testing.T) 
 	if got, err := m.ConfigWIMKey(8); err != nil || got != "" {
 		t.Fatalf("missing config key=%q err=%v", got, err)
 	}
+	if err := os.Mkdir(filepath.Join(root, "9"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := m.ConfigWIMKey(9); err != nil || got != "" {
+		t.Fatalf("partial config key=%q err=%v", got, err)
+	}
 }

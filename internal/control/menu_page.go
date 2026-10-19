@@ -19,7 +19,6 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать версии меню", 500)
 		return
 	}
-	data.Versions = versions
 	profiles, err := s.Store.WindowsProfiles(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось прочитать профили Windows ISO", 500)
@@ -34,6 +33,9 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Не удалось прочитать конфигурации драйверов", 500)
 		return
+	}
+	for _, version := range versions {
+		data.Versions = append(data.Versions, menuVersionRow{MenuVersion: version, Restorable: menuSnapshotRestorable(version.Script, profiles, answers, configs)})
 	}
 	activeWindows := map[int64]bool{}
 	activeAnswers := map[int64]menuWindowsAnswerRef{}
@@ -84,6 +86,40 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		data.MenuDriverConfigs = append(data.MenuDriverConfigs, menuDriverConfigRow{DriverConfig: config, Selected: activeDrivers[config.ID].ID == config.ID, MenuFolder: folder})
 	}
 	render(w, "menu", data)
+}
+
+func menuSnapshotRestorable(script string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) bool {
+	profileIDs, answerIDs, configIDs := map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
+	for _, item := range profiles {
+		profileIDs[item.ID] = true
+	}
+	for _, item := range answers {
+		answerIDs[item.ID] = true
+	}
+	for _, item := range configs {
+		configIDs[item.ID] = true
+	}
+	for _, line := range strings.Split(script, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "item" {
+			continue
+		}
+		for _, choice := range []struct {
+			prefix  string
+			present map[int64]bool
+		}{
+			{"winiso_", profileIDs}, {"winanswer_", answerIDs}, {"windriver_", configIDs},
+		} {
+			if !strings.HasPrefix(fields[1], choice.prefix) {
+				continue
+			}
+			id, err := strconv.ParseInt(strings.TrimPrefix(fields[1], choice.prefix), 10, 64)
+			if err != nil || !choice.present[id] {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {

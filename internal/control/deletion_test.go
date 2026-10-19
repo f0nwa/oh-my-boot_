@@ -169,3 +169,51 @@ func TestDeleteProfileAndAnswerBlockDependencies(t *testing.T) {
 		t.Fatalf("dependent assets changed: %v %v", c.calls, s.deleted)
 	}
 }
+
+func TestMenuHistoryMarksDeletedRecordUnavailable(t *testing.T) {
+	store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, versions: []MenuVersion{
+		{ID: 7, Script: "#!ipxe\nitem windriver_99 Old test\n", Title: "Old"},
+		{ID: 8, Active: true, Script: "#!ipxe\n", Title: "Current"},
+	}}
+	server := &Server{Store: store}
+	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	server.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "Удалённый пункт") || strings.Contains(res.Body.String(), `action="/menu/rollback"`) {
+		t.Fatalf("history status=%d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestDeleteEndpointsRequireAdminAndCSRF(t *testing.T) {
+	for _, role := range []string{"operator", "observer"} {
+		store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: role, Enabled: true}}}
+		if res := submitDeletion(t, &Server{Store: store}, "/drivers/configs/3/delete"); res.Code != http.StatusForbidden {
+			t.Fatalf("role=%s status=%d", role, res.Code)
+		}
+	}
+	store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
+	req := httptest.NewRequest(http.MethodPost, "/drivers/configs/3/delete", strings.NewReader("csrf=wrong"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("bad CSRF status=%d", res.Code)
+	}
+}
+
+func TestAdminPagesExposeRecordDeletionActions(t *testing.T) {
+	data := pageData{Info: requestContext{User: User{ID: 1, Role: "admin"}, CSRF: "test"}, WindowsProfiles: []WindowsProfile{{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows", Path: "win.iso"}, State: "ready"}}, WindowsAnswerVariants: []WindowsAnswerVariant{{ID: 4, ProfileID: 17, Title: "Lab"}}, DriverConfigs: []DriverConfig{{ID: 3, Title: "VirtIO"}}}
+	for _, tc := range []struct{ page, action string }{
+		{"images", `/images/windows-profiles/17/delete`},
+		{"images", `/images/windows-answers/4/delete`},
+		{"drivers", `/drivers/configs/3/delete`},
+	} {
+		res := httptest.NewRecorder()
+		render(res, tc.page, data)
+		if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `action="`+tc.action+`"`) {
+			t.Fatalf("%s missing %s: %d %s", tc.page, tc.action, res.Code, res.Body.String())
+		}
+	}
+}

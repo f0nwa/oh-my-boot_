@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"pxe-platform/internal/agent"
+	"pxe-platform/internal/drivers"
 	"pxe-platform/internal/images"
 )
 
@@ -37,6 +38,8 @@ type Storage interface {
 	SetWindowsAnswerState(context.Context, int64, string, string) error
 	WindowsAnswers(context.Context) ([]WindowsAnswerVariant, error)
 	WindowsAnswer(context.Context, int64) (WindowsAnswerVariant, error)
+	CreateDriverPackage(context.Context, drivers.Inventory) error
+	DriverPackages(context.Context) ([]DriverPackage, error)
 }
 
 type ImagesAPI interface {
@@ -66,6 +69,11 @@ type WindowsAnswerAPI interface {
 	CheckWindowsAnswer(context.Context, agent.WindowsAnswerCheck) error
 }
 
+type DriverPackageAPI interface {
+	ImportDriverPackage(context.Context, io.Reader, int64) (drivers.Inventory, error)
+	CheckDriverPackage(context.Context, string) error
+}
+
 type Server struct {
 	Store             Storage
 	Boot              *BootClient
@@ -74,6 +82,7 @@ type Server struct {
 	SMB               SMBMountAPI
 	WindowsISO        WindowsISOAPI
 	WindowsAnswers    WindowsAnswerAPI
+	DriverPackages    DriverPackageAPI
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
 	menuMu            sync.Mutex
@@ -107,6 +116,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
+	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
+	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))
+	mux.HandleFunc("GET /assets/driver-upload.js", s.driverUploadScript)
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
@@ -157,6 +169,10 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 					return
 				}
 				r.Body = http.MaxBytesReader(w, r.Body, images.MaxISOBytes)
+			} else if r.Pattern == "POST /drivers/import" {
+				_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Minute))
+				r.Body = http.MaxBytesReader(w, r.Body, drivers.MaxArchiveBytes+(1<<20))
+				err = r.ParseMultipartForm(8 << 20)
 			} else if r.Pattern == "POST /images/windows-profiles/{id}/answers" {
 				r.Body = http.MaxBytesReader(w, r.Body, maxWindowsAnswerBytes+(32<<10))
 				err = r.ParseMultipartForm(2 << 20)

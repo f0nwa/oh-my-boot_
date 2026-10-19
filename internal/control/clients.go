@@ -14,6 +14,7 @@ import (
 
 	"pxe-platform/internal/agent"
 	"pxe-platform/internal/boot"
+	"pxe-platform/internal/drivers"
 	"pxe-platform/internal/images"
 	"pxe-platform/internal/network"
 )
@@ -41,6 +42,35 @@ func NewAgentClient(path string) *AgentClient {
 	client := socketHTTP(path)
 	client.Timeout = 5 * time.Minute
 	return &AgentClient{http: client}
+}
+
+func (c *AgentClient) ImportDriverPackage(ctx context.Context, body io.Reader, size int64) (drivers.Inventory, error) {
+	var inventory drivers.Inventory
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/winpe-drivers/import", io.NopCloser(body))
+	if err != nil {
+		return inventory, err
+	}
+	req.ContentLength = size
+	client := &http.Client{Transport: c.http.Transport, Timeout: 10 * time.Minute}
+	res, err := client.Do(req)
+	if err != nil {
+		return inventory, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		message, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
+		return inventory, fmt.Errorf("driver import: %d %s", res.StatusCode, string(message))
+	}
+	err = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&inventory)
+	return inventory, err
+}
+
+func (c *AgentClient) CheckDriverPackage(ctx context.Context, hash string) error {
+	body, err := json.Marshal(map[string]string{"sha256": hash})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/winpe-drivers/check", body, nil)
 }
 
 func (c *AgentClient) PrepareWindowsISO(ctx context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {

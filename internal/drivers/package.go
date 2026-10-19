@@ -276,6 +276,9 @@ func validPackagePath(name string) error {
 	return nil
 }
 
+// ValidateUploadPath applies the archive path rules to a browser folder item.
+func ValidateUploadPath(name string) error { return validPackagePath(name) }
+
 func inspectINF(name string, raw []byte) (INF, []string) {
 	if len(raw) >= 2 && raw[0] == 0xff && raw[1] == 0xfe {
 		units := make([]uint16, 0, (len(raw)-2)/2)

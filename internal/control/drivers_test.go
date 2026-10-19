@@ -1,0 +1,171 @@
+package control
+
+import (
+	"archive/zip"
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"pxe-platform/internal/drivers"
+)
+
+type driverPageStore struct {
+	authOnlyStore
+	packages []DriverPackage
+}
+
+func (s *driverPageStore) CreateDriverPackage(_ context.Context, inventory drivers.Inventory) error {
+	s.packages = append(s.packages, DriverPackage{SHA256: inventory.SHA256, Inventory: inventory})
+	return nil
+}
+func (s *driverPageStore) DriverPackages(context.Context) ([]DriverPackage, error) {
+	return s.packages, nil
+}
+
+type fakeDriverAgent struct{ imports []drivers.Inventory }
+
+func (a *fakeDriverAgent) ImportDriverPackage(_ context.Context, body io.Reader, size int64) (drivers.Inventory, error) {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return drivers.Inventory{}, err
+	}
+	if int64(len(data)) != size {
+		return drivers.Inventory{}, fmt.Errorf("length differs")
+	}
+	inventory, err := drivers.InspectZIP(bytes.NewReader(data), size)
+	if err == nil {
+		a.imports = append(a.imports, inventory)
+	}
+	return inventory, err
+}
+func (a *fakeDriverAgent) CheckDriverPackage(context.Context, string) error { return nil }
+
+func testDriverUpload(t *testing.T, kind, csrf, filename string, content []byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	if err := w.WriteField("csrf", csrf); err != nil {
+		t.Fatal(err)
+	}
+	if kind == "folder" {
+		if err := w.WriteField("paths[]", filename); err != nil {
+			t.Fatal(err)
+		}
+		filename = "driver.inf"
+		kind = "files[]"
+	}
+	f, err := w.CreateFormFile(kind, filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/drivers/import", &body)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	return req
+}
+
+func oneDriverZIP(t *testing.T) []byte {
+	t.Helper()
+	var body bytes.Buffer
+	w := zip.NewWriter(&body)
+	f, err := w.Create("vendor/driver.inf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write([]byte("[Version]\nClass=Net\n[Models.NTamd64]\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return body.Bytes()
+}
+
+func TestDriverImportFolderMatchesZIP(t *testing.T) {
+	store := &driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
+	api := &fakeDriverAgent{}
+	s := &Server{Store: store, DriverPackages: api}
+	for _, input := range []struct {
+		kind, name string
+		data       []byte
+	}{
+		{"zip", "driver.zip", oneDriverZIP(t)},
+		{"folder", "vendor/driver.inf", []byte("[Version]\nClass=Net\n[Models.NTamd64]\n")},
+	} {
+		res := httptest.NewRecorder()
+		s.Handler().ServeHTTP(res, testDriverUpload(t, input.kind, CSRFToken("test-token"), input.name, input.data))
+		if res.Code != http.StatusSeeOther {
+			t.Fatalf("%s: %d %s", input.kind, res.Code, res.Body.String())
+		}
+	}
+	if len(api.imports) != 2 || api.imports[0].SHA256 != api.imports[1].SHA256 {
+		t.Fatalf("folder and ZIP differ: %+v", api.imports)
+	}
+}
+
+func TestDriverImportRejectsCSRFAndTraversal(t *testing.T) {
+	for _, tc := range []struct {
+		name, csrf, path string
+		want             int
+	}{
+		{"csrf", "wrong", "vendor/driver.inf", http.StatusForbidden},
+		{"traversal", CSRFToken("test-token"), "../driver.inf", http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
+			api := &fakeDriverAgent{}
+			res := httptest.NewRecorder()
+			(&Server{Store: store, DriverPackages: api}).Handler().ServeHTTP(res, testDriverUpload(t, "folder", tc.csrf, tc.path, []byte("[Version]\n")))
+			if res.Code != tc.want || len(api.imports) != 0 {
+				t.Fatalf("status=%d imports=%d", res.Code, len(api.imports))
+			}
+		})
+	}
+}
+
+func TestDriversPageObserverIsReadOnly(t *testing.T) {
+	store := &driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}
+	s := &Server{Store: store}
+	req := httptest.NewRequest(http.MethodGet, "/drivers", nil)
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK || strings.Contains(res.Body.String(), `action="/drivers/import"`) {
+		t.Fatalf("observer page: %d %s", res.Code, res.Body.String())
+	}
+}
+
+func TestDriverImportRejectsObserver(t *testing.T) {
+	store := &driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}
+	api := &fakeDriverAgent{}
+	res := httptest.NewRecorder()
+	(&Server{Store: store, DriverPackages: api}).Handler().ServeHTTP(res, testDriverUpload(t, "zip", CSRFToken("test-token"), "driver.zip", oneDriverZIP(t)))
+	if res.Code != http.StatusForbidden || len(api.imports) != 0 {
+		t.Fatalf("observer upload: %d", res.Code)
+	}
+}
+
+func TestDriversPageOperatorShowsBothImportMethods(t *testing.T) {
+	store := &driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
+	req := httptest.NewRequest(http.MethodGet, "/drivers", nil)
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	for _, required := range []string{`webkitdirectory`, `name="zip"`, `name="csrf"`, `/assets/driver-upload.js`} {
+		if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), required) {
+			t.Fatalf("missing %q in page: %d", required, res.Code)
+		}
+	}
+}

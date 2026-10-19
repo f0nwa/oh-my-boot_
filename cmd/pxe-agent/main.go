@@ -44,12 +44,13 @@ func main() {
 		AnswerRoot: "/srv/pxe/tftp/windows-answers",
 		Systemctl:  agent.SMBCommandSystemctl{},
 	}
+	driverManager := &agent.DriverManager{Root: "/var/lib/pxe-platform-agent/drivers", ProfileRoot: "/srv/pxe/tftp/windows-profiles", AnswerRoot: "/srv/pxe/tftp/windows-answers", WIMRoot: "/srv/pxe/tftp/windows-driver-wims", ConfigRoot: "/srv/pxe/tftp/windows-driver-configs"}
 	listener, err := agent.ListenUnix(*socket)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer listener.Close()
-	server := &http.Server{Handler: agent.HandlerWithManagers(applier, smb, windows), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Handler: agent.HandlerWithDriverManager(applier, smb, windows, driverManager), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

@@ -112,14 +112,22 @@ func InspectZIP(src io.ReaderAt, size int64) (Inventory, error) {
 	}
 	sort.Slice(result.Files, func(i, j int) bool { return result.Files[i].Path < result.Files[j].Path })
 	sort.Slice(result.INFs, func(i, j int) bool { return result.INFs[i].Path < result.INFs[j].Path })
+	result.SHA256 = CanonicalHash(result.Files)
+	return result, nil
+}
+
+// CanonicalHash identifies file content and normalized relative paths, not
+// the ZIP container used to transport them.
+func CanonicalHash(files []File) string {
+	ordered := append([]File(nil), files...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Path < ordered[j].Path })
 	h := sha256.New()
-	for _, file := range result.Files {
+	for _, file := range ordered {
 		writeManifestPart(h, file.Path)
 		writeManifestPart(h, file.SHA256)
 		writeManifestPart(h, fmt.Sprint(file.Size))
 	}
-	result.SHA256 = hex.EncodeToString(h.Sum(nil))
-	return result, nil
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func writeManifestPart(h hash.Hash, part string) {

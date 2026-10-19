@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"pxe-platform/internal/drivers"
 	"pxe-platform/internal/smbstorage"
 
 	"pxe-platform/internal/network"
@@ -21,7 +22,46 @@ func HandlerWithSMB(applier *Applier, manager *SMBManager) http.Handler {
 }
 
 func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *WindowsISOManager) http.Handler {
+	return HandlerWithDriverManager(applier, manager, windows, nil)
+}
+
+func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *WindowsISOManager, driverManager *DriverManager) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /winpe-drivers/import", func(w http.ResponseWriter, r *http.Request) {
+		if driverManager == nil {
+			http.Error(w, "driver import unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if r.ContentLength <= 0 || r.ContentLength > drivers.MaxArchiveBytes {
+			http.Error(w, "invalid driver archive size", http.StatusBadRequest)
+			return
+		}
+		inventory, err := driverManager.Import(r.Context(), http.MaxBytesReader(w, r.Body, drivers.MaxArchiveBytes), r.ContentLength)
+		if err != nil {
+			http.Error(w, "invalid driver package: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(inventory)
+	})
+	mux.HandleFunc("POST /winpe-drivers/check", func(w http.ResponseWriter, r *http.Request) {
+		if driverManager == nil {
+			http.Error(w, "driver checking unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			SHA256 string `json:"sha256"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4096) {
+			return
+		}
+		if err := driverManager.CheckPackage(r.Context(), req.SHA256); err != nil {
+			http.Error(w, "driver package unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /windows-answer/prepare", func(w http.ResponseWriter, r *http.Request) {
 		if windows == nil {
 			http.Error(w, "Windows answer preparation unavailable", http.StatusServiceUnavailable)

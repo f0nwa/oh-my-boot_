@@ -10,14 +10,21 @@ import (
 const menuFolderMarker = "# pxe-platform:folders-v1 "
 const menuWindowsMarker = "# pxe-platform:winiso-v1 "
 const menuAnswerMarker = "# pxe-platform:winanswers-v1 "
+const menuDriverMarker = "# pxe-platform:windrivers-v1 "
 
 type menuProfile struct {
-	id           string
-	title        string
-	base         string
-	windowsISOID int64
-	answerID     int64
-	answerSHA256 string
+	id                 string
+	title              string
+	base               string
+	windowsISOID       int64
+	answerID           int64
+	answerSHA256       string
+	driverConfigID     int64
+	driverAnswerID     int64
+	driverAnswerSHA256 string
+	driverWIMKey       string
+	driverWIMSHA256    string
+	driverScriptSHA256 string
 }
 
 type menuTreeNode struct {
@@ -121,8 +128,11 @@ func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string,
 	out.WriteString("#!ipxe\n" + menuFolderMarker + base64.RawURLEncoding.EncodeToString(metadata) + "\n")
 	var selected []int64
 	var selectedAnswers []menuWindowsAnswerRef
+	var selectedDrivers []menuDriverConfigRef
 	for _, profile := range profiles {
-		if profile.answerID > 0 {
+		if profile.driverConfigID > 0 {
+			selectedDrivers = append(selectedDrivers, menuDriverConfigRef{ID: profile.driverConfigID, ProfileID: profile.windowsISOID, AnswerID: profile.driverAnswerID, AnswerSHA256: profile.driverAnswerSHA256, WIMKey: profile.driverWIMKey, WIMSHA256: profile.driverWIMSHA256, ScriptSHA256: profile.driverScriptSHA256})
+		} else if profile.answerID > 0 {
 			selectedAnswers = append(selectedAnswers, menuWindowsAnswerRef{ID: profile.answerID, ProfileID: profile.windowsISOID, SHA256: profile.answerSHA256})
 		} else if profile.windowsISOID > 0 {
 			selected = append(selected, profile.windowsISOID)
@@ -141,6 +151,13 @@ func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string,
 			return nil, err
 		}
 		out.WriteString(menuWindowsMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
+	}
+	if len(selectedDrivers) > 0 {
+		encoded, err := json.Marshal(selectedDrivers)
+		if err != nil {
+			return nil, err
+		}
+		out.WriteString(menuDriverMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
 	}
 	writeMenuNode(&out, root, title, diagnosticLabel)
 	out.WriteString(":diagnostics\n" + "echo " + diagnosticMessage + "\n" + "sleep 3\n" + "goto local\n")
@@ -183,6 +200,24 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 
 func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	base := profile.base
+	if profile.driverConfigID > 0 {
+		configID := fmt.Sprintf("%d", profile.driverConfigID)
+		profileID := fmt.Sprintf("%d", profile.windowsISOID)
+		files := []windowsInitrdFile{
+			{name: "winpeshl.ini", url: base + "/assets/windows-profiles/" + profileID + "/winpeshl.ini"},
+			{name: "pxe-setup.cmd", url: base + "/assets/windows-driver-configs/" + configID + "/pxe-setup.cmd"},
+		}
+		if profile.driverAnswerID > 0 {
+			files = append(files, windowsInitrdFile{name: "pxe-answer.xml", url: base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.driverAnswerID) + "/pxe-answer.xml"})
+		}
+		out.WriteString(":" + profile.id + "\n" +
+			"kernel " + base + "/assets/windows/wimboot\n" +
+			windowsInjectedFiles(profile.id, files...) +
+			"initrd " + base + "/assets/windows-driver-wims/" + profile.driverWIMKey + "/boot.wim boot.wim\n" +
+			"boot || goto " + profile.id + "_failed\n" +
+			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
+		return
+	}
 	if profile.windowsISOID > 0 {
 		id := fmt.Sprintf("%d", profile.windowsISOID)
 		prefix := base + "/assets/windows-profiles/" + id + "/"

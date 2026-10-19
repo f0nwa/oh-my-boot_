@@ -30,8 +30,14 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать сценарии Windows", 500)
 		return
 	}
+	configs, err := s.Store.DriverConfigs(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать конфигурации драйверов", 500)
+		return
+	}
 	activeWindows := map[int64]bool{}
 	activeAnswers := map[int64]menuWindowsAnswerRef{}
+	activeDrivers := map[int64]menuDriverConfigRef{}
 	activeFolders := map[string]string{}
 	for _, version := range versions {
 		if version.Active {
@@ -44,6 +50,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 			folders := menuFolderPaths(version.Script)
 			activeWindows = menuWindowsProfileIDs(version.Script)
 			activeAnswers = menuWindowsAnswerRefs(version.Script)
+			activeDrivers = menuDriverConfigRefs(version.Script)
 			activeFolders = folders
 			data.MenuFolderUbuntu = folders["ubuntu"]
 			data.MenuFolderWindows10 = folders["windows10"]
@@ -68,6 +75,14 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.MenuWindowsAnswers = append(data.MenuWindowsAnswers, menuWindowsAnswerRow{WindowsAnswerVariant: answer, Selected: activeAnswers[answer.ID].ID == answer.ID, MenuFolder: folder})
 	}
+	for _, config := range configs {
+		key := fmt.Sprintf("windriver_%d", config.ID)
+		folder := config.Folder
+		if _, ok := activeDrivers[config.ID]; ok {
+			folder = activeFolders[key]
+		}
+		data.MenuDriverConfigs = append(data.MenuDriverConfigs, menuDriverConfigRow{DriverConfig: config, Selected: activeDrivers[config.ID].ID == config.ID, MenuFolder: folder})
+	}
 	render(w, "menu", data)
 }
 
@@ -83,7 +98,12 @@ func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать сценарии Windows", 503)
 		return
 	}
-	script, err := BuildMenuFromFormWithProfilesAndAnswers(r.Form, s.BootBaseURL, profiles, answers)
+	configs, err := s.Store.DriverConfigs(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать конфигурации драйверов", 503)
+		return
+	}
+	script, err := BuildMenuFromFormWithDriverConfigs(r.Form, s.BootBaseURL, profiles, answers, configs)
 	if err != nil {
 		http.Error(w, "Недопустимый текст меню: "+err.Error(), 400)
 		return
@@ -173,8 +193,21 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) error {
 	selected := menuWindowsProfileIDs(script)
 	answerRefs := menuWindowsAnswerRefs(script)
+	driverRefs := menuDriverConfigRefs(script)
 	answerItems := map[int64]bool{}
+	driverItems := map[int64]bool{}
 	for _, line := range strings.Split(script, "\n") {
+		if strings.HasPrefix(line, "item windriver_") {
+			fields := strings.Fields(line)
+			if len(fields) < 3 {
+				return fmt.Errorf("пункт конфигурации драйверов повреждён")
+			}
+			id, err := strconv.ParseInt(strings.TrimPrefix(fields[1], "windriver_"), 10, 64)
+			if err != nil || id <= 0 || driverItems[id] {
+				return fmt.Errorf("пункт конфигурации драйверов повреждён")
+			}
+			driverItems[id] = true
+		}
 		if !strings.HasPrefix(line, "item winanswer_") {
 			continue
 		}
@@ -196,7 +229,18 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) e
 			return fmt.Errorf("ссылки на сценарии повреждены")
 		}
 	}
+	if len(driverItems) != len(driverRefs) {
+		return fmt.Errorf("ссылки на конфигурации драйверов повреждены")
+	}
+	for id := range driverItems {
+		if _, ok := driverRefs[id]; !ok {
+			return fmt.Errorf("ссылки на конфигурации драйверов повреждены")
+		}
+	}
 	for _, ref := range answerRefs {
+		selected[ref.ProfileID] = true
+	}
+	for _, ref := range driverRefs {
 		selected[ref.ProfileID] = true
 	}
 	if len(selected) == 0 {
@@ -208,6 +252,53 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) e
 	profiles, err := s.Store.WindowsProfiles(ctx)
 	if err != nil {
 		return err
+	}
+	if len(driverRefs) > 0 {
+		if s.DriverConfigs == nil || s.DriverPackages == nil {
+			return fmt.Errorf("служба драйверов недоступна")
+		}
+		configs, err := s.Store.DriverConfigs(ctx)
+		if err != nil {
+			return err
+		}
+		answers, err := s.Store.WindowsAnswers(ctx)
+		if err != nil {
+			return err
+		}
+		answersByID := make(map[int64]WindowsAnswerVariant, len(answers))
+		for _, answer := range answers {
+			answersByID[answer.ID] = answer
+		}
+		for _, config := range configs {
+			ref, ok := driverRefs[config.ID]
+			if !ok {
+				continue
+			}
+			if config.State != "ready" || config.ProfileID != ref.ProfileID || config.AnswerID != ref.AnswerID || config.Build.WIMKey != ref.WIMKey || config.Build.WIMSHA256 != ref.WIMSHA256 || config.Build.ScriptSHA256 != ref.ScriptSHA256 || len(config.PackageINFs) == 0 {
+				return fmt.Errorf("конфигурация драйверов %d изменилась или не подготовлена", config.ID)
+			}
+			if config.AnswerID > 0 {
+				answer, ok := answersByID[config.AnswerID]
+				if !ok || answer.State != "ready" || answer.ProfileID != config.ProfileID || answer.SHA256 != ref.AnswerSHA256 || answer.Size <= 0 || s.WindowsAnswers == nil {
+					return fmt.Errorf("сценарий конфигурации драйверов %d недоступен", config.ID)
+				}
+				if err := s.WindowsAnswers.CheckWindowsAnswer(ctx, agent.WindowsAnswerCheck{ID: answer.ID, ProfileID: answer.ProfileID, SHA256: answer.SHA256}); err != nil {
+					return fmt.Errorf("файлы сценария %d недоступны", answer.ID)
+				}
+			}
+			for _, inf := range config.PackageINFs {
+				if err := s.DriverPackages.CheckDriverPackage(ctx, inf.PackageSHA256); err != nil {
+					return fmt.Errorf("пакет драйверов %s недоступен", inf.PackageSHA256)
+				}
+			}
+			if err := s.DriverConfigs.CheckDriverConfig(ctx, agent.DriverBuildCheck{Request: agent.DriverBuildRequest{ConfigID: config.ID, ProfileID: config.ProfileID, AnswerID: config.AnswerID, PackageINFs: config.PackageINFs}, Result: config.Build}); err != nil {
+				return fmt.Errorf("файлы конфигурации драйверов %d недоступны", config.ID)
+			}
+			delete(driverRefs, config.ID)
+		}
+		if len(driverRefs) != 0 {
+			return fmt.Errorf("конфигурация драйверов отсутствует")
+		}
 	}
 	if len(answerRefs) > 0 {
 		if s.WindowsAnswers == nil {

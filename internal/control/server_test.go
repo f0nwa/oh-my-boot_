@@ -21,6 +21,9 @@ func (a authOnlyStore) WindowsProfiles(context.Context) ([]WindowsProfile, error
 func (a authOnlyStore) WindowsAnswers(context.Context) ([]WindowsAnswerVariant, error) {
 	return []WindowsAnswerVariant{}, nil
 }
+func (a authOnlyStore) DriverConfigs(context.Context) ([]DriverConfig, error) {
+	return []DriverConfig{}, nil
+}
 
 func TestServerRedirectsAnonymousDashboard(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}

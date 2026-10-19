@@ -15,13 +15,26 @@ func BuildMenuFromFormWithProfiles(form url.Values, baseURL string, available []
 }
 
 func BuildMenuFromFormWithProfilesAndAnswers(form url.Values, baseURL string, available []WindowsProfile, answers []WindowsAnswerVariant) ([]byte, error) {
+	return BuildMenuFromFormWithDriverConfigs(form, baseURL, available, answers, nil)
+}
+
+func BuildMenuFromFormWithDriverConfigs(form url.Values, baseURL string, available []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) ([]byte, error) {
 	selected := map[int64]bool{}
 	selectedAnswers := map[int64]bool{}
+	selectedConfigs := map[int64]bool{}
 	byID := map[int64]WindowsProfile{}
 	for _, p := range available {
 		byID[p.ID] = p
 	}
 	for key, values := range form {
+		if strings.HasPrefix(key, "windriver_") && len(values) > 0 && values[0] == "on" {
+			id, err := strconv.ParseInt(strings.TrimPrefix(key, "windriver_"), 10, 64)
+			if err != nil || id <= 0 {
+				return nil, fmt.Errorf("invalid WinPE driver configuration selection")
+			}
+			selectedConfigs[id] = true
+			continue
+		}
 		if strings.HasPrefix(key, "winanswer_") && len(values) > 0 && values[0] == "on" {
 			id, err := strconv.ParseInt(strings.TrimPrefix(key, "winanswer_"), 10, 64)
 			if err != nil || id <= 0 {
@@ -39,7 +52,7 @@ func BuildMenuFromFormWithProfilesAndAnswers(form url.Values, baseURL string, av
 		}
 		selected[id] = true
 	}
-	if len(selected) == 0 && len(selectedAnswers) == 0 {
+	if len(selected) == 0 && len(selectedAnswers) == 0 && len(selectedConfigs) == 0 {
 		return BuildMenuFromForm(form, baseURL)
 	}
 	base, err := validatedBootURL(baseURL)
@@ -101,6 +114,41 @@ func BuildMenuFromFormWithProfilesAndAnswers(form url.Values, baseURL string, av
 	}
 	if len(selectedAnswers) != 0 {
 		return nil, fmt.Errorf("unknown Windows answer")
+	}
+	byAnswerID := map[int64]WindowsAnswerVariant{}
+	for _, answer := range answers {
+		byAnswerID[answer.ID] = answer
+	}
+	for _, config := range configs {
+		if !selectedConfigs[config.ID] {
+			continue
+		}
+		parent, ok := byID[config.ProfileID]
+		if !ok || parent.State != "ready" || (parent.InstallFile != "install.wim" && parent.InstallFile != "install.esd") || config.State != "ready" || len(config.PackageINFs) == 0 || !safeMenuText(config.Title, 80) || !isASCII(config.Title) || !validAnswerHash(config.Build.WIMKey) || !validAnswerHash(config.Build.WIMSHA256) || !validAnswerHash(config.Build.ScriptSHA256) {
+			return nil, fmt.Errorf("WinPE driver configuration %d is not ready", config.ID)
+		}
+		answerHash := ""
+		if config.AnswerID > 0 {
+			answer, ok := byAnswerID[config.AnswerID]
+			if !ok || answer.ProfileID != config.ProfileID || answer.State != "ready" || answer.Size <= 0 || !validAnswerHash(answer.SHA256) {
+				return nil, fmt.Errorf("WinPE driver configuration answer is unavailable")
+			}
+			answerHash = answer.SHA256
+		}
+		key := fmt.Sprintf("windriver_%d", config.ID)
+		folder := config.Folder
+		if submitted, ok := form["folder_"+key]; ok && len(submitted) > 0 {
+			folder = submitted[0]
+		}
+		if !isASCII(folder) {
+			return nil, fmt.Errorf("WinPE driver folder must be ASCII")
+		}
+		profiles = append(profiles, menuProfile{id: key, title: config.Title, base: base, windowsISOID: config.ProfileID, driverConfigID: config.ID, driverAnswerID: config.AnswerID, driverAnswerSHA256: answerHash, driverWIMKey: config.Build.WIMKey, driverWIMSHA256: config.Build.WIMSHA256, driverScriptSHA256: config.Build.ScriptSHA256})
+		folders[key] = folder
+		delete(selectedConfigs, config.ID)
+	}
+	if len(selectedConfigs) != 0 {
+		return nil, fmt.Errorf("unknown WinPE driver configuration")
 	}
 	for _, folder := range folders {
 		if err := validateMenuFolder(folder); err != nil {

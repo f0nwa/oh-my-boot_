@@ -40,6 +40,10 @@ type Storage interface {
 	WindowsAnswer(context.Context, int64) (WindowsAnswerVariant, error)
 	CreateDriverPackage(context.Context, drivers.Inventory) error
 	DriverPackages(context.Context) ([]DriverPackage, error)
+	CreateDriverConfig(context.Context, DriverConfig) (DriverConfig, error)
+	DriverConfigs(context.Context) ([]DriverConfig, error)
+	DriverConfig(context.Context, int64) (DriverConfig, error)
+	SetDriverConfigResult(context.Context, int64, string, agent.DriverBuildResult, string) error
 }
 
 type ImagesAPI interface {
@@ -74,6 +78,11 @@ type DriverPackageAPI interface {
 	CheckDriverPackage(context.Context, string) error
 }
 
+type DriverConfigAPI interface {
+	PrepareDriverConfig(context.Context, agent.DriverBuildRequest) (agent.DriverBuildResult, error)
+	CheckDriverConfig(context.Context, agent.DriverBuildCheck) error
+}
+
 type Server struct {
 	Store             Storage
 	Boot              *BootClient
@@ -83,6 +92,7 @@ type Server struct {
 	WindowsISO        WindowsISOAPI
 	WindowsAnswers    WindowsAnswerAPI
 	DriverPackages    DriverPackageAPI
+	DriverConfigs     DriverConfigAPI
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
 	menuMu            sync.Mutex
@@ -118,6 +128,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
 	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))
+	mux.HandleFunc("POST /drivers/configs", s.protect("images", s.driverConfigCreate))
+	mux.HandleFunc("POST /drivers/configs/{id}/prepare", s.protect("images", s.driverConfigPrepare))
 	mux.HandleFunc("GET /assets/driver-upload.js", s.driverUploadScript)
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))

@@ -27,6 +27,9 @@ func (s *driverPageStore) CreateDriverPackage(_ context.Context, inventory drive
 func (s *driverPageStore) DriverPackages(context.Context) ([]DriverPackage, error) {
 	return s.packages, nil
 }
+func (s *driverPageStore) DriverConfigs(context.Context) ([]DriverConfig, error) {
+	return []DriverConfig{}, nil
+}
 
 type fakeDriverAgent struct{ imports []drivers.Inventory }
 

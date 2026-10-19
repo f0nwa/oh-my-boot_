@@ -27,7 +27,22 @@ func (s *Server) driversPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать каталог драйверов", http.StatusServiceUnavailable)
 		return
 	}
-	render(w, "drivers", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), DriverPackages: packages})
+	profiles, err := s.Store.WindowsProfiles(r.Context())
+	if err != nil {
+		http.Error(w, "Профили ISO недоступны", http.StatusServiceUnavailable)
+		return
+	}
+	answers, err := s.Store.WindowsAnswers(r.Context())
+	if err != nil {
+		http.Error(w, "Сценарии Windows недоступны", http.StatusServiceUnavailable)
+		return
+	}
+	configs, err := s.Store.DriverConfigs(r.Context())
+	if err != nil {
+		http.Error(w, "Конфигурации установки недоступны", http.StatusServiceUnavailable)
+		return
+	}
+	render(w, "drivers", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), DriverPackages: packages, WindowsProfiles: profiles, WindowsAnswerVariants: answers, DriverConfigs: configs})
 }
 
 func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {

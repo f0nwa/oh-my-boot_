@@ -7,6 +7,29 @@ import (
 	"unicode"
 )
 
+type windowsInitrdFile struct {
+	name string
+	url  string
+}
+
+// The pinned BIOS iPXE build boots injected WinPE files using pathname arguments;
+// its --name form produced "Bad CPIO magic" in SeaBIOS. Keep the tested UEFI form.
+func windowsInjectedFiles(label string, files ...windowsInitrdFile) string {
+	var out strings.Builder
+	out.WriteString("iseq ${platform} efi && goto " + label + "_efi_initrd || goto " + label + "_bios_initrd\n")
+	out.WriteString(":" + label + "_bios_initrd\n")
+	for _, file := range files {
+		out.WriteString("initrd " + file.url + " " + file.name + "\n")
+	}
+	out.WriteString("goto " + label + "_initrd_done\n")
+	out.WriteString(":" + label + "_efi_initrd\n")
+	for _, file := range files {
+		out.WriteString("initrd -n " + file.name + " " + file.url + "\n")
+	}
+	out.WriteString(":" + label + "_initrd_done\n")
+	return out.String()
+}
+
 func safeMenuText(value string, max int) bool {
 	if value == "" || len([]rune(value)) > max || strings.TrimSpace(value) != value {
 		return false
@@ -114,8 +137,9 @@ func buildMenu(title, label, message, ubuntuBase, windows10Base, windows11Base s
 	if windows11Base != "" {
 		script += ":windows11\n" +
 			"kernel " + windows11Base + "/assets/windows/wimboot\n" +
-			"initrd -n winpeshl.ini " + windows11Base + "/assets/windows11/winpeshl.ini\n" +
-			"initrd -n pxe-setup.cmd " + windows11Base + "/assets/windows11/pxe-setup.cmd\n" +
+			windowsInjectedFiles("windows11",
+				windowsInitrdFile{name: "winpeshl.ini", url: windows11Base + "/assets/windows11/winpeshl.ini"},
+				windowsInitrdFile{name: "pxe-setup.cmd", url: windows11Base + "/assets/windows11/pxe-setup.cmd"}) +
 			"initrd " + windows11Base + "/assets/windows11/boot.wim boot.wim\n" +
 			"boot || goto windows11_failed\n" +
 			":windows11_failed\n" +

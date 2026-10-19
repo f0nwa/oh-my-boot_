@@ -71,6 +71,32 @@ func TestWindowsMenuPublishesSeparateProfilesAndFolders(t *testing.T) {
 	}
 }
 
+func TestWindowsProfileMenuUsesPlainInitrdNamesForBIOS(t *testing.T) {
+	profile := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 10 x64", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
+	form := url.Values{"title": {"PXE Platform"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}}
+	script, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", []WindowsProfile{profile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(script)
+	for _, want := range []string{
+		"iseq ${platform} efi && goto winiso_17_efi_initrd || goto winiso_17_bios_initrd\n",
+		":winiso_17_bios_initrd\n" +
+			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini winpeshl.ini\n" +
+			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd pxe-setup.cmd\n" +
+			"goto winiso_17_initrd_done\n",
+		":winiso_17_efi_initrd\n" +
+			"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini\n" +
+			"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd\n" +
+			":winiso_17_initrd_done\n" +
+			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in generated menu", want)
+		}
+	}
+}
+
 func TestWindowsMenuChecksCurrentSourceBeforePublication(t *testing.T) {
 	modified := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/pxe-platform-smb/key7", Path: "windows.iso", Size: 123, Modified: modified, Title: "Windows 11 x64", Folder: "Windows"}

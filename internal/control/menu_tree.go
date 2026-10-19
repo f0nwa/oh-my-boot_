@@ -187,17 +187,17 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 		id := fmt.Sprintf("%d", profile.windowsISOID)
 		prefix := base + "/assets/windows-profiles/" + id + "/"
 		startup := prefix + "pxe-setup.cmd"
-		answer := ""
+		files := []windowsInitrdFile{{name: "winpeshl.ini", url: prefix + "winpeshl.ini"}}
 		if profile.answerID > 0 {
 			answerPrefix := base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.answerID) + "/"
 			startup = answerPrefix + "pxe-setup.cmd"
-			answer = "initrd -n pxe-answer.xml " + answerPrefix + "pxe-answer.xml\n"
+			files = append(files, windowsInitrdFile{name: "pxe-setup.cmd", url: startup}, windowsInitrdFile{name: "pxe-answer.xml", url: answerPrefix + "pxe-answer.xml"})
+		} else {
+			files = append(files, windowsInitrdFile{name: "pxe-setup.cmd", url: startup})
 		}
 		out.WriteString(":" + profile.id + "\n" +
 			"kernel " + base + "/assets/windows/wimboot\n" +
-			"initrd -n winpeshl.ini " + prefix + "winpeshl.ini\n" +
-			"initrd -n pxe-setup.cmd " + startup + "\n" +
-			answer +
+			windowsInjectedFiles(profile.id, files...) +
 			"initrd " + prefix + "boot.wim boot.wim\n" +
 			"boot || goto " + profile.id + "_failed\n" +
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
@@ -210,8 +210,9 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 		out.WriteString(":" + profile.id + "\n" +
 			"kernel " + base + "/assets/windows/wimboot\n")
 		if profile.id == "windows11" {
-			out.WriteString("initrd -n winpeshl.ini " + base + "/assets/windows11/winpeshl.ini\n" +
-				"initrd -n pxe-setup.cmd " + base + "/assets/windows11/pxe-setup.cmd\n")
+			out.WriteString(windowsInjectedFiles("windows11",
+				windowsInitrdFile{name: "winpeshl.ini", url: base + "/assets/windows11/winpeshl.ini"},
+				windowsInitrdFile{name: "pxe-setup.cmd", url: base + "/assets/windows11/pxe-setup.cmd"}))
 		}
 		out.WriteString("initrd " + base + "/assets/" + profile.id + "/boot.wim boot.wim\n" +
 			"boot || goto " + profile.id + "_failed\n" +

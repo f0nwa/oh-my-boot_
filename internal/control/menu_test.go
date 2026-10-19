@@ -108,6 +108,31 @@ func TestWindows11MenuStartsNetworkInstallerBeforeSetup(t *testing.T) {
 	}
 }
 
+func TestStaticWindows11MenuUsesPlainInitrdNamesForBIOS(t *testing.T) {
+	form := url.Values{"title": {"PXE Platform"}, "label": {"Diagnostics"}, "message": {"Ready"}, "windows11": {"on"}}
+	script, err := BuildMenuFromForm(form, "http://10.30.0.10:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(script)
+	for _, want := range []string{
+		"iseq ${platform} efi && goto windows11_efi_initrd || goto windows11_bios_initrd\n",
+		":windows11_bios_initrd\n" +
+			"initrd http://10.30.0.10:8080/assets/windows11/winpeshl.ini winpeshl.ini\n" +
+			"initrd http://10.30.0.10:8080/assets/windows11/pxe-setup.cmd pxe-setup.cmd\n" +
+			"goto windows11_initrd_done\n",
+		":windows11_efi_initrd\n" +
+			"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows11/winpeshl.ini\n" +
+			"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows11/pxe-setup.cmd\n" +
+			":windows11_initrd_done\n" +
+			"initrd http://10.30.0.10:8080/assets/windows11/boot.wim boot.wim\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in generated menu", want)
+		}
+	}
+}
+
 func TestMenuBuildKeepsStructuredText(t *testing.T) {
 	script, err := BuildMenu("PXE Лаборатория", "Диагностика", "Сеть готова")
 	if err != nil {

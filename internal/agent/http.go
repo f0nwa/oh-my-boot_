@@ -27,6 +27,71 @@ func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *Windows
 
 func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *WindowsISOManager, driverManager *DriverManager) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /winpe-drivers/remove-config", func(w http.ResponseWriter, r *http.Request) {
+		if driverManager == nil {
+			http.Error(w, "driver configuration unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			ID        int64  `json:"id"`
+			WIMKey    string `json:"wim_key"`
+			RemoveWIM bool   `json:"remove_wim"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4096) {
+			return
+		}
+		if req.ID <= 0 || (req.WIMKey != "" && (len(req.WIMKey) != 64 || !validManagedChild(req.WIMKey))) || (req.RemoveWIM && req.WIMKey == "") {
+			http.Error(w, "invalid driver configuration identity", http.StatusBadRequest)
+			return
+		}
+		if err := driverManager.RemoveConfig(r.Context(), req.ID, req.WIMKey, req.RemoveWIM); err != nil {
+			http.Error(w, "driver configuration cleanup failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /windows-answer/remove", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows answer unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			ID int64 `json:"id"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4096) {
+			return
+		}
+		if req.ID <= 0 {
+			http.Error(w, "invalid Windows answer ID", http.StatusBadRequest)
+			return
+		}
+		if err := windows.RemoveAnswer(r.Context(), req.ID); err != nil {
+			http.Error(w, "Windows answer cleanup failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /windows-iso/remove", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows ISO unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			ID int64 `json:"id"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4096) {
+			return
+		}
+		if req.ID <= 0 {
+			http.Error(w, "invalid Windows profile ID", http.StatusBadRequest)
+			return
+		}
+		if err := windows.RemoveProfile(r.Context(), req.ID); err != nil {
+			http.Error(w, "Windows profile cleanup failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /winpe-drivers/import", func(w http.ResponseWriter, r *http.Request) {
 		if driverManager == nil {
 			http.Error(w, "driver import unavailable", http.StatusServiceUnavailable)

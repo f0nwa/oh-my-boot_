@@ -1,6 +1,7 @@
 package control
 
 import (
+	_ "embed"
 	"net/http"
 	"strings"
 )
@@ -101,4 +102,39 @@ func (s *Server) menuSettings(w http.ResponseWriter, r *http.Request) {
 		d.Title, d.Label, d.Message, d.Ubuntu, d.UbuntuFolder = title, label, message, r.FormValue("ubuntu") == "on", folder
 		return nil
 	})
+}
+
+// menuOrder sets the draft's item order from the keys sent in their new order.
+// The keys must be exactly the draft's items.
+func (s *Server) menuOrder(w http.ResponseWriter, r *http.Request) {
+	s.editDraft(w, r, "menu.draft.order", "Порядок изменён", func(d *MenuDraft) error {
+		keys := r.Form["key"]
+		if len(keys) != len(d.Items) {
+			return draftError("Порядок не совпадает с пунктами меню")
+		}
+		byKey := map[string]MenuDraftItem{}
+		for _, item := range d.Items {
+			byKey[item.Key] = item
+		}
+		ordered := make([]MenuDraftItem, 0, len(keys))
+		for _, key := range keys {
+			item, ok := byKey[key]
+			if !ok {
+				return draftError("Порядок не совпадает с пунктами меню")
+			}
+			delete(byKey, key)
+			ordered = append(ordered, item)
+		}
+		d.Items = ordered
+		return nil
+	})
+}
+
+//go:embed menu_order.js
+var menuOrderJS []byte
+
+func menuOrderScript(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(menuOrderJS)
 }

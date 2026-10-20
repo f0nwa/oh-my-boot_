@@ -617,4 +617,7 @@ var englishMessages = map[string]string{
 	"Опубликовать меню":                             "Publish menu",
 	"Такая установка уже есть: «%s» (windriver_%d)": "This installation already exists: “%s” (windriver_%d)",
 	"Проверить заново":                              "Check again",
+	"Порядок не совпадает с пунктами меню":          "The order does not match the menu items",
+	"Перетащите строку за ⋮⋮ справа, чтобы изменить порядок. Название и каталог правятся прямо в ячейке.": "Drag a row by ⋮⋮ on the right to change the order. Edit the title and folder right in the cell.",
+	"Перетащить": "Drag",
 }

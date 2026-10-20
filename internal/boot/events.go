@@ -14,12 +14,14 @@ type EventStore interface {
 
 // Recorder keeps database work outside the HTTP request path.
 type Recorder struct {
-	mu       sync.Mutex
-	queue    chan Event
-	done     chan struct{}
-	closed   bool
-	store    EventStore
-	fallback *log.Logger
+	mu     sync.Mutex
+	queue  chan Event
+	done   chan struct{}
+	closed bool
+	store  EventStore
+	// lookupMAC finds a client hardware address by IP; tests replace it.
+	lookupMAC func(string) string
+	fallback  *log.Logger
 }
 
 func NewRecorder(store EventStore, fallback *log.Logger) *Recorder {
@@ -27,10 +29,11 @@ func NewRecorder(store EventStore, fallback *log.Logger) *Recorder {
 		fallback = log.Default()
 	}
 	r := &Recorder{
-		queue:    make(chan Event, 256),
-		done:     make(chan struct{}),
-		store:    store,
-		fallback: fallback,
+		queue:     make(chan Event, 256),
+		done:      make(chan struct{}),
+		store:     store,
+		lookupMAC: readNeighborMAC,
+		fallback:  fallback,
 	}
 	go r.run()
 	return r
@@ -69,6 +72,9 @@ func (r *Recorder) Close(ctx context.Context) error {
 func (r *Recorder) run() {
 	defer close(r.done)
 	for event := range r.queue {
+		if event.MAC == "" && r.lookupMAC != nil {
+			event.MAC = r.lookupMAC(remoteIP(event.RemoteAddr))
+		}
 		if r.store == nil {
 			r.logFallback(event, nil)
 			continue

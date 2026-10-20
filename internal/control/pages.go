@@ -52,6 +52,11 @@ type pageData struct {
 	PackageChoices        []packageChoice
 	Form                  url.Values
 	Query                 string
+	Tab                   string
+	MACFilter             string
+	Machines              []machineRow
+	DHCPEvents            []agent.DHCPEvent
+	DHCPError             string
 	ProfileUse            map[int64]int
 	AnswerUse             map[int64]int
 	ActiveVersion         int64
@@ -114,7 +119,9 @@ func parsePages(lang string) *template.Template {
 			}
 			return false
 		},
-		"deref": func(v *bool) bool { return v != nil && *v },
+		"dhcpKind":     dhcpKindLabel,
+		"machineStage": machineStageLabel,
+		"deref":        func(v *bool) bool { return v != nil && *v },
 	}).ParseFS(templateFS, "templates/*.html"))
 }
 
@@ -125,7 +132,7 @@ func render(w http.ResponseWriter, name string, data pageData) {
 	if data.Lang == "" {
 		lang = normalizeLanguage(data.Info.User.Language)
 	}
-	for _, field := range []*string{&data.Message, &data.Error, &data.ImageError, &data.EventError, &data.BootStatus, &data.AgentStatus} {
+	for _, field := range []*string{&data.Message, &data.Error, &data.ImageError, &data.EventError, &data.BootStatus, &data.AgentStatus, &data.DHCPError} {
 		*field = translate(lang, *field)
 	}
 	if err := pagesByLanguage[lang].ExecuteTemplate(&out, name, data); err != nil {

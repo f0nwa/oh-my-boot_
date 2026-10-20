@@ -292,7 +292,7 @@ func (c *BootClient) CurrentMenu(ctx context.Context) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(res.Body, 256<<10+1))
 }
 func (c *BootClient) Events(ctx context.Context, limit int) ([]boot.Event, error) {
-	if limit < 1 || limit > 100 {
+	if limit < 1 || limit > 1000 {
 		return nil, fmt.Errorf("invalid event limit")
 	}
 	var v []boot.Event
@@ -325,4 +325,11 @@ func (c *AgentClient) Apply(ctx context.Context, v network.Config) error {
 		return err
 	}
 	return localCall(ctx, c.http, "POST", "/apply", payload, nil)
+}
+
+// DHCPEvents returns the PXE dnsmasq log lines the Agent reads from journald.
+func (c *AgentClient) DHCPEvents(ctx context.Context) ([]agent.DHCPEvent, error) {
+	var v []agent.DHCPEvent
+	err := localCall(ctx, c.http, "GET", "/dhcp-events", nil, &v)
+	return v, err
 }

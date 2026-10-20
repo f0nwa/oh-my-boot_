@@ -15,6 +15,7 @@ type Event struct {
 	Kind       string    `json:"kind"`
 	Path       string    `json:"path"`
 	RemoteAddr string    `json:"remote_addr"`
+	MAC        string    `json:"mac,omitempty"`
 	At         time.Time `json:"at"`
 }
 

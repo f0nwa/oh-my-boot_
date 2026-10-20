@@ -42,3 +42,4 @@ pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px
 .cell-input{border-color:transparent;background:transparent;min-height:34px;padding:4px 8px;margin-left:-8px;max-width:100%}.cell-input:hover{border-color:var(--border)}.cell-input:focus{border-color:#A1A1AA;background:#fff}
 .drag-handle{cursor:grab;border:0;background:transparent;color:var(--neutral);min-width:32px;padding:0 6px;margin:0 0 0 4px;letter-spacing:-2px}.drag-handle:hover{color:var(--text);background:var(--soft)}tr.dragging{opacity:.5;background:var(--soft)}
 #menu-items td{vertical-align:middle}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:8px 0 20px}.tabs a{padding:10px 12px;text-decoration:none;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}.tabs a.active{color:var(--text);border-bottom-color:var(--text);font-weight:500}

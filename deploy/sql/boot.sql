@@ -7,3 +7,6 @@ CREATE TABLE IF NOT EXISTS boot_events (
 );
 
 CREATE INDEX IF NOT EXISTS boot_events_occurred_at_idx ON boot_events (occurred_at DESC);
+
+ALTER TABLE boot_events ADD COLUMN IF NOT EXISTS mac TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS boot_events_mac_idx ON boot_events (mac, occurred_at DESC);

@@ -121,7 +121,7 @@ func TestControlAPIClampsEventLimit(t *testing.T) {
 	events := &recordingEvents{}
 	res := httptest.NewRecorder()
 	ControlHandler(p, events).ServeHTTP(res, httptest.NewRequest("GET", "/events?limit=10000", nil))
-	if res.Code != 200 || events.limit != 100 {
+	if res.Code != 200 || events.limit != 1000 {
 		t.Fatalf("status=%d limit=%d", res.Code, events.limit)
 	}
 }

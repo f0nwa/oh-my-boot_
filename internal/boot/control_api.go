@@ -39,8 +39,8 @@ func ControlHandler(p *Publisher, events EventReader) http.Handler {
 			}
 			limit = n
 		}
-		if limit > 100 {
-			limit = 100
+		if limit > 1000 {
+			limit = 1000
 		}
 		rows, err := events.Recent(limit)
 		if err != nil {

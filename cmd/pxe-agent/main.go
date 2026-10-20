@@ -52,7 +52,7 @@ func main() {
 	}
 	defer listener.Close()
 	recovery := &agent.StorageRecovery{SMB: smb, Windows: windows, ConfigPath: *recoveryConfig}
-	server := &http.Server{Handler: agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Handler: agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// Recover storage mounts and Windows ISO profiles that failed, for example

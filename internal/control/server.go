@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"pxe-platform/internal/agent"
+	"pxe-platform/internal/boot"
 	"pxe-platform/internal/drivers"
 	"pxe-platform/internal/images"
 )
@@ -324,16 +325,47 @@ func (s *Server) loadServiceStatus(ctx context.Context, data *pageData) {
 }
 
 func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r)}
+	data := pageData{Info: requestInfo(r), Tab: r.URL.Query().Get("tab"), MACFilter: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mac")))}
+	if data.Tab != "requests" && data.Tab != "dhcp" {
+		data.Tab = "machines"
+	}
 	s.loadServiceStatus(r.Context(), &data)
+	var httpEvents []boot.Event
 	if s.Boot == nil {
 		data.EventError = "Служба Boot недоступна"
+	} else if v, err := s.Boot.Events(r.Context(), 1000); err != nil {
+		data.EventError = "Журнал временно недоступен"
 	} else {
-		v, err := s.Boot.Events(r.Context(), 100)
-		if err != nil {
-			data.EventError = "Журнал временно недоступен"
-		} else {
-			data.Events = v
+		httpEvents = v
+	}
+	var dhcp []agent.DHCPEvent
+	if s.Agent == nil {
+		data.DHCPError = "Журнал DHCP недоступен"
+	} else if v, err := s.Agent.DHCPEvents(r.Context()); err != nil {
+		data.DHCPError = "Журнал DHCP недоступен"
+	} else {
+		dhcp = resolveDHCPMACs(v, httpEvents)
+	}
+	switch data.Tab {
+	case "machines":
+		data.Machines = machineRows(httpEvents, dhcp, s.menuNames(r.Context()))
+	case "requests":
+		for _, e := range httpEvents {
+			if data.MACFilter == "" || e.MAC == data.MACFilter {
+				data.Events = append(data.Events, e)
+			}
+		}
+		if len(data.Events) > 300 {
+			data.Events = data.Events[:300]
+		}
+	case "dhcp":
+		for _, e := range dhcp {
+			if data.MACFilter == "" || e.MAC == data.MACFilter {
+				data.DHCPEvents = append(data.DHCPEvents, e)
+			}
+		}
+		if len(data.DHCPEvents) > 300 {
+			data.DHCPEvents = data.DHCPEvents[:300]
 		}
 	}
 	render(w, "events", data)

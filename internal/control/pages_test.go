@@ -46,3 +46,15 @@ func TestEveryPageUsesPageHead(t *testing.T) {
 		}
 	}
 }
+
+func TestHumanSizeAndArch(t *testing.T) {
+	if got := humanSize(langRU, 7<<30+(1<<29)); got != "7,5 ГБ" {
+		t.Fatalf("ru=%q", got)
+	}
+	if got := humanSize(langEN, 300<<20); got != "300.0 MB" {
+		t.Fatalf("en=%q", got)
+	}
+	if humanSize(langRU, 0) != "—" || isoArch("iso/Win11_24H2_Arm64.iso") != "arm64" || isoArch("win11.iso") != "x64" {
+		t.Fatal("size or arch")
+	}
+}

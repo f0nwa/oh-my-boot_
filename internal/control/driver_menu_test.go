@@ -74,14 +74,16 @@ func TestMenuDistinguishesDuplicateDriverConfigTitles(t *testing.T) {
 		profiles:      []WindowsProfile{profile}, answers: []WindowsAnswerVariant{answer},
 	}, configs: configs}
 	s := &Server{Store: store}
-	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
+	// Equal titles in the structure carry their keys; the selected item
+	// names what it loads.
+	req := httptest.NewRequest(http.MethodGet, "/menu?item=windriver_1", nil)
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
-	for _, want := range []string{"windriver_1", "windriver_2", "Образ с драйверами"} {
+	for _, want := range []string{`<small class="mono">windriver_1</small>`, `<small class="mono">windriver_2</small>`, "Образ с драйверами"} {
 		if !strings.Contains(res.Body.String(), want) {
 			t.Errorf("missing %q", want)
 		}

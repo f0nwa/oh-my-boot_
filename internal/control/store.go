@@ -17,6 +17,7 @@ type User struct {
 	Role     string
 	Enabled  bool
 	Language string
+	Theme    string
 }
 type AuditEvent struct {
 	At     time.Time
@@ -90,7 +91,7 @@ func (s Store) Session(ctx context.Context, token string) (User, error) {
 	}
 	var u User
 	var expiry time.Time
-	err := s.Pool.QueryRow(ctx, "SELECT u.id,u.username,u.role,u.enabled,u.language,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1", tokenHash(token)).Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &expiry)
+	err := s.Pool.QueryRow(ctx, "SELECT u.id,u.username,u.role,u.enabled,u.language,u.theme,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1", tokenHash(token)).Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &expiry)
 	if err != nil {
 		return User{}, err
 	}
@@ -266,6 +267,21 @@ func (s Store) SetUserLanguage(ctx context.Context, id int64, language string) e
 		return fmt.Errorf("unsupported language")
 	}
 	command, err := s.Pool.Exec(ctx, "UPDATE users SET language=$2 WHERE id=$1", id, language)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// SetUserTheme stores the color theme chosen by a user.
+func (s Store) SetUserTheme(ctx context.Context, id int64, theme string) error {
+	if !validTheme(theme) {
+		return fmt.Errorf("unsupported theme")
+	}
+	command, err := s.Pool.Exec(ctx, "UPDATE users SET theme=$2 WHERE id=$1", id, theme)
 	if err != nil {
 		return err
 	}

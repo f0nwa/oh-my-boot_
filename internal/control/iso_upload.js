@@ -83,3 +83,17 @@
   });
   loadFolders();
 })();
+
+// Show the chosen file name in the drop zone.
+(() => {
+  const input = document.querySelector('#iso-upload-form .dropzone input[type="file"]');
+  if (!input) return;
+  const zone = input.closest('.dropzone');
+  const title = zone.querySelector('strong');
+  const initial = title.textContent;
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    title.textContent = file ? `${file.name} · ${(file.size / 1024 ** 3).toFixed(1)} GB` : initial;
+    zone.classList.toggle('has-file', !!file);
+  });
+})();

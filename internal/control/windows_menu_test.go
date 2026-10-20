@@ -35,11 +35,12 @@ func TestWindowsMenuPagePrefillsActiveProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &Server{Store: windowsMenuPageStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Script: string(script), Title: "PXE", Label: "Diagnostics", Message: "Ready"}}}, profiles: []WindowsProfile{p}}}
-	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
+	// The selected item shows its folder path in the properties column.
+	req := httptest.NewRequest(http.MethodGet, "/menu?item=winiso_17", nil)
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "winiso_17") || !strings.Contains(res.Body.String(), "Windows/Installers") {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "winiso_17") || !strings.Contains(res.Body.String(), `value="Windows/Installers"`) {
 		t.Fatalf("profile selection missing: %d %s", res.Code, res.Body.String())
 	}
 }
@@ -189,11 +190,11 @@ func TestWindowsMenuPagePrefillsActiveAnswer(t *testing.T) {
 	}
 	store := windowsMenuPageStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Script: string(script), Title: "PXE", Label: "Diagnostics", Message: "Ready"}}}, profiles: []WindowsProfile{p}, answers: []WindowsAnswerVariant{a}}
 	s := &Server{Store: store}
-	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
+	req := httptest.NewRequest(http.MethodGet, "/menu?item=winanswer_31", nil)
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "winanswer_31") || !strings.Contains(res.Body.String(), "Windows/Tests") || strings.Contains(res.Body.String(), "winiso_17") {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "winanswer_31") || !strings.Contains(res.Body.String(), `value="Windows/Tests"`) || strings.Contains(res.Body.String(), "winiso_17") {
 		t.Fatalf("answer selection not restored: %d %s", res.Code, res.Body.String())
 	}
 }

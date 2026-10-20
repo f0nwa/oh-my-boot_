@@ -66,8 +66,33 @@ func resolveDHCPMACs(dhcp []agent.DHCPEvent, httpEvents []boot.Event) []agent.DH
 				best, out[i].MAC = d, s.mac
 			}
 		}
+		if out[i].MAC == "" && strings.HasPrefix(e.Kind, "tftp-") {
+			out[i].MAC = soleRecentPXEClient(dhcp, e.At)
+		}
 	}
 	return out
+}
+
+// tftpAnswerWindow is how soon after a PXE answer a client asks for its
+// loader over TFTP.
+const tftpAnswerWindow = 15 * time.Second
+
+// soleRecentPXEClient names the MAC that got a DHCP or PXE answer shortly
+// before a TFTP transfer, when exactly one machine did. Proxy-DHCP answers
+// carry no IP, so this is the only link between such a machine and the TFTP
+// lines, which name only an IP; with two candidates it gives up.
+func soleRecentPXEClient(dhcp []agent.DHCPEvent, at time.Time) string {
+	mac := ""
+	for _, e := range dhcp {
+		if e.MAC == "" || strings.HasPrefix(e.Kind, "tftp-") || e.At.After(at) || at.Sub(e.At) > tftpAnswerWindow {
+			continue
+		}
+		if mac != "" && mac != e.MAC {
+			return ""
+		}
+		mac = e.MAC
+	}
+	return mac
 }
 
 var choicePath = regexp.MustCompile(`^/assets/(windows-driver-configs|windows-answers|windows-profiles)/([0-9]+)/`)

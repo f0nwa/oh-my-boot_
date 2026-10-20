@@ -1,30 +1,41 @@
+// New installation form: shows only the answer files of the chosen image,
+// fills the menu title from the choice until the user types one, and keeps
+// the screen preview and the build summary in step with the form.
 (function () {
   var form = document.getElementById("installation-form");
   if (!form) return;
   var en = document.documentElement.lang === "en";
-  var profile = form.querySelector('select[name="profile_id"]');
-  var answer = form.querySelector('select[name="answer_id"]');
   var title = form.querySelector('input[name="title"]');
-  var warning = document.getElementById("answer-wipes");
+  var folder = form.querySelector('input[name="folder"]');
   var titleEdited = title.value !== "";
   title.addEventListener("input", function () { titleEdited = true; });
+
+  function checked(name) { return form.querySelector('input[name="' + name + '"]:checked'); }
+  function text(id, value) { var el = document.getElementById(id); if (el) el.textContent = value; }
+
   function update() {
-    var id = profile.value;
-    Array.prototype.forEach.call(answer.options, function (option) {
-      var own = !option.dataset.profile || option.dataset.profile === id;
-      option.hidden = !own;
-      option.disabled = !own;
-      if (!own && option.selected) answer.value = "0";
+    var profile = checked("profile_id");
+    var id = profile ? profile.value : "";
+    form.querySelectorAll('input[name="answer_id"][data-profile]').forEach(function (input) {
+      var own = input.dataset.profile === id;
+      input.closest("label").hidden = !own;
+      input.disabled = !own;
+      if (!own && input.checked) form.querySelector('input[name="answer_id"][value="0"]').checked = true;
     });
-    var chosen = answer.options[answer.selectedIndex];
-    warning.hidden = !(chosen && chosen.dataset.wipes === "true");
+    var answer = checked("answer_id");
     if (!titleEdited) {
-      var base = chosen && chosen.value !== "0" ? chosen : profile.options[profile.selectedIndex];
+      var base = answer && answer.value !== "0" ? answer : profile;
       title.value = base ? base.dataset.title : "";
     }
+    var drivers = form.querySelectorAll('input[name="package"]:checked, input[name="inf"]:checked').length > 0;
+    var wipes = answer && answer.dataset.wipes === "true";
+    text("preview-title", "> " + (title.value || "Windows 11 x64"));
+    text("preview-folder", folder.value ? " / " + folder.value.split("/").join(" / ") : "");
+    text("preview-hint", wipes ? "!! WIPES DISK" : (drivers ? (en ? "drivers" : "драйверы") : ""));
+    document.getElementById("preview-hint").classList.toggle("danger", !!wipes);
+    text("summary-build", drivers ? (en ? "needed, a few minutes" : "нужна, несколько минут") : (en ? "not needed" : "не нужна"));
   }
-  warning.textContent = en ? "This answer file wipes the disk without asking." : "Этот файл ответов очищает диск без вопросов.";
-  profile.addEventListener("change", update);
-  answer.addEventListener("change", update);
+  form.addEventListener("change", update);
+  form.addEventListener("input", update);
   update();
 })();

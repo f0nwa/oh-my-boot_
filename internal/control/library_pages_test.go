@@ -2,6 +2,7 @@ package control
 
 import (
 	"bytes"
+	"context"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -79,5 +80,27 @@ func TestAnswerUploadFromAnswersPage(t *testing.T) {
 	page := libraryGet(t, s, "/answers")
 	if !strings.Contains(page, "Win11 key") || !strings.Contains(page, `action="/answers/upload"`) {
 		t.Fatalf("answers page: %s", page)
+	}
+}
+
+type usersStore struct {
+	authOnlyStore
+	users []User
+}
+
+func (u usersStore) Users(context.Context) ([]User, error) { return u.users, nil }
+
+func TestSystemOverviewShowsServicesStoragesAndUsersForAdmins(t *testing.T) {
+	s := libraryServer()
+	s.Store = usersStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, users: []User{{ID: 1, Username: "fonwa", Role: "admin", Enabled: true}}}
+	body := libraryGet(t, s, "/system")
+	for _, want := range []string{"Службы", "Network Agent", "DSM", `href="/storages"`, `href="/network"`, `href="/users"`, "fonwa", `class="subnav"`, `href="/system" class="active"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("system page lacks %q: %s", want, body)
+		}
+	}
+	observer := &Server{Store: authOnlyStore{user: User{ID: 2, Role: "observer", Enabled: true}}}
+	if body := libraryGet(t, observer, "/system"); strings.Contains(body, `href="/users"`) || !strings.Contains(body, "Подробнее") {
+		t.Fatalf("observer system page: %s", body)
 	}
 }

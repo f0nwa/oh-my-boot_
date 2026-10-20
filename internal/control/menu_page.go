@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 type menuDraftRow struct {
 	Item      MenuDraftItem
 	Title     string
+	Folder    string // the folder the item shows in
 	Kind      string
 	Available bool
 	Error     string
@@ -30,6 +32,8 @@ func menuItemKind(key string) string {
 		return "Образ"
 	}
 }
+
+var menuScreenLabel = regexp.MustCompile(`^(menu_root|folder_[0-9]+)$`)
 
 func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
@@ -57,14 +61,29 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	data.Draft = draft
 	data.DraftRows = menuDraftRows(draft, profiles, answers, configs)
 	data.Changes = diffMenuDraft(active, draft)
+	// The draft bar on this page follows the same read as the page itself.
+	data.Info.Draft = summarizeChanges(data.Changes)
+	data.Info.Draft.Active = data.ActiveVersion
+	key, screen := r.URL.Query().Get("item"), r.URL.Query().Get("screen")
+	if !menuItemKey.MatchString(key) && key != "ubuntu" && key != "diagnostics" && key != "local" {
+		key = ""
+	}
+	if !menuScreenLabel.MatchString(screen) {
+		screen = ""
+	}
+	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installationRows(profiles, answers, configs, draft, active), profiles, answers, configs, key, screen)
 	render(w, "menu", data)
 }
 
 func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) []menuDraftRow {
 	var rows []menuDraftRow
 	for _, item := range draft.Items {
-		row := menuDraftRow{Item: item, Title: item.Title, Kind: menuItemKind(item.Key), Available: true}
-		entry, _, err := menuProfileForKey(item.Key, "", profiles, answers, configs)
+		row := menuDraftRow{Item: item, Title: item.Title, Kind: menuItemKind(item.Key), Available: true, Folder: item.Folder}
+		entry, folder, err := menuProfileForKey(item.Key, "", profiles, answers, configs)
+		if item.Folder == defaultMenuFolder {
+			// The item follows its object's folder.
+			row.Folder = folder
+		}
 		if err != nil {
 			row.Available, row.Error = false, err.Error()
 		} else if row.Title == "" {

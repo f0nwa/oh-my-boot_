@@ -25,7 +25,14 @@ func (s *Server) editDraft(w http.ResponseWriter, r *http.Request, action, messa
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, action, "ok", r.PathValue("key"))
-	http.Redirect(w, r, "/menu?message="+strings.ReplaceAll(message, " ", "+"), http.StatusSeeOther)
+	target := "/menu?message=" + strings.ReplaceAll(message, " ", "+")
+	if r.FormValue("return") == "/installations" {
+		target = "/installations?message=" + strings.ReplaceAll(message, " ", "+")
+	} else if key := r.PathValue("key"); menuItemKey.MatchString(key) && action != "menu.draft.remove" {
+		// Keep the edited item selected on the menu page.
+		target += "&item=" + key
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 type draftError string

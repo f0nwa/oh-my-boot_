@@ -161,3 +161,29 @@ Rollback: restore `/var/backups/pxe-platform-ui-20261020/pxe-control` to `/usr/l
 ## Log: machines, MAC addresses and DHCP, 20.10.2026
 
 The Log page has Machines, HTTP requests and DHCP and TFTP tabs. Boot records the client MAC address from the server neighbor table (`/proc/net/arp`) with each HTTP request; `boot_events` gained a `mac` column ([migration](../../deploy/sql/2026-10-20-boot-mac.sql), applied to `pxe_boot` as `pxe-boot`). Agent reads the `pxe-dnsmasq` journal for the last 7 days on request (`GET /dhcp-events`): PXE/DHCP answers with MAC addresses and TFTP boot-loader transfers. TFTP lines get the MAC of the nearest HTTP request or DHCP answer with the same IP within 30 minutes. Machines sums everything up per MAC: last IP, firmware from the loader name (UEFI/BIOS), last stage and chosen installation. Requests made before the upgrade carry no MAC. Boot, Agent and Control binaries were backed up to `/var/backups/pxe-platform-machines-20261020/`.
+
+## Dark theme, 20.10.2026
+
+The **Appearance** section of My account chooses the admin theme: **Same as system** (default; follows the browser and OS `prefers-color-scheme` setting), **Light** or **Dark**. The choice is stored in the user account (`users.theme`) and applies on all of the user's devices. The sign-in page always follows the system theme. Before starting the new Control, apply the [migration](../../deploy/sql/2026-10-20-theme.sql) to the `pxe_control` database as `pxe-control` (the column is also added to `deploy/sql/control.sql`).
+
+Rollout 20.10.2026: applied `2026-10-20-theme.sql` (every user has `theme = system`), replaced only `pxe-control` (SHA-256 `4a81221b…`). The previous binary and the `users` table schema were backed up to `/var/backups/pxe-platform-theme-20261020/`.
+
+## “Console” interface, 20.10.2026
+
+The interface language is described in [DESIGN.md](../../DESIGN.md) (in Russian). The sidebar is replaced by a header with the sections **Installations**, **Menu**, **Library** (tabs **ISO images**, **Drivers**, **Answer files**), **Log** and **System** (tabs **Overview**, **Storages**, **Network**, **Users**, **Audit**, **My account**). While the menu draft differs from the published menu, every page except **Menu** shows a draft bar under the header with the number of added, removed and changed items and a publish button (observers see it without the button). The Geist and Geist Mono fonts (OFL licence) are embedded in the binary and served from `/assets/fonts/`; the page makes no external requests.
+
+In **Log**, a MAC address opens the machine page `/events/machines/{mac}`: the outcome of the latest boot in plain words, the DHCP → TFTP → iPXE → menu → image steps from the dnsmasq log and Boot requests, and a list of earlier boots (a new boot starts after a pause longer than 10 minutes). A TFTP line names only an IP and a proxy-DHCP answer only a MAC; when exactly one machine got a PXE answer within 15 seconds before a TFTP transfer, the transfer is attributed to it (also in the **Machines** table). **System → Overview** (`/system`) shows the state of services, the PXE network, storages and users (users only for administrators). No migrations.
+
+Rollout 20.10.2026, first stage (header, draft bar, tokens, fonts): replaced only `pxe-control` (SHA-256 `f5258490…`). The previous binary was backed up to `/var/backups/pxe-platform-pult-20261020/`. The client menu SHA-256 is the same before and after (`7ecede91…`).
+
+Rollout 21.10.2026, second stage (machine page, system overview, TFTP linking by time): replaced only `pxe-control` (SHA-256 `9ab22c1d…`). To roll back to the state before the new interface, copy `/var/backups/pxe-platform-pult-20261020/pxe-control` to `/usr/local/bin/pxe-control` and restart `pxe-control`.
+
+Third stage of the new interface, 21.10.2026: the interface now follows the mockup.
+
+- **Now** (`/`) is the home page: a strip of services and storages, the machines of the last day with their DHCP → TFTP → iPXE → menu → choice → image steps (the page refreshes itself every 15 seconds while open), the menu draft with a publish button, **Needs attention** (unavailable storages and images, WinPE builds) and, for administrators, recent audit entries. **Installations** moved to `/installations`.
+- **Menu** has three columns: the structure (folders and items; drag by ⋮⋮ within one screen), the machine screen and the selected item (title, folder, up/down, remove). The screen is built from the same iPXE script machines get after publishing, so lines, folders and `.. Back` match the real ones. When the draft does not build into a menu, the reason replaces the screen and the structure becomes a flat list with unavailable items marked. The draft bar now shows on this page too; changes and versions are collapsed below.
+- **Installations** show their contents as chips (ISO, drivers, answers; a disk-wiping file is highlighted), the folder, filters **In menu**, **In the draft**, **Need attention**, **Not in menu** and a **Chosen** column: how many boots took the installation's files and when the latest was. Requests from the server's own address and localhost do not count.
+- **New installation** is four steps as cards (image, drivers, answer file, title) with the line as it will appear on the machine screen and a summary of whether a WinPE build is needed.
+- **ISO images** have a drop zone for the file and size and architecture columns.
+
+Rollout 21.10.2026, third stage: replaced only `pxe-control` (SHA-256 `a938fb64…`). The second-stage binary is in `/var/backups/pxe-platform-pult-20261020/pxe-control.stage2`. The client menu SHA-256 did not change (`7ecede91…`).

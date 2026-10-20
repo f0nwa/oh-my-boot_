@@ -6,6 +6,9 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"path"
+	"strconv"
+	"strings"
 
 	"pxe-platform/internal/agent"
 	"pxe-platform/internal/boot"
@@ -55,6 +58,12 @@ type pageData struct {
 	Tab                   string
 	MACFilter             string
 	Machines              []machineRow
+	Sessions              []bootSession
+	Now                   *nowView
+	Preview               *menuPreview
+	InstallCounts         map[string]int
+	ProfileSizes          map[int64]int64
+	SessionIndex          int
 	DHCPEvents            []agent.DHCPEvent
 	DHCPError             string
 	ProfileUse            map[int64]int
@@ -110,7 +119,9 @@ func parsePages(lang string) *template.Template {
 		"roleDescription": roleDescription,
 		"t":               func(text string) string { return translate(lang, text) },
 		"lang":            func() string { return lang },
+		"theme":           normalizeTheme,
 		"nav":             navigation,
+		"subnav":          subnav,
 		"formHas": func(form url.Values, key, value string) bool {
 			for _, v := range form[key] {
 				if v == value {
@@ -122,6 +133,9 @@ func parsePages(lang string) *template.Template {
 		"dhcpKind":     dhcpKindLabel,
 		"machineStage": machineStageLabel,
 		"deref":        func(v *bool) bool { return v != nil && *v },
+		"filterList":   installationFilters,
+		"size":         func(n int64) string { return humanSize(lang, n) },
+		"arch":         isoArch,
 	}).ParseFS(templateFS, "templates/*.html"))
 }
 
@@ -166,4 +180,29 @@ func roleDescription(role string) string {
 	default:
 		return ""
 	}
+}
+
+// humanSize writes a file size in gigabytes or megabytes, with the decimal
+// separator of the interface language.
+func humanSize(lang string, n int64) string {
+	if n <= 0 {
+		return "—"
+	}
+	value, unit := float64(n)/(1<<30), "ГБ"
+	if n < 1<<30 {
+		value, unit = float64(n)/(1<<20), "МБ"
+	}
+	text := strconv.FormatFloat(value, 'f', 1, 64)
+	if lang != langEN {
+		text = strings.Replace(text, ".", ",", 1)
+	}
+	return text + " " + translate(lang, unit)
+}
+
+// isoArch names the architecture an ISO file name says it is for.
+func isoArch(name string) string {
+	if strings.Contains(strings.ToLower(path.Base(name)), "arm64") {
+		return "arm64"
+	}
+	return "x64"
 }

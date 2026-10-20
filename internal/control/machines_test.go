@@ -38,7 +38,9 @@ func TestMachineRowsJoinDHCPTFTPAndHTTP(t *testing.T) {
 	if a.IP != "10.30.0.19" || a.Firmware != "UEFI" || a.Stage != "files" || a.Choice != "Windows 11 VirtIO Net SCSI test" || !a.LastSeen.Equal(t0.Add(30*time.Second)) {
 		t.Fatalf("machine a %+v", a)
 	}
-	if b.MAC != "bc:24:11:52:02:39" || b.Stage != "pxe" || b.IP != "" {
+	// b got the only PXE answer a second before the failed TFTP transfer, so
+	// that transfer is b's even though its line names only an IP.
+	if b.MAC != "bc:24:11:52:02:39" || b.Stage != "loader_failed" || b.IP != "10.30.0.20" || b.Firmware != "BIOS" {
 		t.Fatalf("machine b %+v", b)
 	}
 }
@@ -58,7 +60,7 @@ func TestEventsPageTabs(t *testing.T) {
 	data.Tab = "machines"
 	data.Machines = []machineRow{{MAC: "bc:24:11:04:2a:ed", IP: "10.30.0.19", Firmware: "UEFI", Stage: "files", Choice: "Windows 11", LastSeen: time.Now()}}
 	body := renderPage("events", data)
-	for _, want := range []string{"bc:24:11:04:2a:ed", `href="/events?tab=requests&mac=bc%3a24%3a11%3a04%3a2a%3aed"`, "Загрузка файлов", `href="/events?tab=dhcp"`} {
+	for _, want := range []string{"bc:24:11:04:2a:ed", `href="/events/machines/bc:24:11:04:2a:ed"`, "Загрузка файлов", `href="/events?tab=dhcp"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("machines tab lacks %q: %s", want, body)
 		}
@@ -92,5 +94,24 @@ func TestEveryTableScrollsInsideItsBox(t *testing.T) {
 		if n, w := strings.Count(body, "<table"), strings.Count(body, `<div class="table-wrap"><table`); n != w {
 			t.Errorf("%s: %d tables, %d in a scroll box", name, n, w)
 		}
+	}
+}
+
+func TestResolveTFTPByTheOnlyRecentPXEClient(t *testing.T) {
+	t0 := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
+	dhcp := []agent.DHCPEvent{
+		{At: t0, Kind: "PXE", MAC: "bc:24:11:04:2a:ed", Detail: "proxy"},
+		{At: t0.Add(2 * time.Second), Kind: "tftp-failed", IP: "10.30.0.19", Detail: "ipxeboot/x86_64/undionly.kpxe"},
+		{At: t0.Add(time.Minute), Kind: "PXE", MAC: "bc:24:11:04:2a:ed"},
+		{At: t0.Add(time.Minute + time.Second), Kind: "PXE", MAC: "bc:24:11:52:02:39"},
+		{At: t0.Add(time.Minute + 3*time.Second), Kind: "tftp-sent", IP: "10.30.0.20"},
+		{At: t0.Add(5 * time.Minute), Kind: "tftp-sent", IP: "10.30.0.21"},
+	}
+	resolved := resolveDHCPMACs(dhcp, nil)
+	if resolved[1].MAC != "bc:24:11:04:2a:ed" {
+		t.Fatalf("single client not linked: %+v", resolved[1])
+	}
+	if resolved[4].MAC != "" || resolved[5].MAC != "" {
+		t.Fatalf("ambiguous or stale TFTP linked: %+v %+v", resolved[4], resolved[5])
 	}
 }

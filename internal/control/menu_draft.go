@@ -258,3 +258,60 @@ func (s *Server) currentDraft(ctx context.Context) (MenuDraft, MenuDraft, error)
 	}
 	return draft, active, nil
 }
+
+// draftSummary is what the header's draft bar shows on every page: the
+// version clients see and how many items the unpublished draft adds,
+// removes or otherwise changes.
+type draftSummary struct {
+	Active             int64
+	Add, Remove, Other int
+}
+
+// Pending reports whether the draft differs from the active menu.
+func (d draftSummary) Pending() bool { return d.Add+d.Remove+d.Other > 0 }
+
+// draftStatus summarizes the menu draft for the header. It is best effort:
+// any failure, including a store that does not provide menus, hides the bar
+// instead of breaking the page.
+func (s *Server) draftStatus(ctx context.Context) (summary draftSummary) {
+	defer func() {
+		if recover() != nil {
+			summary = draftSummary{}
+		}
+	}()
+	if s.Store == nil {
+		return draftSummary{}
+	}
+	versions, err := s.Store.MenuVersions(ctx)
+	if err != nil {
+		return draftSummary{}
+	}
+	for _, version := range versions {
+		if version.Active {
+			summary.Active = version.ID
+		}
+	}
+	draft, active, err := s.currentDraft(ctx)
+	if err != nil {
+		return draftSummary{}
+	}
+	counted := summarizeChanges(diffMenuDraft(active, draft))
+	counted.Active = summary.Active
+	return counted
+}
+
+// summarizeChanges counts draft changes for the draft bar.
+func summarizeChanges(changes []MenuChange) draftSummary {
+	var summary draftSummary
+	for _, change := range changes {
+		switch change.Kind {
+		case "add":
+			summary.Add++
+		case "remove":
+			summary.Remove++
+		default:
+			summary.Other++
+		}
+	}
+	return summary
+}

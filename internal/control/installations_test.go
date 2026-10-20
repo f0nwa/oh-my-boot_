@@ -5,6 +5,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"pxe-platform/internal/boot"
 )
 
 func rowByKey(rows []installationRow, key string) (installationRow, int) {
@@ -49,13 +52,16 @@ func TestInstallationRowNeedsBuild(t *testing.T) {
 func TestInstallationsPageShowsPendingNotice(t *testing.T) {
 	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
-	if body := libraryGet(t, s, "/"); strings.Contains(body, "не опубликован") || !strings.Contains(body, "Windows 11") {
+	if body := libraryGet(t, s, "/installations"); strings.Contains(body, `class="draftbar"`) || !strings.Contains(body, "Windows 11") {
 		t.Fatalf("clean page: %s", body)
 	}
 	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "winanswer_31"}}}
-	body := libraryGet(t, s, "/")
-	if !strings.Contains(body, `href="/menu"`) || !strings.Contains(body, "Изменений, не опубликованных в меню: 1") {
+	body := libraryGet(t, s, "/installations")
+	if !strings.Contains(body, `class="draftbar"`) || !strings.Contains(body, `<span class="change-add">+1</span>`) || !strings.Contains(body, `action="/menu/publish"`) {
 		t.Fatalf("pending page: %s", body)
+	}
+	if body := libraryGet(t, s, "/menu"); !strings.Contains(body, `class="draftbar"`) || !strings.Contains(body, `<span class="change-add">+1</span>`) {
+		t.Fatalf("menu page lacks the draft bar: %s", body)
 	}
 }
 
@@ -71,8 +77,43 @@ func TestAddInstallationToDraft(t *testing.T) {
 func TestObserverSeesNoInstallationButtons(t *testing.T) {
 	store := newDraftStore(t, "observer", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
-	body := libraryGet(t, s, "/")
+	body := libraryGet(t, s, "/installations")
 	if strings.Contains(body, "Новая установка") || strings.Contains(body, `action="/installations/`) || strings.Contains(body, `action="/drivers/configs/`) {
 		t.Fatalf("observer page: %s", body)
+	}
+}
+
+func TestInstallationUsageCountsBootsPerItem(t *testing.T) {
+	t0 := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
+	events := []boot.Event{
+		{At: t0, Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.19:1"},
+		{At: t0.Add(5 * time.Second), Kind: "asset", Path: "/assets/windows-driver-configs/4/winpeshl.ini", RemoteAddr: "10.30.0.19:1"},
+		{At: t0.Add(time.Hour), Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.19:1"},
+		{At: t0.Add(time.Minute), Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.20:1"},
+		{At: t0, Kind: "menu", Path: "/boot/menu.ipxe", RemoteAddr: "10.30.0.19:1"},
+		{At: t0.Add(2 * time.Hour), Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.10:1"},
+	}
+	use := installationUsage(events, map[string]bool{"10.30.0.10": true})
+	if use["windriver_4"].Count != 3 || !use["windriver_4"].Last.Equal(t0.Add(time.Hour)) || len(use) != 1 {
+		t.Fatalf("use=%+v", use)
+	}
+	if (installationRow{}).UsedLabel() != "не выбирали" || !strings.HasPrefix((installationRow{Used: 3, LastUsed: time.Now()}).UsedLabel(), "загрузок: 3 · ") {
+		t.Fatal("used label")
+	}
+}
+
+func TestInstallationsFilterAndRemoveReturns(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	s, _ := draftServer(t, store)
+	body := libraryGet(t, s, "/installations?show=off")
+	if strings.Contains(body, "winiso_17") || !strings.Contains(body, `href="/installations?show=off" class="active"`) {
+		t.Fatalf("off filter: %s", body)
+	}
+	if body := libraryGet(t, s, "/installations?show=menu"); !strings.Contains(body, "winiso_17") || !strings.Contains(body, `name="return" value="/installations"`) {
+		t.Fatalf("menu filter: %s", body)
+	}
+	res := menuPost(t, s, "/menu/items/winiso_17/remove", url.Values{"return": {"/installations"}})
+	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/installations?message=") {
+		t.Fatalf("status=%d location=%q", res.Code, res.Header().Get("Location"))
 	}
 }

@@ -33,17 +33,15 @@ func TestMenuOrderRejectsDifferentItems(t *testing.T) {
 	}
 }
 
-func TestMenuRowsAreEditableInPlaceAndDraggable(t *testing.T) {
+func TestMenuStructureIsDraggableAndInspectorEdits(t *testing.T) {
 	body := renderPage("menu", samplePageData(langRU))
-	for _, want := range []string{`data-key="winiso_2"`, `class="drag-handle"`, `form="item-winiso_2"`, `name="title" value="Windows 11"`, `name="folder"`, `/assets/menu-order.js`} {
+	for _, want := range []string{`id="menu-items"`, `data-key="winiso_2" data-parent="folder_1"`, `class="drag-handle"`, `/assets/menu-order.js`, `action="/menu/items/winiso_2/title"`, `name="title" value="Windows 11"`, `name="folder"`, `action="/menu/items/winiso_2/move"`, `class="screen-row selected"`, "!! WIPES DISK", `<small class="mono">winanswer_3</small>`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("menu lacks %q: %s", want, body)
 		}
 	}
-	for _, gone := range []string{"/move\"", "<summary>Изменить</summary>"} {
-		if strings.Contains(body, gone) {
-			t.Fatalf("menu still has %q", gone)
-		}
+	if strings.Contains(body, `data-key="diagnostics"`) {
+		t.Fatal("built-in items must not be draggable")
 	}
 }
 
@@ -51,7 +49,7 @@ func TestObserverMenuRowsAreReadOnly(t *testing.T) {
 	data := samplePageData(langRU)
 	data.Info.User.Role = "observer"
 	body := renderPage("menu", data)
-	if strings.Contains(body, "drag-handle") || strings.Contains(body, `name="title"`) {
+	if strings.Contains(body, "drag-handle") || strings.Contains(body, `name="title"`) || strings.Contains(body, "/move") {
 		t.Fatalf("observer can edit: %s", body)
 	}
 }

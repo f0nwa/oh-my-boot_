@@ -30,6 +30,20 @@ var cyrillic = regexp.MustCompile(`[\x{0400}-\x{04FF}]+`)
 var wipesTrue, wipesFalse = true, false
 
 func samplePageData(lang string) pageData {
+	data := samplePageDataBase(lang)
+	data.Preview = &menuPreview{
+		Title: "PXE Platform / Windows",
+		Rows:  []previewRow{{Text: ".. Back", Href: "/menu?screen=menu_root"}, {Text: "Windows 11", Href: "/menu?item=winiso_2", Selected: true}, {Text: "Ready", Href: "/menu?item=winanswer_5", Hint: "!! WIPES DISK", Danger: true}},
+		Lines: []previewLine{{Text: "Diagnostics", Key: "diagnostics", Href: "/menu?item=diagnostics", Mark: "·", Fixed: true}, {Text: "Windows", Href: "/menu?screen=folder_1", Mark: "▾", Folder: true}, {Text: "Windows 11", Key: "winiso_2", Parent: "folder_1", Href: "/menu?item=winiso_2", Pad: "  ", Mark: "·", Selected: true, Movable: true},
+			{Text: "Lab", Key: "winanswer_3", Parent: "folder_1", Href: "/menu?item=winanswer_3", Pad: "  ", Mark: "·", Added: true, Broken: true, ShowKey: true, Movable: true}},
+		Removed: []string{"VirtIO"}, Key: "winiso_2", Position: 1, Count: 2,
+	}
+	data.Preview.Item = &data.DraftRows[0]
+	data.Preview.Install = &data.Installations[1]
+	return data
+}
+
+func samplePageDataBase(lang string) pageData {
 	now := time.Date(2026, 10, 20, 1, 0, 0, 0, time.UTC)
 	cfg := network.Config{Mode: "proxy", Interface: "ens19", ServerIP: "10.30.0.10", Subnet: "10.30.0.0/24", DHCPStart: "10.30.0.100", DHCPEnd: "10.30.0.200", BootURL: "http://10.30.0.10:8080/boot/menu.ipxe", TFTPRoot: "/srv/pxe/tftp"}
 	profile := WindowsProfile{ID: 2, WindowsProfileSource: WindowsProfileSource{StorageID: 6, Path: "win11.iso", Title: "Windows 11", Folder: "Windows"}, State: "unavailable", Error: "Исходный ISO изменился или недоступен"}
@@ -67,7 +81,7 @@ func samplePageData(lang string) pageData {
 }
 
 func TestEnglishPagesContainNoRussianText(t *testing.T) {
-	for _, name := range []string{"login", "installations", "installation_new", "account", "events", "network", "network_preview", "menu", "users", "audit", "images", "answers", "storages", "drivers"} {
+	for _, name := range []string{"login", "installations", "installation_new", "account", "events", "network", "network_preview", "menu", "users", "audit", "images", "answers", "storages", "drivers", "machine", "system"} {
 		for _, data := range []pageData{samplePageData(langEN), {Lang: langEN, Info: requestContext{User: User{ID: 1, Role: "observer", Language: langEN}}}} {
 			res := httptest.NewRecorder()
 			render(res, name, data)
@@ -78,7 +92,7 @@ func TestEnglishPagesContainNoRussianText(t *testing.T) {
 			if found := cyrillic.FindAllString(body, 5); len(found) > 0 {
 				t.Errorf("%s (%s) has untranslated text %q", name, data.Info.User.Role, found)
 			}
-			if !strings.Contains(body, `<html lang="en">`) && name != "network_preview" {
+			if !strings.Contains(body, `<html lang="en" `) && name != "network_preview" {
 				t.Errorf("%s is not marked as English", name)
 			}
 		}
@@ -89,7 +103,7 @@ func TestRussianPagesStayRussian(t *testing.T) {
 	res := httptest.NewRecorder()
 	render(res, "menu", samplePageData(langRU))
 	body := res.Body.String()
-	for _, want := range []string{`<html lang="ru">`, "Меню загрузки", "Меню опубликовано", "хранилище «DSM» недоступно"} {
+	for _, want := range []string{`<html lang="ru" `, "Меню загрузки", "Меню опубликовано", "хранилище «DSM» недоступно"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("Russian page lacks %q", want)
 		}

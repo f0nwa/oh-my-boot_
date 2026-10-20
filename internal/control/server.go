@@ -20,6 +20,7 @@ import (
 
 type Storage interface {
 	SetUserLanguage(context.Context, int64, string) error
+	SetUserTheme(context.Context, int64, string) error
 	ChangeOwnPassword(context.Context, int64, string, string, string) error
 	Login(context.Context, string, string) (User, string, error)
 	Session(context.Context, string) (User, error)
@@ -129,6 +130,7 @@ type requestContext struct {
 	Token string
 	CSRF  string
 	Path  string
+	Draft draftSummary
 }
 type ctxKey struct{}
 
@@ -138,16 +140,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("POST /logout", s.protect("view", s.logout))
 	mux.HandleFunc("POST /settings/language", s.protect("view", s.setLanguage))
+	mux.HandleFunc("POST /settings/theme", s.protect("view", s.setTheme))
 	mux.HandleFunc("GET /account", s.protect("view", s.accountPage))
 	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
 	mux.HandleFunc("GET /assets/style.css", stylesheet)
-	mux.HandleFunc("GET /", s.protect("view", s.installationsPage))
+	mux.HandleFunc("GET /assets/fonts/{name}", fontFile)
+	mux.HandleFunc("GET /{$}", s.protect("view", s.nowPage))
+	mux.HandleFunc("GET /installations", s.protect("view", s.installationsPage))
+	mux.HandleFunc("GET /assets/now.js", nowScript)
 	mux.HandleFunc("GET /installations/new", s.protect("images", s.installationNewPage))
 	mux.HandleFunc("POST /installations", s.protect("images", withPageErrors(s.installationNewPage, s.installationCreate)))
 	mux.HandleFunc("GET /assets/installation-form.js", installationFormScript)
 	mux.HandleFunc("POST /installations/{key}/add", s.protect("menu", withPageErrors(s.installationsPage, s.installationAdd)))
 	mux.HandleFunc("GET /events", s.protect("view", s.eventsPage))
+	mux.HandleFunc("GET /events/machines/{mac}", s.protect("view", s.machinePage))
 	mux.HandleFunc("GET /network", s.protect("view", s.networkPage))
 	mux.HandleFunc("POST /network/preview", s.protect("network", s.networkPreview))
 	mux.HandleFunc("POST /network/apply", s.protect("network", s.networkApply))
@@ -169,6 +176,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	mux.HandleFunc("GET /answers", s.protect("view", s.answersPage))
 	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
+	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))
 	mux.HandleFunc("POST /answers/{id}/inspect", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerInspect)))
 	mux.HandleFunc("POST /answers/upload", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
@@ -247,7 +255,11 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 				return
 			}
 		}
-		ctx := context.WithValue(r.Context(), ctxKey{}, requestContext{User: user, Token: cookie.Value, CSRF: CSRFToken(cookie.Value), Path: r.URL.Path})
+		info := requestContext{User: user, Token: cookie.Value, CSRF: CSRFToken(cookie.Value), Path: r.URL.Path}
+		if r.Method == http.MethodGet {
+			info.Draft = s.draftStatus(r.Context())
+		}
+		ctx := context.WithValue(r.Context(), ctxKey{}, info)
 		translateErrors(normalizeLanguage(user.Language), next)(w, r.WithContext(ctx))
 	}
 }
@@ -437,6 +449,14 @@ func (s *Server) libraryData(r *http.Request) pageData {
 					}
 				}
 				data.ISOImages = append(data.ISOImages, imageRow{Image: image, StorageName: names[image.StorageID], CanPrepare: canPrepare, Unsupported: unsupported, HasProfile: hasProfile})
+				for _, profile := range profiles {
+					if profile.StorageID == image.StorageID && profile.Path == image.Path {
+						if data.ProfileSizes == nil {
+							data.ProfileSizes = map[int64]int64{}
+						}
+						data.ProfileSizes[profile.ID] = image.Size
+					}
+				}
 			}
 		}
 	}
@@ -539,4 +559,22 @@ func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/users?message=Пароль+изменён", 303)
+}
+
+// systemPage is the overview of the System section: services, storages,
+// the PXE network and, for administrators, users.
+func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
+	data := s.libraryData(r)
+	s.loadServiceStatus(r.Context(), &data)
+	if s.Agent != nil {
+		if c, err := s.Agent.Config(r.Context()); err == nil {
+			data.Network, data.HasNetwork = c, true
+		}
+	}
+	if Allowed(data.Info.User.Role, "users") {
+		if users, err := s.Store.Users(r.Context()); err == nil {
+			data.Users = users
+		}
+	}
+	render(w, "system", data)
 }

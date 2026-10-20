@@ -49,7 +49,7 @@ func TestFailedNewInstallationKeepsChoices(t *testing.T) {
 	if res.Code < 400 || !strings.Contains(body, `value="31" data-profile="17"`) || !strings.Contains(body, `value="`+strings.Repeat("a", 64)+`" checked`) || !strings.Contains(body, `value="Ключ"`) {
 		t.Fatalf("status=%d body=%s", res.Code, body)
 	}
-	if !strings.Contains(body, `value="31" data-profile="17" data-title="Lab" data-wipes="false" selected`) {
+	if !strings.Contains(body, `value="31" data-profile="17" data-title="Lab" data-wipes="false" checked`) {
 		t.Fatalf("answer not reselected: %s", body)
 	}
 }
@@ -66,7 +66,7 @@ func TestAnswerWipesDiskUnknownWhenUnparsed(t *testing.T) {
 func TestInstallationsSearchFiltersByTitle(t *testing.T) {
 	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
-	body := libraryGet(t, s, "/?q=lab")
+	body := libraryGet(t, s, "/installations?q=lab")
 	if !strings.Contains(body, "winanswer_31") || strings.Contains(body, "winiso_17") || !strings.Contains(body, `name="q" value="lab"`) {
 		t.Fatalf("search page: %s", body)
 	}
@@ -77,9 +77,9 @@ func TestPendingAddCanBeDroppedFromChanges(t *testing.T) {
 	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "winanswer_31", Title: "Lab"}}}
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/menu")
-	i := strings.Index(body, "Неопубликованные изменения")
-	j := strings.Index(body, "Пункты меню")
-	if i < 0 || j < 0 || !strings.Contains(body[i:j], `action="/menu/items/winanswer_31/remove"`) {
+	i := strings.Index(body, `class="menu-changes"`)
+	j := i + strings.Index(body[max(i, 0):], "</details>")
+	if i < 0 || j < i || !strings.Contains(body[i:j], `action="/menu/items/winanswer_31/remove"`) {
 		t.Fatalf("pending block lacks per-row remove: %s", body)
 	}
 }

@@ -70,6 +70,14 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 	data.WindowsProfiles, data.WindowsAnswerVariants, data.PackageChoices = profiles, answers, packageChoices(packages)
 	if form := pageForm(r); form != nil {
 		data.Form = form
+	} else {
+		// Start from the first ready image so its answer files show at once.
+		for _, profile := range profiles {
+			if profile.State == "ready" {
+				data.Form = url.Values{"profile_id": {strconv.FormatInt(profile.ID, 10)}, "folder": {"Windows"}}
+				break
+			}
+		}
 	}
 	render(w, "installation_new", data)
 }
@@ -209,7 +217,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "installation.create", "ok", key)
-	http.Redirect(w, r, "/?message=Установка+создана", http.StatusSeeOther)
+	http.Redirect(w, r, "/installations?message=Установка+создана", http.StatusSeeOther)
 }
 
 // sameDriverSelection reports whether two configurations boot the same image

@@ -18,7 +18,7 @@ func TestImagesPageIsOneTableWithUsage(t *testing.T) {
 	api := s.Images.(*fakeImagesAPI)
 	api.catalog.Images = append(api.catalog.Images, images.Image{StorageID: store.profiles[0].StorageID, Path: "new.iso", Present: true})
 	body := libraryGet(t, s, "/images")
-	if strings.Count(body, "<table") != 1 || !strings.Contains(body, "new.iso") || !strings.Contains(body, "Не подготовлен") || !strings.Contains(body, "В меню: 2") || !strings.Contains(body, `href="/?q=Windows%2011"`) {
+	if strings.Count(body, "<table") != 1 || !strings.Contains(body, "new.iso") || !strings.Contains(body, "Не подготовлен") || !strings.Contains(body, "В меню: 2") || !strings.Contains(body, `href="/installations?q=Windows%2011"`) {
 		t.Fatalf("images page: %s", body)
 	}
 }
@@ -36,14 +36,16 @@ func TestDeletedDraftObjectStaysVisibleOnInstallations(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
 	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_99", Title: "Gone"}}}
 	s, _ := draftServer(t, store)
-	body := libraryGet(t, s, "/")
+	body := libraryGet(t, s, "/installations")
 	if !strings.Contains(body, "winanswer_99") || !strings.Contains(body, "Gone") {
 		t.Fatalf("deleted object hidden: %s", body)
 	}
 }
 
 func TestPublishButtonHasNoGuessedVersionNumber(t *testing.T) {
-	body := renderPage("menu", samplePageData(langRU))
+	data := samplePageData(langRU)
+	data.Info.Draft = draftSummary{Active: 2, Add: 1}
+	body := renderPage("menu", data)
 	if strings.Contains(body, "Опубликовать версию") || !strings.Contains(body, "Опубликовать меню") {
 		t.Fatalf("publish button: %s", body)
 	}

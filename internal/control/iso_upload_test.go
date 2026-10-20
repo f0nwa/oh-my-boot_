@@ -71,7 +71,7 @@ func TestISOPageOffersUploadForReadySMBStorage(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "iso-upload-form") || !strings.Contains(res.Body.String(), "DSM") || !strings.Contains(res.Body.String(), `<select name="folder"></select>`) {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "iso-upload-form") || !strings.Contains(res.Body.String(), "DSM") || !strings.Contains(res.Body.String(), `<select id="iso-folder" name="folder"></select>`) {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
 }

@@ -153,9 +153,6 @@ func validWindowsAnswerAsset(name string) bool {
 }
 
 func privateWinPEScript(name string) bool {
-	if name == "windows11/pxe-setup.cmd" {
-		return true
-	}
 	parts := strings.Split(name, "/")
 	if len(parts) != 3 || parts[0] != "windows-profiles" || parts[2] != "pxe-setup.cmd" {
 		return false

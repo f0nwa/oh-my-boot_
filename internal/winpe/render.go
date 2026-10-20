@@ -10,8 +10,8 @@ import (
 
 const passwordToken = "__PXE_ISO_PASSWORD__"
 
-// RenderStartup inserts a limited downstream SMB credential into a WinPE script.
-func RenderStartup(template []byte, password string) ([]byte, error) {
+// renderPassword inserts a limited downstream SMB credential into a WinPE script.
+func renderPassword(template []byte, password string) ([]byte, error) {
 	if len(password) < 32 || len(password) > 64 {
 		return nil, fmt.Errorf("downstream password must have 32–64 alphanumeric characters")
 	}
@@ -27,6 +27,7 @@ func RenderStartup(template []byte, password string) ([]byte, error) {
 }
 
 // RenderProfileStartup binds a WinPE script to one prepared ISO profile.
+
 func RenderProfileStartup(template []byte, password string, profileID int64, installFile string) ([]byte, error) {
 	if profileID <= 0 || (installFile != "install.wim" && installFile != "install.esd") {
 		return nil, fmt.Errorf("invalid Windows ISO profile")
@@ -36,7 +37,7 @@ func RenderProfileStartup(template []byte, password string, profileID int64, ins
 	if !bytes.Contains(template, []byte(idToken)) || !bytes.Contains(template, []byte(fileToken)) {
 		return nil, fmt.Errorf("WinPE profile template is incomplete")
 	}
-	out, err := RenderStartup(template, password)
+	out, err := renderPassword(template, password)
 	if err != nil {
 		return nil, err
 	}

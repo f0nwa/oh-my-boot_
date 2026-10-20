@@ -18,6 +18,7 @@ import (
 
 func main() {
 	socket := flag.String("socket", "/run/pxe-platform-images/images.sock", "local Images API socket")
+	checkInterval := flag.Duration("storage-check-interval", time.Minute, "background storage availability check interval; 0 disables it")
 	flag.Parse()
 	dsn := os.Getenv("PXE_IMAGES_DATABASE_URL")
 	if dsn == "" {
@@ -59,9 +60,20 @@ func main() {
 	if err := os.Chmod(*socket, 0660); err != nil {
 		log.Fatal(err)
 	}
-	server := &http.Server{Handler: images.NewServer(store).Handler(), ReadHeaderTimeout: 5 * time.Second}
+	api := images.NewServer(store)
+	server := &http.Server{Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if *checkInterval > 0 {
+		monitor := &images.StorageMonitor{
+			Repo:          store,
+			Probe:         images.ProbeStorage,
+			Rescan:        func(id int64) error { return api.StartScan(context.Background(), id) },
+			Timeout:       20 * time.Second,
+			RescanBackoff: 10 * time.Minute,
+		}
+		go monitor.Run(shutdownCtx, *checkInterval)
+	}
 	go func() {
 		<-shutdownCtx.Done()
 		timeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)

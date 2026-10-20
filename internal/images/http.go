@@ -122,39 +122,55 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "invalid storage ID", http.StatusBadRequest)
 			return
 		}
-		storage, err := s.repo.Storage(r.Context(), input.StorageID)
-		if err != nil || storage.ID != input.StorageID {
+		switch err := s.StartScan(r.Context(), input.StorageID); {
+		case errors.Is(err, errStorageNotFound):
 			http.Error(w, "storage not found", http.StatusNotFound)
-			return
-		}
-		s.mu.Lock()
-		if s.active[input.StorageID] {
-			s.mu.Unlock()
+		case errors.Is(err, errScanRunning):
 			http.Error(w, "scan already running", http.StatusConflict)
-			return
-		}
-		s.active[input.StorageID] = true
-		s.mu.Unlock()
-		if err := s.repo.MarkScanning(r.Context(), input.StorageID); err != nil {
-			s.mu.Lock()
-			delete(s.active, input.StorageID)
-			s.mu.Unlock()
+		case err != nil:
 			http.Error(w, "cannot start scan", http.StatusServiceUnavailable)
-			return
+		default:
+			w.WriteHeader(http.StatusAccepted)
 		}
-		go func(id int64) {
-			defer func() {
-				s.mu.Lock()
-				delete(s.active, id)
-				s.mu.Unlock()
-			}()
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
-			if err := ScanStorage(ctx, s.repo, id); err != nil {
-				log.Printf("Images scan for storage %d failed: %v", id, err)
-			}
-		}(input.StorageID)
-		w.WriteHeader(http.StatusAccepted)
 	})
 	return mux
+}
+
+var (
+	errStorageNotFound = errors.New("storage not found")
+	errScanRunning     = errors.New("scan already running")
+)
+
+// StartScan marks a storage as scanning and scans it in the background.
+func (s *Server) StartScan(ctx context.Context, id int64) error {
+	storage, err := s.repo.Storage(ctx, id)
+	if err != nil || storage.ID != id {
+		return errStorageNotFound
+	}
+	s.mu.Lock()
+	if s.active[id] {
+		s.mu.Unlock()
+		return errScanRunning
+	}
+	s.active[id] = true
+	s.mu.Unlock()
+	if err := s.repo.MarkScanning(ctx, id); err != nil {
+		s.mu.Lock()
+		delete(s.active, id)
+		s.mu.Unlock()
+		return err
+	}
+	go func() {
+		defer func() {
+			s.mu.Lock()
+			delete(s.active, id)
+			s.mu.Unlock()
+		}()
+		scanCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		if err := ScanStorage(scanCtx, s.repo, id); err != nil {
+			log.Printf("Images scan for storage %d failed: %v", id, err)
+		}
+	}()
+	return nil
 }

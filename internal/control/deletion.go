@@ -87,7 +87,7 @@ func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if active {
-		http.Error(w, "Сначала снимите пункт с публикации меню", http.StatusConflict)
+		s.rejectDeletion(w, r, "driver-config.delete", id, "published", "Сначала снимите пункт с публикации меню")
 		return
 	}
 	configs, err := s.Store.DriverConfigs(r.Context())
@@ -152,7 +152,7 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if active {
-		http.Error(w, "Сначала снимите пункт с публикации меню", http.StatusConflict)
+		s.rejectDeletion(w, r, "windows-answer.delete", id, "published", "Сначала снимите пункт с публикации меню")
 		return
 	}
 	configs, err := s.Store.DriverConfigs(r.Context())
@@ -162,7 +162,7 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, config := range configs {
 		if config.AnswerID == id {
-			http.Error(w, fmt.Sprintf("Сначала удалите конфигурацию драйверов № %d", config.ID), http.StatusConflict)
+			s.rejectDeletion(w, r, "windows-answer.delete", id, fmt.Sprintf("used by driver config %d", config.ID), fmt.Sprintf("Сначала удалите конфигурацию драйверов № %d", config.ID))
 			return
 		}
 	}
@@ -208,7 +208,7 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if active {
-		http.Error(w, "Сначала снимите пункт с публикации меню", http.StatusConflict)
+		s.rejectDeletion(w, r, "windows-profile.delete", id, "published", "Сначала снимите пункт с публикации меню")
 		return
 	}
 	answers, err := s.Store.WindowsAnswers(r.Context())
@@ -218,7 +218,7 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, answer := range answers {
 		if answer.ProfileID == id {
-			http.Error(w, fmt.Sprintf("Сначала удалите XML-сценарий № %d", answer.ID), http.StatusConflict)
+			s.rejectDeletion(w, r, "windows-profile.delete", id, fmt.Sprintf("used by answer %d", answer.ID), fmt.Sprintf("Сначала удалите XML-сценарий № %d", answer.ID))
 			return
 		}
 	}
@@ -229,7 +229,7 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, config := range configs {
 		if config.ProfileID == id {
-			http.Error(w, fmt.Sprintf("Сначала удалите конфигурацию драйверов № %d", config.ID), http.StatusConflict)
+			s.rejectDeletion(w, r, "windows-profile.delete", id, fmt.Sprintf("used by driver config %d", config.ID), fmt.Sprintf("Сначала удалите конфигурацию драйверов № %d", config.ID))
 			return
 		}
 	}
@@ -245,4 +245,11 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-profile.delete", "ok", fmt.Sprintf("id=%d", id))
 	http.Redirect(w, r, "/images?message=Профиль+удалён", http.StatusSeeOther)
+}
+
+// rejectDeletion records a refused deletion in the audit log and reports it.
+// Refused requests change nothing, but administrators can see the attempts.
+func (s *Server) rejectDeletion(w http.ResponseWriter, r *http.Request, action string, id int64, reason, message string) {
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, action, "rejected", fmt.Sprintf("id=%d %s", id, reason))
+	http.Error(w, message, http.StatusConflict)
 }

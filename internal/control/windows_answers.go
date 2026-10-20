@@ -109,6 +109,18 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+	existing, err := s.Store.WindowsAnswers(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить сценарии этого ISO", http.StatusServiceUnavailable)
+		return
+	}
+	for _, answer := range existing {
+		if answer.ProfileID == profileID && answer.SHA256 == digest {
+			http.Error(w, fmt.Sprintf("Такой XML уже загружен для этого ISO: сценарий #%d «%s». Каталог в меню можно изменить при публикации.", answer.ID, answer.Title), http.StatusConflict)
+			return
+		}
+	}
 	variant, err := s.Store.CreateWindowsAnswer(r.Context(), WindowsAnswerVariant{ProfileID: profileID, Title: title, Folder: folder, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(data))})
 	if err != nil {
 		http.Error(w, "Не удалось сохранить сценарий", http.StatusServiceUnavailable)

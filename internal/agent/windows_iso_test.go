@@ -315,3 +315,55 @@ func TestInspectMountedWindowsISORequiresX64SetupAndInstallImage(t *testing.T) {
 		t.Fatal("accepted media without x64 UEFI loader")
 	}
 }
+
+func TestWindowsISOManagerAcceptsSameModifiedInstantFromAnotherZone(t *testing.T) {
+	base := t.TempDir()
+	storage := filepath.Join(base, "key7")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	iso := filepath.Join(storage, "win10.iso")
+	if err := os.WriteFile(iso, []byte("ISO"), 0444); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mountRoot, configRoot, assetRoot := t.TempDir(), t.TempDir(), t.TempDir()
+	systemctl := &fakeWindowsISOSystemctl{mountRoot: mountRoot, assetRoot: assetRoot}
+	manager := WindowsISOManager{SourceRoot: base, ConfigRoot: configRoot, MountRoot: mountRoot, AssetRoot: assetRoot, Systemctl: systemctl, Mounter: &fakeWindowsISOMounter{mounted: true}}
+	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "win10.iso", Size: info.Size(), Modified: info.ModTime().UTC()}
+	if _, err := manager.Prepare(context.Background(), req); err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	moscow := req
+	moscow.Modified = req.Modified.In(time.FixedZone("MSK", 3*60*60))
+	if err := manager.Check(context.Background(), moscow); err != nil {
+		t.Fatalf("same instant in another zone rejected by Check: %v", err)
+	}
+	changed := req
+	changed.Size++
+	if err := manager.Check(context.Background(), changed); err == nil {
+		t.Fatal("accepted changed source")
+	}
+}
+
+func TestStoredWindowsISORequestComparesModifiedAsInstant(t *testing.T) {
+	stored := []byte(`{"id":1,"storage_root":"/mnt/s","relative_path":"win.iso","size":7,"modified":"2025-08-26T06:09:33.378684Z"}`)
+	utc := time.Date(2025, 8, 26, 6, 9, 33, 378684000, time.UTC)
+	req := WindowsISORequest{ID: 1, StorageRoot: "/mnt/s", RelativePath: "win.iso", Size: 7, Modified: utc.In(time.FixedZone("MSK", 3*60*60))}
+	if !sameStoredWindowsISORequest(stored, req) {
+		t.Fatal("same instant in another zone differs")
+	}
+	later := req
+	later.Modified = req.Modified.Add(time.Second)
+	if sameStoredWindowsISORequest(stored, later) {
+		t.Fatal("different modification time accepted")
+	}
+	other := req
+	other.RelativePath = "other.iso"
+	if sameStoredWindowsISORequest(stored, other) || sameStoredWindowsISORequest([]byte("{"), req) {
+		t.Fatal("different or broken configuration accepted")
+	}
+}

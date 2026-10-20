@@ -131,3 +131,28 @@ func TestWindowsAnswerUploadRejectsInvalidInputs(t *testing.T) {
 		})
 	}
 }
+
+func TestWindowsAnswerUploadRejectsSameXMLForSameISO(t *testing.T) {
+	xml := []byte(`<unattend xmlns="urn:schemas-microsoft-com:unattend"><settings pass="windowsPE"/></unattend>`)
+	sum := sha256.Sum256(xml)
+	store := &answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 17, State: "ready"},
+		answers: []WindowsAnswerVariant{{ID: 5, ProfileID: 17, Title: "Windows 11 key no-disk test", SHA256: hex.EncodeToString(sum[:]), State: "ready"}}}
+	agentAPI := &answerAgent{}
+	s := &Server{Store: store, WindowsAnswers: agentAPI, Images: &fakeImagesAPI{catalog: images.Catalog{}}}
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, answerUploadRequest(t, xml, CSRFToken("test-token")))
+	body := res.Body.String()
+	if res.Code != http.StatusConflict || len(store.answers) != 1 || agentAPI.prepared.ID != 0 {
+		t.Fatalf("duplicate upload status=%d answers=%+v body=%s", res.Code, store.answers, body)
+	}
+	if !strings.Contains(body, `role="alert"`) || !strings.Contains(body, "#5") || !strings.Contains(body, "Windows 11 key no-disk test") {
+		t.Fatalf("duplicate is not explained on the page: %s", body)
+	}
+	other := &answerPageStore{authOnlyStore: store.authOnlyStore, profile: WindowsProfile{ID: 17, State: "ready"},
+		answers: []WindowsAnswerVariant{{ID: 5, ProfileID: 18, SHA256: hex.EncodeToString(sum[:]), State: "ready"}}}
+	res = httptest.NewRecorder()
+	(&Server{Store: other, WindowsAnswers: &answerAgent{}, Images: &fakeImagesAPI{catalog: images.Catalog{}}}).Handler().ServeHTTP(res, answerUploadRequest(t, xml, CSRFToken("test-token")))
+	if res.Code != http.StatusSeeOther {
+		t.Fatalf("same XML for another ISO rejected: %d %s", res.Code, res.Body.String())
+	}
+}

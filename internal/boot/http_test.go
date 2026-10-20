@@ -66,10 +66,10 @@ func TestHandlerKeepsAssetsInsideRoot(t *testing.T) {
 
 func TestWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "windows11"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "windows-profiles", "1"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "windows11", "pxe-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "windows-profiles", "1", "pxe-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
@@ -84,7 +84,7 @@ func TestWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 		{"192.168.10.55:12345", http.StatusNotFound},
 		{"[::1]:12345", http.StatusNotFound},
 	} {
-		req := httptest.NewRequest(http.MethodGet, "/assets/windows11/pxe-setup.cmd", nil)
+		req := httptest.NewRequest(http.MethodGet, "/assets/windows-profiles/1/pxe-setup.cmd", nil)
 		req.RemoteAddr = tc.remote
 		res := httptest.NewRecorder()
 		h.ServeHTTP(res, req)
@@ -96,9 +96,9 @@ func TestWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 		}
 	}
 	for _, path := range []string{
-		"/assets/windows11//pxe-setup.cmd",
-		"/assets/windows11/../windows11/pxe-setup.cmd",
-		"/assets/windows11%2fpxe-setup.cmd",
+		"/assets/windows-profiles/1//pxe-setup.cmd",
+		"/assets/windows-profiles/2/../1/pxe-setup.cmd",
+		"/assets/windows-profiles%2f1%2fpxe-setup.cmd",
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.RemoteAddr = "192.168.10.55:12345"

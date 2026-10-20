@@ -8,20 +8,20 @@ import (
 )
 
 func TestDeployTemplateRendersWithOneCredential(t *testing.T) {
-	templatePath := filepath.Join("..", "..", "deploy", "boot-assets", "windows11", "pxe-setup.cmd.in")
+	templatePath := filepath.Join("..", "..", "deploy", "boot-assets", "windows-profiles", "pxe-setup.cmd.in")
 	template, err := os.ReadFile(templatePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := RenderStartup(template, strings.Repeat("A", 32)); err != nil {
+	if _, err := RenderProfileStartup(template, strings.Repeat("A", 32), 1, "install.wim"); err != nil {
 		t.Fatalf("deployed WinPE template cannot be rendered: %v", err)
 	}
 }
 
-func TestRenderStartupReplacesOnlyDownstreamCredential(t *testing.T) {
-	template := []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\windows11iso __PXE_ISO_PASSWORD__ /user:pxe-iso\r\n")
+func TestRenderPasswordReplacesOnlyDownstreamCredential(t *testing.T) {
+	template := []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\pxeisos __PXE_ISO_PASSWORD__ /user:pxe-iso\r\n")
 	password := strings.Repeat("aB9", 12)
-	got, err := RenderStartup(template, password)
+	got, err := renderPassword(template, password)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestRenderStartupReplacesOnlyDownstreamCredential(t *testing.T) {
 	}
 }
 
-func TestRenderStartupRejectsUnsafePasswordAndTemplate(t *testing.T) {
+func TestRenderPasswordRejectsUnsafePasswordAndTemplate(t *testing.T) {
 	for _, tc := range []struct {
 		template string
 		password string
@@ -43,7 +43,7 @@ func TestRenderStartupRejectsUnsafePasswordAndTemplate(t *testing.T) {
 		{"no token", strings.Repeat("A", 32)},
 		{"__PXE_ISO_PASSWORD____PXE_ISO_PASSWORD__", strings.Repeat("A", 32)},
 	} {
-		if _, err := RenderStartup([]byte(tc.template), tc.password); err == nil {
+		if _, err := renderPassword([]byte(tc.template), tc.password); err == nil {
 			t.Fatalf("accepted unsafe render input: %#v", tc)
 		}
 	}

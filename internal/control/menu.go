@@ -44,7 +44,7 @@ func safeMenuText(value string, max int) bool {
 }
 
 func BuildMenu(title, label, message string) ([]byte, error) {
-	return buildMenu(title, label, message, "", "", "")
+	return buildMenu(title, label, message, "")
 }
 
 // BuildUbuntuMenu adds the prepared Ubuntu Desktop boot profile to a menu.
@@ -53,7 +53,7 @@ func BuildUbuntuMenu(title, label, message, baseURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildMenu(title, label, message, base, "", "")
+	return buildMenu(title, label, message, base)
 }
 
 func validatedBootURL(baseURL string) (string, error) {
@@ -65,25 +65,15 @@ func validatedBootURL(baseURL string) (string, error) {
 }
 
 func BuildMenuFromForm(form url.Values, baseURL string) ([]byte, error) {
-	ubuntuBase, windows10Base, windows11Base := "", "", ""
+	ubuntuBase := ""
 	folders := map[string]string{}
-	if form.Get("ubuntu") == "on" || form.Get("windows10") == "on" || form.Get("windows11") == "on" {
+	if form.Get("ubuntu") == "on" {
 		base, err := validatedBootURL(baseURL)
 		if err != nil {
 			return nil, err
 		}
-		if form.Get("ubuntu") == "on" {
-			ubuntuBase = base
-			folders["ubuntu"] = form.Get("folder_ubuntu")
-		}
-		if form.Get("windows10") == "on" {
-			windows10Base = base
-			folders["windows10"] = form.Get("folder_windows10")
-		}
-		if form.Get("windows11") == "on" {
-			windows11Base = base
-			folders["windows11"] = form.Get("folder_windows11")
-		}
+		ubuntuBase = base
+		folders["ubuntu"] = form.Get("folder_ubuntu")
 	}
 	for _, folder := range folders {
 		if err := validateMenuFolder(folder); err != nil {
@@ -92,13 +82,13 @@ func BuildMenuFromForm(form url.Values, baseURL string) ([]byte, error) {
 	}
 	for _, folder := range folders {
 		if folder != "" {
-			return buildMenuTree(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase, windows10Base, windows11Base, folders)
+			return buildMenuTree(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase, folders)
 		}
 	}
-	return buildMenu(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase, windows10Base, windows11Base)
+	return buildMenu(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase)
 }
 
-func buildMenu(title, label, message, ubuntuBase, windows10Base, windows11Base string) ([]byte, error) {
+func buildMenu(title, label, message, ubuntuBase string) ([]byte, error) {
 	if !safeMenuText(title, 80) || !safeMenuText(label, 80) || !safeMenuText(message, 120) {
 		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
 	}
@@ -107,12 +97,6 @@ func buildMenu(title, label, message, ubuntuBase, windows10Base, windows11Base s
 		"item diagnostics " + label + "\n"
 	if ubuntuBase != "" {
 		script += "item ubuntu Ubuntu Desktop 26.04.1\n"
-	}
-	if windows10Base != "" {
-		script += "item windows10 Windows 10 installer - WinPE\n"
-	}
-	if windows11Base != "" {
-		script += "item windows11 Windows 11 installer - WinPE\n"
 	}
 	script += "item local Boot local disk\n" +
 		"choose target || goto local\n" +
@@ -123,29 +107,6 @@ func buildMenu(title, label, message, ubuntuBase, windows10Base, windows11Base s
 		"goto local\n"
 	if ubuntuBase != "" {
 		script += ubuntuBootScript(ubuntuBase)
-	}
-	if windows10Base != "" {
-		script += ":windows10\n" +
-			"kernel " + windows10Base + "/assets/windows/wimboot\n" +
-			"initrd " + windows10Base + "/assets/windows10/boot.wim boot.wim\n" +
-			"boot || goto windows10_failed\n" +
-			":windows10_failed\n" +
-			"echo Windows 10 WinPE boot failed\n" +
-			"sleep 5\n" +
-			"goto local\n"
-	}
-	if windows11Base != "" {
-		script += ":windows11\n" +
-			"kernel " + windows11Base + "/assets/windows/wimboot\n" +
-			windowsInjectedFiles("windows11",
-				windowsInitrdFile{name: "winpeshl.ini", url: windows11Base + "/assets/windows11/winpeshl.ini"},
-				windowsInitrdFile{name: "pxe-setup.cmd", url: windows11Base + "/assets/windows11/pxe-setup.cmd"}) +
-			"initrd " + windows11Base + "/assets/windows11/boot.wim boot.wim\n" +
-			"boot || goto windows11_failed\n" +
-			":windows11_failed\n" +
-			"echo Windows 11 WinPE boot failed\n" +
-			"sleep 5\n" +
-			"goto local\n"
 	}
 	script += ":local\n" +
 		"exit\n"

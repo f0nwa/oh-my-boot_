@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -20,9 +21,14 @@ type driverPageStore struct {
 	packages []DriverPackage
 }
 
-func (s *driverPageStore) CreateDriverPackage(_ context.Context, inventory drivers.Inventory) error {
+func (s *driverPageStore) CreateDriverPackage(_ context.Context, inventory drivers.Inventory) (bool, error) {
+	for _, existing := range s.packages {
+		if existing.SHA256 == inventory.SHA256 {
+			return false, nil
+		}
+	}
 	s.packages = append(s.packages, DriverPackage{SHA256: inventory.SHA256, Inventory: inventory})
-	return nil
+	return true, nil
 }
 func (s *driverPageStore) DriverPackages(context.Context) ([]DriverPackage, error) {
 	return s.packages, nil
@@ -170,5 +176,23 @@ func TestDriversPageOperatorShowsBothImportMethods(t *testing.T) {
 		if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), required) {
 			t.Fatalf("missing %q in page: %d", required, res.Code)
 		}
+	}
+}
+
+func TestDriverImportReportsExistingPackage(t *testing.T) {
+	store := &driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
+	s := &Server{Store: store, DriverPackages: &fakeDriverAgent{}}
+	var messages []string
+	for i := 0; i < 2; i++ {
+		res := httptest.NewRecorder()
+		s.Handler().ServeHTTP(res, testDriverUpload(t, "zip", CSRFToken("test-token"), "driver.zip", oneDriverZIP(t)))
+		location, _ := url.QueryUnescape(res.Header().Get("Location"))
+		if res.Code != http.StatusSeeOther {
+			t.Fatalf("import %d: %d %s", i, res.Code, res.Body.String())
+		}
+		messages = append(messages, location)
+	}
+	if messages[0] != "/drivers?message=Пакет драйвера добавлен" || messages[1] != "/drivers?message=Пакет уже есть в каталоге" || len(store.packages) != 1 {
+		t.Fatalf("messages=%q packages=%d", messages, len(store.packages))
 	}
 }

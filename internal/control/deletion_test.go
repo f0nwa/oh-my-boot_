@@ -5,16 +5,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"pxe-platform/internal/agent"
 )
 
 type deletionStore struct {
+	audits []string
 	authOnlyStore
 	versions []MenuVersion
 	profiles []WindowsProfile
@@ -68,6 +71,11 @@ func (s *deletionStore) WindowsAnswers(context.Context) ([]WindowsAnswerVariant,
 	return s.answers, nil
 }
 func (s *deletionStore) DriverConfigs(context.Context) ([]DriverConfig, error) { return s.configs, nil }
+func (s *deletionStore) Audit(_ context.Context, _ int64, action, result, detail string) error {
+	s.audits = append(s.audits, action+"|"+result+"|"+detail)
+	return nil
+}
+func (s *deletionStore) DriverPackages(context.Context) ([]DriverPackage, error) { return nil, nil }
 func (s *deletionStore) WindowsProfile(_ context.Context, id int64) (WindowsProfile, error) {
 	for _, item := range s.profiles {
 		if item.ID == id {
@@ -174,6 +182,8 @@ func TestDeleteDriverConfigBlocksActiveThenCleans(t *testing.T) {
 	s.versions = []MenuVersion{{Active: true, Script: "item windriver_3 Windows test\n"}}
 	if res := submitDeletion(t, server, "/drivers/configs/3/delete"); res.Code != http.StatusConflict || len(c.calls) != 0 {
 		t.Fatalf("active status=%d cleanup=%v", res.Code, c.calls)
+	} else if body := res.Body.String(); !strings.Contains(body, `role="alert"`) || !strings.Contains(body, "Сначала снимите пункт с публикации меню") || !strings.Contains(body, "<h1>Драйверы") {
+		t.Fatalf("conflict is not shown on the drivers page: %s", body)
 	}
 	s.versions = []MenuVersion{{Active: true, Script: "#!ipxe\n"}}
 	if res := submitDeletion(t, server, "/drivers/configs/3/delete"); res.Code != http.StatusSeeOther || strings.Join(c.calls, ",") != "config" || strings.Join(s.deleted, ",") != "config" {
@@ -285,5 +295,43 @@ func TestAdminPagesExposeRecordDeletionActions(t *testing.T) {
 	render(res, "images", data)
 	if !strings.Contains(res.Body.String(), `action="/images/windows-answers/4/delete"`) || strings.Contains(res.Body.String(), `action="/images/windows-profiles/17/answers"`) {
 		t.Fatalf("unavailable parent hid deletion or allowed upload: %d %s", res.Code, res.Body.String())
+	}
+}
+
+func TestMenuHistoryShowsVersionNumberAndTimeZone(t *testing.T) {
+	msk := time.FixedZone("MSK", 3*60*60)
+	store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, versions: []MenuVersion{
+		{ID: 21, At: time.Date(2026, 10, 19, 21, 23, 0, 0, msk), Script: "#!ipxe\n", Title: "Old"},
+		{ID: 25, Active: true, At: time.Date(2026, 10, 19, 23, 17, 0, 0, msk), Script: "#!ipxe\n", Title: "Current"},
+	}}
+	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	body := html.UnescapeString(res.Body.String())
+	for _, want := range []string{"<th>№</th>", "<td>#21</td>", "<td>#25</td>", "19.10.2026 21:23 UTC+03:00"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("menu history lacks %q: status=%d body=%s", want, res.Code, body)
+		}
+	}
+}
+
+func TestRejectedDeletionsAreAudited(t *testing.T) {
+	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
+		profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4, ProfileID: 17}},
+		configs: []DriverConfig{{ID: 3, ProfileID: 17, AnswerID: 4}}}
+	server := deletionTestServer(s, &deletionCleaner{})
+	s.versions = []MenuVersion{{Active: true, Script: "item windriver_3 Windows test\n"}}
+	submitDeletion(t, server, "/drivers/configs/3/delete")
+	s.versions = []MenuVersion{{Active: true, Script: "#!ipxe\n"}}
+	submitDeletion(t, server, "/images/windows-answers/4/delete")
+	submitDeletion(t, server, "/images/windows-profiles/17/delete")
+	want := []string{
+		"driver-config.delete|rejected|id=3 published",
+		"windows-answer.delete|rejected|id=4 used by driver config 3",
+		"windows-profile.delete|rejected|id=17 used by answer 4",
+	}
+	if strings.Join(s.audits, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("audits = %q, want %q", s.audits, want)
 	}
 }

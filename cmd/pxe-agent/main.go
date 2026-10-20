@@ -18,6 +18,7 @@ func main() {
 	socket := flag.String("socket", "/run/pxe-platform/agent.sock", "local control socket")
 	config := flag.String("config-path", "/etc/pxe-platform/dnsmasq.conf", "managed dnsmasq config")
 	state := flag.String("state-path", "/var/lib/pxe-platform-agent/network.json", "last successful network config")
+	recoveryConfig := flag.String("storage-recovery-config", "/etc/pxe-platform/storage-recovery.json", "storage recovery settings")
 	flag.Parse()
 	applier, err := agent.NewApplier(*config, *state, agent.SystemRunner{})
 	if err != nil {
@@ -50,9 +51,13 @@ func main() {
 		log.Fatal(err)
 	}
 	defer listener.Close()
-	server := &http.Server{Handler: agent.HandlerWithDriverManager(applier, smb, windows, driverManager), ReadHeaderTimeout: 5 * time.Second}
+	recovery := &agent.StorageRecovery{SMB: smb, Windows: windows, ConfigPath: *recoveryConfig}
+	server := &http.Server{Handler: agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// Recover storage mounts and Windows ISO profiles that failed, for example
+	// because the NAS became reachable only after this server booted.
+	go recovery.Run(ctx)
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

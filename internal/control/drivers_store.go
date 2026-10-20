@@ -14,13 +14,18 @@ type DriverPackage struct {
 	CreatedAt time.Time
 }
 
-func (s Store) CreateDriverPackage(ctx context.Context, inventory drivers.Inventory) error {
+// CreateDriverPackage adds a package to the catalog. It reports false when a
+// package with the same content is already there.
+func (s Store) CreateDriverPackage(ctx context.Context, inventory drivers.Inventory) (bool, error) {
 	data, err := json.Marshal(inventory)
 	if err != nil {
-		return err
+		return false, err
 	}
-	_, err = s.Pool.Exec(ctx, `INSERT INTO winpe_driver_packages (sha256, inventory) VALUES ($1,$2) ON CONFLICT (sha256) DO NOTHING`, inventory.SHA256, data)
-	return err
+	command, err := s.Pool.Exec(ctx, `INSERT INTO winpe_driver_packages (sha256, inventory) VALUES ($1,$2) ON CONFLICT (sha256) DO NOTHING`, inventory.SHA256, data)
+	if err != nil {
+		return false, err
+	}
+	return command.RowsAffected() > 0, nil
 }
 
 func (s Store) DriverPackages(ctx context.Context) ([]DriverPackage, error) {

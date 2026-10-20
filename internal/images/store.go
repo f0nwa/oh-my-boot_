@@ -165,3 +165,34 @@ func (s Store) ScanError(ctx context.Context, id int64, message string) error {
 	_, err := s.Pool.Exec(ctx, "UPDATE storages SET state='unavailable',last_error=$2 WHERE id=$1", id, message)
 	return err
 }
+
+// Storages lists storages without their image catalog.
+func (s Store) Storages(ctx context.Context) ([]Storage, error) {
+	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at FROM storages ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []Storage{}
+	for rows.Next() {
+		var storage Storage
+		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt); err != nil {
+			return nil, err
+		}
+		result = append(result, storage)
+	}
+	return result, rows.Err()
+}
+
+// MarkUnavailableIfReady records a failed availability check without
+// overriding a scan that started in the meantime.
+func (s Store) MarkUnavailableIfReady(ctx context.Context, id int64, message string) (bool, error) {
+	if len(message) > 500 {
+		message = message[:500]
+	}
+	command, err := s.Pool.Exec(ctx, "UPDATE storages SET state='unavailable',last_error=$2 WHERE id=$1 AND state='ready'", id, message)
+	if err != nil {
+		return false, err
+	}
+	return command.RowsAffected() > 0, nil
+}

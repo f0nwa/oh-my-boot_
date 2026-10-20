@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -13,7 +14,7 @@ import (
 )
 
 func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), MenuTitle: "PXE Platform", MenuLabel: "Diagnostics", MenuMessage: "PXE Platform network boot is ready"}
+	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), MenuTitle: "PXE Platform", MenuLabel: "Diagnostics", MenuMessage: "PXE Platform network boot is ready"}
 	versions, err := s.Store.MenuVersions(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось прочитать версии меню", 500)
@@ -47,17 +48,13 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 			data.MenuLabel = version.Label
 			data.MenuMessage = version.Message
 			data.MenuUbuntu = strings.Contains(version.Script, "item ubuntu Ubuntu Desktop 26.04.1\n")
-			data.MenuWindows10 = strings.Contains(version.Script, "item windows10 Windows 10 installer - WinPE\n")
-			data.MenuWindows11 = strings.Contains(version.Script, "item windows11 Windows 11 installer - WinPE\n")
 			folders := menuFolderPaths(version.Script)
 			activeWindows = menuWindowsProfileIDs(version.Script)
 			activeAnswers = menuWindowsAnswerRefs(version.Script)
 			activeDrivers = menuDriverConfigRefs(version.Script)
 			activeFolders = folders
 			data.MenuFolderUbuntu = folders["ubuntu"]
-			data.MenuFolderWindows10 = folders["windows10"]
-			data.MenuFolderWindows11 = folders["windows11"]
-			data.HasMenuFolders = data.MenuFolderUbuntu != "" || data.MenuFolderWindows10 != "" || data.MenuFolderWindows11 != ""
+			data.HasMenuFolders = data.MenuFolderUbuntu != ""
 			break
 		}
 	}
@@ -85,7 +82,41 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.MenuDriverConfigs = append(data.MenuDriverConfigs, menuDriverConfigRow{DriverConfig: config, Selected: activeDrivers[config.ID].ID == config.ID, MenuFolder: folder})
 	}
+	if form := pageForm(r); form != nil && form.Has("title") {
+		applySubmittedMenuForm(&data, form)
+	}
 	render(w, "menu", data)
+}
+
+// applySubmittedMenuForm shows a failed publication's choices instead of the
+// active menu, so the operator can correct them without starting over.
+func applySubmittedMenuForm(data *pageData, form url.Values) {
+	checked := func(name string) bool { return form.Get(name) != "" }
+	data.MenuTitle, data.MenuLabel, data.MenuMessage = form.Get("title"), form.Get("label"), form.Get("message")
+	data.MenuUbuntu = checked("ubuntu")
+	data.MenuFolderUbuntu = form.Get("folder_ubuntu")
+	data.HasMenuFolders = data.MenuFolderUbuntu != ""
+	for i := range data.MenuWindowsProfiles {
+		key := fmt.Sprintf("winiso_%d", data.MenuWindowsProfiles[i].ID)
+		data.MenuWindowsProfiles[i].Selected = checked(key)
+		if form.Has("folder_" + key) {
+			data.MenuWindowsProfiles[i].MenuFolder = form.Get("folder_" + key)
+		}
+	}
+	for i := range data.MenuWindowsAnswers {
+		key := fmt.Sprintf("winanswer_%d", data.MenuWindowsAnswers[i].ID)
+		data.MenuWindowsAnswers[i].Selected = checked(key)
+		if form.Has("folder_" + key) {
+			data.MenuWindowsAnswers[i].MenuFolder = form.Get("folder_" + key)
+		}
+	}
+	for i := range data.MenuDriverConfigs {
+		key := fmt.Sprintf("windriver_%d", data.MenuDriverConfigs[i].ID)
+		data.MenuDriverConfigs[i].Selected = checked(key)
+		if form.Has("folder_" + key) {
+			data.MenuDriverConfigs[i].MenuFolder = form.Get("folder_" + key)
+		}
+	}
 }
 
 func menuSnapshotRestorable(script string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) bool {
@@ -372,9 +403,8 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) e
 		if p.State != "ready" || (p.InstallFile != "install.wim" && p.InstallFile != "install.esd") {
 			return fmt.Errorf("профиль %d не подготовлен", p.ID)
 		}
-		current, err := SelectWindowsISO(catalog, p.StorageID, p.Path, p.Title, p.Folder)
-		if err != nil || current.StorageRoot != p.StorageRoot || current.Size != p.Size || !current.Modified.Equal(p.Modified) {
-			return fmt.Errorf("исходный ISO профиля %d изменился", p.ID)
+		if problem := windowsProfileSourceProblem(catalog, p); problem != nil {
+			return problem
 		}
 		if err := s.WindowsISO.CheckWindowsISO(ctx, agent.WindowsISORequest{ID: p.ID, StorageRoot: p.StorageRoot, RelativePath: p.Path, Size: p.Size, Modified: p.Modified}); err != nil {
 			return fmt.Errorf("файлы профиля %d недоступны", p.ID)

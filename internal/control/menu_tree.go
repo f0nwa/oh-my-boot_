@@ -72,19 +72,13 @@ func menuFolderPaths(script string) map[string]string {
 	return folders
 }
 
-func buildMenuTree(title, diagnosticLabel, diagnosticMessage, ubuntuBase, windows10Base, windows11Base string, folders map[string]string) ([]byte, error) {
+func buildMenuTree(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string) ([]byte, error) {
 	if !safeMenuText(title, 80) || !safeMenuText(diagnosticLabel, 80) || !safeMenuText(diagnosticMessage, 120) {
 		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
 	}
 	profiles := []menuProfile{}
 	if ubuntuBase != "" {
 		profiles = append(profiles, menuProfile{id: "ubuntu", title: "Ubuntu Desktop 26.04.1", base: ubuntuBase})
-	}
-	if windows10Base != "" {
-		profiles = append(profiles, menuProfile{id: "windows10", title: "Windows 10 installer - WinPE", base: windows10Base})
-	}
-	if windows11Base != "" {
-		profiles = append(profiles, menuProfile{id: "windows11", title: "Windows 11 installer - WinPE", base: windows11Base})
 	}
 	return buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage, profiles, folders)
 }
@@ -241,16 +235,5 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	switch profile.id {
 	case "ubuntu":
 		out.WriteString(ubuntuBootScript(base))
-	case "windows10", "windows11":
-		out.WriteString(":" + profile.id + "\n" +
-			"kernel " + base + "/assets/windows/wimboot\n")
-		if profile.id == "windows11" {
-			out.WriteString(windowsInjectedFiles("windows11",
-				windowsInitrdFile{name: "winpeshl.ini", url: base + "/assets/windows11/winpeshl.ini"},
-				windowsInitrdFile{name: "pxe-setup.cmd", url: base + "/assets/windows11/pxe-setup.cmd"}))
-		}
-		out.WriteString("initrd " + base + "/assets/" + profile.id + "/boot.wim boot.wim\n" +
-			"boot || goto " + profile.id + "_failed\n" +
-			":" + profile.id + "_failed\necho " + profile.title + " boot failed\nsleep 5\ngoto local\n")
 	}
 }

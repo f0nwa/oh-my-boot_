@@ -1,0 +1,507 @@
+package control
+
+import (
+	"fmt"
+	"net/http"
+	"regexp"
+	"sort"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+// Supported admin interface languages. Russian text is the translation key.
+const (
+	langRU = "ru"
+	langEN = "en"
+)
+
+func normalizeLanguage(lang string) string {
+	if lang == langEN {
+		return langEN
+	}
+	return langRU
+}
+
+// languageFromRequest picks the language for pages shown before sign-in.
+func languageFromRequest(r *http.Request) string {
+	for _, part := range strings.Split(r.Header.Get("Accept-Language"), ",") {
+		tag := strings.ToLower(strings.TrimSpace(strings.SplitN(part, ";", 2)[0]))
+		switch {
+		case strings.HasPrefix(tag, "ru"):
+			return langRU
+		case strings.HasPrefix(tag, "en"):
+			return langEN
+		}
+	}
+	return langRU
+}
+
+type messagePattern struct {
+	re     *regexp.Regexp
+	format string
+	key    string
+}
+
+var messagePatterns = compileMessagePatterns()
+
+func compileMessagePatterns() []messagePattern {
+	var patterns []messagePattern
+	verb := regexp.MustCompile(`%[sd]`)
+	for key, value := range englishMessages {
+		if !verb.MatchString(key) {
+			continue
+		}
+		parts := verb.Split(key, -1)
+		verbs := verb.FindAllString(key, -1)
+		var expr strings.Builder
+		expr.WriteString("^")
+		for i, part := range parts {
+			expr.WriteString(regexp.QuoteMeta(part))
+			if i < len(verbs) {
+				switch {
+				case verbs[i] == "%d":
+					expr.WriteString(`(-?\d+)`)
+				case i == len(verbs)-1:
+					expr.WriteString(`(.+)`)
+				default:
+					expr.WriteString(`(.+?)`)
+				}
+			}
+		}
+		expr.WriteString("$")
+		patterns = append(patterns, messagePattern{re: regexp.MustCompile(expr.String()), format: strings.ReplaceAll(value, "%d", "%s"), key: key})
+	}
+	// Prefer the most specific pattern: more literal text first.
+	sort.Slice(patterns, func(i, j int) bool {
+		li, lj := len(verb.ReplaceAllString(patterns[i].key, "")), len(verb.ReplaceAllString(patterns[j].key, ""))
+		if li != lj {
+			return li > lj
+		}
+		return patterns[i].key < patterns[j].key
+	})
+	return patterns
+}
+
+// translate returns text in the requested language. Unknown text, user data
+// and English text are returned unchanged.
+func translate(lang, text string) string {
+	if lang != langEN || text == "" {
+		return text
+	}
+	return translateEN(text, 0)
+}
+
+func translateEN(text string, depth int) string {
+	if value, ok := englishMessages[text]; ok {
+		return value
+	}
+	if depth > 4 {
+		return text
+	}
+	for _, pattern := range messagePatterns {
+		match := pattern.re.FindStringSubmatch(text)
+		if match == nil {
+			continue
+		}
+		args := make([]any, len(match)-1)
+		for i, arg := range match[1:] {
+			args[i] = translateEN(arg, depth+1)
+		}
+		return fmt.Sprintf(pattern.format, args...)
+	}
+	// Messages are sometimes shown with a capital first letter.
+	first, size := utf8.DecodeRuneInString(text)
+	if unicode.IsUpper(first) {
+		lowered := string(unicode.ToLower(first)) + text[size:]
+		if translated := translateEN(lowered, depth+1); translated != lowered {
+			return capitalizeFirst(translated)
+		}
+	}
+	return text
+}
+
+var englishMessages = map[string]string{
+	"%s; обновите каталог":                        "%s; refresh the catalog",
+	"ARM64: этот профиль поддерживает только x64": "ARM64: this profile supports x64 only",
+	"Agent перезапускает упавшие подключения SMB, а затем ISO-профили Windows, например если NAS стал доступен позже PXE-сервера.": "Agent restarts failed SMB connections and then Windows ISO profiles, for example when the NAS becomes reachable after the PXE server.",
+	"Boot недоступен":                    "Boot is unavailable",
+	"ID пользователя из списка":          "User ID from the list",
+	"IP сервера":                         "Server IP",
+	"ISO загружен и добавлен в каталог.": "ISO uploaded and added to the catalog.",
+	"ISO подготовлен":                    "ISO prepared",
+	"ISO пока не найдены.":               "No ISO files found yet.",
+	"Network Agent недоступен":           "Network Agent is unavailable",
+	"PXE-сеть":                           "PXE network",
+	"Proxy DHCP — адреса выдаёт роутер":  "Proxy DHCP — the router assigns addresses",
+	"SMB подключено, но поиск ISO не запущен. Повторите обновление на странице образов.": "SMB is connected, but the ISO search did not start. Refresh again on the Images page.",
+	"URL загрузочного меню":                                  "Boot menu URL",
+	"Ubuntu Desktop 26.04.1 (тестовая загрузка, ISO 6,5 ГБ)": "Ubuntu Desktop 26.04.1 (test boot, 6.5 GB ISO)",
+	"XML-сценарий":                                           "XML answer file",
+	"ZIP превышает 256 МиБ":                                  "The ZIP exceeds 256 MiB",
+	"ZIP-архив":                                              "ZIP archive",
+	"· XML-сценарий ·":                                       "· XML answer file ·",
+	"· адрес":                                                "· address",
+	"· драйверы WinPE ·":                                     "· WinPE drivers ·",
+	"· интерфейс":                                            "· interface",
+	"Автоматическое восстановление подключений": "Automatic connection recovery",
+	"Автор":         "Author",
+	"Администратор": "Administrator",
+	"Адрес":         "Address",
+	"Активен":       "Enabled",
+	"Активна":       "Active",
+	"Активная конфигурация недоступна.": "The active configuration is unavailable.",
+	"Активный режим:":                   "Active mode:",
+	"Архитектура":                       "Architecture",
+	"Аудит":                             "Audit",
+	"Аудит изменений":                   "Change audit",
+	"Без XML — ручная установка":        "No XML — manual installation",
+	"Будет":             "Will be",
+	"Вернуть":           "Restore",
+	"Версии":            "Versions",
+	"Версия не найдена": "Version not found",
+	"Включено":          "Enabled",
+	"Включить восстановление": "Enable recovery",
+	"Войти": "Sign in",
+	"Восстановление подключений недоступно": "Connection recovery is unavailable",
+	"Время": "Time",
+	"Все действия, включая сеть, пользователей и роли": "All actions, including network, users and roles",
+	"Вход в админку": "Admin sign-in",
+	"Выберите SMB-хранилище и существующую папку. Файл появится в каталоге после проверки. Публикация в PXE-меню выполняется отдельно.": "Choose an SMB storage and an existing folder. The file appears in the catalog after it is checked. Publishing to the PXE menu is a separate step.",
+	"Выберите XML-файл":     "Choose an XML file",
+	"Выйти":                 "Sign out",
+	"Выключено":             "Disabled",
+	"Действие":              "Action",
+	"Действия":              "Actions",
+	"Детали":                "Details",
+	"Диагностический пункт": "Diagnostics item",
+	"Для Windows x64 из SMB-хранилища можно создать отдельный загрузочный профиль. Название и каталог в PXE-меню указывайте латиницей; формат ISO проверяется при подготовке.": "You can create a separate boot profile for a Windows x64 ISO from an SMB storage. Use Latin letters for the PXE menu title and folder; the ISO format is checked during preparation.",
+	"Добавить": "Add",
+	"Добавить сетевую папку SMB": "Add an SMB network share",
+	"Добавьте папку с INF и сопутствующими файлами или ZIP той же папки. Максимум 256 МиБ на передачу. Подготовка и публикация в PXE-меню выполняются отдельно.": "Add a folder with INF and related files, or a ZIP of that folder. Up to 256 MiB per upload. Preparation and publishing to the PXE menu are separate steps.",
+	"Дождитесь завершения сканирования": "Wait for the scan to finish",
+	"Домен, если нужен":                 "Domain, if required",
+	"Доступ":                            "Access",
+	"Доступ запрещён":                   "Access denied",
+	"Доступно":                          "Available",
+	"Драйверы":                          "Drivers",
+	"Драйверы WinPE":                    "WinPE drivers",
+	"Её подготовленные файлы будут удалены; общий WIM и драйверы останутся, если используются другими пунктами.": "Its prepared files will be deleted; the shared WIM and drivers stay if other entries use them.",
+	"Журнал": "Log",
+	"Журнал временно недоступен": "The log is temporarily unavailable",
+	"Журнал запросов клиентов":   "Client request log",
+	"Заголовок":                  "Title",
+	"Загрузить":                  "Upload",
+	"Загрузить ISO":              "Upload ISO",
+	"Загрузить ZIP":              "Upload ZIP",
+	"Загрузить папку":            "Upload folder",
+	"Загрузить сценарий":         "Upload answer file",
+	"Загрузочное меню":           "Boot menu",
+	"Здесь показаны подтверждённые HTTP-запросы меню и файлов.":          "Confirmed HTTP requests for the menu and files are shown here.",
+	"Изменить конфигурацию":                                              "Change configuration",
+	"Импорт драйверов недоступен":                                        "Driver import is unavailable",
+	"Импорт, подготовка и публикация образов; просмотр служб и загрузок": "Import, prepare and publish images; view services and boots",
+	"Имя":              "Name",
+	"Имя пользователя": "Username",
+	"Интервал должен быть от 1 до 60 минут": "The interval must be between 1 and 60 minutes",
+	"Интервал проверки, минут (1–60)":       "Check interval, minutes (1–60)",
+	"Интерфейс":     "Interface",
+	"Интерфейс PXE": "PXE interface",
+	"Источник конфигурации недоступен: %s": "Configuration source is unavailable: %s",
+	"Каталог ISO недоступен":               "The ISO catalog is unavailable",
+	"Каталог TFTP":                             "TFTP directory",
+	"Каталог в меню":                           "Menu folder",
+	"Каталог для":                              "Folder for",
+	"Каталог драйверов недоступен":             "The driver catalog is unavailable",
+	"Каталог меню":                             "Menu folder",
+	"Каталог пакетов":                          "Package catalog",
+	"Каталоги в PXE-меню":                      "PXE menu folders",
+	"Класс":                                    "Class",
+	"Клиент":                                   "Client",
+	"Конец DHCP-пула":                          "DHCP pool end",
+	"Контрольная сумма Boot не совпала":        "The Boot checksum did not match",
+	"Конфигурации установки":                   "Installation configurations",
+	"Конфигурации установки недоступны":        "Installation configurations are unavailable",
+	"Конфигураций пока нет.":                   "No configurations yet.",
+	"Конфигурация не найдена":                  "Configuration not found",
+	"Конфигурация подготовлена":                "Configuration prepared",
+	"Конфигурация создана":                     "Configuration created",
+	"Конфигурация удалена":                     "Configuration deleted",
+	"Конфигурация уже готова":                  "Configuration is already ready",
+	"Личный кабинет":                           "My account",
+	"Локальный каталог":                        "Local directory",
+	"Меню":                                     "Menu",
+	"Меню опубликовано":                        "Menu published",
+	"Наблюдатель":                              "Observer",
+	"Название":                                 "Name",
+	"Название в меню":                          "Menu title",
+	"Название и каталог должны быть латиницей": "The title and folder must use Latin letters",
+	"Название пункта PXE-меню (латиницей)":     "PXE menu item title (Latin letters)",
+	"Название пункта меню (латиницей)":         "Menu item title (Latin letters)",
+	"Найденные ISO":                            "Found ISO files",
+	"Настройки восстановления сохранены":       "Recovery settings saved",
+	"Настройки применены. Показана активная конфигурация.": "Settings applied. The active configuration is shown.",
+	"Начало DHCP-пула": "DHCP pool start",
+	"Не проверено":     "Not checked",
+	"Не удалось выполнить проверку подключений":                             "Could not check the connections",
+	"Не удалось добавить пакет в каталог":                                   "Could not add the package to the catalog",
+	"Не удалось добавить хранилище":                                         "Could not add the storage",
+	"Не удалось загрузить ISO.":                                             "Could not upload the ISO.",
+	"Не удалось загрузить ISO: %s":                                          "Could not upload the ISO: %s",
+	"Не удалось запустить сканирование":                                     "Could not start the scan",
+	"Не удалось изменить пользователя: %s":                                  "Could not update the user: %s",
+	"Не удалось начать подготовку":                                          "Could not start preparation",
+	"Не удалось отключить SMB. Запись сохранена для повторной попытки.":     "Could not disconnect SMB. The record is kept for another attempt.",
+	"Не удалось подготовить ISO":                                            "Could not prepare the ISO",
+	"Не удалось подготовить WinPE":                                          "Could not prepare WinPE",
+	"Не удалось подготовить WinPE: %s":                                      "Could not prepare WinPE: %s",
+	"Не удалось подготовить сценарий":                                       "Could not prepare the answer file",
+	"Не удалось подготовить файл":                                           "Could not prepare the file",
+	"Не удалось подключить SMB":                                             "Could not connect SMB",
+	"Не удалось подключить SMB. Проверьте адрес и учётные данные.":          "Could not connect SMB. Check the address and credentials.",
+	"Не удалось подключить SMB. Хранилище сохранено для повторной попытки.": "Could not connect SMB. The storage is kept for another attempt.",
+	"Не удалось подключить хранилище для записи. Проверьте права SMB.":      "Could not connect the storage for writing. Check the SMB permissions.",
+	"Не удалось получить текущее меню":                                      "Could not get the current menu",
+	"Не удалось проверить зависимости":                                      "Could not check dependencies",
+	"Не удалось проверить конфигурации":                                     "Could not check configurations",
+	"Не удалось проверить меню":                                             "Could not check the menu",
+	"Не удалось проверить общие файлы":                                      "Could not check shared files",
+	"Не удалось проверить пакет драйвера: %s":                               "Could not check the driver package: %s",
+	"Не удалось проверить подготовленные файлы":                             "Could not check prepared files",
+	"Не удалось проверить профили ISO":                                      "Could not check ISO profiles",
+	"Не удалось проверить сценарии":                                         "Could not check answer files",
+	"Не удалось проверить сценарии этого ISO":                               "Could not check the answer files of this ISO",
+	"Не удалось прочитать аудит":                                            "Could not read the audit log",
+	"Не удалось прочитать версии меню":                                      "Could not read menu versions",
+	"Не удалось прочитать каталог ISO":                                      "Could not read the ISO catalog",
+	"Не удалось прочитать каталог драйверов":                                "Could not read the driver catalog",
+	"Не удалось прочитать конфигурации драйверов":                           "Could not read driver configurations",
+	"Не удалось прочитать конфигурацию":                                     "Could not read the configuration",
+	"Не удалось прочитать пакет":                                            "Could not read the package",
+	"Не удалось прочитать папки":                                            "Could not read folders",
+	"Не удалось прочитать пользователей":                                    "Could not read users",
+	"Не удалось прочитать профили Windows ISO":                              "Could not read Windows ISO profiles",
+	"Не удалось прочитать профиль":                                          "Could not read the profile",
+	"Не удалось прочитать сценарии Windows":                                 "Could not read Windows answer files",
+	"Не удалось прочитать сценарий":                                         "Could not read the answer file",
+	"Не удалось сменить пароль":                                             "Could not change the password",
+	"Не удалось сменить пароль: %s":                                         "Could not change the password: %s",
+	"Не удалось создать конфигурацию":                                       "Could not create the configuration",
+	"Не удалось создать пользователя: %s":                                   "Could not create the user: %s",
+	"Не удалось создать профиль ISO":                                        "Could not create the ISO profile",
+	"Не удалось сохранить версию и вернуть старое меню: %s":                 "Could not save the version or restore the previous menu: %s",
+	"Не удалось сохранить версию; старое меню восстановлено":                "Could not save the version; the previous menu was restored",
+	"Не удалось сохранить настройки восстановления":                         "Could not save the recovery settings",
+	"Не удалось сохранить начальное меню":                                   "Could not save the initial menu",
+	"Не удалось сохранить результат":                                        "Could not save the result",
+	"Не удалось сохранить результат подготовки":                             "Could not save the preparation result",
+	"Не удалось сохранить состояние сценария":                               "Could not save the answer file state",
+	"Не удалось сохранить сценарий":                                         "Could not save the answer file",
+	"Не удалось сохранить язык":                                             "Could not save the language",
+	"Не удалось удалить запись":                                             "Could not delete the record",
+	"Не удалось удалить подготовленные файлы":                               "Could not delete prepared files",
+	"Неверная версия":                                                       "Invalid version",
+	"Неверная конфигурация":                                                 "Invalid configuration",
+	"Неверная конфигурация: %s":                                             "Invalid configuration: %s",
+	"Неверная форма":                                                        "Invalid form",
+	"Неверное имя ISO":                                                      "Invalid ISO name",
+	"Неверное имя или пароль":                                               "Invalid username or password",
+	"Неверное хранилище":                                                    "Invalid storage",
+	"Неверные параметры SMB":                                                "Invalid SMB parameters",
+	"Неверные учётные данные":                                               "Invalid credentials",
+	"Неверный ID":                    "Invalid ID",
+	"Неверный номер записи":          "Invalid record number",
+	"Неверный профиль":               "Invalid profile",
+	"Неверный профиль ISO":           "Invalid ISO profile",
+	"Неверный путь SMB":              "Invalid SMB path",
+	"Недействительный токен формы":   "Invalid form token",
+	"Недопустимая конфигурация: %s":  "Invalid configuration: %s",
+	"Недопустимый размер ISO":        "Invalid ISO size",
+	"Недопустимый снимок меню":       "Invalid menu snapshot",
+	"Недопустимый текст меню: %s":    "Invalid menu text: %s",
+	"Недоступен":                     "Unavailable",
+	"Недоступно":                     "Unavailable",
+	"Некорректный XML-файл сценария": "Invalid XML answer file",
+	"Некорректный пакет: %s":         "Invalid package: %s",
+	"Нельзя выбрать ISO: %s":         "Cannot select the ISO: %s",
+	"Новая версия":                   "New version",
+	"Новая конфигурация установки":   "New installation configuration",
+	"Новый пароль должен содержать не меньше 12 символов": "The new password must have at least 12 characters",
+	"Новый пароль, от 12 символов":                        "New password, at least 12 characters",
+	"Нужно подтвердить изменения":                         "The changes must be confirmed",
+	"Обзор":        "Overview",
+	"Обнаружен":    "Found",
+	"Обновить":     "Refresh",
+	"Оборудование": "Hardware",
+	"Образы":       "Images",
+	"Образы ISO":   "ISO images",
+	"Один ISO может иметь несколько XML-сценариев. Загруженный файл не показывается повторно. Компьютеры в доверенном PXE-сегменте могут получить его содержимое, включая пароли и ключи.": "One ISO can have several XML answer files. An uploaded file is not shown again. Computers in the trusted PXE segment can read its content, including passwords and keys.",
+	"Один ISO можно использовать с разными драйверами и XML-сценариями. Отметьте только нужные INF для конкретного оборудования.":                                                          "One ISO can be used with different drivers and XML answer files. Select only the INF files needed for the specific hardware.",
+	"Ожидает подключения":         "Waiting for connection",
+	"Оператор":                    "Operator",
+	"Опубликовать":                "Publish",
+	"Отмена":                      "Cancel",
+	"Отменить":                    "Cancel",
+	"Отсутствует":                 "Missing",
+	"Очистка файлов недоступна":   "File cleanup is unavailable",
+	"Ошибка":                      "Error",
+	"Ошибка отображения страницы": "Page rendering error",
+	"Ошибка применения: %s. Показана активная конфигурация.": "Apply failed: %s. The active configuration is shown.",
+	"Пакет": "Package",
+	"Пакет драйвера добавлен":   "Driver package added",
+	"Пакет уже есть в каталоге": "The package is already in the catalog",
+	"Пакеты пока не добавлены.": "No packages added yet.",
+	"Папка":                              "Folder",
+	"Папка драйвера":                     "Driver folder",
+	"Пароль":                             "Password",
+	"Пароль изменён":                     "Password changed",
+	"Пароль, от 12 символов":             "Password, at least 12 characters",
+	"Повторить подключение":              "Reconnect",
+	"Подготовить":                        "Prepare",
+	"Подготовка Windows ISO недоступна":  "Windows ISO preparation is unavailable",
+	"Подготовка конфигураций недоступна": "Configuration preparation is unavailable",
+	"Подготовка сценариев недоступна":    "Answer file preparation is unavailable",
+	"Подготовленные файлы будут удалены. Исходный ISO останется на SMB.": "Prepared files will be deleted. The source ISO stays on SMB.",
+	"Подключение снято, но запись не удалена. Повторите удаление.":       "The connection was removed, but the record was not deleted. Repeat the deletion.",
+	"Подключение только для чтения. Укажите прямой путь к папке с ISO.":  "Read-only connection. Specify the direct path to the folder with ISO files.",
+	"Подключить":             "Connect",
+	"Подключить и найти ISO": "Connect and find ISO files",
+	"Подсеть":                "Subnet",
+	"Подсеть CIDR":           "Subnet CIDR",
+	"Подтвердить удаление":   "Confirm deletion",
+	"Подтверждение сети":     "Network confirmation",
+	"Полный DHCP":            "Full DHCP",
+	"Пользователи":           "Users",
+	"Пользователь":           "User",
+	"Пользователь изменён":   "User updated",
+	"Пользователь создан":    "User created",
+	"После смены пароля сеансы на других устройствах будут завершены.": "After the password is changed, sessions on other devices are ended.",
+	"Последние запросы":              "Recent requests",
+	"Последняя проверка":             "Last check",
+	"Применить":                      "Apply",
+	"Проверить изменения":            "Review changes",
+	"Проверить сейчас":               "Check now",
+	"Проверка подключений выполнена": "Connection check completed",
+	"Проверьте настройки перед применением. Это может изменить выдачу PXE в выбранном сегменте.": "Review the settings before applying them. This can change PXE responses in the selected segment.",
+	"Профили ISO недоступны":             "ISO profiles are unavailable",
+	"Профили Windows":                    "Windows profiles",
+	"Профиль ISO":                        "ISO profile",
+	"Профиль ISO не найден":              "ISO profile not found",
+	"Профиль Windows ISO недоступен: %s": "Windows ISO profile is unavailable: %s",
+	"Профиль не найден":                  "Profile not found",
+	"Профиль создан":                     "Profile created",
+	"Профиль удалён":                     "Profile deleted",
+	"Публикация не подтверждена":         "Publication was not confirmed",
+	"Пул":                "Pool",
+	"Пункт меню":         "Menu item",
+	"Путь":               "Path",
+	"Путь к ISO":         "ISO path",
+	"Работает · %s":      "Running · %s",
+	"Работает · %s · %s": "Running · %s · %s",
+	"Размер, байт":       "Size, bytes",
+	"Расположение":       "Location",
+	"Режим":              "Mode",
+	"Результат":          "Result",
+	"Роль":               "Role",
+	"Роль и доступ":      "Role and access",
+	"Сейчас":             "Current",
+	"Сервис образов недоступен": "The image service is unavailable",
+	"Сетевая папка SMB":         "SMB network share",
+	"Сеть":                      "Network",
+	"Сканирование":              "Scanning",
+	"Сканирование запущено":     "Scan started",
+	"Сканирование прервано перезапуском службы":   "Scan interrupted by a service restart",
+	"Служба Boot недоступна":                      "The Boot service is unavailable",
+	"Служба загрузки недоступна":                  "The boot service is unavailable",
+	"Служба хранилищ недоступна":                  "The storage service is unavailable",
+	"Сменить пароль":                              "Change password",
+	"Сменить пароль и завершить его сеансы":       "Change password and end the user's sessions",
+	"Смонтированный каталог":                      "Mounted directory",
+	"Сначала подготовьте профиль ISO":             "Prepare the ISO profile first",
+	"Сначала снимите пункт с публикации меню":     "Remove the item from the published menu first",
+	"Сначала удалите XML-сценарий № %d":           "Delete XML answer file #%d first",
+	"Сначала удалите конфигурацию драйверов № %d": "Delete driver configuration #%d first",
+	"Создать": "Create",
+	"Создать конфигурацию":                "Create configuration",
+	"Создать профиль":                     "Create profile",
+	"Создать профиль Windows":             "Create Windows profile",
+	"Сообщение диагностики":               "Diagnostics message",
+	"Состояние":                           "State",
+	"Состояние восстановления недоступно": "Recovery state is unavailable",
+	"Сохранить":                           "Save",
+	"Список":                              "List",
+	"Сценарии Windows недоступны":         "Windows answer files are unavailable",
+	"Сценарии установки для":              "Answer files for",
+	"Сценарий загружен":                   "Answer file uploaded",
+	"Сценарий не найден":                  "Answer file not found",
+	"Сценарий удалён":                     "Answer file deleted",
+	"Такой XML уже загружен для этого ISO: сценарий #%d «%s». Каталог в меню можно изменить при публикации.": "This XML is already uploaded for this ISO: answer file #%d “%s”. You can change its menu folder when publishing.",
+	"Текущий пароль":         "Current password",
+	"Текущий пароль неверен": "The current password is incorrect",
+	"Тип": "Type",
+	"Только просмотр состояния, каталога и журналов": "View state, catalog and logs only",
+	"Удалить": "Delete",
+	"Удалить конфигурацию #": "Delete configuration #",
+	"Удалить профиль #":      "Delete profile #",
+	"Удалить сценарий #":     "Delete answer file #",
+	"Удалённый пункт":        "Deleted item",
+	"Укажите путь, например Windows/Установщики. Оставьте поле пустым для главного меню.": "Enter a path, for example Windows/Installers. Leave the field empty for the main menu.",
+	"Учётная запись":                   "Account",
+	"Файл":                             "File",
+	"Файл ISO (до 32 ГБ)":              "ISO file (up to 32 GB)",
+	"Файл autounattend.xml (до 1 МиБ)": "autounattend.xml file (up to 1 MiB)",
+	"Хранилища":                        "Storages",
+	"Хранилища пока не добавлены.":     "No storages added yet.",
+	"Хранилище":                        "Storage",
+	"Хранилище добавлено. Сканирование запущено.":        "Storage added. Scan started.",
+	"Хранилище используется профилем Windows ISO":        "The storage is used by a Windows ISO profile",
+	"Хранилище не найдено":                               "Storage not found",
+	"Хранилище недоступно":                               "Storage is unavailable",
+	"Хранилище недоступно: %s":                           "Storage is unavailable: %s",
+	"Хранилище подключено. Сканирование запущено.":       "Storage connected. Scan started.",
+	"Хранилище удалено":                                  "Storage removed",
+	"Язык":                                               "Language",
+	"Язык интерфейса":                                    "Interface language",
+	"выберите ZIP-файл":                                  "choose a ZIP file",
+	"выберите одну папку или один ZIP":                   "choose one folder or one ZIP",
+	"ещё не выполнялась":                                 "not run yet",
+	"интерфейс не разрешён для PXE":                      "the interface is not allowed for PXE",
+	"исходный ISO профиля %d изменился":                  "the source ISO of profile %d has changed",
+	"исходный ISO профиля %d не найден в хранилище «%s»": "the source ISO of profile %d was not found in storage “%s”",
+	"каждые": "every",
+	"конфигурация драйверов %d изменилась или не подготовлена": "driver configuration %d has changed or is not prepared",
+	"конфигурация драйверов отсутствует":                       "the driver configuration is missing",
+	"мин":                                           "min",
+	"не отвечает дольше %s":                         "not responding for more than %s",
+	"не смонтировано":                               "not mounted",
+	"не удалось прочитать ZIP":                      "could not read the ZIP",
+	"не удалось прочитать файл %s":                  "could not read file %s",
+	"недостаточно свободного места":                 "not enough free space",
+	"пакет драйверов %s недоступен":                 "driver package %s is unavailable",
+	"пакет превышает 256 МиБ":                       "the package exceeds 256 MiB",
+	"папка превышает 256 МиБ":                       "the folder exceeds 256 MiB",
+	"повторяющийся путь: %s":                        "duplicate path: %s",
+	"проверьте имя файла и выбранную папку":         "check the file name and the selected folder",
+	"профиль %d не подготовлен":                     "profile %d is not prepared",
+	"профиль отсутствует":                           "the profile is missing",
+	"пункт конфигурации драйверов повреждён":        "the driver configuration item is damaged",
+	"пункт сценария повреждён":                      "the answer file item is damaged",
+	"служба драйверов недоступна":                   "the driver service is unavailable",
+	"служба сценариев недоступна":                   "the answer file service is unavailable",
+	"службы образов недоступны":                     "the image services are unavailable",
+	"ссылки на конфигурации драйверов повреждены":   "driver configuration references are damaged",
+	"ссылки на сценарии повреждены":                 "answer file references are damaged",
+	"сценарий %d изменился или не подготовлен":      "answer file %d has changed or is not prepared",
+	"сценарий конфигурации драйверов %d недоступен": "the answer file of driver configuration %d is unavailable",
+	"сценарий отсутствует":                          "the answer file is missing",
+	"файл с таким именем уже существует":            "a file with this name already exists",
+	"файлов": "files",
+	"файлы конфигурации драйверов %d недоступны":   "files of driver configuration %d are unavailable",
+	"файлы профиля %d недоступны":                  "files of profile %d are unavailable",
+	"файлы сценария %d недоступны":                 "files of answer file %d are unavailable",
+	"хранилище «%s» недоступно":                    "storage “%s” is unavailable",
+	"хранилище «%s» недоступно: %s":                "storage “%s” is unavailable: %s",
+	"хранилище «%s» сканируется, повторите позже":  "storage “%s” is being scanned, try again later",
+	"хранилище недоступно или не разрешает запись": "the storage is unavailable or does not allow writing",
+	"хранилище профиля %d не найдено":              "the storage of profile %d was not found",
+}

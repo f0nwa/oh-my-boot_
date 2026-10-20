@@ -18,6 +18,8 @@ import (
 )
 
 type Storage interface {
+	SetUserLanguage(context.Context, int64, string) error
+	ChangeOwnPassword(context.Context, int64, string, string, string) error
 	Login(context.Context, string, string) (User, string, error)
 	Session(context.Context, string) (User, error)
 	Logout(context.Context, string) error
@@ -40,7 +42,7 @@ type Storage interface {
 	WindowsAnswers(context.Context) ([]WindowsAnswerVariant, error)
 	WindowsAnswer(context.Context, int64) (WindowsAnswerVariant, error)
 	DeleteWindowsAnswer(context.Context, int64) error
-	CreateDriverPackage(context.Context, drivers.Inventory) error
+	CreateDriverPackage(context.Context, drivers.Inventory) (bool, error)
 	DriverPackages(context.Context) ([]DriverPackage, error)
 	CreateDriverConfig(context.Context, DriverConfig) (DriverConfig, error)
 	DriverConfigs(context.Context) ([]DriverConfig, error)
@@ -109,6 +111,7 @@ type Server struct {
 	DriverPackages    DriverPackageAPI
 	DriverConfigs     DriverConfigAPI
 	Cleanup           AssetCleanupAPI
+	StorageRecovery   StorageRecoveryAPI
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
 	menuMu            sync.Mutex
@@ -120,6 +123,7 @@ type requestContext struct {
 	User  User
 	Token string
 	CSRF  string
+	Path  string
 }
 type ctxKey struct{}
 
@@ -128,14 +132,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("POST /logout", s.protect("view", s.logout))
+	mux.HandleFunc("POST /settings/language", s.protect("view", s.setLanguage))
+	mux.HandleFunc("GET /account", s.protect("view", s.accountPage))
+	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
+	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
 	mux.HandleFunc("GET /", s.protect("view", s.dashboard))
 	mux.HandleFunc("GET /events", s.protect("view", s.eventsPage))
 	mux.HandleFunc("GET /network", s.protect("view", s.networkPage))
 	mux.HandleFunc("POST /network/preview", s.protect("network", s.networkPreview))
 	mux.HandleFunc("POST /network/apply", s.protect("network", s.networkApply))
 	mux.HandleFunc("GET /menu", s.protect("view", s.menuPage))
-	mux.HandleFunc("POST /menu/publish", s.protect("menu", s.menuPublish))
-	mux.HandleFunc("POST /menu/rollback", s.protect("menu", s.menuRollback))
+	mux.HandleFunc("POST /menu/publish", s.protect("menu", withPageErrors(s.menuPage, s.menuPublish)))
+	mux.HandleFunc("POST /menu/rollback", s.protect("menu", withPageErrors(s.menuPage, s.menuRollback)))
 	mux.HandleFunc("GET /users", s.protect("users", s.usersPage))
 	mux.HandleFunc("POST /users/create", s.protect("users", s.userCreate))
 	mux.HandleFunc("POST /users/change", s.protect("users", s.userChange))
@@ -144,22 +152,24 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
 	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))
-	mux.HandleFunc("POST /drivers/configs", s.protect("images", s.driverConfigCreate))
-	mux.HandleFunc("POST /drivers/configs/{id}/prepare", s.protect("images", s.driverConfigPrepare))
-	mux.HandleFunc("POST /drivers/configs/{id}/delete", s.protect("delete", s.driverConfigDelete))
+	mux.HandleFunc("POST /drivers/configs", s.protect("images", withPageErrors(s.driversPage, s.driverConfigCreate)))
+	mux.HandleFunc("POST /drivers/configs/{id}/prepare", s.protect("images", withPageErrors(s.driversPage, s.driverConfigPrepare)))
+	mux.HandleFunc("POST /drivers/configs/{id}/delete", s.protect("delete", withPageErrors(s.driversPage, s.driverConfigDelete)))
 	mux.HandleFunc("GET /assets/driver-upload.js", s.driverUploadScript)
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
-	mux.HandleFunc("POST /images/scan", s.protect("images", s.imagesScan))
-	mux.HandleFunc("POST /images/windows-profiles", s.protect("images", s.windowsProfileCreate))
-	mux.HandleFunc("POST /images/windows-profiles/{id}/prepare", s.protect("images", s.windowsProfilePrepare))
-	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", s.windowsProfileDelete))
-	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", s.windowsAnswerUpload))
-	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("delete", s.windowsAnswerDelete))
-	mux.HandleFunc("POST /images/smb", s.protect("smb", s.imagesSMBCreate))
-	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", s.imagesSMBRetry))
-	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", s.imagesSMBRemove))
+	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.imagesPage, s.imagesScan)))
+	mux.HandleFunc("POST /images/windows-profiles", s.protect("images", withPageErrors(s.imagesPage, s.windowsProfileCreate)))
+	mux.HandleFunc("POST /images/windows-profiles/{id}/prepare", s.protect("images", withPageErrors(s.imagesPage, s.windowsProfilePrepare)))
+	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsProfileDelete)))
+	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", withPageErrors(s.imagesPage, s.windowsAnswerUpload)))
+	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsAnswerDelete)))
+	mux.HandleFunc("POST /images/smb", s.protect("smb", withPageErrors(s.imagesPage, s.imagesSMBCreate)))
+	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", withPageErrors(s.imagesPage, s.imagesSMBRetry)))
+	mux.HandleFunc("POST /images/storage-recovery", s.protect("smb", withPageErrors(s.imagesPage, s.storageRecoverySettings)))
+	mux.HandleFunc("POST /images/storage-recovery/run", s.protect("smb", withPageErrors(s.imagesPage, s.storageRecoveryRun)))
+	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", withPageErrors(s.imagesPage, s.imagesSMBRemove)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
@@ -184,19 +194,19 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 			if r.Method == http.MethodPost {
 				_ = s.Store.Audit(r.Context(), user.ID, "denied:"+action, "denied", "")
 			}
-			http.Error(w, "Доступ запрещён", http.StatusForbidden)
+			http.Error(w, translate(normalizeLanguage(user.Language), "Доступ запрещён"), http.StatusForbidden)
 			return
 		}
 		if r.Method == http.MethodPost {
 			var err error
 			if r.Pattern == "POST /images/upload/{id}" {
 				if r.ContentLength <= 0 || r.ContentLength > images.MaxISOBytes {
-					http.Error(w, "Недопустимый размер ISO", http.StatusBadRequest)
+					http.Error(w, translate(normalizeLanguage(user.Language), "Недопустимый размер ISO"), http.StatusBadRequest)
 					return
 				}
 				if !CheckCSRF(cookie.Value, r.Header.Get("X-CSRF-Token")) {
 					_ = s.Store.Audit(r.Context(), user.ID, "denied:"+action, "csrf", "")
-					http.Error(w, "Недействительный токен формы", http.StatusForbidden)
+					http.Error(w, translate(normalizeLanguage(user.Language), "Недействительный токен формы"), http.StatusForbidden)
 					return
 				}
 				r.Body = http.MaxBytesReader(w, r.Body, images.MaxISOBytes)
@@ -213,12 +223,12 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 			}
 			if r.Pattern != "POST /images/upload/{id}" && (err != nil || !CheckCSRF(cookie.Value, r.FormValue("csrf"))) {
 				_ = s.Store.Audit(r.Context(), user.ID, "denied:"+action, "csrf", "")
-				http.Error(w, "Недействительный токен формы", http.StatusForbidden)
+				http.Error(w, translate(normalizeLanguage(user.Language), "Недействительный токен формы"), http.StatusForbidden)
 				return
 			}
 		}
-		ctx := context.WithValue(r.Context(), ctxKey{}, requestContext{User: user, Token: cookie.Value, CSRF: CSRFToken(cookie.Value)})
-		next(w, r.WithContext(ctx))
+		ctx := context.WithValue(r.Context(), ctxKey{}, requestContext{User: user, Token: cookie.Value, CSRF: CSRFToken(cookie.Value), Path: r.URL.Path})
+		translateErrors(normalizeLanguage(user.Language), next)(w, r.WithContext(ctx))
 	}
 }
 
@@ -231,7 +241,7 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pxe_login_csrf", Value: token, Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 600})
-	render(w, "login", pageData{CSRF: token, Message: r.URL.Query().Get("error")})
+	render(w, "login", pageData{Lang: languageFromRequest(r), CSRF: token, Message: r.URL.Query().Get("error")})
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -242,7 +252,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	cookie, err := r.Cookie("pxe_login_csrf")
 	if err != nil || cookie.Value == "" || !constantEqual(cookie.Value, r.FormValue("csrf")) {
-		http.Error(w, "Недействительный токен формы", 403)
+		http.Error(w, translate(languageFromRequest(r), "Недействительный токен формы"), 403)
 		return
 	}
 	user, token, err := s.Store.Login(r.Context(), r.FormValue("username"), r.FormValue("password"))
@@ -328,7 +338,7 @@ func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message")}
+	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
 	profiles, err := s.Store.WindowsProfiles(r.Context())
 	if err != nil {
 		data.ImageError = "Не удалось прочитать профили Windows ISO"
@@ -370,6 +380,7 @@ func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	s.loadStorageRecovery(r.Context(), &data)
 	render(w, "images", data)
 }
 

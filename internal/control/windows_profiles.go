@@ -83,10 +83,10 @@ func (s *Server) windowsProfilePrepare(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Каталог ISO недоступен", http.StatusServiceUnavailable)
 		return
 	}
-	current, err := SelectWindowsISO(catalog, profile.StorageID, profile.Path, profile.Title, profile.Folder)
-	if err != nil || current.StorageRoot != profile.StorageRoot || current.Size != profile.Size || !current.Modified.Equal(profile.Modified) {
-		_ = s.Store.SetWindowsProfileResult(r.Context(), id, "unavailable", "", "Исходный ISO изменился или недоступен")
-		http.Error(w, "Исходный ISO изменился или недоступен; обновите каталог", http.StatusConflict)
+	if problem := windowsProfileSourceProblem(catalog, profile); problem != nil {
+		message := capitalizeFirst(problem.Error())
+		_ = s.Store.SetWindowsProfileResult(r.Context(), id, "unavailable", "", message)
+		http.Error(w, message+"; обновите каталог", http.StatusConflict)
 		return
 	}
 	if err := s.Store.SetWindowsProfileResult(r.Context(), id, "preparing", "", ""); err != nil {
@@ -97,7 +97,7 @@ func (s *Server) windowsProfilePrepare(w http.ResponseWriter, r *http.Request) {
 	// the work performed by the systemd unit.
 	prepareCtx, cancelPrepare := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Minute)
 	defer cancelPrepare()
-	result, err := s.WindowsISO.PrepareWindowsISO(prepareCtx, agent.WindowsISORequest{ID: id, StorageRoot: current.StorageRoot, RelativePath: current.Path, Size: current.Size, Modified: current.Modified})
+	result, err := s.WindowsISO.PrepareWindowsISO(prepareCtx, agent.WindowsISORequest{ID: id, StorageRoot: profile.StorageRoot, RelativePath: profile.Path, Size: profile.Size, Modified: profile.Modified})
 	finalCtx, cancelFinal := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
 	defer cancelFinal()
 	if err != nil {
@@ -147,4 +147,46 @@ func SelectWindowsISO(catalog images.Catalog, storageID int64, imagePath, title,
 		}
 	}
 	return WindowsProfileSource{}, fmt.Errorf("ISO is not present in the catalog")
+}
+
+// windowsProfileSourceProblem explains why a prepared profile's source ISO
+// cannot be used now: its storage is missing or unavailable, the ISO is gone,
+// or the ISO differs from the prepared one. It returns nil when it matches.
+func windowsProfileSourceProblem(catalog images.Catalog, profile WindowsProfile) error {
+	var storage *images.Storage
+	for i := range catalog.Storages {
+		if catalog.Storages[i].ID == profile.StorageID {
+			storage = &catalog.Storages[i]
+			break
+		}
+	}
+	if storage == nil {
+		return fmt.Errorf("хранилище профиля %d не найдено", profile.ID)
+	}
+	switch storage.State {
+	case "ready":
+	case "scanning":
+		return fmt.Errorf("хранилище «%s» сканируется, повторите позже", storage.Name)
+	default:
+		reason := strings.TrimPrefix(storage.Error, "Хранилище недоступно: ")
+		if reason == "" {
+			return fmt.Errorf("хранилище «%s» недоступно", storage.Name)
+		}
+		return fmt.Errorf("хранилище «%s» недоступно: %s", storage.Name, reason)
+	}
+	current, err := SelectWindowsISO(catalog, profile.StorageID, profile.Path, profile.Title, profile.Folder)
+	if err != nil {
+		return fmt.Errorf("исходный ISO профиля %d не найден в хранилище «%s»", profile.ID, storage.Name)
+	}
+	if current.StorageRoot != profile.StorageRoot || current.Size != profile.Size || !current.Modified.Equal(profile.Modified) {
+		return fmt.Errorf("исходный ISO профиля %d изменился", profile.ID)
+	}
+	return nil
+}
+
+func capitalizeFirst(text string) string {
+	for i, r := range text {
+		return strings.ToUpper(string(r)) + text[i+len(string(r)):]
+	}
+	return text
 }

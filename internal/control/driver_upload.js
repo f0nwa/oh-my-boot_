@@ -1,4 +1,17 @@
 (() => {
+  const english = {
+    "Выберите пакет драйвера.": "Choose a driver package.",
+    "Не удалось загрузить пакет.": "Could not upload the package.",
+    "Соединение прервано.": "Connection lost.",
+    "Загрузка отменена.": "Upload cancelled.",
+    "Передаю пакет…": "Uploading package…",
+    "Передано %s%. Сервер проверит состав пакета.": "Transferred %s%. The server will check the package contents."
+  };
+  const tr = (text, ...args) => {
+    let result = document.documentElement.lang === 'en' ? (english[text] || text) : text;
+    for (const arg of args) result = result.replace('%s', arg);
+    return result;
+  };
   const forms = document.querySelectorAll('[data-driver-upload]');
   forms.forEach(form => {
     const status = form.querySelector('[role="status"]');
@@ -12,7 +25,7 @@
       if (request) return;
       const input = form.querySelector('[type="file"]');
       const files = Array.from(input.files || []);
-      if (!files.length) { status.textContent = 'Выберите пакет драйвера.'; return; }
+      if (!files.length) { status.textContent = tr('Выберите пакет драйвера.'); return; }
       const data = new FormData();
       data.append('csrf', form.dataset.csrf);
       if (form.dataset.driverUpload === 'folder') {
@@ -25,20 +38,23 @@
       request.open('POST', '/drivers/import');
       request.upload.onprogress = ev => {
         if (ev.lengthComputable) progress.value = Math.round(ev.loaded * 100 / ev.total);
-        status.textContent = `Передано ${progress.value}%. Сервер проверит состав пакета.`;
+        status.textContent = tr('Передано %s%. Сервер проверит состав пакета.', progress.value);
       };
       request.onload = () => {
         if (request.status === 303 || (request.status === 200 && request.responseURL.includes('/drivers?'))) {
-          window.location.assign('/drivers?message=' + encodeURIComponent('Пакет драйвера добавлен'));
-        } else status.textContent = request.responseText.trim() || 'Не удалось загрузить пакет.';
+          // Follow the server's result page: it says whether the package is new or already in the catalog.
+          const target = new URL(request.responseURL || '/drivers', window.location.href);
+          if (target.origin === window.location.origin && target.pathname === '/drivers') window.location.assign(target.pathname + target.search);
+          else window.location.assign('/drivers?message=' + encodeURIComponent('Пакет драйвера добавлен'));
+        } else status.textContent = request.responseText.trim() || tr('Не удалось загрузить пакет.');
         submit.disabled = false;
         request = null;
       };
-      request.onerror = () => { status.textContent = 'Соединение прервано.'; submit.disabled = false; request = null; };
-      request.onabort = () => { status.textContent = 'Загрузка отменена.'; submit.disabled = false; request = null; };
+      request.onerror = () => { status.textContent = tr('Соединение прервано.'); submit.disabled = false; request = null; };
+      request.onabort = () => { status.textContent = tr('Загрузка отменена.'); submit.disabled = false; request = null; };
       submit.disabled = true;
       progress.value = 0;
-      status.textContent = 'Передаю пакет…';
+      status.textContent = tr('Передаю пакет…');
       request.send(data);
     });
   });

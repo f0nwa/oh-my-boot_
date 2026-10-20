@@ -65,14 +65,6 @@ func BuildMenuFromFormWithDriverConfigs(form url.Values, baseURL string, availab
 		profiles = append(profiles, menuProfile{id: "ubuntu", title: "Ubuntu Desktop 26.04.1", base: base})
 		folders["ubuntu"] = form.Get("folder_ubuntu")
 	}
-	if form.Get("windows10") == "on" {
-		profiles = append(profiles, menuProfile{id: "windows10", title: "Windows 10 installer - WinPE", base: base})
-		folders["windows10"] = form.Get("folder_windows10")
-	}
-	if form.Get("windows11") == "on" {
-		profiles = append(profiles, menuProfile{id: "windows11", title: "Windows 11 installer - WinPE", base: base})
-		folders["windows11"] = form.Get("folder_windows11")
-	}
 	for _, p := range available {
 		if !selected[p.ID] {
 			continue

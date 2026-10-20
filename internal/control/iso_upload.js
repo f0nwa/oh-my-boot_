@@ -26,6 +26,8 @@
   const submit = form.querySelector('[type="submit"]');
   const cancel = document.getElementById('iso-upload-cancel');
   let request = null;
+  // Cancel and the progress bar only make sense while a transfer runs.
+  const busy = on => { submit.disabled = on; cancel.hidden = !on; progress.parentElement.hidden = !on; };
 
   async function loadFolders() {
     folder.replaceChildren();
@@ -69,12 +71,12 @@
         progress.value = 100;
         window.location.assign('/images?message=' + encodeURIComponent('ISO загружен и добавлен в каталог.'));
       } else status.textContent = request.responseText.trim() || tr('Не удалось загрузить ISO.');
-      submit.disabled = false;
+      busy(false);
       request = null;
     };
-    request.onerror = () => { status.textContent = tr('Соединение прервано.'); submit.disabled = false; request = null; };
-    request.onabort = () => { status.textContent = tr('Загрузка отменена.'); submit.disabled = false; request = null; };
-    submit.disabled = true;
+    request.onerror = () => { status.textContent = tr('Соединение прервано.'); busy(false); request = null; };
+    request.onabort = () => { status.textContent = tr('Загрузка отменена.'); busy(false); request = null; };
+    busy(true);
     progress.value = 0;
     status.textContent = tr('Начинаю загрузку…');
     request.send(iso);

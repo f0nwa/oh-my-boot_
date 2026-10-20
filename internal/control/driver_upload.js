@@ -19,6 +19,8 @@
     const submit = form.querySelector('[type="submit"]');
     const cancel = form.querySelector('[data-cancel]');
     let request = null;
+    // Cancel and the progress bar only make sense while a transfer runs.
+    const busy = on => { submit.disabled = on; cancel.hidden = !on; progress.parentElement.hidden = !on; };
     cancel.addEventListener('click', () => { if (request) request.abort(); });
     form.addEventListener('submit', event => {
       event.preventDefault();
@@ -47,12 +49,12 @@
           if (target.origin === window.location.origin && target.pathname === '/drivers') window.location.assign(target.pathname + target.search);
           else window.location.assign('/drivers?message=' + encodeURIComponent('Пакет драйвера добавлен'));
         } else status.textContent = request.responseText.trim() || tr('Не удалось загрузить пакет.');
-        submit.disabled = false;
+        busy(false);
         request = null;
       };
-      request.onerror = () => { status.textContent = tr('Соединение прервано.'); submit.disabled = false; request = null; };
-      request.onabort = () => { status.textContent = tr('Загрузка отменена.'); submit.disabled = false; request = null; };
-      submit.disabled = true;
+      request.onerror = () => { status.textContent = tr('Соединение прервано.'); busy(false); request = null; };
+      request.onabort = () => { status.textContent = tr('Загрузка отменена.'); busy(false); request = null; };
+      busy(true);
       progress.value = 0;
       status.textContent = tr('Передаю пакет…');
       request.send(data);

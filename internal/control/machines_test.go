@@ -70,3 +70,27 @@ func TestEventsPageTabs(t *testing.T) {
 		t.Fatalf("dhcp tab: %s", body)
 	}
 }
+
+func TestWideTablesFitTheWindow(t *testing.T) {
+	css, _ := templateFS.ReadFile("templates/style.css")
+	if strings.Contains(string(css), "max-width:1040px") {
+		t.Fatal("content column still capped at 1040px")
+	}
+	data := samplePageData(langRU)
+	data.Tab, data.EventError = "requests", ""
+	body := renderPage("events", data)
+	if !strings.Contains(body, `<td class="nowrap">20.10.2026 01:00:00</td>`) || !strings.Contains(body, "Время, UTC&#43;00:00") {
+		t.Fatalf("time column: %s", body)
+	}
+}
+
+func TestEveryTableScrollsInsideItsBox(t *testing.T) {
+	for _, name := range []string{"installations", "menu", "images", "answers", "drivers", "storages", "network", "network_preview", "users", "account", "audit", "events"} {
+		data := samplePageData(langRU)
+		data.ImageError, data.EventError, data.Tab = "", "", "requests"
+		body := renderPage(name, data)
+		if n, w := strings.Count(body, "<table"), strings.Count(body, `<div class="table-wrap"><table`); n != w {
+			t.Errorf("%s: %d tables, %d in a scroll box", name, n, w)
+		}
+	}
+}

@@ -6,117 +6,93 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
 	"pxe-platform/internal/agent"
 )
 
+type menuDraftRow struct {
+	Item      MenuDraftItem
+	Title     string
+	Kind      string
+	Available bool
+	Error     string
+}
+
+func menuItemKind(key string) string {
+	switch {
+	case strings.HasPrefix(key, "winanswer_"):
+		return "Образ и файл ответов"
+	case strings.HasPrefix(key, "windriver_"):
+		return "Образ с драйверами"
+	default:
+		return "Образ"
+	}
+}
+
 func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), MenuTitle: "PXE Platform", MenuLabel: "Diagnostics", MenuMessage: "PXE Platform network boot is ready"}
+	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
 	versions, err := s.Store.MenuVersions(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось прочитать версии меню", 500)
 		return
 	}
-	profiles, err := s.Store.WindowsProfiles(r.Context())
+	profiles, answers, configs, err := s.menuSources(r.Context())
 	if err != nil {
-		http.Error(w, "Не удалось прочитать профили Windows ISO", 500)
-		return
-	}
-	answers, err := s.Store.WindowsAnswers(r.Context())
-	if err != nil {
-		http.Error(w, "Не удалось прочитать сценарии Windows", 500)
-		return
-	}
-	configs, err := s.Store.DriverConfigs(r.Context())
-	if err != nil {
-		http.Error(w, "Не удалось прочитать конфигурации драйверов", 500)
+		http.Error(w, err.Error(), 500)
 		return
 	}
 	for _, version := range versions {
 		data.Versions = append(data.Versions, menuVersionRow{MenuVersion: version, Restorable: menuSnapshotRestorable(version.Script, profiles, answers, configs)})
-	}
-	activeWindows := map[int64]bool{}
-	activeAnswers := map[int64]menuWindowsAnswerRef{}
-	activeDrivers := map[int64]menuDriverConfigRef{}
-	activeFolders := map[string]string{}
-	for _, version := range versions {
 		if version.Active {
-			data.MenuTitle = version.Title
-			data.MenuLabel = version.Label
-			data.MenuMessage = version.Message
-			data.MenuUbuntu = strings.Contains(version.Script, "item ubuntu Ubuntu Desktop 26.04.1\n")
-			folders := menuFolderPaths(version.Script)
-			activeWindows = menuWindowsProfileIDs(version.Script)
-			activeAnswers = menuWindowsAnswerRefs(version.Script)
-			activeDrivers = menuDriverConfigRefs(version.Script)
-			activeFolders = folders
-			data.MenuFolderUbuntu = folders["ubuntu"]
-			data.HasMenuFolders = data.MenuFolderUbuntu != ""
-			break
+			data.ActiveVersion = version.ID
 		}
 	}
-	for _, profile := range profiles {
-		key := fmt.Sprintf("winiso_%d", profile.ID)
-		folder := profile.Folder
-		if activeWindows[profile.ID] {
-			folder = activeFolders[key]
-		}
-		data.MenuWindowsProfiles = append(data.MenuWindowsProfiles, menuWindowsProfileRow{WindowsProfile: profile, Selected: activeWindows[profile.ID], MenuFolder: folder})
+	draft, active, err := s.currentDraft(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать черновик меню", 500)
+		return
 	}
-	for _, answer := range answers {
-		key := fmt.Sprintf("winanswer_%d", answer.ID)
-		folder := answer.Folder
-		if _, ok := activeAnswers[answer.ID]; ok {
-			folder = activeFolders[key]
-		}
-		data.MenuWindowsAnswers = append(data.MenuWindowsAnswers, menuWindowsAnswerRow{WindowsAnswerVariant: answer, Selected: activeAnswers[answer.ID].ID == answer.ID, MenuFolder: folder})
-	}
-	for _, config := range configs {
-		key := fmt.Sprintf("windriver_%d", config.ID)
-		folder := config.Folder
-		if _, ok := activeDrivers[config.ID]; ok {
-			folder = activeFolders[key]
-		}
-		data.MenuDriverConfigs = append(data.MenuDriverConfigs, menuDriverConfigRow{DriverConfig: config, Selected: activeDrivers[config.ID].ID == config.ID, MenuFolder: folder})
-	}
-	if form := pageForm(r); form != nil && form.Has("title") {
-		applySubmittedMenuForm(&data, form)
-	}
+	data.Draft = draft
+	data.DraftRows = menuDraftRows(draft, profiles, answers, configs)
+	data.Changes = diffMenuDraft(active, draft)
 	render(w, "menu", data)
 }
 
-// applySubmittedMenuForm shows a failed publication's choices instead of the
-// active menu, so the operator can correct them without starting over.
-func applySubmittedMenuForm(data *pageData, form url.Values) {
-	checked := func(name string) bool { return form.Get(name) != "" }
-	data.MenuTitle, data.MenuLabel, data.MenuMessage = form.Get("title"), form.Get("label"), form.Get("message")
-	data.MenuUbuntu = checked("ubuntu")
-	data.MenuFolderUbuntu = form.Get("folder_ubuntu")
-	data.HasMenuFolders = data.MenuFolderUbuntu != ""
-	for i := range data.MenuWindowsProfiles {
-		key := fmt.Sprintf("winiso_%d", data.MenuWindowsProfiles[i].ID)
-		data.MenuWindowsProfiles[i].Selected = checked(key)
-		if form.Has("folder_" + key) {
-			data.MenuWindowsProfiles[i].MenuFolder = form.Get("folder_" + key)
+func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) []menuDraftRow {
+	var rows []menuDraftRow
+	for _, item := range draft.Items {
+		row := menuDraftRow{Item: item, Title: item.Title, Kind: menuItemKind(item.Key), Available: true}
+		entry, _, err := menuProfileForKey(item.Key, "", profiles, answers, configs)
+		if err != nil {
+			row.Available, row.Error = false, err.Error()
+		} else if row.Title == "" {
+			row.Title = entry.title
 		}
-	}
-	for i := range data.MenuWindowsAnswers {
-		key := fmt.Sprintf("winanswer_%d", data.MenuWindowsAnswers[i].ID)
-		data.MenuWindowsAnswers[i].Selected = checked(key)
-		if form.Has("folder_" + key) {
-			data.MenuWindowsAnswers[i].MenuFolder = form.Get("folder_" + key)
+		if row.Title == "" {
+			row.Title = item.Key
 		}
+		rows = append(rows, row)
 	}
-	for i := range data.MenuDriverConfigs {
-		key := fmt.Sprintf("windriver_%d", data.MenuDriverConfigs[i].ID)
-		data.MenuDriverConfigs[i].Selected = checked(key)
-		if form.Has("folder_" + key) {
-			data.MenuDriverConfigs[i].MenuFolder = form.Get("folder_" + key)
-		}
+	return rows
+}
+
+// menuSources reads the objects menu items can point to.
+func (s *Server) menuSources(ctx context.Context) ([]WindowsProfile, []WindowsAnswerVariant, []DriverConfig, error) {
+	profiles, err := s.Store.WindowsProfiles(ctx)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Не удалось прочитать профили Windows ISO")
 	}
+	answers, err := s.Store.WindowsAnswers(ctx)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Не удалось прочитать сценарии Windows")
+	}
+	configs, err := s.Store.DriverConfigs(ctx)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Не удалось прочитать конфигурации драйверов")
+	}
+	return profiles, answers, configs, nil
 }
 
 func menuSnapshotRestorable(script string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) bool {
@@ -154,32 +130,34 @@ func menuSnapshotRestorable(script string, profiles []WindowsProfile, answers []
 }
 
 func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
-	title, label, message := r.FormValue("title"), r.FormValue("label"), r.FormValue("message")
-	profiles, err := s.Store.WindowsProfiles(r.Context())
+	s.draftMu.Lock()
+	defer s.draftMu.Unlock()
+	profiles, answers, configs, err := s.menuSources(r.Context())
 	if err != nil {
-		http.Error(w, "Не удалось прочитать профили Windows ISO", 503)
+		http.Error(w, err.Error(), 503)
 		return
 	}
-	answers, err := s.Store.WindowsAnswers(r.Context())
+	draft, _, err := s.currentDraft(r.Context())
 	if err != nil {
-		http.Error(w, "Не удалось прочитать сценарии Windows", 503)
+		http.Error(w, "Не удалось прочитать черновик меню", 503)
 		return
 	}
-	configs, err := s.Store.DriverConfigs(r.Context())
+	script, err := BuildMenuFromDraft(draft, s.BootBaseURL, profiles, answers, configs)
 	if err != nil {
-		http.Error(w, "Не удалось прочитать конфигурации драйверов", 503)
+		http.Error(w, "Меню не собрано: "+err.Error(), 400)
 		return
 	}
-	script, err := BuildMenuFromFormWithDriverConfigs(r.Form, s.BootBaseURL, profiles, answers, configs)
-	if err != nil {
-		http.Error(w, "Недопустимый текст меню: "+err.Error(), 400)
-		return
+	published := MenuVersion{Title: draft.Title, Label: draft.Label, Message: draft.Message, Script: string(script)}
+	if s.publishMenu(w, r, published, "menu.publish") {
+		// Store the draft as it reads back from the published script, so
+		// object titles and folders it relied on no longer look like changes.
+		s.saveDraftAfterPublish(r, published)
 	}
-	m := MenuVersion{Title: title, Label: label, Message: message, Script: string(script)}
-	s.publishMenu(w, r, m, "menu.publish")
 }
 
 func (s *Server) menuRollback(w http.ResponseWriter, r *http.Request) {
+	s.draftMu.Lock()
+	defer s.draftMu.Unlock()
 	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "Неверная версия", 400)
@@ -194,37 +172,46 @@ func (s *Server) menuRollback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Недопустимый снимок меню", 400)
 		return
 	}
-	s.publishMenu(w, r, m, "menu.rollback")
+	if s.publishMenu(w, r, m, "menu.rollback") {
+		s.saveDraftAfterPublish(r, m)
+	}
 }
 
-func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersion, action string) {
+func (s *Server) saveDraftAfterPublish(r *http.Request, m MenuVersion) {
+	if err := s.Store.SaveMenuDraft(r.Context(), draftFromVersion(m)); err != nil {
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.save", "error", err.Error())
+	}
+}
+
+// publishMenu sends m to Boot and records it; it reports whether it succeeded.
+func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersion, action string) bool {
 	s.menuMu.Lock()
 	defer s.menuMu.Unlock()
 	if err := s.verifyMenuWindowsProfiles(r.Context(), m.Script); err != nil {
 		http.Error(w, "Профиль Windows ISO недоступен: "+err.Error(), http.StatusConflict)
-		return
+		return false
 	}
 	info := requestInfo(r)
 	if s.Boot == nil {
 		http.Error(w, "Boot недоступен", 503)
-		return
+		return false
 	}
 	previous, err := s.Boot.CurrentMenu(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось получить текущее меню", 503)
-		return
+		return false
 	}
 	versions, err := s.Store.MenuVersions(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось прочитать версии меню", 503)
-		return
+		return false
 	}
 	if len(versions) == 0 {
 		oldSum := sha256.Sum256(previous)
 		initial := MenuVersion{Title: "PXE Platform", Label: "Diagnostics", Message: "PXE Platform network boot is ready", Script: string(previous), SHA256: hex.EncodeToString(oldSum[:])}
 		if err := s.Store.SaveActiveMenu(r.Context(), 0, initial); err != nil {
 			http.Error(w, "Не удалось сохранить начальное меню", 503)
-			return
+			return false
 		}
 	}
 	sum := sha256.Sum256([]byte(m.Script))
@@ -235,26 +222,27 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 		if checkErr != nil || state.SHA256 != m.SHA256 {
 			_ = s.Store.Audit(r.Context(), info.User.ID, action, "error", "boot publish")
 			http.Error(w, "Публикация не подтверждена", 503)
-			return
+			return false
 		}
 		hash = state.SHA256
 	}
 	if hash != m.SHA256 {
 		http.Error(w, "Контрольная сумма Boot не совпала", 502)
-		return
+		return false
 	}
 	if err := s.Store.SaveActiveMenu(r.Context(), info.User.ID, m); err != nil {
 		_, rollbackErr := s.Boot.Publish(r.Context(), previous)
 		_ = s.Store.Audit(r.Context(), info.User.ID, action, "error", "database write")
 		if rollbackErr != nil {
 			http.Error(w, "Не удалось сохранить версию и вернуть старое меню: "+fmt.Sprint(rollbackErr), 500)
-			return
+			return false
 		}
 		http.Error(w, "Не удалось сохранить версию; старое меню восстановлено", 500)
-		return
+		return false
 	}
 	_ = s.Store.Audit(r.Context(), info.User.ID, action, "ok", "sha256="+m.SHA256)
 	http.Redirect(w, r, "/menu?message=Меню+опубликовано", 303)
+	return true
 }
 
 func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) error {

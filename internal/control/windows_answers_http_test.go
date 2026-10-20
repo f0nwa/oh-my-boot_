@@ -96,11 +96,11 @@ func TestWindowsAnswerUploadCreatesReadyVariantWithoutEchoingXML(t *testing.T) {
 	if res.Code != http.StatusSeeOther || len(store.answers) != 1 || store.answers[0].State != "ready" || store.answers[0].SHA256 != hex.EncodeToString(sum[:]) || string(agentAPI.prepared.XML) != string(xml) {
 		t.Fatalf("upload status=%d answers=%+v agent=%+v body=%s", res.Code, store.answers, agentAPI.prepared, res.Body.String())
 	}
-	page := httptest.NewRequest(http.MethodGet, "/images", nil)
+	page := httptest.NewRequest(http.MethodGet, "/answers", nil)
 	page.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	pageResult := httptest.NewRecorder()
 	s.Handler().ServeHTTP(pageResult, page)
-	if pageResult.Code != http.StatusOK || !strings.Contains(pageResult.Body.String(), `action="/images/windows-profiles/17/answers"`) || !strings.Contains(pageResult.Body.String(), "Windows 11 Lab") || strings.Contains(pageResult.Body.String(), "private-token") {
+	if pageResult.Code != http.StatusOK || !strings.Contains(pageResult.Body.String(), `action="/answers/upload"`) || !strings.Contains(pageResult.Body.String(), "Windows 11 Lab") || strings.Contains(pageResult.Body.String(), "private-token") {
 		t.Fatalf("bad answer list page: %d %s", pageResult.Code, pageResult.Body.String())
 	}
 }

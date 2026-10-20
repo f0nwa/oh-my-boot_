@@ -32,6 +32,8 @@ type Storage interface {
 	MenuVersions(context.Context) ([]MenuVersion, error)
 	MenuByID(context.Context, int64) (MenuVersion, error)
 	SaveActiveMenu(context.Context, int64, MenuVersion) error
+	MenuDraft(context.Context) (MenuDraft, bool, error)
+	SaveMenuDraft(context.Context, MenuDraft) error
 	CreateWindowsProfile(context.Context, WindowsProfileSource) (WindowsProfile, error)
 	WindowsProfile(context.Context, int64) (WindowsProfile, error)
 	WindowsProfiles(context.Context) ([]WindowsProfile, error)
@@ -42,6 +44,7 @@ type Storage interface {
 	WindowsAnswers(context.Context) ([]WindowsAnswerVariant, error)
 	WindowsAnswer(context.Context, int64) (WindowsAnswerVariant, error)
 	DeleteWindowsAnswer(context.Context, int64) error
+	SetWindowsAnswerWipesDisk(context.Context, int64, bool) error
 	CreateDriverPackage(context.Context, drivers.Inventory) (bool, error)
 	DriverPackages(context.Context) ([]DriverPackage, error)
 	CreateDriverConfig(context.Context, DriverConfig) (DriverConfig, error)
@@ -115,6 +118,7 @@ type Server struct {
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
 	menuMu            sync.Mutex
+	draftMu           sync.Mutex
 	smbMu             sync.Mutex
 	windowsMu         sync.Mutex
 }
@@ -136,7 +140,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /account", s.protect("view", s.accountPage))
 	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
-	mux.HandleFunc("GET /", s.protect("view", s.dashboard))
+	mux.HandleFunc("GET /assets/style.css", stylesheet)
+	mux.HandleFunc("GET /", s.protect("view", s.installationsPage))
+	mux.HandleFunc("GET /installations/new", s.protect("images", s.installationNewPage))
+	mux.HandleFunc("POST /installations", s.protect("images", withPageErrors(s.installationNewPage, s.installationCreate)))
+	mux.HandleFunc("GET /assets/installation-form.js", installationFormScript)
+	mux.HandleFunc("POST /installations/{key}/add", s.protect("menu", withPageErrors(s.installationsPage, s.installationAdd)))
 	mux.HandleFunc("GET /events", s.protect("view", s.eventsPage))
 	mux.HandleFunc("GET /network", s.protect("view", s.networkPage))
 	mux.HandleFunc("POST /network/preview", s.protect("network", s.networkPreview))
@@ -144,36 +153,43 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /menu", s.protect("view", s.menuPage))
 	mux.HandleFunc("POST /menu/publish", s.protect("menu", withPageErrors(s.menuPage, s.menuPublish)))
 	mux.HandleFunc("POST /menu/rollback", s.protect("menu", withPageErrors(s.menuPage, s.menuRollback)))
+	mux.HandleFunc("POST /menu/settings", s.protect("menu", withPageErrors(s.menuPage, s.menuSettings)))
+	mux.HandleFunc("POST /menu/items/{key}/move", s.protect("menu", withPageErrors(s.menuPage, s.menuItemMove)))
+	mux.HandleFunc("POST /menu/items/{key}/remove", s.protect("menu", withPageErrors(s.menuPage, s.menuItemRemove)))
+	mux.HandleFunc("POST /menu/items/{key}/title", s.protect("menu", withPageErrors(s.menuPage, s.menuItemRename)))
 	mux.HandleFunc("GET /users", s.protect("users", s.usersPage))
 	mux.HandleFunc("POST /users/create", s.protect("users", s.userCreate))
 	mux.HandleFunc("POST /users/change", s.protect("users", s.userChange))
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
+	mux.HandleFunc("GET /answers", s.protect("view", s.answersPage))
+	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
+	mux.HandleFunc("POST /answers/{id}/inspect", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerInspect)))
+	mux.HandleFunc("POST /answers/upload", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
 	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))
-	mux.HandleFunc("POST /drivers/configs", s.protect("images", withPageErrors(s.driversPage, s.driverConfigCreate)))
-	mux.HandleFunc("POST /drivers/configs/{id}/prepare", s.protect("images", withPageErrors(s.driversPage, s.driverConfigPrepare)))
+	mux.HandleFunc("POST /drivers/configs/{id}/prepare", s.protect("images", withPageErrors(s.installationsPage, s.driverConfigPrepare)))
 	mux.HandleFunc("POST /drivers/configs/{id}/delete", s.protect("delete", withPageErrors(s.driversPage, s.driverConfigDelete)))
 	mux.HandleFunc("GET /assets/driver-upload.js", s.driverUploadScript)
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
-	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.imagesPage, s.imagesScan)))
+	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
 	mux.HandleFunc("POST /images/windows-profiles", s.protect("images", withPageErrors(s.imagesPage, s.windowsProfileCreate)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/prepare", s.protect("images", withPageErrors(s.imagesPage, s.windowsProfilePrepare)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsProfileDelete)))
-	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", withPageErrors(s.imagesPage, s.windowsAnswerUpload)))
-	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsAnswerDelete)))
-	mux.HandleFunc("POST /images/smb", s.protect("smb", withPageErrors(s.imagesPage, s.imagesSMBCreate)))
-	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", withPageErrors(s.imagesPage, s.imagesSMBRetry)))
-	mux.HandleFunc("POST /images/storage-recovery", s.protect("smb", withPageErrors(s.imagesPage, s.storageRecoverySettings)))
-	mux.HandleFunc("POST /images/storage-recovery/run", s.protect("smb", withPageErrors(s.imagesPage, s.storageRecoveryRun)))
-	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", withPageErrors(s.imagesPage, s.imagesSMBRemove)))
+	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
+	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("delete", withPageErrors(s.answersPage, s.windowsAnswerDelete)))
+	mux.HandleFunc("POST /images/smb", s.protect("smb", withPageErrors(s.storagesPage, s.imagesSMBCreate)))
+	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", withPageErrors(s.storagesPage, s.imagesSMBRetry)))
+	mux.HandleFunc("POST /images/storage-recovery", s.protect("smb", withPageErrors(s.storagesPage, s.storageRecoverySettings)))
+	mux.HandleFunc("POST /images/storage-recovery/run", s.protect("smb", withPageErrors(s.storagesPage, s.storageRecoveryRun)))
+	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", withPageErrors(s.storagesPage, s.imagesSMBRemove)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
 		mux.ServeHTTP(w, r)
 	})
 }
@@ -214,7 +230,7 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 				_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Minute))
 				r.Body = http.MaxBytesReader(w, r.Body, drivers.MaxArchiveBytes+(1<<20))
 				err = r.ParseMultipartForm(8 << 20)
-			} else if r.Pattern == "POST /images/windows-profiles/{id}/answers" {
+			} else if r.Pattern == "POST /images/windows-profiles/{id}/answers" || r.Pattern == "POST /answers/upload" || r.Pattern == "POST /answers/{id}/inspect" {
 				r.Body = http.MaxBytesReader(w, r.Body, maxWindowsAnswerBytes+(32<<10))
 				err = r.ParseMultipartForm(2 << 20)
 			} else {
@@ -278,12 +294,13 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", 303)
 }
 
-func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r)}
+// loadServiceStatus fills the Boot and Network Agent status lines.
+func (s *Server) loadServiceStatus(ctx context.Context, data *pageData) {
 	if s.Boot != nil {
-		v, err := s.Boot.Status(r.Context())
+		v, err := s.Boot.Status(ctx)
 		if err == nil {
 			data.BootStatus = "Работает · " + v.SHA256[:min(12, len(v.SHA256))]
+			data.BootOK = true
 		} else {
 			data.BootStatus = "Недоступен"
 		}
@@ -291,28 +308,21 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		data.BootStatus = "Недоступен"
 	}
 	if s.Agent != nil {
-		v, err := s.Agent.Status(r.Context())
+		v, err := s.Agent.Status(ctx)
 		if err == nil {
 			data.AgentStatus = fmt.Sprintf("Работает · %s · %s", v.Mode, v.Interface)
+			data.AgentOK = true
 		} else {
 			data.AgentStatus = "Недоступен"
 		}
 	} else {
 		data.AgentStatus = "Недоступен"
 	}
-	if s.Boot != nil {
-		v, err := s.Boot.Events(r.Context(), 10)
-		if err == nil {
-			data.Events = v
-		} else {
-			data.EventError = "Журнал временно недоступен"
-		}
-	}
-	render(w, "dashboard", data)
 }
 
 func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Info: requestInfo(r)}
+	s.loadServiceStatus(r.Context(), &data)
 	if s.Boot == nil {
 		data.EventError = "Служба Boot недоступна"
 	} else {
@@ -338,6 +348,20 @@ func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
+	render(w, "images", s.libraryData(r))
+}
+
+func (s *Server) answersPage(w http.ResponseWriter, r *http.Request) {
+	render(w, "answers", s.libraryData(r))
+}
+
+func (s *Server) storagesPage(w http.ResponseWriter, r *http.Request) {
+	render(w, "storages", s.libraryData(r))
+}
+
+// libraryData collects storages, ISO files, Windows profiles and answer
+// files for the library and storage pages.
+func (s *Server) libraryData(r *http.Request) pageData {
 	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
 	profiles, err := s.Store.WindowsProfiles(r.Context())
 	if err != nil {
@@ -370,18 +394,24 @@ func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
 			for _, image := range catalog.Images {
 				unsupported := strings.Contains(strings.ToLower(path.Base(image.Path)), "arm64")
 				canPrepare := image.Present && ready[image.StorageID] && smb[image.StorageID] && !unsupported
+				hasProfile := false
 				for _, profile := range profiles {
 					if profile.StorageID == image.StorageID && profile.Path == image.Path {
-						canPrepare = false
+						canPrepare, hasProfile = false, true
 						break
 					}
 				}
-				data.ISOImages = append(data.ISOImages, imageRow{Image: image, StorageName: names[image.StorageID], CanPrepare: canPrepare, Unsupported: unsupported})
+				data.ISOImages = append(data.ISOImages, imageRow{Image: image, StorageName: names[image.StorageID], CanPrepare: canPrepare, Unsupported: unsupported, HasProfile: hasProfile})
 			}
 		}
 	}
 	s.loadStorageRecovery(r.Context(), &data)
-	render(w, "images", data)
+	if configs, err := s.Store.DriverConfigs(r.Context()); err == nil {
+		if _, active, err := s.currentDraft(r.Context()); err == nil {
+			data.ProfileUse, data.AnswerUse = menuUsage(active, data.WindowsAnswerVariants, configs)
+		}
+	}
+	return data
 }
 
 func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
@@ -402,7 +432,7 @@ func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось запустить сканирование", http.StatusServiceUnavailable)
 		return
 	}
-	http.Redirect(w, r, "/images?message=Сканирование+запущено", http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message=Сканирование+запущено", http.StatusSeeOther)
 }
 
 func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {

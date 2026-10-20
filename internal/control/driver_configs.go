@@ -145,7 +145,7 @@ func (s *Server) driverConfigPrepare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if config.State == "ready" {
-		http.Redirect(w, r, "/drivers?message=Конфигурация+уже+готова", http.StatusSeeOther)
+		http.Redirect(w, r, safeReturnPath(r.FormValue("return"))+"?message="+url.QueryEscape("Конфигурация уже готова"), http.StatusSeeOther)
 		return
 	}
 	profiles, err := s.Store.WindowsProfiles(r.Context())
@@ -192,5 +192,5 @@ func (s *Server) driverConfigPrepare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(finalCtx, requestInfo(r).User.ID, "driver-config.prepare", "ok", fmt.Sprintf("id=%d wim=%s", id, result.WIMKey))
-	http.Redirect(w, r, "/drivers?message=Конфигурация+подготовлена", http.StatusSeeOther)
+	http.Redirect(w, r, safeReturnPath(r.FormValue("return"))+"?message="+url.QueryEscape("Конфигурация подготовлена"), http.StatusSeeOther)
 }

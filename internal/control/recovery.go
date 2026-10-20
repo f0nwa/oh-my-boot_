@@ -73,7 +73,7 @@ func (s *Server) storageRecoverySettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_ = s.Store.Audit(r.Context(), info.User.ID, "storage-recovery.update", "ok", detail)
-	http.Redirect(w, r, "/images?message=Настройки+восстановления+сохранены", http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message=Настройки+восстановления+сохранены", http.StatusSeeOther)
 }
 
 func (s *Server) storageRecoveryRun(w http.ResponseWriter, r *http.Request) {
@@ -93,5 +93,5 @@ func (s *Server) storageRecoveryRun(w http.ResponseWriter, r *http.Request) {
 		result = "error"
 	}
 	_ = s.Store.Audit(r.Context(), info.User.ID, "storage-recovery.run", result, fmt.Sprintf("actions=%d", len(status.Actions)))
-	http.Redirect(w, r, "/images?message=Проверка+подключений+выполнена", http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message=Проверка+подключений+выполнена", http.StatusSeeOther)
 }

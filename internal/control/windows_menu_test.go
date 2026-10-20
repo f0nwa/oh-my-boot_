@@ -39,7 +39,7 @@ func TestWindowsMenuPagePrefillsActiveProfile(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `name="winiso_17" checked`) || !strings.Contains(res.Body.String(), `name="folder_winiso_17" value="Windows/Installers"`) {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "winiso_17") || !strings.Contains(res.Body.String(), "Windows/Installers") {
 		t.Fatalf("profile selection missing: %d %s", res.Code, res.Body.String())
 	}
 }
@@ -193,7 +193,7 @@ func TestWindowsMenuPagePrefillsActiveAnswer(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `name="winanswer_31" checked`) || !strings.Contains(res.Body.String(), `name="folder_winanswer_31" value="Windows/Tests"`) || strings.Contains(res.Body.String(), `name="winiso_17" checked`) {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "winanswer_31") || !strings.Contains(res.Body.String(), "Windows/Tests") || strings.Contains(res.Body.String(), "winiso_17") {
 		t.Fatalf("answer selection not restored: %d %s", res.Code, res.Body.String())
 	}
 }

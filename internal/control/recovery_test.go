@@ -62,7 +62,7 @@ func TestImagesPageShowsStorageRecovery(t *testing.T) {
 	}{{"admin", true}, {"operator", false}, {"observer", false}} {
 		s, _, _ := recoveryServer(tc.role)
 		res := httptest.NewRecorder()
-		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/images", nil))
+		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/storages", nil))
 		body := res.Body.String()
 		for _, want := range []string{"Автоматическое восстановление подключений", "restarted pxe-winiso@1.service", "mnt-x.mount: start failed", "каждые 2 мин"} {
 			if !strings.Contains(body, want) {
@@ -127,7 +127,7 @@ func TestImagesPageSurvivesUnavailableRecovery(t *testing.T) {
 	s, _, api := recoveryServer("admin")
 	api.err = errors.New("agent down")
 	res := httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/images", nil))
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/storages", nil))
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "Состояние восстановления недоступно") {
 		t.Fatalf("page with unavailable recovery: %d", res.Code)
 	}

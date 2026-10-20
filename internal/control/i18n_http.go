@@ -52,7 +52,7 @@ func safeReturnPath(path string) string {
 	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.ContainsAny(path, "\\\r\n?#") || strings.Contains(path, "://") {
 		return "/"
 	}
-	for _, allowed := range []string{"/", "/account", "/events", "/network", "/menu", "/users", "/audit", "/images", "/drivers"} {
+	for _, allowed := range []string{"/", "/account", "/events", "/network", "/menu", "/users", "/audit", "/images", "/drivers", "/answers", "/storages"} {
 		if path == allowed {
 			return path
 		}

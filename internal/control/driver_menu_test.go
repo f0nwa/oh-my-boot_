@@ -65,8 +65,12 @@ func TestMenuDistinguishesDuplicateDriverConfigTitles(t *testing.T) {
 	profile, answer, configs := driverMenuFixture()
 	configs[0].Title = "Windows 11 VirtIO Net SCSI test"
 	configs[1].Title = configs[0].Title
+	script, err := BuildMenuFromDraft(MenuDraft{Title: "PXE", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "windriver_1"}, {Key: "windriver_2"}}}, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	store := driverMenuStore{windowsMenuPageStore: windowsMenuPageStore{
-		menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}},
+		menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Title: "PXE", Label: "Diagnostics", Message: "Ready", Script: string(script)}}},
 		profiles:      []WindowsProfile{profile}, answers: []WindowsAnswerVariant{answer},
 	}, configs: configs}
 	s := &Server{Store: store}
@@ -77,7 +81,7 @@ func TestMenuDistinguishesDuplicateDriverConfigTitles(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
-	for _, want := range []string{"#1", "#2", "net.inf", "storage.inf"} {
+	for _, want := range []string{"windriver_1", "windriver_2", "Образ с драйверами"} {
 		if !strings.Contains(res.Body.String(), want) {
 			t.Errorf("missing %q", want)
 		}

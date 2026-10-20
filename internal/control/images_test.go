@@ -68,7 +68,7 @@ func TestImagesPageEscapesISONameAndShowsStorage(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "NAS") || !strings.Contains(res.Body.String(), "Смонтированный каталог") || !strings.Contains(res.Body.String(), "Доступно") || strings.Contains(res.Body.String(), "<script>") || !strings.Contains(res.Body.String(), "&lt;script&gt;") {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "NAS") || strings.Contains(res.Body.String(), "<script>") || !strings.Contains(res.Body.String(), "&lt;script&gt;") {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
 }

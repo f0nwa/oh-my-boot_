@@ -27,6 +27,8 @@ import (
 
 var cyrillic = regexp.MustCompile(`[\x{0400}-\x{04FF}]+`)
 
+var wipesTrue, wipesFalse = true, false
+
 func samplePageData(lang string) pageData {
 	now := time.Date(2026, 10, 20, 1, 0, 0, 0, time.UTC)
 	cfg := network.Config{Mode: "proxy", Interface: "ens19", ServerIP: "10.30.0.10", Subnet: "10.30.0.0/24", DHCPStart: "10.30.0.100", DHCPEnd: "10.30.0.200", BootURL: "http://10.30.0.10:8080/boot/menu.ipxe", TFTPRoot: "/srv/pxe/tftp"}
@@ -44,8 +46,12 @@ func samplePageData(lang string) pageData {
 		Audit:   []AuditEvent{{At: now, Actor: "admin", Action: "menu.publish", Result: "ok", Detail: "sha256=x"}},
 		Users:   []User{{ID: 1, Username: "admin", Role: "admin", Enabled: true}, {ID: 2, Username: "viewer", Role: "observer"}},
 		Network: cfg, OldNetwork: cfg, Confirmation: "confirm", HasNetwork: true,
-		Versions:  []menuVersionRow{{MenuVersion: MenuVersion{ID: 2, At: now, Title: "PXE", Active: true}, Restorable: true}, {MenuVersion: MenuVersion{ID: 1, At: now, Title: "Old"}, Restorable: false}, {MenuVersion: MenuVersion{ID: 0, At: now, Title: "Older"}, Restorable: true}},
-		MenuTitle: "PXE Platform", MenuLabel: "Diagnostics", MenuMessage: "ready", MenuUbuntu: true, HasMenuFolders: true,
+		Versions:      []menuVersionRow{{MenuVersion: MenuVersion{ID: 2, At: now, Title: "PXE", Active: true}, Restorable: true}, {MenuVersion: MenuVersion{ID: 1, At: now, Title: "Old"}, Restorable: false}, {MenuVersion: MenuVersion{ID: 0, At: now, Title: "Older"}, Restorable: true}},
+		Draft:         MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "ready", Ubuntu: true, Items: []MenuDraftItem{{Key: "winiso_2"}, {Key: "winanswer_3", Folder: "Windows/Tests"}}},
+		DraftRows:     []menuDraftRow{{Item: MenuDraftItem{Key: "winiso_2"}, Title: "Windows 11", Kind: "Образ", Available: true}, {Item: MenuDraftItem{Key: "winanswer_3"}, Title: "Lab", Kind: "Образ и файл ответов", Error: "Windows answer 3 is not ready for PXE"}},
+		Changes:       []MenuChange{{Kind: "add", Key: "winanswer_3", Title: "Lab"}, {Kind: "remove", Key: "windriver_4", Title: "VirtIO"}, {Kind: "change", Key: "winiso_2", Title: "Windows 11"}, {Kind: "order"}, {Kind: "settings"}},
+		ActiveVersion: 2,
+		Installations: []installationRow{{Key: "winiso_2", Title: "Windows 11", Image: "Windows 11", Status: "in_menu"}, {Key: "winanswer_5", Title: "Ready", Image: "Ready", Answer: "Ready", AnswerWipesDisk: &wipesTrue, Status: "pending_add"}, {Key: "winiso_3", Status: "pending_remove"}, {Key: "winiso_4", Status: "not_in_menu"}, {Key: "windriver_4", Drivers: "netkvm", Status: "needs_build", ConfigID: 4}, {Key: "windriver_5", Status: "building"}, {Key: "windriver_6", Status: "error", Error: "Не удалось подготовить WinPE"}, {Key: "winiso_9", Status: "unavailable"}},
 		Storages: []images.Storage{
 			{ID: 6, Name: "DSM", Kind: "smb", Server: "nas", Share: "iso", State: "unavailable", Error: "Хранилище недоступно: не отвечает дольше 20s"},
 			{ID: 7, Name: "Upload", Kind: "smb", Server: "nas", Share: "iso", State: "ready"},
@@ -54,17 +60,14 @@ func samplePageData(lang string) pageData {
 		},
 		ISOImages:             []imageRow{{Image: images.Image{StorageID: 7, Path: "win10.iso", Size: 1, Present: true}, StorageName: "Upload", CanPrepare: true}, {Image: images.Image{StorageID: 7, Path: "arm64.iso", Present: false}, StorageName: "Upload", Unsupported: true}},
 		WindowsProfiles:       []WindowsProfile{profile, {ID: 3, WindowsProfileSource: WindowsProfileSource{Title: "Ready"}, State: "ready"}},
-		WindowsAnswerVariants: []WindowsAnswerVariant{answer, {ID: 5, ProfileID: 3, Title: "Ready", State: "ready"}},
-		MenuWindowsProfiles:   []menuWindowsProfileRow{{WindowsProfile: profile, Selected: true, MenuFolder: "Windows"}},
-		MenuWindowsAnswers:    []menuWindowsAnswerRow{{WindowsAnswerVariant: answer, Selected: true}},
-		MenuDriverConfigs:     []menuDriverConfigRow{{DriverConfig: config, Selected: true}},
+		WindowsAnswerVariants: []WindowsAnswerVariant{answer, {ID: 5, ProfileID: 3, Title: "Ready", State: "ready", WipesDisk: &wipesTrue}, {ID: 6, ProfileID: 3, Title: "Safe", State: "ready", WipesDisk: &wipesFalse}},
 		DriverPackages:        []DriverPackage{{SHA256: "abc", Inventory: drivers.Inventory{Files: []drivers.File{{}}, INFs: []drivers.INF{{Path: "netkvm.inf", Architecture: "amd64", Class: "Net", HardwareIDs: []string{"PCI\\VEN_1AF4"}}}}}},
 		DriverConfigs:         []DriverConfig{config},
 	}
 }
 
 func TestEnglishPagesContainNoRussianText(t *testing.T) {
-	for _, name := range []string{"login", "dashboard", "account", "events", "network", "network_preview", "menu", "users", "audit", "images", "drivers"} {
+	for _, name := range []string{"login", "installations", "installation_new", "account", "events", "network", "network_preview", "menu", "users", "audit", "images", "answers", "storages", "drivers"} {
 		for _, data := range []pageData{samplePageData(langEN), {Lang: langEN, Info: requestContext{User: User{ID: 1, Role: "observer", Language: langEN}}}} {
 			res := httptest.NewRecorder()
 			render(res, name, data)
@@ -86,7 +89,7 @@ func TestRussianPagesStayRussian(t *testing.T) {
 	res := httptest.NewRecorder()
 	render(res, "menu", samplePageData(langRU))
 	body := res.Body.String()
-	for _, want := range []string{`<html lang="ru">`, "Загрузочное меню", "Меню опубликовано", "хранилище «DSM» недоступно"} {
+	for _, want := range []string{`<html lang="ru">`, "Меню загрузки", "Меню опубликовано", "хранилище «DSM» недоступно"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("Russian page lacks %q", want)
 		}

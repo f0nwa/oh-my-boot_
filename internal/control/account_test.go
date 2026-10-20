@@ -75,7 +75,7 @@ func TestAccountPageShowsProfileLanguageAndPasswordForm(t *testing.T) {
 
 func TestHeaderLinksToAccountInsteadOfLanguageSwitch(t *testing.T) {
 	res := httptest.NewRecorder()
-	render(res, "dashboard", pageData{Info: requestContext{User: User{ID: 1, Username: "fonwa", Role: "admin"}, CSRF: "x", Path: "/"}})
+	render(res, "installations", pageData{Info: requestContext{User: User{ID: 1, Username: "fonwa", Role: "admin"}, CSRF: "x", Path: "/"}})
 	body := res.Body.String()
 	if !strings.Contains(body, `href="/account"`) || strings.Contains(body, `name="language" value="en"`) {
 		t.Fatalf("header must link to the account and have no language buttons: %s", body)

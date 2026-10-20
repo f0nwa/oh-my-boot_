@@ -159,7 +159,7 @@ func TestSMBPageEscapesFieldsAndNeverShowsPassword(t *testing.T) {
 	events := []string{}
 	api := &fakeManagedImages{events: &events, fakeImagesAPI: fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Name: "<script>NAS</script>", Kind: "smb", Server: "192.168.10.10", Share: "Downloads", Subpath: "iso", Key: "0123456789abcdef0123456789abcdef"}}}}}
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, Images: api}
-	req := httptest.NewRequest("GET", "/images", nil)
+	req := httptest.NewRequest("GET", "/storages", nil)
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
@@ -172,7 +172,7 @@ func TestSMBFormIsAdminOnly(t *testing.T) {
 	for _, role := range []string{"admin", "operator", "observer"} {
 		events := []string{}
 		s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: role, Enabled: true}}, Images: &fakeManagedImages{events: &events}}
-		req := httptest.NewRequest("GET", "/images", nil)
+		req := httptest.NewRequest("GET", "/storages", nil)
 		req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 		res := httptest.NewRecorder()
 		s.Handler().ServeHTTP(res, req)

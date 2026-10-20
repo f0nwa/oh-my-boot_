@@ -101,7 +101,7 @@ func TestDriverConfigCreateAndPrepare(t *testing.T) {
 	builder := &fakeDriverBuilder{}
 	s := &Server{Store: store, DriverConfigs: builder}
 	form := url.Values{"csrf": {CSRFToken("test-token")}, "profile_id": {"17"}, "answer_id": {"4"}, "title": {"Laptop A"}, "folder": {"Windows"}, "inf": {strings.Repeat("a", 64) + ":net.inf"}}
-	req := httptest.NewRequest(http.MethodPost, "/drivers/configs", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/installations", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()

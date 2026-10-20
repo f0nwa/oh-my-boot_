@@ -177,7 +177,7 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.delete", "ok", fmt.Sprintf("id=%d", id))
-	http.Redirect(w, r, "/images?message=Сценарий+удалён", http.StatusSeeOther)
+	http.Redirect(w, r, "/answers?message=Сценарий+удалён", http.StatusSeeOther)
 }
 
 func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {

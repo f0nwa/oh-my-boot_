@@ -8,9 +8,9 @@ import (
 
 func (s Store) CreateWindowsAnswer(ctx context.Context, variant WindowsAnswerVariant) (WindowsAnswerVariant, error) {
 	err := s.Pool.QueryRow(ctx,
-		`INSERT INTO windows_answer_variants (profile_id,title,folder,sha256,size_bytes,state)
-		 VALUES ($1,$2,$3,$4,$5,'pending') RETURNING id,state`,
-		variant.ProfileID, variant.Title, variant.Folder, variant.SHA256, variant.Size,
+		`INSERT INTO windows_answer_variants (profile_id,title,folder,sha256,size_bytes,state,wipes_disk)
+		 VALUES ($1,$2,$3,$4,$5,'pending',$6) RETURNING id,state`,
+		variant.ProfileID, variant.Title, variant.Folder, variant.SHA256, variant.Size, variant.WipesDisk,
 	).Scan(&variant.ID, &variant.State)
 	return variant, err
 }
@@ -28,7 +28,7 @@ func (s Store) SetWindowsAnswerState(ctx context.Context, id int64, state, lastE
 
 func (s Store) WindowsAnswers(ctx context.Context) ([]WindowsAnswerVariant, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id,profile_id,title,folder,sha256,size_bytes,state,last_error FROM windows_answer_variants ORDER BY id`)
+		`SELECT id,profile_id,title,folder,sha256,size_bytes,state,last_error,wipes_disk FROM windows_answer_variants ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (s Store) WindowsAnswers(ctx context.Context) ([]WindowsAnswerVariant, erro
 	variants := []WindowsAnswerVariant{}
 	for rows.Next() {
 		var v WindowsAnswerVariant
-		if err := rows.Scan(&v.ID, &v.ProfileID, &v.Title, &v.Folder, &v.SHA256, &v.Size, &v.State, &v.Error); err != nil {
+		if err := rows.Scan(&v.ID, &v.ProfileID, &v.Title, &v.Folder, &v.SHA256, &v.Size, &v.State, &v.Error, &v.WipesDisk); err != nil {
 			return nil, err
 		}
 		variants = append(variants, v)
@@ -47,13 +47,24 @@ func (s Store) WindowsAnswers(ctx context.Context) ([]WindowsAnswerVariant, erro
 func (s Store) WindowsAnswer(ctx context.Context, id int64) (WindowsAnswerVariant, error) {
 	var v WindowsAnswerVariant
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id,profile_id,title,folder,sha256,size_bytes,state,last_error FROM windows_answer_variants WHERE id=$1`, id,
-	).Scan(&v.ID, &v.ProfileID, &v.Title, &v.Folder, &v.SHA256, &v.Size, &v.State, &v.Error)
+		`SELECT id,profile_id,title,folder,sha256,size_bytes,state,last_error,wipes_disk FROM windows_answer_variants WHERE id=$1`, id,
+	).Scan(&v.ID, &v.ProfileID, &v.Title, &v.Folder, &v.SHA256, &v.Size, &v.State, &v.Error, &v.WipesDisk)
 	return v, err
 }
 
 func (s Store) DeleteWindowsAnswer(ctx context.Context, id int64) error {
 	tag, err := s.Pool.Exec(ctx, `DELETE FROM windows_answer_variants WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s Store) SetWindowsAnswerWipesDisk(ctx context.Context, id int64, wipes bool) error {
+	tag, err := s.Pool.Exec(ctx, `UPDATE windows_answer_variants SET wipes_disk=$2 WHERE id=$1`, id, wipes)
 	if err != nil {
 		return err
 	}

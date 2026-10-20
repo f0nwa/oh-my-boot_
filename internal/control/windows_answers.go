@@ -26,6 +26,8 @@ type WindowsAnswerVariant struct {
 	Size      int64
 	State     string
 	Error     string
+	// WipesDisk is nil for files uploaded before the check existed.
+	WipesDisk *bool
 }
 
 // ValidateWindowsAnswer checks transport-level XML safety, not Windows Setup semantics.
@@ -78,7 +80,11 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Подготовка сценариев недоступна", http.StatusServiceUnavailable)
 		return
 	}
-	profileID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	rawProfile := r.PathValue("id")
+	if rawProfile == "" {
+		rawProfile = r.FormValue("profile_id")
+	}
+	profileID, err := strconv.ParseInt(rawProfile, 10, 64)
 	if err != nil || profileID <= 0 {
 		http.Error(w, "Неверный профиль ISO", http.StatusBadRequest)
 		return
@@ -121,7 +127,11 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	variant, err := s.Store.CreateWindowsAnswer(r.Context(), WindowsAnswerVariant{ProfileID: profileID, Title: title, Folder: folder, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(data))})
+	var wipesDisk *bool
+	if wipes, known := AnswerWipesDisk(data); known {
+		wipesDisk = &wipes
+	}
+	variant, err := s.Store.CreateWindowsAnswer(r.Context(), WindowsAnswerVariant{ProfileID: profileID, Title: title, Folder: folder, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(data)), WipesDisk: wipesDisk})
 	if err != nil {
 		http.Error(w, "Не удалось сохранить сценарий", http.StatusServiceUnavailable)
 		return
@@ -138,5 +148,5 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.create", "ok", fmt.Sprintf("id=%d sha256=%s", variant.ID, variant.SHA256))
-	http.Redirect(w, r, "/images?message=Сценарий+загружен", http.StatusSeeOther)
+	http.Redirect(w, r, "/answers?message=Сценарий+загружен", http.StatusSeeOther)
 }

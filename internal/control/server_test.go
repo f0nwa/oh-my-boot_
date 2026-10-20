@@ -66,3 +66,9 @@ func TestServerRequiresCSRFForAdministratorMutation(t *testing.T) {
 		t.Fatalf("response=%d", res.Code)
 	}
 }
+
+func (a authOnlyStore) MenuDraft(context.Context) (MenuDraft, bool, error) {
+	return MenuDraft{}, false, nil
+}
+func (a authOnlyStore) SaveMenuDraft(context.Context, MenuDraft) error      { return nil }
+func (a authOnlyStore) MenuVersions(context.Context) ([]MenuVersion, error) { return nil, nil }

@@ -174,6 +174,10 @@ func (s *Server) installationAdd(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.add", "ok", key)
+	if strings.HasPrefix(r.URL.Path, "/menu/") {
+		http.Redirect(w, r, "/menu?message=Пункт+возвращён+в+меню", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/?message=Установка+добавлена+в+меню", http.StatusSeeOther)
 }
 

@@ -619,5 +619,6 @@ var englishMessages = map[string]string{
 	"Проверить заново":                              "Check again",
 	"Порядок не совпадает с пунктами меню":          "The order does not match the menu items",
 	"Перетащите строку за ⋮⋮ справа, чтобы изменить порядок. Название и каталог правятся прямо в ячейке.": "Drag a row by ⋮⋮ on the right to change the order. Edit the title and folder right in the cell.",
-	"Перетащить": "Drag",
+	"Перетащить":             "Drag",
+	"Пункт возвращён в меню": "Item restored to the menu",
 }

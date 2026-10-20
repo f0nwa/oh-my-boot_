@@ -55,3 +55,17 @@ func TestObserverMenuRowsAreReadOnly(t *testing.T) {
 		t.Fatalf("observer can edit: %s", body)
 	}
 }
+
+func TestRestoreFromMenuPageStaysOnMenu(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready"}
+	s, _ := draftServer(t, store)
+	body := libraryGet(t, s, "/menu")
+	if !strings.Contains(body, `action="/menu/items/winiso_17/restore"`) {
+		t.Fatalf("restore form missing: %s", body)
+	}
+	res := menuPost(t, s, "/menu/items/winiso_17/restore", url.Values{})
+	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/menu?") || len(store.draft.Items) != 1 {
+		t.Fatalf("status=%d location=%q draft=%+v", res.Code, res.Header().Get("Location"), store.draft)
+	}
+}

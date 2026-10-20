@@ -1,5 +1,9 @@
 # Windows 11 x64: первая проверка WinPE
 
+[English version](en/windows11-winpe-pxe.md)
+
+> 20.10.2026 этот статический пункт, локальная копия ISO, шары `windows11` и `windows11iso` и служба `pxe-windows11-iso` удалены; Windows 11 загружается через профили ISO (см. [руководство Images](images-installation.md)). Ниже — история первой проверки.
+
 На сервере найден ISO `26100.5067.250818-2008.GE_RELEASE_SVC_PROD3_CLIENTPRO_OEMRET_X64FRE_RU-RU.ISO` в подключённой SMB-папке. Для начальной загрузки из него скопирован `sources/boot.wim` в `/srv/pxe/tftp/windows11/boot.wim`. Размер — 698 729 786 байт, SHA-256 — `33f30dccd7479ddb31fc6cd692ca7f420eaee5af388f8ecc8fa3f9524a31d4a4`; `cmp` подтвердил совпадение с файлом в ISO. Boot отдаёт его по `/assets/windows11/boot.wim`: HTTP HEAD 200, запрос первых 1024 байт — 206. Для загрузки используется уже закреплённый и проверенный `wimboot` 2.9.0 из [профиля Windows 10](windows-winpe-pxe.md).
 
 Админка предлагает отдельный пункт **Windows 11 x64 — запуск WinPE**. Его публикация выполняется вручную через страницу **Меню**, сохраняя выбранные Ubuntu и Windows 10. Замена бинарного файла Control не меняет действующее опубликованное меню; его SHA-256 до и после замены остался `c3730b5ceed31bc218b7ab9cd42c1f3fc6e4d944e739117a85b2ff6a8d2f676c`. Предыдущий бинарный файл сохранён в `/var/backups/pxe-platform-pre-win11-20261016/pxe-control`.

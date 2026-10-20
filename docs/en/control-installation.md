@@ -1,0 +1,146 @@
+# Control and the HTTPS admin interface on the test VM
+
+[Русская версия](../control-installation.md)
+
+Address: **https://192.168.10.135:8443**. The certificate is self-signed with the IP address in the SAN, so the browser asks you to trust it. The lab certificate is valid for 90 days.
+
+The admin interface is available in Russian and English. Each user chooses the language in **My account**; this guide uses the English labels.
+
+## Services
+
+`pxe-control` is a separate Go process with its own PostgreSQL database, `pxe_control`. The browser talks only to it. Control calls Boot and Agent over local Unix sockets. When Control is stopped, `pxe-boot` keeps serving the last published menu on `10.30.0.10:8080`, and `pxe-agent` keeps proxy-DHCP running on `ens19`. In the lab, the list of interfaces the dashboard may change contains only `ens19`.
+
+## Boot menu folders
+
+On the **Menu** page, the **PXE menu folders** block sets a path for every prepared profile. For example, `Windows/Installers` creates two nested levels. An empty field keeps the item in the main menu. Folders are built from the selected items and do not depend on where the ISO files are on the SMB share. **Publish** applies the new structure as a whole; the previous version can be restored from the version list. ISO files that were found but not prepared are not added to the menu.
+
+New Windows ISO profiles are created on the **Images** page. After preparation, each one can be selected on the **Menu** page and placed in a folder. A menu version stores the selected IDs, so restoring an older version restores the same set of items. Before publishing or restoring, Control checks that the source ISO and the prepared files are available. The old static Windows 10/11 items are kept during the transition.
+
+On 16.10.2026 a new Control binary was installed on the test VM; HTTPS responded and the service was active. The user published the `Linux` and `Windows` folders and confirmed moving into `Windows` and back. The original `Назад` (Back) label was not shown on the PXE screen because the item was an empty string. The generator was changed so that `.. Back` is the first item of every folder. After publishing again, the user confirmed that this item is visible and returns to the main menu. The previous binaries are kept in `/usr/local/bin/pxe-control.pre-menu-folders`, `/usr/local/bin/pxe-control.pre-back-first` and `/usr/local/bin/pxe-control.pre-ascii-back`.
+
+## Installation
+
+Build Linux x86_64 versions of `./cmd/pxe-boot`, `./cmd/pxe-agent`, `./cmd/pxe-control` and `./cmd/pxe-controlctl` with `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build`. Install the binaries in `/usr/local/bin` and the [units](../../deploy/systemd) in `/etc/systemd/system`. Before replacing Boot and Agent, keep their current binaries and units for rollback.
+
+Create the `pxe-control` system group and user, a PostgreSQL role with the same name and the `pxe_control` database. Apply the [Control schema](../../deploy/sql/control.sql) as `pxe-control`. The `pxe_boot` database stays separate.
+
+Settings in `/etc/pxe-platform/control.env`:
+
+```ini
+PXE_CONTROL_LISTEN=192.168.10.135:8443
+PXE_CONTROL_INTERFACES=ens19
+PXE_CONTROL_DATABASE_URL=host=/var/run/postgresql dbname=pxe_control user=pxe-control
+```
+
+The certificate `control.crt` and key `control.key` are in `/var/lib/pxe-platform-control`; the directory belongs to `pxe-control` with mode `0700`, and the key has mode `0600`. For the lab, the certificate was created with `subjectAltName=IP:192.168.10.135`. After installation, run `systemctl daemon-reload`, restart Boot and Agent, then enable Control. **Installing the dashboard does not change the DHCP mode or the Keenetic settings.**
+
+The first administrator was created with the local command `pxe-controlctl create-admin -username fonwa`, which reads the password from stdin. There is no default password. If access is lost, `pxe-controlctl reset-password -username fonwa` reads a new password from stdin and ends the existing sessions. Both commands need `PXE_CONTROL_DATABASE_URL` and run as the `pxe-control` system user.
+
+## Checks on 15.10.2026
+
+| Check | Result |
+| --- | --- |
+| HTTPS sign-in and all dashboard pages | 200 |
+| POST without CSRF | 403 |
+| Attempt to select `ens18` | 400 |
+| Preview of `ens19` | 200 |
+| Reapplying the current proxy-DHCP settings | Succeeded; the dnsmasq file did not change |
+| Operator: menu allowed, network and users denied | Verified |
+| Observer: log allowed, publishing denied | Verified |
+| Disabling a user | The active session stopped working |
+| Password change in the dashboard and with the local command | Verified; the previous session ended |
+| Publishing a test menu and rolling back | The original menu SHA-256 was restored |
+| Boot with Control and PostgreSQL 18-main stopped | The HTTP menu returned 200; the services were restored |
+| Boot, Agent, dnsmasq, Control after the checks | All active |
+
+`rolecheck-operator` and `rolecheck-observer` were created and then disabled for the role checks. Their passwords were not stored. The audit log contains entries for publishing, rollback, network apply and user changes. A new PXE client boot after installing Control has not been run yet; the earlier BIOS/UEFI/Secure Boot checks are described in the [first-stage report](../vm-test-2026-10-15.md).
+
+## Resilience recheck on 19.10.2026
+
+On the live server, Control and then PostgreSQL 18/main were stopped briefly. In both cases Boot stayed active and served the menu with the same SHA-256 `43459a54e0d3dc7a8361d731062653a94293ffcadc90fce0fe3ff35f52ddabf9`. After a restart, Boot served the same menu snapshot; its checksum matched active version 20 in the Control database. Control and PostgreSQL were restored; HTTPS sign-in returns `200`, and all five PXE services are active.
+
+SMB failure was checked with isolated tests: when the connection disappears, the ISO catalog is kept and the storage becomes `unavailable`. Boot tests confirmed that the active menu is kept when publishing fails and after the snapshot is reloaded. The live SMB share was not disconnected at that time, because published Windows profiles use it for installation files. An end-to-end SMB failure test on the server was done on 20.10.2026; see below.
+
+## WinPE driver catalog
+
+The **Drivers** page accepts a folder with driver files or a ZIP. The package must contain the INF and every file it refers to. After import, the administrator creates a configuration: a prepared Windows ISO, optionally an existing XML answer file, the menu item title and the required INF files. **Prepare** builds a separate `boot.wim` and startup script. The configuration appears in the **Menu** page form, but reaches PXE only after it is selected and **Publish** is pressed. One ISO can have several such items; the manual item stays separate.
+
+The record number and the selected INF files are shown on the **Menu** page so that items with the same title can be told apart. An administrator can delete an unused configuration on the **Drivers** page, and an XML answer file or Windows profile on the **Images** page. The record must first be removed from the published menu; a profile also cannot be deleted while answer files or configurations depend on it. The prepared files are deleted together with the record. A shared WIM is kept until the last configuration that uses it is deleted; imported drivers and the source ISO on SMB stay. Old menu versions with deleted items can be viewed but not restored.
+
+The first release accepts uploads up to 256 MiB, up to 512 MiB of files after extraction, up to 4096 files and up to 128 selected INF files. INF paths, which WinPE runs from a batch file, must use Latin letters and other ASCII characters. Drivers are loaded only in WinPE; they are not added to the installed Windows. Package files and prepared WIM files are kept for earlier menu versions; automatic cleanup is not enabled yet.
+
+To deploy, install the `wimtools` package, apply the [migration](../../deploy/sql/2026-10-19-winpe-drivers.sql) to the `pxe_control` database as `pxe-control`, create `/srv/pxe/tftp/windows-driver-wims` and `/srv/pxe/tftp/windows-driver-configs`, then update Agent and Control together with their systemd units. The source WIM files under `/srv/pxe/tftp/windows-profiles` are not modified. Before publishing, Control checks the ISO, XML, driver package, derived WIM and startup script again.
+
+On 19.10.2026 `wimtools` 1.14.5 and the new Agent and Control were installed on the test server. The previous binaries and units are kept in `/var/backups/pxe-platform-winpe-drivers-20261019/`. The migration created both tables. Agent, Control, Boot and dnsmasq are active; HTTPS redirects a guest to the sign-in page. Right after deployment the menu kept the SHA-256 `43459a54e0d3dc7a8361d731062653a94293ffcadc90fce0fe3ff35f52ddabf9`; later the user published a test configuration. Importing NetKVM and booting WinPE with VirtIO networking on VM 113 succeeded with OVMF Secure Boot Enabled; see the [test report](winpe-driver-test-2026-10-19.md).
+
+Deleting Windows profiles, XML answer files and driver configurations requires a single running Control instance: the publish, prepare and delete locks live in the process memory. When updating the service, stop the old process completely before starting the new one. Before cleanup, Control compares the saved active version with the menu that Boot actually serves. The source ISO and imported driver packages stay in place.
+
+## Diagnostics and rollback
+
+```sh
+sudo systemctl status pxe-boot pxe-agent pxe-dnsmasq pxe-control
+sudo journalctl -u pxe-control -u pxe-boot -u pxe-agent -n 100 --no-pager
+curl --cacert /var/lib/pxe-platform-control/control.crt https://192.168.10.135:8443/login
+curl -fsS http://10.30.0.10:8080/boot/menu.ipxe
+```
+
+If the dashboard fails, stop only `pxe-control`: Boot and proxy-DHCP keep working. For a full rollback on the test VM, the previous Boot/Agent binaries and units are in `/var/backups/pxe-platform-pre-control/`. Restore them, run `systemctl daemon-reload` and restart Boot and Agent. Do not edit `/etc/pxe-platform/dnsmasq.conf` while doing this.
+
+## Version numbers and time zone, 19.10.2026
+
+The **Menu → Versions** table shows the number of every version. Times on the overview, request log, versions and audit pages are shown with the server offset from UTC, for example `19.10.2026 23:20 UTC+03:00`. Control shows time in the server system time zone, so the test server was set to `Europe/Moscow` (`timedatectl set-timezone Europe/Moscow`) and only `pxe-control` was restarted. The previous binary and time zone (`Etc/UTC`) are kept in `/var/backups/pxe-platform-version-numbers-20261019/`. All five services are active, HTTPS sign-in returns `200`, and the active menu checksum did not change.
+
+**Restore** does not reactivate the old record; it creates a new one with the same content. Restoring version 21 created active version 25 with the same SHA-256 `677c9eb1617d…`.
+
+After the time zone change, restoring a version with Windows profiles was rejected with “Windows ISO profile is unavailable: files of profile 1 are unavailable”. Control sent the ISO modification time with the `+03:00` offset, while Agent compared the request byte by byte with `/etc/pxe-platform/winiso/<id>.json`, where the same moment is stored in UTC (`Z`). Agent now compares the stored configuration field by field and the time as an instant; new configurations are written in UTC. After Agent was replaced, the check of profiles 1–3 with `+03:00` times returned `204` instead of `503`. The previous Agent is kept in `/var/backups/pxe-platform-version-numbers-20261019/pxe-agent`; the active menu did not change.
+
+## Source SMB storage failure, 20.10.2026
+
+At 00:34, outgoing TCP 445 from the PXE server to the NAS `192.168.10.10` was blocked temporarily with a separate nftables table, `inet pxe_smb_test`, set to be removed automatically after 20 minutes; the NAS and the PXE server Samba were not changed. At 00:37 the kernel reported `\\192.168.10.10 has not responded in 180 seconds. Reconnecting...`; reading and listing the CIFS mount (`soft`) returned `Host is down` instead of hanging.
+
+- Boot kept serving the menu with the same SHA-256 and the local files (`wimboot`, profile `boot.wim` files, XML, the Ubuntu kernel and initrd) with HTTP 200. All five PXE services and `smbd` stayed active, and HTTPS sign-in responded.
+- The dashboard did not show the failure by itself: the storage state changed only during a scan. After **Refresh**, storage 6 became “Unavailable · lstat …: host is down”.
+- Publishing the menu was rejected with “Windows ISO profile is unavailable: the source ISO of profile 1 has changed”; active version 28 stayed active. The message was inaccurate: the ISO had not changed, it was unavailable.
+- Ubuntu loaded its kernel and initrd, but could not get the ISO and did not start.
+- VM 113 loaded WinPE for the “Windows 11 key no-disk test” item, and Setup reached disk selection without errors. Samba served the Setup files from the mounted ISO of profile 2 at that time, probably from cache after the 00:26 boot. An installation that has to read `install.wim` was not tested during this failure. The check of reading the profile ISO files during the failure was invalid (`iflag=direct` on UDF returns EINVAL), so the behaviour of uncached reads through the loop device was not confirmed.
+- At 00:46 the block was removed. CIFS reconnected without restarting services; the Ubuntu ISO was served again, normal reads of `install.wim` of all three profiles at new offsets succeeded, and Agent returned `204` for profiles 1–3. After **Refresh** the storage became ready again, and publishing again created version 29 with the same SHA-256 `b47d47cb…`.
+
+Possible improvements at that time: a background storage availability check and a separate “storage unavailable” message instead of “ISO has changed”. Both were added the same night; see below.
+
+## Background storage check and errors on pages, 20.10.2026
+
+- Images checks every storage in the ready or unavailable state once a minute: SMB and mounted paths must be mounted and the root must be readable; the check gets 20 seconds. A ready storage that fails the check becomes unavailable with the reason (“Storage is unavailable: not responding for more than 20s” or the system error). An unavailable storage that passes the check again is scanned automatically: the scan refreshes the catalog and makes it ready. Automatic rescans of one storage run at most once every 10 minutes. Storages that are being scanned are not checked, and a hung check is not started again. The interval is set with `pxe-images -storage-check-interval` (default `1m`; `0` disables the check).
+- Publishing and restoring the menu, and preparing a Windows profile, report the cause separately: “storage “…” is unavailable: <reason>”, “storage “…” is being scanned, try again later”, “the source ISO of profile N was not found in storage “…”” and “the source ISO of profile N has changed”. The last one is used only when the size or date changed.
+- Form errors on the **Menu**, **Images** and **Drivers** pages are shown as a red notice on the same page instead of a separate text page; the response status code is kept. ISO upload and driver import still report errors inside their forms.
+
+Check on the server: outgoing TCP 445 to the NAS was blocked at 00:56:55. Without pressing **Refresh**, the “DSM” storage became “Unavailable · Storage is unavailable: not responding for more than 20s” at 00:58:06. Publishing the menu showed “Windows ISO profile is unavailable: storage “DSM” is unavailable: lstat …: host is down”. The block was removed at 01:02:56; at 01:03:41 Images detected the storage again and started a scan, and at 01:03:47 the storage was ready again. The previous Images and Control binaries are kept in `/var/backups/pxe-platform-storage-check-20261020/`.
+
+## Admin improvements and interface language, 20.10.2026
+
+- If publishing the menu fails, the **Menu** page shows the error together with the submitted checkboxes, folders and texts instead of the active menu.
+- Uploading the same XML (by SHA-256) again for the same ISO is rejected, and the message names the existing answer file. The same XML for another ISO is allowed.
+- Rejected deletion attempts are written to the audit log with the result `rejected` and a reason: `published`, `used by answer N` or `used by driver config N`.
+- The admin interface is available in Russian and English. The language is chosen in the user account page (see below) and stored in the user account (`users.language`, default `ru`). The sign-in page picks the language from the browser `Accept-Language` header. Pages, buttons, notices, form errors, ISO and driver upload messages and known messages of the Images service are translated. User data is not translated; PXE menu item titles still use Latin letters only, because the iPXE console cannot show Cyrillic. The dictionary is in `internal/control/i18n.go`; tests require a translation for every Russian Control string that can reach the browser. The guides are available in Russian and, in `docs/en`, in English.
+- Migration: `ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'ru' CHECK (language IN ('ru','en'))` (added to `deploy/sql/control.sql`). Apply it before starting the new Control. Before the update, the Control binary and the `users` table schema were saved to `/var/backups/pxe-platform-i18n-20261020/`.
+
+## My account and password generation, 20.10.2026
+
+- The username in the page header opens **My account** (`/account`), available to every role. It shows the username, the role and what the role allows, lets the user choose the interface language and change their own password. Changing the password requires the current password; the new one must have at least 12 characters. After the change, sessions on other devices are ended and the current one is kept. The change is recorded in the audit log as `account.password` with the result `ok` or `error` (for example, `wrong current password`). The quick RU / EN switch was removed from the header.
+- Every new password field — when creating a user, when an administrator changes a password, and in **My account** — has a **Generate** button. A 20-character password of letters and digits without easily confused characters is created in the browser (`crypto.getRandomValues`) and is not sent to the server separately; the field becomes visible, and **Copy** copies the password. The script is served as `/assets/password.js`.
+- No database migration is needed. The previous Control binary is kept in `/var/backups/pxe-platform-account-20261020/`. All services are active, and the active menu did not change.
+
+## Failure after a reboot and automatic connection recovery, 20.10.2026
+
+At 10:57 the PXE server rebooted before the NAS (VM 110 on the same Proxmox host) was reachable. The SMB mount units failed with `cifs_mount failed w/return code = -113`; systemd does not retry mount units, so all `pxe-winiso@N` units stopped after them, and `pxe-windows11-iso` restarted every 10 seconds. Publishing the menu was rejected during this time because the profile ISO files were not mounted. Boot kept serving the menu. At 12:07 the share and profiles were started manually; Images detected the storage by itself and made it ready again at 12:08.
+
+Agent now recovers such failures by itself. On a schedule it restarts inactive SMB mount units that have stored credentials, and, once the mounts succeed, inactive units of prepared profiles `pxe-winiso@N`. While a storage is unavailable, profiles are left alone. Recovery uses the same locks as connecting and deleting, so it does not collide with actions in the admin interface. Every action is written to the Agent log (`Storage recovery: restarted …`).
+
+The setting is stored by Agent in `/etc/pxe-platform/storage-recovery.json` (flag `pxe-agent -storage-recovery-config`), so recovery works right after boot, before Control and PostgreSQL start. Recovery is enabled by default with a 1-minute interval. On the **Images** page, the **Automatic connection recovery** block shows the state, the time of the last check, the actions taken and the last error. An administrator enables or disables recovery, sets the interval from 1 to 60 minutes and can press **Check now**. Changes and manual checks are recorded in the audit log as `storage-recovery.update` and `storage-recovery.run`.
+
+Check on the server: after Agent was installed, the first check changed nothing. The `pxe-winiso@3` unit was stopped at 12:14:38; at 12:15:26 Agent restarted it (`restarted pxe-winiso@3.service`), the ISO was mounted again, and the profile check returned `204`. The active menu did not change. The previous Agent and Control are kept in `/var/backups/pxe-platform-storage-recovery-20261020/`.
+
+## Removal of the old Windows 10/11 items, 20.10.2026
+
+The static “Windows 10 installer - WinPE” and “Windows 11 installer - WinPE” items were removed from the **Menu** form and unpublished together with XML answer file 5 (active version 32, SHA-256 `7ecede91…`). On the server, their full ISO copies `/srv/pxe/installers/windows10` (6.9 GB) and `/srv/pxe/installers/windows11` (9.0 GB), the separate `boot.wim` files in `/srv/pxe/tftp/windows10` and `/srv/pxe/tftp/windows11`, the Samba shares `windows10`, `windows11` and `windows11iso`, and the `pxe-windows11-iso.service` unit with its settings were deleted. `wimboot` in `/srv/pxe/tftp/windows` was kept. Free space on the system disk grew from 5.9 to 25 GB. Before deletion it was checked that the active menu, profiles, answer files and driver configurations do not refer to these files; after deletion all 22 menu URLs return 200, Agent accepts profiles 1–3, and the `pxeisos` share serves the files of all profiles. The Samba configuration, unit and service settings are kept in `/var/backups/pxe-platform-legacy-cleanup-20261020/`. Old menu versions with the static Windows items no longer boot those items.
+
+Then the repository lost the static item generation in Control, the Boot rule for `windows11/pxe-setup.cmd`, the `pxe-winpe-render` tool, the `deploy/boot-assets/windows11/` templates and the `pxe-windows11-iso.service` unit; the menu folder tests now use Ubuntu and ISO profiles. On the server, `pxe-winpe-render`, five old binary copies `/usr/local/bin/*.pre-*`, the `/usr/share/pxe-platform/windows11` template, the `pxe-install` password and user (Samba and system), the `virtio-win-0.1.271` driver ISO in `/srv/pxe/staging`, empty mount points from the first checks, old copies of `boot.env` and `smb.conf`, and backups made before 20.10.2026 were deleted — another 1.3 GB. The backups from 20.10.2026 were kept. Boot and Control were updated; all services are active, the menu and all its URLs work, and the profile startup script is still unavailable from the management network (`404`). 26 GB of 39 GB is free.

@@ -12,8 +12,12 @@ body{margin:0;background:var(--bg);color:var(--text)}
 a{color:var(--text)}a:hover{color:var(--text-2)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
+/* Page width: the work area grows to --page-max and stays centred on wider
+   screens; the header, draft bar and tabs line their contents up with it. */
+:root{--page-max:1920px;--gutter:24px;--edge:max(var(--gutter),calc((100vw - var(--page-max))/2 + var(--gutter)))}
+
 /* Header */
-.topbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;min-height:52px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+.topbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;min-height:52px;padding:0 var(--edge);background:var(--panel);border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;text-decoration:none}
 .logo rect{fill:none;stroke:var(--text);stroke-width:1.5}.logo .logo-prompt{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-linecap:round}
 .topnav{display:flex;flex-wrap:wrap;gap:2px}
@@ -26,20 +30,20 @@ a{color:var(--text)}a:hover{color:var(--text-2)}
 .nav-check,.nav-toggle-label{display:none}
 
 /* Draft bar: shown on every page while the menu draft differs from the published menu */
-.draftbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:8px 20px;background:var(--draft-bg);border-bottom:1px solid var(--draft-line)}
+.draftbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:8px var(--edge);background:var(--draft-bg);border-bottom:1px solid var(--draft-line)}
 .draftbar-title{display:flex;align-items:center;font-weight:500}
 .draftbar-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 .draftbar form{margin:0}.draftbar .btn{margin-top:0}
 
 /* Section tabs */
-.subnav{display:flex;flex-wrap:wrap;gap:4px;padding:0 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+.subnav{display:flex;flex-wrap:wrap;gap:4px;padding:0 calc(var(--edge) - 12px);border-bottom:1px solid var(--line);background:var(--panel)}
 .subnav a,.tabs a{padding:10px 12px;text-decoration:none;color:var(--text-2);border-bottom:2px solid transparent;margin-bottom:-1px}
 .subnav a:hover,.tabs a:hover{color:var(--text)}
 .subnav a.active,.tabs a.active{color:var(--text);border-bottom-color:var(--accent);font-weight:500}
 .tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--line);margin:8px 0 20px}
 
 /* Page */
-.content{width:100%;max-width:1440px;padding:22px 24px 40px}
+.content{width:100%;max-width:var(--page-max);margin:0 auto;padding:22px var(--gutter) 40px}
 .content-narrow{max-width:400px;margin:80px auto;padding:0 16px}
 h1{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:0 0 2px}
 h2{font-size:14px;font-weight:600;margin:0 0 10px}
@@ -185,7 +189,7 @@ td small{display:block}
 .row-off td{color:var(--text-2)}
 
 /* Menu editor: structure, machine screen, selected item */
-.menu-editor{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;margin-bottom:22px}
+.menu-editor{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;justify-content:space-between;margin-bottom:22px}
 .menu-tree{flex:1 1 240px;max-width:300px;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:8px;display:flex;flex-direction:column;gap:6px}
 .tree-list{display:flex;flex-direction:column;gap:1px}
 .tree-line{display:flex;align-items:center;border-radius:6px}
@@ -203,7 +207,7 @@ td small{display:block}
 .tree-line .drag-handle{margin:0 2px 0 0;min-height:28px}
 .tree-line.dragging{opacity:.5}
 .tree-add{margin-top:2px;border-style:dashed;color:var(--text-2)}
-.screen-frame{flex:999 1 520px;min-width:0;margin:0}
+.screen-frame{flex:999 1 520px;min-width:0;max-width:1080px;margin:0}
 .screen-caption{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;padding:0 2px 8px}
 /* The machine screen stays dark in both themes: it is the machine's screen, not the interface. */
 .screen{background:#050605;border:1px solid var(--line);border-radius:8px;padding:22px 26px;min-height:400px;display:flex;flex-direction:column;font-family:var(--mono);font-size:15px;line-height:1.8;color:#C3CBC3;overflow-x:auto}
@@ -216,7 +220,7 @@ td small{display:block}
 .screen-row.selected .screen-hint{color:#3A2A0A}
 .screen-foot{margin-top:auto;padding-top:16px;color:#7C887C;font-size:13px}
 .screen-error{color:#FFB4AB;font-size:13px;line-height:1.5;white-space:normal}
-.inspector{flex:1 1 280px;max-width:340px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.inspector{flex:1 1 280px;max-width:400px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
 .inspector-block{padding:14px 16px;border-bottom:1px solid var(--line);margin:0}
 .inspector-head{display:flex;justify-content:space-between;gap:8px;font-size:12px}
 .inspector form{margin:0}.inspector label{margin-top:12px}
@@ -226,7 +230,9 @@ td small{display:block}
 button[disabled]{opacity:.45;cursor:default}
 
 /* «Сейчас» */
-.service-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line);margin:-22px -24px 22px}
+.service-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line);margin:-22px calc(-1 * var(--gutter)) 22px}
+/* Wider than the page, the strip cannot reach the screen edges: show it as a card. */
+@media (min-width:1921px){.service-strip{margin:0 0 22px;border:1px solid var(--line);border-radius:8px;overflow:hidden}}
 .service{background:var(--panel);padding:10px 20px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .service-name{display:flex;align-items:center;font-size:12px;color:var(--muted)}
 .service-value{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -291,12 +297,13 @@ button[disabled]{opacity:.45;cursor:default}
 
 @media (max-width:760px){
 .topbar{padding:8px 16px}
+:root{--gutter:16px}
 .nav-toggle-label{display:inline-flex;align-items:center;min-height:32px;padding:0 10px;border:1px solid var(--line-strong);border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;color:var(--text);margin:0 0 0 auto}
 .topnav,.topbar-end{display:none;width:100%}
 .nav-check:checked~.topnav,.nav-check:checked~.topbar-end{display:flex}
 .topnav{flex-direction:column;padding-bottom:8px}
 .topbar-end{margin-left:0;padding-bottom:8px}
-.draftbar,.subnav{padding-left:16px;padding-right:16px}
+.draftbar{padding-left:16px;padding-right:16px}.subnav{padding-left:4px;padding-right:4px}
 .content{padding:18px 16px 32px}
 .service-strip{margin:-18px -16px 18px}
 }

@@ -38,14 +38,25 @@ type nowAlert struct {
 
 // nowView is everything the «Сейчас» page shows.
 type nowView struct {
-	Services      []nowService
-	Machines      []nowMachine
-	Booting, Day  int
-	Failed        int
+	Services     []nowService
+	Machines     []nowMachine
+	Booting, Day int
+	Failed       int
+	// Show is the machine filter: now (booting right now), day (the last
+	// 24 hours) or failed (failed in the last 24 hours).
+	Show string
+	// More counts machines the filter matched beyond the page's limit; Last
+	// is the latest machine seen, for the empty "now" view.
+	More          int
+	Last          *nowMachine
 	Alerts        []nowAlert
 	Audit         []AuditEvent
 	ActiveVersion int64
 }
+
+// nowMachineLimit is how many machines the page lists; the rest are in the
+// Journal.
+const nowMachineLimit = 50
 
 // liveWindow is how long after its last request a machine still counts as
 // booting right now.
@@ -233,25 +244,11 @@ func (s *Server) nowPage(w http.ResponseWriter, r *http.Request) {
 	install := s.loadInstallLog(r.Context(), httpEvents)
 	rows := machineRowsWith(httpEvents, dhcp, install, s.menuNames(r.Context()), now)
 	attachDownloads(rows, s.bootTransfers(r.Context()), now)
-	for _, row := range rows {
-		if now.Sub(row.LastSeen) > 24*time.Hour && len(view.Machines) >= 5 {
-			continue
-		}
-		live := now.Sub(row.LastSeen) <= liveWindow
-		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: row.Stage == "loader_failed" || row.Stage == "files_failed" || row.Stage == "stuck" || row.Stage == "copy_broken"}
-		if live {
-			view.Booting++
-		}
-		if machine.Bad {
-			view.Failed++
-		}
-		if now.Sub(row.LastSeen) <= 24*time.Hour {
-			view.Day++
-		}
-		if len(view.Machines) < 8 {
-			view.Machines = append(view.Machines, machine)
-		}
+	view.Show = r.URL.Query().Get("show")
+	if view.Show != "day" && view.Show != "failed" {
+		view.Show = "now"
 	}
+	fillNowMachines(view, rows, now)
 	view.Alerts = nowAlerts(data)
 	if Allowed(data.Info.User.Role, "users") {
 		if events, err := s.Store.AuditList(r.Context()); err == nil {
@@ -285,4 +282,37 @@ func (s *Server) bootTransfers(ctx context.Context) []boot.Transfer {
 		return nil
 	}
 	return transfers
+}
+
+// fillNowMachines counts the machines of the last 24 hours and lists those
+// view.Show asks for: booting now, all of the day, or failed.
+func fillNowMachines(view *nowView, rows []machineRow, now time.Time) {
+	for _, row := range rows {
+		live := now.Sub(row.LastSeen) <= liveWindow
+		day := now.Sub(row.LastSeen) <= 24*time.Hour
+		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: row.Stage == "loader_failed" || row.Stage == "files_failed" || row.Stage == "stuck" || row.Stage == "copy_broken"}
+		if view.Last == nil {
+			last := machine
+			view.Last = &last
+		}
+		if !day {
+			// Older machines live in the Journal, not here.
+			continue
+		}
+		view.Day++
+		if live {
+			view.Booting++
+		}
+		if machine.Bad {
+			view.Failed++
+		}
+		switch {
+		case view.Show == "now" && !live, view.Show == "failed" && !machine.Bad:
+			continue
+		case len(view.Machines) >= nowMachineLimit:
+			view.More++
+		default:
+			view.Machines = append(view.Machines, machine)
+		}
+	}
 }

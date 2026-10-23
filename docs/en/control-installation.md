@@ -275,3 +275,15 @@ For this, Boot records how each file request ended: the HTTP status, the bytes s
 Rollout 23.10.2026, 15:31: the [migration](../../deploy/sql/2026-10-23-boot-transfer.sql) was applied to the `pxe_boot` database (columns `status`, `bytes`, `size` in `boot_events`; as `pxe-boot`); replaced `pxe-boot` (SHA-256 `efe081a6…`) and `pxe-control` (`ff2a7817…`); previous files are `/usr/local/bin/*.bak-202610231531`. The client menu did not change.
 
 Follow-up 23.10.2026, 15:41 (`pxe-control` SHA-256 `faf7de3f…`, previous `.bak-202610231541`): a machine's row resets when it boots again. Previously only a pause longer than 10 minutes started a new boot, so a quick reboot piled onto the last one: the choice, “Image” and the Setup state stayed. Now a new boot also starts when the firmware fetches a loader over TFTP again after iPXE already ran, or when iPXE fetches the menu again after the installation files. A WinPE connection to the share belongs to the boot it began in. Samba keeps listing a rebooted machine's connection for a while, and such a connection no longer carries over to the new boot.
+
+## Now page: machine filter, 23.10.2026
+
+The machines block on the home page is called “Boots” and shows machines of the last 24 hours, picked by buttons:
+
+- **Now** (default): machines heard from in the last 3 minutes, including WinPE holding its share connection and boot.wim downloads;
+- **Last 24 hours**: every machine that booted in that time;
+- **Failed**: those of them that stopped on an error (loader, installation file, WinPE, broken copy).
+
+The buttons show counts. When nothing is booting, the empty table is replaced by the last boot (MAC, when, what was chosen). The list stops at 50 machines; the rest are in the Journal. Machines older than a day are not shown on the home page: the full history is in Journal → Machines. The chosen filter is kept in the address (`/?show=day`, `/?show=failed`), and the page's auto-refresh keeps it.
+
+Rollout 23.10.2026, 15:50: replaced `pxe-control` (SHA-256 `8ae95cba…`); the previous one is `.bak-202610231550`.

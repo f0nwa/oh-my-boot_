@@ -85,7 +85,7 @@ func TestHomeIsNowAndInstallationsMoved(t *testing.T) {
 	s := libraryServer()
 	s.Store = authOnlyStore{user: User{ID: 2, Role: "operator", Enabled: true}}
 	body := libraryGet(t, s, "/")
-	for _, want := range []string{`id="live"`, "Машины в сети", `class="service-strip"`, "DSM", `src="/assets/now.js"`, `href="/" class="active"`} {
+	for _, want := range []string{`id="live"`, "<h1>Загрузки</h1>", `class="service-strip"`, "DSM", `src="/assets/now.js"`, `href="/" class="active"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("home lacks %q: %s", want, body)
 		}
@@ -122,5 +122,34 @@ func TestNowPageHidesPublishForObservers(t *testing.T) {
 	data.Info.User.Role = "admin"
 	if found := cyrillic.FindAllString(renderPage("now", data), 5); len(found) > 0 {
 		t.Fatalf("English now page has Russian text: %v", found)
+	}
+}
+
+func TestNowPageFiltersMachines(t *testing.T) {
+	now := time.Now()
+	live := machineRow{MAC: "aa:aa:aa:aa:aa:01", Stage: "menu", LastSeen: now}
+	failed := machineRow{MAC: "aa:aa:aa:aa:aa:02", Stage: "files_failed", Problem: "missing:boot.wim", LastSeen: now.Add(-2 * time.Hour)}
+	old := machineRow{MAC: "aa:aa:aa:aa:aa:03", Stage: "files", LastSeen: now.Add(-48 * time.Hour)}
+	render := func(show string, rows ...machineRow) string {
+		view := &nowView{Show: show}
+		fillNowMachines(view, rows, now)
+		data := samplePageData(langRU)
+		data.Info.Path = "/"
+		data.Now = view
+		return renderPage("now", data)
+	}
+	view := &nowView{Show: "day"}
+	fillNowMachines(view, []machineRow{live, failed, old}, now)
+	if view.Booting != 1 || view.Day != 2 || view.Failed != 1 || len(view.Machines) != 2 || view.Last == nil || view.Last.MAC != live.MAC {
+		t.Fatalf("view=%+v", view)
+	}
+	if body := render("now", live, failed, old); !strings.Contains(body, live.MAC) || strings.Contains(body, failed.MAC) || strings.Contains(body, old.MAC) {
+		t.Fatalf("now: %s", body)
+	}
+	if body := render("failed", live, failed, old); strings.Contains(body, live.MAC+"</a></div>") || !strings.Contains(body, failed.MAC) {
+		t.Fatalf("failed: %s", body)
+	}
+	if body := render("now", failed, old); !strings.Contains(body, "Сейчас никто не грузится.") || !strings.Contains(body, "Последняя загрузка:") || !strings.Contains(body, failed.MAC) {
+		t.Fatalf("empty now: %s", body)
 	}
 }

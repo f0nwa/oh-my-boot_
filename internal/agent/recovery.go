@@ -222,10 +222,17 @@ func (m *SMBManager) RecoverMounts(ctx context.Context) ([]string, error) {
 // server must not stall recovery.
 const probeTimeout = 15 * time.Second
 
-// probeDir reads one entry of a directory, giving up after probeTimeout.
+// probeDir checks a directory the way a reader would: stat it, then read one
+// entry, giving up after probeTimeout. Both are needed: after the NAS
+// recreates a shared folder, the CIFS client can still list the directory
+// from its cache while stat on it fails with "stale file handle".
 func probeDir(path string) error {
 	done := make(chan error, 1)
 	go func() {
+		if _, err := os.Stat(path); err != nil {
+			done <- err
+			return
+		}
 		f, err := os.Open(path)
 		if err == nil {
 			_, err = f.Readdirnames(1)

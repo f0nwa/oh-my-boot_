@@ -10,10 +10,11 @@ import (
 	"pxe-platform/internal/boot"
 )
 
-// trailStep is one of the six boot steps shown for a machine on the
+// trailStep is one of the seven boot steps shown for a machine on the
 // «Сейчас» page. State is done, current, failed or none.
 type trailStep struct {
 	Label, Sub, State string
+	Bytes             int64 // shown after Sub
 }
 
 type nowMachine struct {
@@ -47,9 +48,9 @@ type nowView struct {
 // booting right now.
 const liveWindow = 3 * time.Minute
 
-var trailLabels = []string{"DHCP", "TFTP", "iPXE", "Меню", "Выбор", "Образ"}
+var trailLabels = []string{"DHCP", "TFTP", "iPXE", "Меню", "Выбор", "Образ", "Установка"}
 
-// machineTrail turns a machine summary into the six boot steps. The step
+// machineTrail turns a machine summary into the seven boot steps. The step
 // after the last completed one is current while the machine is still active.
 func machineTrail(row machineRow, live bool) []trailStep {
 	done := 1 // the machine is in the log, so DHCP answered
@@ -63,12 +64,19 @@ func machineTrail(row machineRow, live bool) []trailStep {
 		done = 3
 	case "menu":
 		done = 4
-	case "files":
+	case "files", "winpe", "copy":
 		done = 6
+	case "stuck", "winpe_left", "copy_broken":
+		done, failed = 6, 6
+	case "copied":
+		done = 7
 	}
 	if row.Stage == "files" && row.Choice == "" {
 		done = 4
 	}
+	// While Setup holds the share, the machine is busy even if the last
+	// boot request was long ago.
+	installing := row.Stage == "winpe" || row.Stage == "copy"
 	steps := make([]trailStep, len(trailLabels))
 	for i, label := range trailLabels {
 		step := trailStep{Label: label, State: "none"}
@@ -77,7 +85,7 @@ func machineTrail(row machineRow, live bool) []trailStep {
 			step.State = "failed"
 		case i < done:
 			step.State = "done"
-		case i == done && live && failed < 0:
+		case i == done && (live || installing) && failed < 0:
 			step.State = "current"
 		}
 		steps[i] = step
@@ -92,6 +100,10 @@ func machineTrail(row machineRow, live bool) []trailStep {
 	}
 	if row.Stage == "menu" && live {
 		steps[3].Sub = "ждёт выбора"
+	}
+	steps[6].Sub = map[string]string{"winpe": "WinPE подключился", "copy": "копирует Windows", "copied": "скопировано, перезагрузка", "stuck": "застрял в WinPE", "winpe_left": "отключился", "copy_broken": "связь прервалась"}[row.Stage]
+	if row.Stage == "copy" || row.Stage == "copied" || row.Stage == "copy_broken" {
+		steps[6].Bytes = row.CopyRead
 	}
 	return steps
 }
@@ -198,12 +210,13 @@ func (s *Server) nowPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	now := time.Now()
-	for _, row := range machineRows(httpEvents, dhcp, s.menuNames(r.Context())) {
+	install := s.loadInstallLog(r.Context(), httpEvents)
+	for _, row := range machineRowsWith(httpEvents, dhcp, install, s.menuNames(r.Context()), now) {
 		if now.Sub(row.LastSeen) > 24*time.Hour && len(view.Machines) >= 5 {
 			continue
 		}
 		live := now.Sub(row.LastSeen) <= liveWindow
-		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: row.Stage == "loader_failed"}
+		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: row.Stage == "loader_failed" || row.Stage == "stuck" || row.Stage == "copy_broken"}
 		if live {
 			view.Booting++
 		}

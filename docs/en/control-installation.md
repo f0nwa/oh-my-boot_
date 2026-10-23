@@ -203,3 +203,24 @@ After a NAS disk was replaced and the shared folder recreated, the `//192.168.10
 Agent storage recovery now checks every active SMB mount the way a reader would: `stat` of the root and reading one entry (at most 15 seconds). When a mount is unreadable, Agent stops only the Windows ISO profiles whose ISOs live on that share, restarts the mount, and the regular pass starts the profiles again. Images also checks a storage with `stat` of its root. The mount account is kept in `/etc/pxe-platform/smb/<key>.cred` (currently `v.pogutsa`).
 
 Rollout 23.10.2026: replaced `pxe-agent` (SHA-256 `9650f3f0…`) and `pxe-images` (SHA-256 `848cdc92…`). The first pass after the Agent restart remounted both shares and the three profiles; DSM is "Available" again. The previous binaries are in `/var/backups/pxe-platform-agent-recovery-20261023/`. The client menu SHA-256 did not change (`7ecede91…`).
+
+## Windows Setup progress after WinPE, 23.10.2026
+
+After `boot.wim` the server sees no more Boot requests from the machine, but WinPE connects to the `\\10.30.0.10\pxeisos` share and runs Windows Setup from it. Every 10 seconds the Agent reads `smbstatus --json` and records connections to `pxeisos`: the IP, the profile (the first folder in the paths of open files), whether `install.wim`/`install.esd`/`install*.swm` is open, how much the Samba process serving the client has read (`rchar` in `/proc/<pid>/io`), and when the connection closed. Seven days of history are kept in `/var/lib/pxe-platform-agent/smb-sessions.json` and served to Control as `GET /smb-sessions` on the Agent socket.
+
+Control ties a connection to a machine by IP (the nearest earlier Boot request from the same address, at most 30 minutes before) and adds a seventh step, “Install”, on the Now page, plus “Install” lines in the machine’s steps:
+
+- **WinPE connected to the installer**: connected, copying has not begun (the edition or disk choice is on screen);
+- **Copying Windows**: `install.wim` is open and more than 256 MB were read since it was first opened; the amount read is shown;
+- **Files copied, rebooting**: Setup released `install.wim` after copying;
+- **Connection lost while copying**: the connection closed while `install.wim` was still being copied;
+- **Stuck in WinPE**: `boot.wim` was served more than 5 minutes ago and there is no connection (most often WinPE lacks the network card driver). This is concluded only for boots after watching began, and only when the Agent answered;
+- **Installer disconnected before copying**: the connection closed without copying.
+
+An open `install.wim` alone does not mean copying: Setup opens it to list the editions, closes it, and keeps it open again on the edition and disk screens. The first version of 23.10 took that for copying and reported “copied” at once; now the amount read decides (the edition list is tens of megabytes, a copy is gigabytes). If the Agent cannot read the process counter, the step stays “WinPE connected”.
+
+While Setup holds the connection, the machine counts as active. The end of the installation (OOBE, first sign-in) is not visible to the server: after the reboot Windows installs from the machine's own disk.
+
+For `smbstatus`, `pxe-agent.service` gains `ReadWritePaths=-/run/samba` (without it smbstatus cannot create its messaging context; the “-” keeps the unit working where Samba is not installed). The smbstatus warning “no network interfaces found” inside the Agent sandbox is expected; the JSON is complete.
+
+Rollout 23.10.2026 (10:30, fixed at 10:45): replaced `pxe-agent` (SHA-256 `feda3ab3…`) and `pxe-control` (SHA-256 `f542e891…`) and updated `/etc/systemd/system/pxe-agent.service`. Previous files: `/usr/local/bin/pxe-agent.bak-202610231029`, `/usr/local/bin/pxe-control.bak-202610231029`, `/root/pxe-agent.service.bak-202610231029`. The client menu did not change.

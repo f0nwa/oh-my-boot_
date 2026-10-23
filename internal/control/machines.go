@@ -20,6 +20,7 @@ type machineRow struct {
 	MAC, IP, Firmware, Stage, Choice string
 	LastSeen                         time.Time
 	Boots                            int
+	CopyRead                         int64 // install image read by Setup in this boot
 }
 
 const macMatchWindow = 30 * time.Minute
@@ -130,12 +131,21 @@ func firmwareOf(file string) string {
 // machineRows groups DHCP, TFTP and HTTP events by MAC. names maps menu keys
 // (winiso_N, …, ubuntu) to the titles people know them by.
 func machineRows(httpEvents []boot.Event, dhcp []agent.DHCPEvent, names map[string]string) []machineRow {
+	return machineRowsWith(httpEvents, dhcp, installLog{}, names, time.Now())
+}
+
+// machineRowsWith also follows WinPE on the install share; now decides when
+// a silent WinPE counts as stuck.
+func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install installLog, names map[string]string, now time.Time) []machineRow {
 	type entry struct {
 		at        time.Time
 		stage, ip string
 		firmware  string
 		key       string
 		rank      int
+		install   int // share session state; install moments never start a new boot
+		read      int64
+		bootWIM   bool // WinPE was fetched
 	}
 	byMAC := map[string][]entry{}
 	for _, e := range resolveDHCPMACs(dhcp, httpEvents) {
@@ -160,22 +170,43 @@ func machineRows(httpEvents []boot.Event, dhcp []agent.DHCPEvent, names map[stri
 			en.stage = "menu"
 		}
 		en.key, en.rank = choiceKey(e)
+		en.bootWIM = isBootWIM(e)
 		byMAC[e.MAC] = append(byMAC[e.MAC], en)
+	}
+	for _, e := range install.Events {
+		byMAC[e.MAC] = append(byMAC[e.MAC], entry{at: e.At, ip: e.IP, stage: "install", install: e.State, read: e.Read})
 	}
 	var rows []machineRow
 	for mac, entries := range byMAC {
 		sort.Slice(entries, func(i, j int) bool { return entries[i].at.Before(entries[j].at) })
 		row := machineRow{MAC: mac}
 		var boot bootProgress
-		var last time.Time
+		var last, bootWIMAt time.Time
 		bestRank := 0
 		for _, en := range entries {
+			if en.install > 0 {
+				// Setup may run for an hour after the last boot request; it
+				// belongs to that boot.
+				if en.install >= boot.install {
+					row.CopyRead = en.read
+				}
+				boot.addInstall(en.install)
+				if en.at.After(row.LastSeen) {
+					row.LastSeen = en.at
+				}
+				continue
+			}
 			if !last.IsZero() && en.at.Sub(last) > bootSessionGap {
 				// A new boot attempt: progress and choice start over.
-				boot, row.Choice, bestRank = bootProgress{}, "", 0
+				boot, row.Choice, bestRank, bootWIMAt, row.CopyRead = bootProgress{}, "", 0, time.Time{}, 0
 			}
 			last = en.at
-			row.LastSeen = en.at
+			if en.at.After(row.LastSeen) {
+				row.LastSeen = en.at
+			}
+			if en.bootWIM {
+				bootWIMAt = en.at
+			}
 			if en.ip != "" {
 				row.IP = en.ip
 			}
@@ -192,6 +223,10 @@ func machineRows(httpEvents []boot.Event, dhcp []agent.DHCPEvent, names map[stri
 			}
 		}
 		row.Stage = boot.stage()
+		// WinPE that never reached the share while the Agent was watching.
+		if row.Stage == "files" && install.Known && !bootWIMAt.IsZero() && bootWIMAt.After(install.Since) && now.Sub(bootWIMAt) > stuckAfter {
+			row.Stage = "stuck"
+		}
 		if title, ok := names[row.Choice]; ok {
 			row.Choice = title
 		}
@@ -226,6 +261,11 @@ func (s *Server) menuNames(ctx context.Context) map[string]string {
 // again, so the furthest step counts, not the last line.
 type bootProgress struct {
 	loaderSent, loaderFailed, ipxe, menu, files bool
+	install                                     int // furthest share session state
+}
+
+func (b *bootProgress) addInstall(state int) {
+	b.install = max(b.install, state)
 }
 
 func (b *bootProgress) add(stage string) {
@@ -245,9 +285,12 @@ func (b *bootProgress) add(stage string) {
 	}
 }
 
-// stage names the furthest step: files, menu, ipxe, loader, loader_failed
-// or pxe.
+// stage names the furthest step: copied, copy, winpe, winpe_left, files,
+// menu, ipxe, loader, loader_failed or pxe.
 func (b bootProgress) stage() string {
+	if name, ok := installStageNames[b.install]; ok {
+		return name
+	}
 	switch {
 	case b.files:
 		return "files"
@@ -303,6 +346,18 @@ func machineStageLabel(stage string) string {
 		return "Меню"
 	case "files":
 		return "Загрузка файлов"
+	case "stuck":
+		return "Застрял в WinPE"
+	case "winpe":
+		return "WinPE подключился к установщику"
+	case "winpe_left":
+		return "Установщик отключился"
+	case "copy":
+		return "Копирует Windows"
+	case "copied":
+		return "Файлы скопированы, перезагрузка"
+	case "copy_broken":
+		return "Связь прервалась во время копирования"
 	}
 	return stage
 }

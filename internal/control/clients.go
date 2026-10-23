@@ -333,3 +333,10 @@ func (c *AgentClient) DHCPEvents(ctx context.Context) ([]agent.DHCPEvent, error)
 	err := localCall(ctx, c.http, "GET", "/dhcp-events", nil, &v)
 	return v, err
 }
+
+// SMBSessions returns WinPE clients seen on the install share.
+func (c *AgentClient) SMBSessions(ctx context.Context) (agent.SMBSessions, error) {
+	var v agent.SMBSessions
+	err := localCall(ctx, c.http, "GET", "/smb-sessions", nil, &v)
+	return v, err
+}

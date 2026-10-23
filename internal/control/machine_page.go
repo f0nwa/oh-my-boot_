@@ -25,6 +25,9 @@ type machineStep struct {
 	Text   string
 	Raw    string
 	Failed bool
+	Bytes  int64 // install image read, shown after the text
+
+	bootWIM bool
 }
 
 // bootSession is one boot attempt of a machine: its steps in time order and
@@ -33,7 +36,9 @@ type bootSession struct {
 	Start, End time.Time
 	Steps      []machineStep
 	Choice     string
-	Outcome    string // loader_failed, dhcp_only, loader, menu, files
+	Outcome    string // loader_failed, dhcp_only, loader, menu, files, stuck, winpe, winpe_left, copy, copy_broken, copied
+	CopyRead   int64  // install image read by Setup
+	bootWIMAt  time.Time
 }
 
 // OutcomeLabel names where the attempt stopped, in words.
@@ -47,19 +52,51 @@ func (b bootSession) OutcomeLabel() string {
 		return "Загрузчик получен, меню не запрошено"
 	case "menu":
 		return "Остановилась в меню"
+	case "stuck":
+		return "Застрял в WinPE: нет подключения к установщику"
+	case "winpe":
+		return "WinPE подключился к установщику"
+	case "winpe_left":
+		return "Установщик отключился до копирования"
+	case "copy":
+		return "Копирует Windows"
+	case "copied":
+		return "Файлы скопированы, перезагрузка"
+	case "copy_broken":
+		return "Связь прервалась во время копирования"
 	}
 	return "Получила файлы установки"
 }
 
 // OK reports whether the attempt reached the installation files.
-func (b bootSession) OK() bool { return b.Outcome == "files" }
+func (b bootSession) OK() bool {
+	switch b.Outcome {
+	case "files", "winpe", "copy", "copied":
+		return true
+	}
+	return false
+}
 
 // Failed reports whether the attempt hit an error rather than just stopping.
-func (b bootSession) Failed() bool { return b.Outcome == "loader_failed" }
+func (b bootSession) Failed() bool {
+	return b.Outcome == "loader_failed" || b.Outcome == "stuck" || b.Outcome == "winpe_left" || b.Outcome == "copy_broken"
+}
+
+// Installing reports whether Setup took over, after which the machine no
+// longer reports itself.
+func (b bootSession) Installing() bool {
+	return b.Outcome == "winpe" || b.Outcome == "copy" || b.Outcome == "copied"
+}
 
 // machineSessions builds the boot attempts of one MAC from the HTTP and
 // DHCP/TFTP journals, newest first. names maps menu keys to titles.
 func machineSessions(mac string, httpEvents []boot.Event, dhcp []agent.DHCPEvent, names map[string]string) []bootSession {
+	return machineSessionsWith(mac, httpEvents, dhcp, installLog{}, names, time.Now())
+}
+
+// machineSessionsWith also places the machine's install-share moments in the
+// boot they followed.
+func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPEvent, install installLog, names map[string]string, now time.Time) []bootSession {
 	var steps []machineStep
 	type choice struct {
 		at   time.Time
@@ -84,7 +121,7 @@ func machineSessions(mac string, httpEvents []boot.Event, dhcp []agent.DHCPEvent
 		if e.MAC != mac {
 			continue
 		}
-		step := machineStep{At: e.At, Stage: "iPXE", Text: "Файл загрузки", Raw: e.Path}
+		step := machineStep{At: e.At, Stage: "iPXE", Text: "Файл загрузки", Raw: e.Path, bootWIM: isBootWIM(e)}
 		key, rank := choiceKey(e)
 		switch {
 		case e.Kind == "menu":
@@ -108,6 +145,28 @@ func machineSessions(mac string, httpEvents []boot.Event, dhcp []agent.DHCPEvent
 		current := &sessions[len(sessions)-1]
 		current.Steps = append(current.Steps, step)
 		current.End = step.At
+		if step.bootWIM {
+			current.bootWIMAt = step.At
+		}
+	}
+	// Setup can run long after the last boot request, so share moments join
+	// the latest boot that started before them instead of opening a new one.
+	installState := make([]int, len(sessions))
+	for _, e := range install.Events {
+		if e.MAC != mac || e.Kind == "seen" {
+			continue
+		}
+		for i := len(sessions) - 1; i >= 0; i-- {
+			if !sessions[i].Start.After(e.At) {
+				sessions[i].Steps = append(sessions[i].Steps, installStep(e))
+				installState[i] = max(installState[i], e.State)
+				sessions[i].CopyRead = max(sessions[i].CopyRead, e.Read)
+				break
+			}
+		}
+	}
+	for i := range sessions {
+		sort.SliceStable(sessions[i].Steps, func(a, b int) bool { return sessions[i].Steps[a].At.Before(sessions[i].Steps[b].At) })
 	}
 	for i := range sessions {
 		session := &sessions[i]
@@ -115,6 +174,8 @@ func machineSessions(mac string, httpEvents []boot.Event, dhcp []agent.DHCPEvent
 		for i := range session.Steps {
 			step := &session.Steps[i]
 			switch {
+			case step.Stage == "Установка":
+				// counted from the share sessions below
 			case step.Failed:
 				progress.add("loader_failed")
 			case step.Stage == "TFTP":
@@ -133,12 +194,17 @@ func machineSessions(mac string, httpEvents []boot.Event, dhcp []agent.DHCPEvent
 		// the file size; it is not an error.
 		if progress.loaderSent {
 			for i := range session.Steps {
-				if session.Steps[i].Failed {
+				if session.Steps[i].Failed && session.Steps[i].Stage == "TFTP" {
 					session.Steps[i].Failed, session.Steps[i].Text = false, "Передача прервана клиентом и повторена"
 				}
 			}
 		}
-		session.Outcome = map[string]string{"files": "files", "menu": "menu", "ipxe": "loader", "loader": "loader", "loader_failed": "loader_failed", "pxe": "dhcp_only"}[progress.stage()]
+		progress.addInstall(installState[i])
+		session.Outcome = map[string]string{"files": "files", "menu": "menu", "ipxe": "loader", "loader": "loader", "loader_failed": "loader_failed", "pxe": "dhcp_only", "winpe": "winpe", "winpe_left": "winpe_left", "copy_broken": "copy_broken", "copy": "copy", "copied": "copied"}[progress.stage()]
+		// Only the latest boot can still be waiting for WinPE.
+		if session.Outcome == "files" && install.Known && i == len(sessions)-1 && !session.bootWIMAt.IsZero() && session.bootWIMAt.After(install.Since) && now.Sub(session.bootWIMAt) > stuckAfter {
+			session.Outcome = "stuck"
+		}
 		best := 0
 		for _, c := range choices {
 			if !c.at.Before(session.Start) && !c.at.After(session.End) && c.rank > best {
@@ -178,12 +244,14 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 		dhcp = v
 	}
 	names := s.menuNames(r.Context())
-	for _, row := range machineRows(httpEvents, dhcp, names) {
+	now := time.Now()
+	install := s.loadInstallLog(r.Context(), httpEvents)
+	for _, row := range machineRowsWith(httpEvents, dhcp, install, names, now) {
 		if row.MAC == mac {
 			data.Machines = []machineRow{row}
 		}
 	}
-	data.Sessions = machineSessions(mac, httpEvents, dhcp, names)
+	data.Sessions = machineSessionsWith(mac, httpEvents, dhcp, install, names, now)
 	if n, err := strconv.Atoi(r.URL.Query().Get("boot")); err == nil && n >= 0 && n < len(data.Sessions) {
 		data.SessionIndex = n
 	}

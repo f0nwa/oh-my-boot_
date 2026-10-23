@@ -362,7 +362,7 @@ func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	switch data.Tab {
 	case "machines":
-		data.Machines = machineRows(httpEvents, dhcp, s.menuNames(r.Context()))
+		data.Machines = machineRowsWith(httpEvents, dhcp, s.loadInstallLog(r.Context(), httpEvents), s.menuNames(r.Context()), time.Now())
 	case "requests":
 		for _, e := range httpEvents {
 			if data.MACFilter == "" || e.MAC == data.MACFilter {

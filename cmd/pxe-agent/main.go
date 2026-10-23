@@ -52,12 +52,15 @@ func main() {
 	}
 	defer listener.Close()
 	recovery := &agent.StorageRecovery{SMB: smb, Windows: windows, ConfigPath: *recoveryConfig}
-	server := &http.Server{Handler: agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), ReadHeaderTimeout: 5 * time.Second}
+	smbSessions := agent.NewSMBWatcher("/var/lib/pxe-platform-agent/smb-sessions.json")
+	server := &http.Server{Handler: agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// Recover storage mounts and Windows ISO profiles that failed, for example
 	// because the NAS became reachable only after this server booted.
 	go recovery.Run(ctx)
+	// Follow WinPE clients on the install share to show Setup progress.
+	go smbSessions.Run(ctx)
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

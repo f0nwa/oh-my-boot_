@@ -134,7 +134,7 @@ func TestMachineProgressFollowsTheFurthestStepOfABoot(t *testing.T) {
 	if len(rows) != 1 || rows[0].Stage != "ipxe" || rows[0].Firmware != "UEFI" {
 		t.Fatalf("rows=%+v", rows)
 	}
-	if got := trailStates(machineTrail(rows[0], false)); got != "done,done,done,none,none,none" {
+	if got := trailStates(machineTrail(rows[0], false)); got != "done,done,done,none,none,none,none" {
 		t.Fatalf("trail=%s", got)
 	}
 	sessions := machineSessions(mac, nil, dhcp, nil)

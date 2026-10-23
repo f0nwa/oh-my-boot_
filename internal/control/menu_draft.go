@@ -28,12 +28,21 @@ type MenuDraft struct {
 	look string
 }
 
-// menuLook is the design buildMenuTreeWithProfiles draws: pult-2 adds the
-// full-screen framebuffer console with exact colours on UEFI.
-const menuLook = "pult-2"
+// menuLook is the design buildMenuTreeWithProfiles draws; the script names
+// it in a comment line. A new value makes every published menu show a "new
+// look" change until it is published again.
+const menuLook = "pult-3"
 
-// scriptLook tells which design a published script has.
+const menuLookMarker = "# pxe-platform:look "
+
+// scriptLook tells which design a published script has. Versions from before
+// the marker are told apart by their commands.
 func scriptLook(script string) string {
+	for _, line := range strings.Split(script, "\n") {
+		if look, ok := strings.CutPrefix(line, menuLookMarker); ok {
+			return look
+		}
+	}
 	switch {
 	case strings.Contains(script, "console --x 640 --y 480"):
 		return "pult-2"

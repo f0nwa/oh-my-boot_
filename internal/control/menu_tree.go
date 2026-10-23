@@ -47,8 +47,10 @@ type menuTreeNode struct {
 //
 // On UEFI the firmware's text console is 80x25 drawn in a corner of the
 // screen, in the firmware's own palette (OVMF shows "yellow" as olive). So
-// the menu switches to iPXE's own framebuffer console at 640x480: 80
-// columns that fill the screen, with exact colours set by "colour --rgb".
+// the menu switches to iPXE's own framebuffer console. "--x 640 --y 480" is
+// a minimum, not an exact mode: iPXE takes the smallest mode the machine
+// offers that is at least that big, so one setting suits every machine, and
+// the screen is filled with large text and exact colours ("colour --rgb").
 // The framebuffer console draws bold text by OR-ing 0x555555 into the
 // colour, so the chosen line uses dark text on amber there. Where the switch
 // fails (no such mode) the firmware console stays, with white on yellow. BIOS
@@ -59,7 +61,8 @@ type menuTreeNode struct {
 // single spaces, and it has no quoting. It expands ${...} after splitting,
 // though, so runs of spaces come from settings: sp1…sp64 hold 1…64 spaces
 // as hex bytes and ${spN:string} prints them inside one word.
-var menuTheme = "console --x 640 --y 480 && set pxe_fb 1 || set pxe_fb 0\n" +
+var menuTheme = menuLookMarker + menuLook + "\n" +
+	"console --x 640 --y 480 && set pxe_fb 1 || set pxe_fb 0\n" +
 	"colour --rgb 0x0E1013 0 || echo -n\n" +
 	"colour --rgb 0xF2A93B 3 || echo -n\n" +
 	"colour --rgb 0xC3C8CF 7 || echo -n\n" +
@@ -113,8 +116,13 @@ const menuScreenRows = 20
 // disk.
 const menuTimeoutMS = "10000"
 
-// menuItemWidth is the text width of a menu line on an 80-column screen.
-const menuItemWidth = 74
+// menuItemWidth is how wide a menu line may be on the narrowest screen the
+// menu meets. iPXE's framebuffer console draws 9-pixel character cells, so
+// 640x480 gives 71 columns, and a menu line holds the width less two columns
+// of frame and two of padding on each side: 71 - 2 - 4 = 65. The firmware
+// text consoles (80x25 and up) are wider, so the hints there sit a little
+// left of the edge rather than past it.
+const menuItemWidth = 65
 
 // menuItemText puts a hint at the right edge of a menu line, after at least
 // three spaces; a hint that does not fit is left out.

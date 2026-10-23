@@ -85,3 +85,12 @@ func TestMenuLinesNeverHoldRunsOfSpaces(t *testing.T) {
 		t.Fatal("pad settings missing")
 	}
 }
+
+// The narrowest screen is iPXE's framebuffer console at 640x480: 71 columns
+// of 9-pixel cells, 65 of them for item text.
+func TestMenuLinesFitTheNarrowestScreen(t *testing.T) {
+	line := expandMenuPad(menuItemText("Windows 11 key no-disk test", "auto install"))
+	if len(line) > 640/9-2-4 || !strings.HasSuffix(line, "auto install") {
+		t.Fatalf("%d columns: %q", len(line), line)
+	}
+}

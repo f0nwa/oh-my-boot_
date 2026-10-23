@@ -109,3 +109,9 @@ func TestStylesheetUsesEmbeddedFontsOnly(t *testing.T) {
 		t.Fatal("stylesheet must load fonts only from /assets/fonts")
 	}
 }
+
+func TestNowSectionIsNowInEnglish(t *testing.T) {
+	if got := translate(langEN, "Сейчас"); got != "Now" {
+		t.Fatalf("Сейчас → %q", got)
+	}
+}

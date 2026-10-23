@@ -187,3 +187,19 @@ Third stage of the new interface, 21.10.2026: the interface now follows the mock
 - **ISO images** have a drop zone for the file and size and architecture columns.
 
 Rollout 21.10.2026, third stage: replaced only `pxe-control` (SHA-256 `a938fb64…`). The second-stage binary is in `/var/backups/pxe-platform-pult-20261020/pxe-control.stage2`. The client menu SHA-256 did not change (`7ecede91…`).
+
+Follow-ups on 21.10.2026:
+
+- **⌘K search** (Ctrl+K, or `/` outside input fields): a header dialog finds machines by MAC (with or without separators) and IP, installations, images, answer files and pages; arrows choose, Enter opens. Without JavaScript the button opens the `/search` page; the dialog reads `/search?format=json&q=…`.
+- **Machine steps follow the furthest step of a boot.** dnsmasq logs TFTP transfers (`sent … to IP`); after the loader iPXE asks for an address itself, which adds another `PXE … proxy` line — this now counts as the iPXE step instead of falling back to DHCP. A transfer aborted and repeated at once (the UEFI shim checking the file size) is not an error.
+- The **Сейчас** section is called **Now** in the English interface.
+
+Rollout 21.10.2026: replaced only `pxe-control` (SHA-256 `a637317d…`). The dnsmasq settings were not changed.
+
+## Stale SMB mounts, 23.10.2026
+
+After a NAS disk was replaced and the shared folder recreated, the `//192.168.10.10/Downloads/iso` mount stayed "mounted" for systemd while every access failed with `Stale file handle` (kernel log: `reconnect tcon failed rc = -2`). Storage recovery only restarted inactive mounts and missed it; Images saw the storage as "reachable again" every 10 minutes (the file list came from cache) but its rescan failed on `lstat`.
+
+Agent storage recovery now checks every active SMB mount the way a reader would: `stat` of the root and reading one entry (at most 15 seconds). When a mount is unreadable, Agent stops only the Windows ISO profiles whose ISOs live on that share, restarts the mount, and the regular pass starts the profiles again. Images also checks a storage with `stat` of its root. The mount account is kept in `/etc/pxe-platform/smb/<key>.cred` (currently `v.pogutsa`).
+
+Rollout 23.10.2026: replaced `pxe-agent` (SHA-256 `9650f3f0…`) and `pxe-images` (SHA-256 `848cdc92…`). The first pass after the Agent restart remounted both shares and the three profiles; DSM is "Available" again. The previous binaries are in `/var/backups/pxe-platform-agent-recovery-20261023/`. The client menu SHA-256 did not change (`7ecede91…`).

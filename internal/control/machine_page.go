@@ -111,20 +111,35 @@ func machineSessions(mac string, httpEvents []boot.Event, dhcp []agent.DHCPEvent
 	}
 	for i := range sessions {
 		session := &sessions[i]
-		session.Outcome = "dhcp_only"
-		best := 0
-		for _, step := range session.Steps {
+		var progress bootProgress
+		for i := range session.Steps {
+			step := &session.Steps[i]
 			switch {
 			case step.Failed:
-				session.Outcome = "loader_failed"
-			case step.Stage == "TFTP" && session.Outcome == "dhcp_only":
-				session.Outcome = "loader"
-			case step.Stage == "Меню" && session.Outcome != "loader_failed":
-				session.Outcome = "menu"
-			case step.Stage == "Образ" && session.Outcome != "loader_failed":
-				session.Outcome = "files"
+				progress.add("loader_failed")
+			case step.Stage == "TFTP":
+				progress.add("loader")
+			case step.Stage == "DHCP" && progress.loaderSent:
+				// iPXE asks for an address itself after the loader.
+				step.Stage, step.Text = "iPXE", "iPXE запросил адрес"
+				progress.add("pxe")
+			case step.Stage == "Меню":
+				progress.add("menu")
+			case step.Stage == "Образ":
+				progress.add("files")
 			}
 		}
+		// A failed transfer followed by a good one is the UEFI shim checking
+		// the file size; it is not an error.
+		if progress.loaderSent {
+			for i := range session.Steps {
+				if session.Steps[i].Failed {
+					session.Steps[i].Failed, session.Steps[i].Text = false, "Передача прервана клиентом и повторена"
+				}
+			}
+		}
+		session.Outcome = map[string]string{"files": "files", "menu": "menu", "ipxe": "loader", "loader": "loader", "loader_failed": "loader_failed", "pxe": "dhcp_only"}[progress.stage()]
+		best := 0
 		for _, c := range choices {
 			if !c.at.Before(session.Start) && !c.at.After(session.End) && c.rank > best {
 				session.Choice, best = c.key, c.rank

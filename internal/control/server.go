@@ -149,6 +149,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.protect("view", s.nowPage))
 	mux.HandleFunc("GET /installations", s.protect("view", s.installationsPage))
 	mux.HandleFunc("GET /assets/now.js", nowScript)
+	mux.HandleFunc("GET /search", s.protect("view", s.searchPage))
+	mux.HandleFunc("GET /assets/search.js", searchScript)
 	mux.HandleFunc("GET /installations/new", s.protect("images", s.installationNewPage))
 	mux.HandleFunc("POST /installations", s.protect("images", withPageErrors(s.installationNewPage, s.installationCreate)))
 	mux.HandleFunc("GET /assets/installation-form.js", installationFormScript)

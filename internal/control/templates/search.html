@@ -1,0 +1,4 @@
+{{define "search"}}{{template "top" .}}<div class="page-head"><div><h1>{{t "Поиск"}}</h1><p class="lead">{{t "Машины по MAC и IP, установки, образы, файлы ответов и разделы."}}</p></div></div>
+<form class="search" method="get" action="/search"><label for="search-q" class="sr-only">{{t "Поиск"}}</label><input id="search-q" type="search" name="q" value="{{.Query}}" placeholder="{{t "MAC, образ, установка, раздел…"}}" autofocus></form>
+{{if .SearchResults}}<ul class="search-page-results">{{range .SearchResults}}<li><a href="{{.Href}}"><span class="search-kind">{{.Kind}}</span><span>{{.Title}}</span>{{if .Sub}}<small class="mono">{{.Sub}}</small>{{end}}</a></li>{{end}}</ul>{{else if .Query}}<p class="muted">{{t "Ничего не найдено."}}</p>{{end}}
+{{template "bottom" .}}{{end}}

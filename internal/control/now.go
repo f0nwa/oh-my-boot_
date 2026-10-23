@@ -59,6 +59,8 @@ func machineTrail(row machineRow, live bool) []trailStep {
 		done = 2
 	case "loader_failed":
 		failed = 1
+	case "ipxe":
+		done = 3
 	case "menu":
 		done = 4
 	case "files":

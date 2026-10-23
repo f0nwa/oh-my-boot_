@@ -115,3 +115,45 @@ func TestResolveTFTPByTheOnlyRecentPXEClient(t *testing.T) {
 		t.Fatalf("ambiguous or stale TFTP linked: %+v %+v", resolved[4], resolved[5])
 	}
 }
+
+// The real dnsmasq sequence of a UEFI VM on 20.10.2026: two firmware PXE
+// answers, the shim's deliberate abort, the shim and iPXE sent, then iPXE's
+// own DHCP. The furthest step is iPXE, and the abort is not an error.
+func TestMachineProgressFollowsTheFurthestStepOfABoot(t *testing.T) {
+	t0 := time.Date(2026, 10, 20, 0, 40, 49, 0, time.UTC)
+	mac := "bc:24:11:52:02:39"
+	dhcp := []agent.DHCPEvent{
+		{At: t0, Kind: "PXE", MAC: mac, Detail: "proxy"},
+		{At: t0.Add(3 * time.Second), Kind: "PXE", MAC: mac, Detail: "proxy"},
+		{At: t0.Add(4 * time.Second), Kind: "tftp-failed", IP: "10.30.0.19", Detail: "ipxeboot/x86_64-sb/ipxe-shim.efi"},
+		{At: t0.Add(4 * time.Second), Kind: "tftp-sent", IP: "10.30.0.19", Detail: "ipxeboot/x86_64-sb/ipxe-shim.efi"},
+		{At: t0.Add(4 * time.Second), Kind: "tftp-sent", IP: "10.30.0.19", Detail: "ipxeboot/x86_64-sb/ipxe.efi"},
+		{At: t0.Add(11 * time.Second), Kind: "PXE", MAC: mac, Detail: "proxy"},
+	}
+	rows := machineRows(nil, dhcp, nil)
+	if len(rows) != 1 || rows[0].Stage != "ipxe" || rows[0].Firmware != "UEFI" {
+		t.Fatalf("rows=%+v", rows)
+	}
+	if got := trailStates(machineTrail(rows[0], false)); got != "done,done,done,none,none,none" {
+		t.Fatalf("trail=%s", got)
+	}
+	sessions := machineSessions(mac, nil, dhcp, nil)
+	if len(sessions) != 1 || sessions[0].Failed() || sessions[0].Outcome != "loader" {
+		t.Fatalf("session=%+v", sessions)
+	}
+	var stages []string
+	for _, step := range sessions[0].Steps {
+		stages = append(stages, step.Stage)
+		if step.Failed {
+			t.Fatalf("shim abort shown as a failure: %+v", step)
+		}
+	}
+	if strings.Join(stages, ",") != "DHCP,DHCP,TFTP,TFTP,TFTP,iPXE" {
+		t.Fatalf("stages=%v", stages)
+	}
+	// A new boot hours later starts from scratch.
+	later := append(dhcp, agent.DHCPEvent{At: t0.Add(5 * time.Hour), Kind: "PXE", MAC: mac})
+	if rows := machineRows(nil, later, nil); rows[0].Stage != "pxe" {
+		t.Fatalf("new boot stage=%s", rows[0].Stage)
+	}
+}

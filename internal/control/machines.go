@@ -14,7 +14,8 @@ import (
 )
 
 // machineRow sums up what one PXE client (by MAC) did most recently.
-// Stage is pxe, loader, loader_failed, menu or files.
+// Stage is the furthest step of its latest boot: pxe, loader,
+// loader_failed, ipxe, menu or files.
 type machineRow struct {
 	MAC, IP, Firmware, Stage, Choice string
 	LastSeen                         time.Time
@@ -165,15 +166,23 @@ func machineRows(httpEvents []boot.Event, dhcp []agent.DHCPEvent, names map[stri
 	for mac, entries := range byMAC {
 		sort.Slice(entries, func(i, j int) bool { return entries[i].at.Before(entries[j].at) })
 		row := machineRow{MAC: mac}
+		var boot bootProgress
+		var last time.Time
 		bestRank := 0
 		for _, en := range entries {
-			row.LastSeen, row.Stage = en.at, en.stage
+			if !last.IsZero() && en.at.Sub(last) > bootSessionGap {
+				// A new boot attempt: progress and choice start over.
+				boot, row.Choice, bestRank = bootProgress{}, "", 0
+			}
+			last = en.at
+			row.LastSeen = en.at
 			if en.ip != "" {
 				row.IP = en.ip
 			}
 			if en.firmware != "" {
 				row.Firmware = en.firmware
 			}
+			boot.add(en.stage)
 			if en.stage == "menu" {
 				row.Boots++
 				row.Choice, bestRank = "", 0
@@ -182,6 +191,7 @@ func machineRows(httpEvents []boot.Event, dhcp []agent.DHCPEvent, names map[stri
 				row.Choice, bestRank = en.key, en.rank
 			}
 		}
+		row.Stage = boot.stage()
 		if title, ok := names[row.Choice]; ok {
 			row.Choice = title
 		}
@@ -208,6 +218,49 @@ func (s *Server) menuNames(ctx context.Context) map[string]string {
 		names[keyFor("windriver", c.ID)] = c.Title
 	}
 	return names
+}
+
+// bootProgress is how far one boot attempt got. dnsmasq logs a second
+// DHCP/PXE answer when iPXE itself asks for an address after the loader, and
+// a UEFI shim aborts its first transfer on purpose before fetching the file
+// again, so the furthest step counts, not the last line.
+type bootProgress struct {
+	loaderSent, loaderFailed, ipxe, menu, files bool
+}
+
+func (b *bootProgress) add(stage string) {
+	switch stage {
+	case "pxe":
+		if b.loaderSent {
+			b.ipxe = true
+		}
+	case "loader":
+		b.loaderSent = true
+	case "loader_failed":
+		b.loaderFailed = true
+	case "menu":
+		b.menu = true
+	case "files":
+		b.files = true
+	}
+}
+
+// stage names the furthest step: files, menu, ipxe, loader, loader_failed
+// or pxe.
+func (b bootProgress) stage() string {
+	switch {
+	case b.files:
+		return "files"
+	case b.menu:
+		return "menu"
+	case b.ipxe:
+		return "ipxe"
+	case b.loaderSent:
+		return "loader"
+	case b.loaderFailed:
+		return "loader_failed"
+	}
+	return "pxe"
 }
 
 func keyFor(prefix string, id int64) string {
@@ -244,6 +297,8 @@ func machineStageLabel(stage string) string {
 		return "Загрузчик получен"
 	case "loader_failed":
 		return "Ошибка загрузчика"
+	case "ipxe":
+		return "iPXE запущен"
 	case "menu":
 		return "Меню"
 	case "files":

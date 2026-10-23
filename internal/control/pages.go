@@ -63,6 +63,7 @@ type pageData struct {
 	Preview               *menuPreview
 	InstallCounts         map[string]int
 	ProfileSizes          map[int64]int64
+	SearchResults         []searchResult
 	SessionIndex          int
 	DHCPEvents            []agent.DHCPEvent
 	DHCPError             string

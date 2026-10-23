@@ -2,6 +2,7 @@ package control
 
 import (
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -132,6 +133,17 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 	}
 	for _, e := range httpEvents {
 		if e.MAC != mac {
+			continue
+		}
+		if e.Kind == "hello" {
+			text := "Машина сообщила о себе"
+			if manufacturer, product, serial, _, ok := helloDetails(e); ok {
+				raw := strings.TrimSpace(strings.Join([]string{manufacturer, product}, " "))
+				if serial != "" {
+					raw += " · " + serial
+				}
+				steps = append(steps, machineStep{At: e.At, Stage: "iPXE", Text: text, Raw: raw})
+			}
 			continue
 		}
 		problem := fileProblem(e)
@@ -311,10 +323,20 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 	names := s.menuNames(r.Context())
 	now := time.Now()
 	install := s.loadInstallLog(r.Context(), httpEvents)
-	for _, row := range machineRowsWith(httpEvents, dhcp, install, names, now) {
+	rows := machineRowsWith(httpEvents, dhcp, install, names, now)
+	book := s.machineBook(r.Context(), rows, httpEvents)
+	describeMachines(rows, book)
+	for _, row := range rows {
 		if row.MAC == mac {
 			data.Machines = []machineRow{row}
 		}
+	}
+	if book != nil {
+		info, known := book[mac]
+		if !known {
+			info = MachineInfo{MAC: mac}
+		}
+		data.Machine = &machineCard{MachineInfo: info, Known: known, Label: machineLabel(&info, mac)}
 	}
 	data.Sessions = machineSessionsWith(mac, httpEvents, dhcp, install, names, now)
 	if len(data.Machines) == 1 && len(data.Sessions) > 0 {
@@ -325,4 +347,69 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 		data.SessionIndex = n
 	}
 	render(w, "machine", data)
+}
+
+// machineCard is the «Машина» block of a machine's page.
+type machineCard struct {
+	MachineInfo
+	Known bool
+	Label string
+}
+
+// cleanMachineText trims a field typed into the machine form and checks its
+// length and characters.
+func cleanMachineText(value string, max int) (string, bool) {
+	value = strings.TrimSpace(value)
+	if len([]rune(value)) > max {
+		return "", false
+	}
+	for _, r := range value {
+		if r < 0x20 && r != '\n' && r != '\t' || r == 0x7f {
+			return "", false
+		}
+	}
+	return value, true
+}
+
+// machineEdit stores a machine's name, note and maker or model override.
+func (s *Server) machineEdit(w http.ResponseWriter, r *http.Request) {
+	mac := strings.ToLower(r.PathValue("mac"))
+	book, ok := s.Store.(MachineBook)
+	if !macAddress.MatchString(mac) || !ok {
+		http.Error(w, "Неверный MAC-адрес", http.StatusBadRequest)
+		return
+	}
+	var edit MachineEdit
+	var valid [4]bool
+	edit.Name, valid[0] = cleanMachineText(r.PostFormValue("name"), 80)
+	edit.Manufacturer, valid[1] = cleanMachineText(r.PostFormValue("manufacturer"), 120)
+	edit.Product, valid[2] = cleanMachineText(r.PostFormValue("product"), 120)
+	edit.Note, valid[3] = cleanMachineText(r.PostFormValue("note"), 500)
+	if !valid[0] || !valid[1] || !valid[2] || !valid[3] {
+		http.Error(w, "Слишком длинный текст или недопустимые символы", http.StatusBadRequest)
+		return
+	}
+	if err := book.EditMachine(r.Context(), mac, edit); err != nil {
+		http.Error(w, "Не удалось сохранить машину", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.edit", "ok", mac)
+	http.Redirect(w, r, "/events/machines/"+mac+"?message="+url.QueryEscape("Машина сохранена"), http.StatusSeeOther)
+}
+
+// machineDelete removes a machine from the book.
+func (s *Server) machineDelete(w http.ResponseWriter, r *http.Request) {
+	mac := strings.ToLower(r.PathValue("mac"))
+	book, ok := s.Store.(MachineBook)
+	if !macAddress.MatchString(mac) || !ok {
+		http.Error(w, "Неверный MAC-адрес", http.StatusBadRequest)
+		return
+	}
+	if err := book.DeleteMachine(r.Context(), mac); err != nil {
+		http.Error(w, "Не удалось удалить машину", http.StatusServiceUnavailable)
+		return
+	}
+	s.bookCache.forget(mac)
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.delete", "ok", mac)
+	http.Redirect(w, r, "/events?message="+url.QueryEscape("Машина удалена из списка"), http.StatusSeeOther)
 }

@@ -26,6 +26,22 @@ type machineRow struct {
 	Problem string
 	// Download is a boot file being sent to the machine right now.
 	Download *boot.Transfer
+	// Name and Label come from the book of machines: a person's name for
+	// the machine, and its maker and model (or network card maker).
+	Name, Label string
+}
+
+// describeMachines puts names and labels from the book on the rows.
+func describeMachines(rows []machineRow, book map[string]MachineInfo) {
+	for i := range rows {
+		info, ok := book[rows[i].MAC]
+		if ok {
+			rows[i].Name = info.Name
+			rows[i].Label = machineLabel(&info, rows[i].MAC)
+		} else {
+			rows[i].Label = machineLabel(nil, rows[i].MAC)
+		}
+	}
 }
 
 // fileProblem tells how a boot file request ended badly: missing (an HTTP
@@ -204,7 +220,8 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 		byMAC[e.MAC] = append(byMAC[e.MAC], en)
 	}
 	for _, e := range httpEvents {
-		if e.MAC == "" {
+		// A hello report is not a boot step; the book of machines reads it.
+		if e.MAC == "" || e.Kind == "hello" {
 			continue
 		}
 		en := entry{at: e.At, ip: eventIP(e.RemoteAddr), stage: "files"}
@@ -446,6 +463,8 @@ func machineStageLabel(stage string) string {
 		return "Загрузка файлов"
 	case "files_failed":
 		return "Файл установки не получен"
+	case "unknown":
+		return "Нет в журнале"
 	case "stuck":
 		return "Застрял в WinPE"
 	case "winpe":

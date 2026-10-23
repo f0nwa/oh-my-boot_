@@ -31,7 +31,7 @@ type MenuDraft struct {
 // menuLook is the design buildMenuTreeWithProfiles draws; the script names
 // it in a comment line. A new value makes every published menu show a "new
 // look" change until it is published again.
-const menuLook = "pult-3"
+const menuLook = "pult-4"
 
 const menuLookMarker = "# pxe-platform:look "
 

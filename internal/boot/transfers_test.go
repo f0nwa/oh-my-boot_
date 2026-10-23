@@ -92,3 +92,19 @@ func TestTransfersListFilesBeingSent(t *testing.T) {
 	}
 	_ = io.Discard
 }
+
+func TestHelloRecordsMachineDetails(t *testing.T) {
+	var events []Event
+	h, err := NewHandler(t.TempDir(), []byte("#!ipxe\n"), func(e Event) { events = append(events, e) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/boot/hello?mac=bc:24:11:52:02:37&manufacturer=Dell%20Inc.&product=OptiPlex%207090&serial=7XK2JQ3&uuid=4c4c4544-0058&platform=efi&evil=1", nil))
+	if res.Code != 200 || res.Body.String() != "#!ipxe\n" || len(events) != 1 || events[0].Kind != "hello" {
+		t.Fatalf("code=%d events=%+v", res.Code, events)
+	}
+	if got := events[0].Path; got != "/boot/hello?manufacturer=Dell+Inc.&platform=efi&product=OptiPlex+7090&serial=7XK2JQ3&uuid=4c4c4544-0058" {
+		t.Fatalf("path=%s", got)
+	}
+}

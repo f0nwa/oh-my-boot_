@@ -70,7 +70,13 @@ var menuTheme = menuLookMarker + menuLook + "\n" +
 	"iseq ${pxe_fb} 1 && cpair --foreground 0 --background 3 2 || cpair --foreground 7 --background 3 2 || echo -n\n" +
 	"cpair --foreground 3 --background 0 3 || echo -n\n" +
 	menuPadSettings() +
-	"iseq ${platform} efi && set pxe_fw UEFI || set pxe_fw BIOS\n"
+	"iseq ${platform} efi && set pxe_fw UEFI || set pxe_fw BIOS\n" +
+	menuHello
+
+// menuHello reports the machine's maker, model, serial and UUID from SMBIOS
+// to Boot (relative to the menu's own address, so /boot/hello) and frees the
+// empty answer. A failure only skips the report.
+const menuHello = "imgfetch --name pxe-hello hello?manufacturer=${manufacturer:uristring}&product=${product:uristring}&serial=${serial:uristring}&uuid=${uuid}&platform=${platform} && imgfree pxe-hello || echo -n\n"
 
 func menuPadSettings() string {
 	var b strings.Builder

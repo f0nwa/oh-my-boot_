@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -107,6 +108,21 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			record(Event{Kind: "menu", Path: r.URL.Path, RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
 		}
 	})
+	// The menu reports the machine's SMBIOS (maker, model, serial, UUID) here
+	// before it shows itself; the answer is an empty script.
+	mux.HandleFunc("/boot/hello", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte("#!ipxe\n"))
+		if record != nil {
+			record(Event{Kind: "hello", Path: helloPath(r.URL.Query()), RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
+		}
+	})
 	mux.HandleFunc("/assets/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
@@ -192,4 +208,23 @@ func privateWinPEScript(name string) bool {
 	}
 	id, err := strconv.ParseUint(parts[1], 10, 63)
 	return err == nil && id > 0
+}
+
+// HelloFields are the machine details the menu reports to /boot/hello.
+var HelloFields = []string{"manufacturer", "product", "serial", "uuid", "platform"}
+
+// helloPath keeps the known fields of a hello request, each cut to 128
+// characters, as the logged path.
+func helloPath(query url.Values) string {
+	kept := url.Values{}
+	for _, field := range HelloFields {
+		value := strings.TrimSpace(query.Get(field))
+		if len(value) > 128 {
+			value = value[:128]
+		}
+		if value != "" {
+			kept.Set(field, value)
+		}
+	}
+	return "/boot/hello?" + kept.Encode()
 }

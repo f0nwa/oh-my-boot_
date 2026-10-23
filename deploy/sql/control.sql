@@ -73,3 +73,22 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system' 
 ALTER TABLE windows_answer_variants ADD COLUMN IF NOT EXISTS wipes_disk BOOLEAN;
 CREATE TABLE IF NOT EXISTS menu_draft (id SMALLINT PRIMARY KEY CHECK (id = 1), title TEXT NOT NULL, label TEXT NOT NULL, message TEXT NOT NULL, ubuntu BOOLEAN NOT NULL, ubuntu_folder TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS menu_draft_items (position INT PRIMARY KEY, key TEXT NOT NULL UNIQUE CHECK (key ~ '^win(iso|answer|driver)_[0-9]+$'), folder TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '');
+
+CREATE TABLE IF NOT EXISTS machines (
+    mac TEXT PRIMARY KEY CHECK (mac ~ '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$'),
+    first_seen TIMESTAMPTZ NOT NULL,
+    last_seen TIMESTAMPTZ NOT NULL,
+    last_ip TEXT NOT NULL DEFAULT '',
+    firmware TEXT NOT NULL DEFAULT '',
+    manufacturer TEXT NOT NULL DEFAULT '',
+    product TEXT NOT NULL DEFAULT '',
+    serial TEXT NOT NULL DEFAULT '',
+    uuid TEXT NOT NULL DEFAULT '',
+    detected_at TIMESTAMPTZ,
+    name TEXT NOT NULL DEFAULT '',
+    manufacturer_override TEXT NOT NULL DEFAULT '',
+    product_override TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS machines_last_seen_idx ON machines (last_seen DESC);

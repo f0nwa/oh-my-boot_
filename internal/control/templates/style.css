@@ -274,7 +274,7 @@ button[disabled]{opacity:.45;cursor:default}
 .machines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;min-width:720px}
 .machine{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:12px 14px}
 .machine-live{border-color:var(--draft-line)}.machine-bad{border-color:var(--bad-line)}
-.machine-id{display:flex;flex-direction:column;min-width:0}.machine-id a{text-decoration:none}.machine-id small{color:var(--muted)}
+.machine-id{display:flex;flex-direction:column;min-width:0}.machine-id small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.machine-id a{text-decoration:none}.machine-id small{color:var(--muted)}
 .trail{display:flex;flex-direction:column;gap:5px;min-width:0}
 .trail-bar{height:4px;border-radius:2px;background:var(--line-strong)}
 .trail-done .trail-bar{background:var(--ok)}.trail-current .trail-bar{background:var(--accent)}.trail-failed .trail-bar{background:var(--bad)}
@@ -356,3 +356,9 @@ button[disabled]{opacity:.45;cursor:default}
 .btn-danger:hover{filter:brightness(1.08)}
 .danger-zone summary{color:var(--bad);cursor:pointer}
 .danger-zone p{margin:8px 0}
+/* The «Машина» block of a machine's page */
+.machine-card{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:12px}
+.machine-facts{display:grid;grid-template-columns:150px minmax(0,1fr);gap:6px 16px;margin:0}
+.machine-facts dt{color:var(--muted)}.machine-facts dd{margin:0;overflow-wrap:anywhere}.machine-facts .pre{white-space:pre-wrap}
+.machine-edit form{display:grid;gap:6px;max-width:520px;margin-top:10px}.machine-edit button{justify-self:start;margin-top:8px}
+@media (max-width:760px){.machine-facts{grid-template-columns:1fr}}

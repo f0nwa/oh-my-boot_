@@ -31,6 +31,7 @@ type menuVersionRow struct {
 
 type pageData struct {
 	Journal               *journalView
+	Machine               *machineCard
 	Info                  requestContext
 	CSRF                  string
 	Lang                  string

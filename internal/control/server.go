@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -122,6 +123,7 @@ type Server struct {
 	menuMu            sync.Mutex
 	draftMu           sync.Mutex
 	smbMu             sync.Mutex
+	bookCache         machineBookCache
 	windowsMu         sync.Mutex
 }
 
@@ -157,6 +159,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /installations/{key}/add", s.protect("menu", withPageErrors(s.installationsPage, s.installationAdd)))
 	mux.HandleFunc("GET /events", s.protect("view", s.eventsPage))
 	mux.HandleFunc("GET /events/machines/{mac}", s.protect("view", s.machinePage))
+	mux.HandleFunc("POST /events/machines/{mac}/edit", s.protect("images", withPageErrors(s.machinePage, s.machineEdit)))
+	mux.HandleFunc("POST /events/machines/{mac}/delete", s.protect("delete", withPageErrors(s.machinePage, s.machineDelete)))
 	mux.HandleFunc("POST /events/retention", s.protect("delete", withPageErrors(s.eventsPage, s.journalRetention)))
 	mux.HandleFunc("POST /events/clear", s.protect("delete", withPageErrors(s.eventsPage, s.journalClear)))
 	mux.HandleFunc("GET /network", s.protect("view", s.networkPage))
@@ -369,7 +373,21 @@ func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	switch data.Tab {
 	case "machines":
-		data.Machines = machineRowsWith(httpEvents, dhcp, s.loadInstallLog(r.Context(), httpEvents), s.menuNames(r.Context()), time.Now())
+		rows := machineRowsWith(httpEvents, dhcp, s.loadInstallLog(r.Context(), httpEvents), s.menuNames(r.Context()), time.Now())
+		book := s.machineBook(r.Context(), rows, httpEvents)
+		// The book also knows machines whose requests have left the logs.
+		inRows := map[string]bool{}
+		for _, row := range rows {
+			inRows[row.MAC] = true
+		}
+		for _, info := range book {
+			if !inRows[info.MAC] {
+				rows = append(rows, machineRow{MAC: info.MAC, IP: info.LastIP, Firmware: info.Firmware, LastSeen: info.LastSeen, Stage: "unknown"})
+			}
+		}
+		sort.SliceStable(rows, func(i, j int) bool { return rows[i].LastSeen.After(rows[j].LastSeen) })
+		describeMachines(rows, book)
+		data.Machines = rows
 	case "requests":
 		for _, e := range httpEvents {
 			if data.MACFilter == "" || e.MAC == data.MACFilter {

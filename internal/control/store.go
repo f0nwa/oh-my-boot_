@@ -321,3 +321,72 @@ func (s Store) ChangeOwnPassword(ctx context.Context, id int64, sessionToken, cu
 	}
 	return tx.Commit(ctx)
 }
+
+// Machines returns the book of machines, most recently seen first.
+func (s Store) Machines(ctx context.Context) ([]MachineInfo, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT mac,first_seen,last_seen,last_ip,firmware,manufacturer,product,serial,uuid,detected_at,name,manufacturer_override,product_override,note FROM machines ORDER BY last_seen DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MachineInfo
+	for rows.Next() {
+		var m MachineInfo
+		if err := rows.Scan(&m.MAC, &m.FirstSeen, &m.LastSeen, &m.LastIP, &m.Firmware, &m.Manufacturer, &m.Product, &m.Serial, &m.UUID, &m.DetectedAt, &m.Name, &m.ManufacturerOverride, &m.ProductOverride, &m.Note); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// SeeMachines adds machines to the book and moves their last-seen data on.
+// SMBIOS details change only with a newer hello report; times never go back.
+func (s Store) SeeMachines(ctx context.Context, seen []MachineSeen) error {
+	batch := &pgx.Batch{}
+	for _, m := range seen {
+		var detected *time.Time
+		if !m.DetectedAt.IsZero() {
+			at := m.DetectedAt
+			detected = &at
+		}
+		batch.Queue(`INSERT INTO machines (mac,first_seen,last_seen,last_ip,firmware,manufacturer,product,serial,uuid,detected_at)
+VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,$9)
+ON CONFLICT (mac) DO UPDATE SET
+ first_seen=LEAST(machines.first_seen,EXCLUDED.first_seen),
+ last_seen=GREATEST(machines.last_seen,EXCLUDED.last_seen),
+ last_ip=CASE WHEN EXCLUDED.last_seen>=machines.last_seen AND EXCLUDED.last_ip<>'' THEN EXCLUDED.last_ip ELSE machines.last_ip END,
+ firmware=CASE WHEN EXCLUDED.last_seen>=machines.last_seen AND EXCLUDED.firmware<>'' THEN EXCLUDED.firmware ELSE machines.firmware END,
+ manufacturer=CASE WHEN EXCLUDED.detected_at>COALESCE(machines.detected_at,'-infinity') THEN EXCLUDED.manufacturer ELSE machines.manufacturer END,
+ product=CASE WHEN EXCLUDED.detected_at>COALESCE(machines.detected_at,'-infinity') THEN EXCLUDED.product ELSE machines.product END,
+ serial=CASE WHEN EXCLUDED.detected_at>COALESCE(machines.detected_at,'-infinity') THEN EXCLUDED.serial ELSE machines.serial END,
+ uuid=CASE WHEN EXCLUDED.detected_at>COALESCE(machines.detected_at,'-infinity') THEN EXCLUDED.uuid ELSE machines.uuid END,
+ detected_at=GREATEST(machines.detected_at,EXCLUDED.detected_at)`,
+			m.MAC, m.At, m.IP, m.Firmware, m.Manufacturer, m.Product, m.Serial, m.UUID, detected)
+	}
+	results := s.Pool.SendBatch(ctx, batch)
+	defer results.Close()
+	for range seen {
+		if _, err := results.Exec(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// EditMachine stores a machine's name, note and maker or model override; a
+// machine not yet in the book is added.
+func (s Store) EditMachine(ctx context.Context, mac string, edit MachineEdit) error {
+	_, err := s.Pool.Exec(ctx, `INSERT INTO machines (mac,first_seen,last_seen,name,note,manufacturer_override,product_override,updated_at)
+VALUES ($1,now(),now(),$2,$3,$4,$5,now())
+ON CONFLICT (mac) DO UPDATE SET name=$2,note=$3,manufacturer_override=$4,product_override=$5,updated_at=now()`,
+		mac, edit.Name, edit.Note, edit.Manufacturer, edit.Product)
+	return err
+}
+
+// DeleteMachine removes a machine from the book; if it boots again it comes
+// back without its name.
+func (s Store) DeleteMachine(ctx context.Context, mac string) error {
+	_, err := s.Pool.Exec(ctx, `DELETE FROM machines WHERE mac=$1`, mac)
+	return err
+}

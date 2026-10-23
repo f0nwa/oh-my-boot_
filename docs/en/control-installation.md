@@ -301,3 +301,16 @@ Both actions are audited (`journal.retention`, `journal.clear`). The system keep
 API on the Boot socket: `GET /journal`, `PUT /journal/retention` (`{"days": N}`), `POST /journal/clear`; on the Agent socket: `POST /smb-sessions/clear`.
 
 Rollout 23.10.2026, 16:10: replaced `pxe-boot` (SHA-256 `09b437f4…`), `pxe-control` (`19f3df0d…`), `pxe-agent` (`f34cd6bb…`); previous files are `/usr/local/bin/*.bak-202610231610`. Automatic cleanup is off and the log is untouched (534 records since 15.10.2026, 192 KB).
+
+## Machine list: model, maker and own name, 23.10.2026
+
+Control keeps a list of every machine it has seen in the `machines` table of the `pxe_control` database ([migration](../../deploy/sql/2026-10-23-machines.sql)). Clearing the boot log does not clear it. For each machine it holds:
+
+- the MAC, when it was first and last seen, the last IP and firmware;
+- **what the machine reported about itself**: maker, model, serial number and UUID from SMBIOS. The boot menu sends them with one `imgfetch` line to `/boot/hello` (relative to the menu's own address); Boot logs it as kind `hello`, and Control moves it into the list. Firmware placeholders (“To Be Filled By O.E.M.”, “Default string”, an all-zero UUID) are dropped. If sending fails, the menu still shows. For machines to start reporting, the menu has to be published again: the draft shows “Updated menu script”;
+- **the network card maker** from the first three MAC bytes in the IEEE registry (built into Control, `internal/oui`, about 40 thousand prefixes). This is the card's maker, not the computer's; an address the machine or hypervisor made up is labelled “locally administered address”;
+- **what a person set**: an own name, a maker and model instead of the reported ones, and a note.
+
+Where it shows: on Now and in Journal → Machines the own name replaces the MAC (with the MAC small beneath it), and under the MAC the maker and model or, until the machine reaches the menu, the network card maker. The Journal also lists machines no longer in the boot log (“Not in the log”). A machine's page has a block with all details, a “Change name and model” form (administrator and operator) and “Remove the machine from the list” (administrator only). ⌘K search finds machines by name, model, serial number, note and network card maker. Changes are audited (`machine.edit`, `machine.delete`).
+
+Rollout 23.10.2026, 18:04: the migration was applied to `pxe_control` (as `pxe-control`); replaced `pxe-boot` (SHA-256 `ba1b1e7e…`) and `pxe-control` (`f6ab41ff…`); previous files are `/usr/local/bin/*.bak-202610231804`. The client menu does not change until it is published.

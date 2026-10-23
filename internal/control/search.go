@@ -67,13 +67,20 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 		}
 	}
 	names := s.menuNames(r.Context())
-	for _, row := range machineRows(httpEvents, dhcp, names) {
-		if searchMatch(query, row.MAC, row.IP) {
-			sub := row.IP
-			if row.Choice != "" {
-				sub = strings.TrimPrefix(sub+" · "+row.Choice, " · ")
-			}
-			add(searchResult{Kind: "Машина", Title: row.MAC, Sub: sub, Href: "/events/machines/" + row.MAC})
+	rows := machineRows(httpEvents, dhcp, names)
+	book := s.machineBook(r.Context(), rows, httpEvents)
+	seen := map[string]bool{}
+	for _, row := range rows {
+		seen[row.MAC] = true
+		info := book[row.MAC]
+		if searchMatch(query, row.MAC, row.IP, info.Name, info.Maker(), info.Model(), info.Serial, info.Note, nicVendor(row.MAC)) {
+			add(machineSearchResult(row.MAC, row.IP, row.Choice, info))
+		}
+	}
+	// Machines only the book still remembers.
+	for _, info := range book {
+		if !seen[info.MAC] && searchMatch(query, info.MAC, info.LastIP, info.Name, info.Maker(), info.Model(), info.Serial, info.Note) {
+			add(machineSearchResult(info.MAC, info.LastIP, "", info))
 		}
 	}
 	profiles, answers, configs, err := s.menuSources(r.Context())
@@ -144,4 +151,23 @@ func searchScript(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(searchJS)
+}
+
+// machineSearchResult names a machine by its own name when it has one.
+func machineSearchResult(mac, ip, choice string, info MachineInfo) searchResult {
+	title, parts := mac, []string{}
+	if info.Name != "" {
+		title = info.Name
+		parts = append(parts, mac)
+	}
+	if label := machineLabel(&info, mac); label != "" {
+		parts = append(parts, label)
+	}
+	if ip != "" {
+		parts = append(parts, ip)
+	}
+	if choice != "" {
+		parts = append(parts, choice)
+	}
+	return searchResult{Kind: "Машина", Title: title, Sub: strings.Join(parts, " · "), Href: "/events/machines/" + mac}
 }

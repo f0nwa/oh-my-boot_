@@ -18,6 +18,7 @@ type recoverySystemctl struct {
 	active    map[string]bool
 	failStart map[string]bool
 	calls     []string
+	onStop    func(unit string)
 }
 
 func (s *recoverySystemctl) Run(_ context.Context, args ...string) error {
@@ -36,6 +37,11 @@ func (s *recoverySystemctl) Run(_ context.Context, args ...string) error {
 			return errors.New("start failed")
 		}
 		s.active[unit] = true
+		return nil
+	case "stop":
+		if s.onStop != nil {
+			s.onStop(unit)
+		}
 		return nil
 	}
 	return nil
@@ -77,7 +83,7 @@ func recoveryFixture(t *testing.T, ctl *recoverySystemctl) (*StorageRecovery, st
 			t.Fatal(err)
 		}
 	}
-	smb := &SMBManager{CredentialsDir: creds, UnitDir: units, MountRoot: mountRoot, UploadRoot: uploadRoot, Systemctl: ctl}
+	smb := &SMBManager{CredentialsDir: creds, UnitDir: units, MountRoot: mountRoot, UploadRoot: uploadRoot, Systemctl: ctl, Probe: func(string) error { return nil }}
 	windows := &WindowsISOManager{ConfigRoot: winiso, Systemctl: ctl}
 	return &StorageRecovery{SMB: smb, Windows: windows, ConfigPath: filepath.Join(base, "storage-recovery.json")}, readUnit, uploadUnit, base
 }
@@ -172,5 +178,61 @@ func TestRecoveryHTTP(t *testing.T) {
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/storage-recovery", nil))
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `"last_run"`) {
 		t.Fatalf("get: %d %s", res.Code, res.Body.String())
+	}
+}
+
+func TestRecoveryRemountsAnActiveButUnreadableShare(t *testing.T) {
+	key := strings.Repeat("a", 32)
+	readTarget := filepath.Join("/mnt/pxe-platform-smb", key)
+	ctl := &recoverySystemctl{active: map[string]bool{}}
+	recovery, readUnit, uploadUnit, base := recoveryFixture(t, ctl)
+	for _, unit := range []string{readUnit, uploadUnit, "pxe-winiso@1.service", "pxe-winiso@3.service"} {
+		ctl.active[unit] = true
+	}
+	winiso := filepath.Join(base, "winiso")
+	// Profile 1 reads its ISO from the stale share, profile 3 from elsewhere.
+	if err := os.WriteFile(filepath.Join(winiso, "1.json"), []byte(`{"id":1,"storage_root":"`+readTarget+`","relative_path":"win.iso"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(winiso, "3.json"), []byte(`{"id":3,"storage_root":"/srv/iso","relative_path":"other.iso"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stale := true
+	recovery.SMB.Probe = func(path string) error {
+		if stale && path == readTarget {
+			return errors.New("stale file handle")
+		}
+		return nil
+	}
+	// Stopping a profile makes its unit inactive, as systemd would.
+	ctl.onStop = func(unit string) { ctl.active[unit] = false }
+	status := recovery.RunOnce(context.Background())
+	var order []string
+	for _, call := range ctl.calls {
+		if strings.HasPrefix(call, "stop ") || strings.HasPrefix(call, "restart ") {
+			order = append(order, call)
+		}
+	}
+	want := []string{"stop pxe-winiso@1.service", "restart " + readUnit, "restart pxe-winiso@1.service"}
+	if strings.Join(order, ",") != strings.Join(want, ",") {
+		t.Fatalf("calls = %v, want %v", order, want)
+	}
+	if status.LastError != "" || !strings.Contains(strings.Join(status.Actions, "\n"), "stale file handle") {
+		t.Fatalf("status = %+v", status)
+	}
+	// Readable again: the next run leaves everything alone.
+	stale = false
+	ctl.calls = nil
+	if status := recovery.RunOnce(context.Background()); len(status.Actions) != 0 {
+		t.Fatalf("healthy run acted: %v", status.Actions)
+	}
+}
+
+func TestProbeDirReadsAndFailsOnMissing(t *testing.T) {
+	if err := probeDir(t.TempDir()); err != nil {
+		t.Fatalf("empty dir: %v", err)
+	}
+	if err := probeDir(filepath.Join(t.TempDir(), "gone")); err == nil {
+		t.Fatal("missing dir passed")
 	}
 }

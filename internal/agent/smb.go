@@ -40,6 +40,8 @@ type SMBManager struct {
 	ImagesUID      string
 	ImagesGID      string
 	Systemctl      SMBSystemctl
+	// Probe checks that a mounted share can be read. Nil uses probeDir.
+	Probe func(path string) error
 }
 
 func (m *SMBManager) EnableUpload(ctx context.Context, key, server, share, subpath string) error {

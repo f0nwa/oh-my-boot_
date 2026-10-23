@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -107,6 +108,27 @@ func (r *StorageRecovery) RunOnce(ctx context.Context) RecoveryStatus {
 	actions := []string{}
 	var problems []error
 	if r.SMB != nil {
+		// A share that is mounted but no longer readable (for example after
+		// the NAS folder was recreated) stays "active" in systemd. Free it
+		// from the ISO profiles that use it, then mount it again.
+		if stale := r.SMB.StaleMounts(); len(stale) > 0 {
+			if r.Windows != nil {
+				var roots []string
+				for _, mount := range stale {
+					roots = append(roots, mount.Target)
+				}
+				done, err := r.Windows.StopProfilesOn(ctx, roots)
+				actions = append(actions, done...)
+				if err != nil {
+					problems = append(problems, err)
+				}
+			}
+			done, err := r.SMB.RemountStale(ctx, stale)
+			actions = append(actions, done...)
+			if err != nil {
+				problems = append(problems, err)
+			}
+		}
 		done, err := r.SMB.RecoverMounts(ctx)
 		actions = append(actions, done...)
 		if err != nil {
@@ -192,6 +214,158 @@ func (m *SMBManager) RecoverMounts(ctx context.Context) ([]string, error) {
 				problems = append(problems, err)
 			}
 		}
+	}
+	return actions, errors.Join(problems...)
+}
+
+// probeTimeout bounds a readability check of a mounted share; a hung SMB
+// server must not stall recovery.
+const probeTimeout = 15 * time.Second
+
+// probeDir reads one entry of a directory, giving up after probeTimeout.
+func probeDir(path string) error {
+	done := make(chan error, 1)
+	go func() {
+		f, err := os.Open(path)
+		if err == nil {
+			_, err = f.Readdirnames(1)
+			if errors.Is(err, io.EOF) {
+				err = nil
+			}
+			_ = f.Close()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(probeTimeout):
+		return fmt.Errorf("no answer in %s", probeTimeout)
+	}
+}
+
+// staleMount is an SMB mount unit that is active but cannot be read.
+type staleMount struct {
+	Unit, Target string
+	Err          error
+}
+
+// StaleMounts lists managed SMB mounts that systemd reports active but whose
+// directory cannot be read, such as a "Stale file handle" after the NAS
+// recreated the shared folder.
+func (m *SMBManager) StaleMounts() []staleMount {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Systemctl == nil {
+		return nil
+	}
+	probe := m.Probe
+	if probe == nil {
+		probe = probeDir
+	}
+	var stale []staleMount
+	for _, target := range m.mountTargets() {
+		unit := smbUnitName(target)
+		if m.Systemctl.Run(context.Background(), "is-active", "--quiet", unit) != nil {
+			continue // inactive mounts are restarted by RecoverMounts
+		}
+		if err := probe(target); err != nil {
+			stale = append(stale, staleMount{Unit: unit, Target: target, Err: err})
+		}
+	}
+	return stale
+}
+
+// RemountStale restarts the given mount units so the kernel connects again.
+func (m *SMBManager) RemountStale(ctx context.Context, stale []staleMount) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var actions []string
+	var problems []error
+	for _, mount := range stale {
+		if err := m.Systemctl.Run(ctx, "restart", mount.Unit); err != nil {
+			problems = append(problems, fmt.Errorf("%s: %w", mount.Unit, err))
+			continue
+		}
+		actions = append(actions, fmt.Sprintf("remounted %s (was unreadable: %v)", mount.Unit, mount.Err))
+	}
+	return actions, errors.Join(problems...)
+}
+
+// mountTargets lists the directories of the managed SMB mounts that have a
+// unit file: the read-only mount and, when configured, the upload mount.
+func (m *SMBManager) mountTargets() []string {
+	creds, err := filepath.Glob(filepath.Join(m.CredentialsDir, "*.cred"))
+	if err != nil {
+		return nil
+	}
+	sort.Strings(creds)
+	roots := []string{m.MountRoot}
+	if m.UploadRoot != "" {
+		roots = append(roots, m.UploadRoot)
+	}
+	var targets []string
+	for _, cred := range creds {
+		key := strings.TrimSuffix(filepath.Base(cred), ".cred")
+		if key == "" || strings.ContainsAny(key, "/\\") {
+			continue
+		}
+		for _, root := range roots {
+			target := filepath.Join(root, key)
+			if info, err := os.Lstat(filepath.Join(m.UnitDir, smbUnitName(target))); err == nil && info.Mode().IsRegular() {
+				targets = append(targets, target)
+			}
+		}
+	}
+	return targets
+}
+
+// StopProfilesOn stops the active Windows ISO profile units whose ISO lives
+// under one of roots, so their loop mounts release the share. RecoverProfiles
+// starts them again once the share is back.
+func (m *WindowsISOManager) StopProfilesOn(ctx context.Context, roots []string) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Systemctl == nil {
+		return nil, fmt.Errorf("systemd control is unavailable")
+	}
+	configs, err := filepath.Glob(filepath.Join(m.ConfigRoot, "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(configs)
+	var actions []string
+	var problems []error
+	for _, config := range configs {
+		id, err := strconv.ParseInt(strings.TrimSuffix(filepath.Base(config), ".json"), 10, 64)
+		if err != nil || id <= 0 {
+			continue
+		}
+		content, err := os.ReadFile(config)
+		if err != nil {
+			continue
+		}
+		var req WindowsISORequest
+		if json.Unmarshal(content, &req) != nil {
+			continue
+		}
+		uses := false
+		for _, root := range roots {
+			clean := filepath.Clean(req.StorageRoot)
+			uses = uses || clean == root || strings.HasPrefix(clean, root+string(filepath.Separator))
+		}
+		if !uses {
+			continue
+		}
+		unit := "pxe-winiso@" + strconv.FormatInt(id, 10) + ".service"
+		if m.Systemctl.Run(ctx, "is-active", "--quiet", unit) != nil {
+			continue
+		}
+		if err := m.Systemctl.Run(ctx, "stop", unit); err != nil {
+			problems = append(problems, fmt.Errorf("%s: %w", unit, err))
+			continue
+		}
+		actions = append(actions, "stopped "+unit+" to release its share")
 	}
 	return actions, errors.Join(problems...)
 }

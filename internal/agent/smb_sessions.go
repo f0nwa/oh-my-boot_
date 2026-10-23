@@ -400,6 +400,22 @@ func (w *SMBWatcher) Sessions() (SMBSessions, error) {
 	return SMBSessions{Since: since, Sessions: w.list()}, nil
 }
 
+// ClearEnded forgets the sessions that are over; the ones still connected
+// stay, so an installation in progress keeps its state.
+func (w *SMBWatcher) ClearEnded() (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.load()
+	n := 0
+	for key, s := range w.sessions {
+		if s.Ended != nil {
+			delete(w.sessions, key)
+			n++
+		}
+	}
+	return n, w.save()
+}
+
 // Run polls until ctx ends, logging only when polling starts or stops
 // failing.
 func (w *SMBWatcher) Run(ctx context.Context) {
@@ -430,6 +446,19 @@ func (w *SMBWatcher) Run(ctx context.Context) {
 func HandlerWithSMBSessions(inner http.Handler, watcher *SMBWatcher) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", inner)
+	mux.HandleFunc("POST /smb-sessions/clear", func(rw http.ResponseWriter, _ *http.Request) {
+		if watcher == nil {
+			http.Error(rw, "smb sessions unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		n, err := watcher.ClearEnded()
+		if err != nil {
+			http.Error(rw, "smb sessions unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(rw).Encode(map[string]int{"deleted": n})
+	})
 	mux.HandleFunc("GET /smb-sessions", func(rw http.ResponseWriter, _ *http.Request) {
 		if watcher == nil {
 			http.Error(rw, "smb sessions unavailable", http.StatusServiceUnavailable)

@@ -16,9 +16,20 @@ func ControlHandler(p *Publisher, events EventReader) http.Handler {
 	return ControlHandlerWithTransfers(p, events, nil)
 }
 
+// ControlHandlerWithJournal also manages the request log's cleanup.
+func ControlHandlerWithJournal(p *Publisher, events EventReader, transfers *Transfers, journal *Journal) http.Handler {
+	mux := controlMux(p, events, transfers)
+	handleJournal(mux, journal)
+	return mux
+}
+
 // ControlHandlerWithTransfers also answers GET /transfers: the files being
 // sent right now.
 func ControlHandlerWithTransfers(p *Publisher, events EventReader, transfers *Transfers) http.Handler {
+	return controlMux(p, events, transfers)
+}
+
+func controlMux(p *Publisher, events EventReader, transfers *Transfers) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /transfers", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -287,3 +287,17 @@ The machines block on the home page is called “Boots” and shows machines of 
 The buttons show counts. When nothing is booting, the empty table is replaced by the last boot (MAC, when, what was chosen). The list stops at 50 machines; the rest are in the Journal. Machines older than a day are not shown on the home page: the full history is in Journal → Machines. The chosen filter is kept in the address (`/?show=day`, `/?show=failed`), and the page's auto-refresh keeps it.
 
 Rollout 23.10.2026, 15:50: replaced `pxe-control` (SHA-256 `8ae95cba…`); the previous one is `.bak-202610231550`.
+
+## Journal keeping: automatic cleanup and full clear, 23.10.2026
+
+At the bottom of the Journal page an administrator sees a “Journal keeping” block:
+
+- how many Boot requests the log holds, since when, and the table size;
+- **Automatic cleanup**: “Keep everything” (default), or older than 7, 30, 90, 180 days or a year. Boot deletes old requests once an hour and right after the period changes. The setting lives in `/var/lib/pxe-platform-boot/journal.json` and survives restarts;
+- **Clear the whole log** (with confirmation): Boot deletes all `boot_events` rows, the Agent forgets finished WinPE share connections (an installation in progress stays), and Control stops showing DHCP/TFTP lines logged before that moment. journald keeps those lines on its own, and they cannot be deleted on our command. Machines disappear from the Now and Journal pages until they boot again.
+
+Both actions are audited (`journal.retention`, `journal.clear`). The system keeps DHCP and TFTP lines in journald for up to 7 days and WinPE connections for 7 days, whatever the setting.
+
+API on the Boot socket: `GET /journal`, `PUT /journal/retention` (`{"days": N}`), `POST /journal/clear`; on the Agent socket: `POST /smb-sessions/clear`.
+
+Rollout 23.10.2026, 16:10: replaced `pxe-boot` (SHA-256 `09b437f4…`), `pxe-control` (`19f3df0d…`), `pxe-agent` (`f34cd6bb…`); previous files are `/usr/local/bin/*.bak-202610231610`. Automatic cleanup is off and the log is untouched (534 records since 15.10.2026, 192 KB).

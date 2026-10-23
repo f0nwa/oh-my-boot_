@@ -30,6 +30,7 @@ type menuVersionRow struct {
 }
 
 type pageData struct {
+	Journal               *journalView
 	Info                  requestContext
 	CSRF                  string
 	Lang                  string

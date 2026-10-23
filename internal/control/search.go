@@ -62,7 +62,7 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 	}
 	var dhcp []agent.DHCPEvent
 	if s.Agent != nil {
-		if v, err := s.Agent.DHCPEvents(r.Context()); err == nil {
+		if v, err := s.dhcpEvents(r.Context()); err == nil {
 			dhcp = v
 		}
 	}

@@ -234,7 +234,7 @@ func (s *Server) nowPage(w http.ResponseWriter, r *http.Request) {
 	}
 	var dhcp []agent.DHCPEvent
 	if s.Agent != nil {
-		if v, err := s.Agent.DHCPEvents(r.Context()); err == nil {
+		if v, err := s.dhcpEvents(r.Context()); err == nil {
 			dhcp = v
 		} else {
 			data.DHCPError = "Журнал DHCP недоступен"

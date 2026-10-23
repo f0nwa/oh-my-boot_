@@ -303,7 +303,7 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 	var dhcp []agent.DHCPEvent
 	if s.Agent == nil {
 		data.DHCPError = "Журнал DHCP недоступен"
-	} else if v, err := s.Agent.DHCPEvents(r.Context()); err != nil {
+	} else if v, err := s.dhcpEvents(r.Context()); err != nil {
 		data.DHCPError = "Журнал DHCP недоступен"
 	} else {
 		dhcp = v

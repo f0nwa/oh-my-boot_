@@ -157,6 +157,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /installations/{key}/add", s.protect("menu", withPageErrors(s.installationsPage, s.installationAdd)))
 	mux.HandleFunc("GET /events", s.protect("view", s.eventsPage))
 	mux.HandleFunc("GET /events/machines/{mac}", s.protect("view", s.machinePage))
+	mux.HandleFunc("POST /events/retention", s.protect("delete", withPageErrors(s.eventsPage, s.journalRetention)))
+	mux.HandleFunc("POST /events/clear", s.protect("delete", withPageErrors(s.eventsPage, s.journalClear)))
 	mux.HandleFunc("GET /network", s.protect("view", s.networkPage))
 	mux.HandleFunc("POST /network/preview", s.protect("network", s.networkPreview))
 	mux.HandleFunc("POST /network/apply", s.protect("network", s.networkApply))
@@ -355,10 +357,15 @@ func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
 	var dhcp []agent.DHCPEvent
 	if s.Agent == nil {
 		data.DHCPError = "Журнал DHCP недоступен"
-	} else if v, err := s.Agent.DHCPEvents(r.Context()); err != nil {
+	} else if v, err := s.dhcpEvents(r.Context()); err != nil {
 		data.DHCPError = "Журнал DHCP недоступен"
 	} else {
 		dhcp = resolveDHCPMACs(v, httpEvents)
+	}
+	if s.Boot != nil && Allowed(data.Info.User.Role, "delete") {
+		if state, err := s.Boot.Journal(r.Context()); err == nil {
+			data.Journal = &journalView{JournalState: state, Choices: journalChoices()}
+		}
 	}
 	switch data.Tab {
 	case "machines":

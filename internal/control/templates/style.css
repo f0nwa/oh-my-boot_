@@ -347,3 +347,12 @@ button[disabled]{opacity:.45;cursor:default}
 .space-bad .space-text{color:var(--bad)}
 .kv-list li{flex-wrap:wrap}.kv-list li>.space{flex-basis:100%;max-width:none}
 .empty-now{border:1px dashed var(--line);border-radius:8px;padding:20px;display:flex;flex-direction:column;gap:4px}.empty-now p{margin:0}
+/* Journal keeping: retention select and the full clear */
+.journal-keep{margin-top:28px;border-top:1px solid var(--line);padding-top:20px;display:flex;flex-direction:column;gap:12px}
+.journal-keep h2{margin:0}.journal-keep p{margin:0}
+.inline-form{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.inline-form label{margin:0}.inline-form select{width:auto;min-width:200px}
+.btn-danger{background:var(--bad);border:1px solid var(--bad);color:#fff;border-radius:6px;min-height:34px;padding:0 14px;font:inherit;font-weight:600;cursor:pointer}
+.btn-danger:hover{filter:brightness(1.08)}
+.danger-zone summary{color:var(--bad);cursor:pointer}
+.danger-zone p{margin:8px 0}

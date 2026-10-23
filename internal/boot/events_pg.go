@@ -40,3 +40,19 @@ func (s PostgresStore) Insert(ctx context.Context, event Event) error {
 	)
 	return err
 }
+
+// DeleteBefore removes requests logged before the given time.
+func (s PostgresStore) DeleteBefore(ctx context.Context, before time.Time) (int64, error) {
+	tag, err := s.Pool.Exec(ctx, "DELETE FROM boot_events WHERE occurred_at < $1", before)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// Stats counts the requests, finds the oldest and measures the table.
+func (s PostgresStore) Stats(ctx context.Context) (JournalStats, error) {
+	var stats JournalStats
+	err := s.Pool.QueryRow(ctx, "SELECT count(*), min(occurred_at), pg_total_relation_size('boot_events') FROM boot_events").Scan(&stats.Count, &stats.Oldest, &stats.Bytes)
+	return stats, err
+}

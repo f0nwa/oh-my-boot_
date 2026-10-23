@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -200,5 +201,27 @@ func TestSMBSessionsHandler(t *testing.T) {
 	var got SMBSessions
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &got) != nil || len(got.Sessions) != 1 || got.Sessions[0].IP != "10.30.0.19" {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body)
+	}
+}
+
+func TestSMBWatcherClearKeepsConnectedSessions(t *testing.T) {
+	r := newSetupRun(t, filepath.Join(t.TempDir(), "s.json"))
+	r.step(0, true, setupFiles...)
+	r.step(0, false) // the first session ends
+	r.now = r.now.Add(time.Hour)
+	other := smbStatusJSON(true, setupFiles...)
+	// A new session: same ID, later start.
+	other = []byte(strings.Replace(string(other), "2026-10-23T10:04:17.243763+03:00", "2026-10-23T11:30:00+03:00", 1))
+	r.status = other
+	_ = r.w.Poll(context.Background())
+	h := HandlerWithSMBSessions(http.NotFoundHandler(), r.w)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/smb-sessions/clear", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"deleted":1`) {
+		t.Fatalf("clear=%d %s", rec.Code, rec.Body)
+	}
+	got, _ := r.w.Sessions()
+	if len(got.Sessions) != 1 || got.Sessions[0].Ended != nil {
+		t.Fatalf("left=%+v", got.Sessions)
 	}
 }

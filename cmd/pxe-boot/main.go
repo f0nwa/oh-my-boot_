@@ -36,6 +36,7 @@ func main() {
 	}
 	var store boot.EventStore
 	var reader boot.EventReader
+	journal := &boot.Journal{Path: filepath.Join(filepath.Dir(*snapshot), "journal.json")}
 	if dsn := os.Getenv("PXE_BOOT_DATABASE_URL"); dsn != "" {
 		pool, err := pgxpool.New(context.Background(), dsn)
 		if err != nil {
@@ -44,6 +45,7 @@ func main() {
 		defer pool.Close()
 		store = boot.PostgresStore{Pool: pool}
 		reader = boot.PostgresStore{Pool: pool}
+		journal.Store = boot.PostgresStore{Pool: pool}
 	}
 	recorder := boot.NewRecorder(store, log.Default())
 	transfers := boot.NewTransfers()
@@ -73,7 +75,7 @@ func main() {
 	if err := os.Chmod(*controlSocket, 0660); err != nil {
 		log.Fatal(err)
 	}
-	controlServer := &http.Server{Handler: boot.ControlHandlerWithTransfers(publisher, reader, transfers), ReadHeaderTimeout: 5 * time.Second}
+	controlServer := &http.Server{Handler: boot.ControlHandlerWithJournal(publisher, reader, transfers, journal), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -83,6 +85,9 @@ func main() {
 		_ = server.Shutdown(shutdownCtx)
 		_ = controlServer.Shutdown(shutdownCtx)
 	}()
+	if journal.Store != nil {
+		go journal.Run(ctx)
+	}
 	go func() {
 		if err := controlServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Printf("Boot control API failed: %v", err)

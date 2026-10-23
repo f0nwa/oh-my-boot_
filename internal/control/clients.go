@@ -347,3 +347,34 @@ func (c *BootClient) Transfers(ctx context.Context) ([]boot.Transfer, error) {
 	err := localCall(ctx, c.http, "GET", "/transfers", nil, &v)
 	return v, err
 }
+
+// Journal reports the request log's size and cleanup setting.
+func (c *BootClient) Journal(ctx context.Context) (boot.JournalState, error) {
+	var v boot.JournalState
+	err := localCall(ctx, c.http, "GET", "/journal", nil, &v)
+	return v, err
+}
+
+// SetJournalRetention sets automatic cleanup in days; 0 turns it off.
+func (c *BootClient) SetJournalRetention(ctx context.Context, days int) error {
+	body, err := json.Marshal(map[string]int{"days": days})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "PUT", "/journal/retention", body, nil)
+}
+
+// ClearJournal deletes the whole request log and returns how many requests
+// it held.
+func (c *BootClient) ClearJournal(ctx context.Context) (int64, error) {
+	var v struct {
+		Deleted int64 `json:"deleted"`
+	}
+	err := localCall(ctx, c.http, "POST", "/journal/clear", nil, &v)
+	return v.Deleted, err
+}
+
+// ClearSMBSessions forgets finished WinPE share sessions.
+func (c *AgentClient) ClearSMBSessions(ctx context.Context) error {
+	return localCall(ctx, c.http, "POST", "/smb-sessions/clear", nil, nil)
+}

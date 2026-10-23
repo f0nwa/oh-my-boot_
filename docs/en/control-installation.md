@@ -356,3 +356,16 @@ Rollout 23.10.2026, 23:26: the `2026-10-23-machines-manual.sql` migration was ap
 iPXE sends a space in the machine report as `%20` but leaves `+` as it is. Boot read `+` as a space (as HTML forms do), so QEMU's model “Standard PC (Q35 + ICH9, 2009)” was stored as “Standard PC (Q35   ICH9, 2009)”. The `+` is now kept. Models already stored correct themselves the next time the machine boots to the menu.
 
 Rollout 23.10.2026, 23:36–23:38: replaced `pxe-control` (SHA-256 `044289c5…`, previous file `/usr/local/bin/pxe-control.bak-202610232336`) and `pxe-boot` (`3d2c17a5…`, previous file `/usr/local/bin/pxe-boot.bak-202610232338`). No migrations.
+
+## Machines: MAC prefix rules, 23.10.2026
+
+A rule labels machines by the first 3, 4 or 5 bytes of the MAC: a batch of laptops, a virtual machine lab, a network card maker. Rules live in the new `mac_prefix_rules` table ([migration](../../deploy/sql/2026-10-23-mac-prefix-rules.sql)): prefix, title (required), network card maker, note.
+
+- **A machine's label** is chosen in this order: its own model (set by a person) → the model from BIOS → the title of the longest matching rule → the network card maker from the IEEE registry. The machine's name, if set, is shown separately as before. The rule label shows everywhere: Now, Journal → Machines, the machine's page, System → Machines, and ⌘K search (which also finds machines by rule title).
+- **A rule's maker** replaces the IEEE entry for the network card, for example rule `bc:24:11` “Proxmox lab” with maker “Proxmox (virtual card)”.
+- **The “MAC prefix rules” section** is at the bottom of System → Machines. Each rule shows how many machines in the list match; the number links to the table with only those machines (`/machines?rule=bc:24:11`; search, sorting and Download CSV work there). A machine's page has a “Rule” line linking to the same place.
+- The prefix is accepted in any form (`bc:24:11`, `BC-24-11-52`, `bc241152`) and stored as `bc:24:11`. A whole MAC and a multicast first byte are rejected. A prefix has one rule; editing a rule changes its title, maker and note, while the prefix stays.
+- Rights: every role can view; administrators and operators can add and edit; only administrators can delete. Audited as `mac_rule.add`, `mac_rule.edit`, `mac_rule.delete`.
+- These rules will later carry the choice of network loader per vendor (stage 5 of the machine list plan).
+
+Rollout 23.10.2026, 23:46: the `2026-10-23-mac-prefix-rules.sql` migration was applied to `pxe_control` (as `pxe-control`); replaced `pxe-control` (SHA-256 `956c9dd3…`); the previous file is `/usr/local/bin/pxe-control.bak-202610232346`.

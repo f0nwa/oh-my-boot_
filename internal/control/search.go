@@ -69,17 +69,21 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 	names := s.menuNames(r.Context())
 	rows := machineRows(httpEvents, dhcp, names)
 	book := s.machineBook(r.Context(), rows, httpEvents)
+	rules := s.macRules(r.Context())
 	seen := map[string]bool{}
 	for _, row := range rows {
 		seen[row.MAC] = true
-		info := book[row.MAC]
-		if searchMatch(query, row.MAC, row.IP, info.Name, info.Maker(), info.Model(), info.Serial, info.Note, nicVendor(row.MAC)) {
+		info, ok := book[row.MAC]
+		if !ok {
+			info = MachineInfo{MAC: row.MAC, Rule: rules.match(row.MAC)}
+		}
+		if searchMatch(query, row.MAC, row.IP, info.Name, info.Maker(), info.Model(), info.Serial, info.Note, info.NICVendor(), info.RuleTitle()) {
 			add(machineSearchResult(row.MAC, row.IP, row.Choice, info))
 		}
 	}
 	// Machines only the book still remembers.
 	for _, info := range book {
-		if !seen[info.MAC] && searchMatch(query, info.MAC, info.LastIP, info.Name, info.Maker(), info.Model(), info.Serial, info.Note) {
+		if !seen[info.MAC] && searchMatch(query, info.MAC, info.LastIP, info.Name, info.Maker(), info.Model(), info.Serial, info.Note, info.NICVendor(), info.RuleTitle()) {
 			add(machineSearchResult(info.MAC, info.LastIP, "", info))
 		}
 	}

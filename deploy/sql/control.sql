@@ -93,3 +93,10 @@ CREATE TABLE IF NOT EXISTS machines (
 );
 CREATE INDEX IF NOT EXISTS machines_last_seen_idx ON machines (last_seen DESC);
 ALTER TABLE machines ADD COLUMN IF NOT EXISTS manual BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS mac_prefix_rules (
+    prefix TEXT PRIMARY KEY CHECK (prefix ~ '^[0-9a-f]{2}(:[0-9a-f]{2}){2,4}$'),
+    title TEXT NOT NULL CHECK (title <> ''),
+    manufacturer TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -32,16 +32,19 @@ type machineRow struct {
 	Name, Label string
 }
 
-// describeMachines puts names and labels from the book on the rows.
-func describeMachines(rows []machineRow, book map[string]MachineInfo) {
+// describeMachines puts names and labels from the book on the rows; a
+// machine the book does not know is still labelled by its prefix rule.
+func describeMachines(rows []machineRow, book map[string]MachineInfo, rules macRules) {
 	for i := range rows {
 		info, ok := book[rows[i].MAC]
-		if ok {
-			rows[i].Name = info.Name
-			rows[i].Label = machineLabel(&info, rows[i].MAC)
-		} else {
-			rows[i].Label = machineLabel(nil, rows[i].MAC)
+		if !ok {
+			info = MachineInfo{MAC: rows[i].MAC}
 		}
+		if info.Rule == nil {
+			info.Rule = rules.match(info.MAC)
+		}
+		rows[i].Name = info.Name
+		rows[i].Label = machineLabel(&info, rows[i].MAC)
 	}
 }
 

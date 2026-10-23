@@ -421,6 +421,45 @@ VALUES ($1,now(),now(),$2,$3,$4,$5,true,now()) ON CONFLICT (mac) DO NOTHING`, it
 	return tx.Commit(ctx)
 }
 
+// MacRules returns the MAC prefix rules.
+func (s Store) MacRules(ctx context.Context) ([]MacRule, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT prefix,title,manufacturer,note FROM mac_prefix_rules ORDER BY prefix`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MacRule
+	for rows.Next() {
+		var r MacRule
+		if err := rows.Scan(&r.Prefix, &r.Title, &r.Manufacturer, &r.Note); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// AddMacRule adds a rule; false when the prefix already has one.
+func (s Store) AddMacRule(ctx context.Context, r MacRule) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `INSERT INTO mac_prefix_rules (prefix,title,manufacturer,note) VALUES ($1,$2,$3,$4) ON CONFLICT (prefix) DO NOTHING`, r.Prefix, r.Title, r.Manufacturer, r.Note)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// EditMacRule changes a rule's title, maker and note.
+func (s Store) EditMacRule(ctx context.Context, r MacRule) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE mac_prefix_rules SET title=$2,manufacturer=$3,note=$4,updated_at=now() WHERE prefix=$1`, r.Prefix, r.Title, r.Manufacturer, r.Note)
+	return err
+}
+
+// DeleteMacRule removes a rule.
+func (s Store) DeleteMacRule(ctx context.Context, prefix string) error {
+	_, err := s.Pool.Exec(ctx, `DELETE FROM mac_prefix_rules WHERE prefix=$1`, prefix)
+	return err
+}
+
 // DeleteMachine removes a machine from the book; if it boots again it comes
 // back without its name.
 func (s Store) DeleteMachine(ctx context.Context, mac string) error {

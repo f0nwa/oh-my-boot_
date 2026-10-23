@@ -334,7 +334,8 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 	install := s.loadInstallLog(r.Context(), httpEvents)
 	rows := machineRowsWith(httpEvents, dhcp, install, names, now)
 	book := s.machineBook(r.Context(), rows, httpEvents)
-	describeMachines(rows, book)
+	rules := s.macRules(r.Context())
+	describeMachines(rows, book, rules)
 	for _, row := range rows {
 		if row.MAC == mac {
 			data.Machines = []machineRow{row}
@@ -343,7 +344,7 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 	if book != nil {
 		info, known := book[mac]
 		if !known {
-			info = MachineInfo{MAC: mac}
+			info = MachineInfo{MAC: mac, Rule: rules.match(mac)}
 		}
 		data.Machine = &machineCard{MachineInfo: info, Known: known, Label: machineLabel(&info, mac)}
 	}

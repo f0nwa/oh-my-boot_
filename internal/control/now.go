@@ -249,7 +249,7 @@ func (s *Server) nowPage(w http.ResponseWriter, r *http.Request) {
 	install := s.loadInstallLog(r.Context(), httpEvents)
 	rows := machineRowsWith(httpEvents, dhcp, install, s.menuNames(r.Context()), now)
 	attachDownloads(rows, s.bootTransfers(r.Context()), now)
-	describeMachines(rows, s.machineBook(r.Context(), rows, httpEvents))
+	describeMachines(rows, s.machineBook(r.Context(), rows, httpEvents), s.macRules(r.Context()))
 	view.Show = r.URL.Query().Get("show")
 	if view.Show != "day" && view.Show != "failed" {
 		view.Show = "now"

@@ -28,7 +28,15 @@ type machineList struct {
 	CanEdit, CanDelete bool
 	// Duplicate is a MAC that «Добавить MAC» found already in the list.
 	Duplicate string
+	// Rules are the MAC prefix rules with how many machines fit each;
+	// RuleFilter is the rule the table is narrowed to.
+	Rules      []MacRule
+	RuleFilter *MacRule
+	HasRules   bool // the store keeps rules
 }
+
+// Filtered reports whether the table shows only part of the list.
+func (l machineList) Filtered() bool { return l.Query != "" || l.RuleFilter != nil }
 
 type machineListRow struct {
 	MachineInfo
@@ -113,7 +121,7 @@ func (r machineListRow) matches(query string) bool {
 	if q == "" {
 		return true
 	}
-	for _, field := range []string{r.Name, r.MAC, r.Label, r.Maker(), r.Model(), r.NICVendor(), r.Serial, r.UUID, r.LastIP, r.Note} {
+	for _, field := range []string{r.Name, r.MAC, r.Label, r.Maker(), r.Model(), r.NICVendor(), r.RuleTitle(), r.Serial, r.UUID, r.LastIP, r.Note} {
 		if strings.Contains(strings.ToLower(field), q) {
 			return true
 		}
@@ -126,11 +134,24 @@ func (r machineListRow) matches(query string) bool {
 	return false
 }
 
-// buildMachineList sorts and filters the book for the page.
-func buildMachineList(book []MachineInfo, query, sortBy string) machineList {
+// buildMachineList sorts and filters the book for the page. ruleFilter
+// narrows it to machines whose MAC starts with that rule's prefix.
+func buildMachineList(book []MachineInfo, query, sortBy string, rules macRules, ruleFilter string) machineList {
 	list := machineList{Available: true, Query: strings.TrimSpace(query), Sort: sortBy, Total: len(book)}
 	if _, ok := machineSorts[list.Sort]; !ok {
 		list.Sort = "last"
+	}
+	attachRules(book, rules)
+	list.Rules = append([]MacRule(nil), rules...)
+	for i := range list.Rules {
+		for _, info := range book {
+			if strings.HasPrefix(info.MAC, list.Rules[i].Prefix+":") {
+				list.Rules[i].Machines++
+			}
+		}
+	}
+	if prefix, ok := parseMACPrefix(ruleFilter); ok {
+		list.RuleFilter = macRules(list.Rules).find(prefix)
 	}
 	for _, info := range book {
 		row := machineListRow{MachineInfo: info, Label: machineLabel(&info, info.MAC), HasModel: info.Model() != ""}
@@ -140,7 +161,8 @@ func buildMachineList(book []MachineInfo, query, sortBy string) machineList {
 		if !row.HasModel {
 			list.NoModel++
 		}
-		if row.matches(list.Query) {
+		inRule := list.RuleFilter == nil || strings.HasPrefix(info.MAC, list.RuleFilter.Prefix+":")
+		if inRule && row.matches(list.Query) {
 			list.Rows = append(list.Rows, row)
 		}
 	}
@@ -159,6 +181,9 @@ func (l machineList) SortLink(column string) string {
 	v := url.Values{}
 	if l.Query != "" {
 		v.Set("q", l.Query)
+	}
+	if l.RuleFilter != nil {
+		v.Set("rule", l.RuleFilter.Prefix)
 	}
 	if column != "last" {
 		v.Set("sort", column)
@@ -225,7 +250,8 @@ func (s *Server) machinesData(r *http.Request) pageData {
 	q := r.URL.Query()
 	machines, ok := s.refreshedBook(r.Context())
 	if ok {
-		list := buildMachineList(machines, q.Get("q"), q.Get("sort"))
+		list := buildMachineList(machines, q.Get("q"), q.Get("sort"), s.macRules(r.Context()), q.Get("rule"))
+		_, list.HasRules = s.Store.(MacRuleBook)
 		data.MachineList = &list
 	} else {
 		data.MachineList = &machineList{Query: q.Get("q")}

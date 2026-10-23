@@ -173,6 +173,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /machines/{mac}/delete", s.protect("delete", withPageErrors(s.machinesPage, s.machineTableDelete)))
 	mux.HandleFunc("GET /assets/machines.js", machinesScript)
 	mux.HandleFunc("GET /machines.csv", s.protect("view", s.machinesCSV))
+	mux.HandleFunc("POST /machine-rules", s.protect("images", withPageErrors(s.machinesPage, s.macRuleAdd)))
+	mux.HandleFunc("POST /machine-rules/{prefix}", s.protect("images", withPageErrors(s.machinesPage, s.macRuleEdit)))
+	mux.HandleFunc("POST /machine-rules/{prefix}/delete", s.protect("delete", withPageErrors(s.machinesPage, s.macRuleDelete)))
 	mux.HandleFunc("POST /machines/import", s.protect("images", withPageErrors(s.machinesPage, s.machineImportPreview)))
 	mux.HandleFunc("POST /machines/import-apply", s.protect("images", withPageErrors(s.machinesPage, s.machineImportApply)))
 	mux.HandleFunc("GET /network", s.protect("view", s.networkPage))
@@ -405,7 +408,7 @@ func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].LastSeen.After(rows[j].LastSeen) })
-		describeMachines(rows, book)
+		describeMachines(rows, book, s.macRules(r.Context()))
 		data.Machines = rows
 	case "requests":
 		for _, e := range httpEvents {

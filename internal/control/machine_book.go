@@ -25,6 +25,17 @@ type MachineInfo struct {
 	ProductOverride       string
 	// Manual marks a machine a person added by MAC before it ever booted.
 	Manual bool
+	// Rule is the longest MAC prefix rule that fits; not stored with the
+	// machine.
+	Rule *MacRule
+}
+
+// RuleTitle is the title of the machine's prefix rule, if any.
+func (m MachineInfo) RuleTitle() string {
+	if m.Rule == nil {
+		return ""
+	}
+	return m.Rule.Title
 }
 
 // MachineSeen is what one look at the logs says about a machine.
@@ -70,8 +81,14 @@ func (m MachineInfo) Model() string {
 	return m.Product
 }
 
-// NICVendor names the maker of the network card from the MAC prefix.
-func (m MachineInfo) NICVendor() string { return nicVendor(m.MAC) }
+// NICVendor names the maker of the network card: from the machine's prefix
+// rule when it names one, else from the IEEE registry.
+func (m MachineInfo) NICVendor() string {
+	if m.Rule != nil && m.Rule.Manufacturer != "" {
+		return m.Rule.Manufacturer
+	}
+	return nicVendor(m.MAC)
+}
 
 func nicVendor(mac string) string {
 	switch vendor := oui.Lookup(mac); vendor {
@@ -83,7 +100,8 @@ func nicVendor(mac string) string {
 }
 
 // machineLabel is the short description shown under a MAC: maker and model
-// when known, else the network card's maker.
+// when known (a person's or from BIOS), else the prefix rule's title, else the
+// network card's maker.
 func machineLabel(info *MachineInfo, mac string) string {
 	if info != nil {
 		maker, model := info.Maker(), info.Model()
@@ -95,6 +113,12 @@ func machineLabel(info *MachineInfo, mac string) string {
 		case maker != "":
 			return maker
 		}
+	}
+	if info != nil && info.Rule != nil {
+		return info.Rule.Title
+	}
+	if info != nil {
+		return info.NICVendor()
 	}
 	if vendor := nicVendor(mac); vendor != "" {
 		return vendor
@@ -207,6 +231,7 @@ func (s *Server) machineBook(ctx context.Context, rows []machineRow, httpEvents 
 	if err != nil {
 		return nil
 	}
+	attachRules(machines, s.macRules(ctx))
 	out := make(map[string]MachineInfo, len(machines))
 	for _, m := range machines {
 		out[m.MAC] = m

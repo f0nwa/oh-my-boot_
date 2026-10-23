@@ -73,7 +73,7 @@ func (s *Server) machinesCSV(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Список машин недоступен", http.StatusServiceUnavailable)
 		return
 	}
-	list := buildMachineList(machines, r.URL.Query().Get("q"), r.URL.Query().Get("sort"))
+	list := buildMachineList(machines, r.URL.Query().Get("q"), r.URL.Query().Get("sort"), s.macRules(r.Context()), r.URL.Query().Get("rule"))
 	lang := normalizeLanguage(requestInfo(r).User.Language)
 	var buf bytes.Buffer
 	buf.WriteString("\xef\xbb\xbf")
@@ -469,8 +469,15 @@ func (c machineImportChange) Cell(field string) machineImportCell {
 
 // ExportLink is the CSV address for the current search.
 func (l machineList) ExportLink() string {
-	if l.Query == "" {
+	v := url.Values{}
+	if l.Query != "" {
+		v.Set("q", l.Query)
+	}
+	if l.RuleFilter != nil {
+		v.Set("rule", l.RuleFilter.Prefix)
+	}
+	if len(v) == 0 {
 		return "/machines.csv"
 	}
-	return "/machines.csv?" + url.Values{"q": {l.Query}}.Encode()
+	return "/machines.csv?" + v.Encode()
 }

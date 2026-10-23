@@ -68,6 +68,8 @@ BdsDxe: failed to load Boot0001 "UEFI PXEv4 ..." : Access Denied
 | HP | Advanced → Secure Boot Configuration → «Enable MS UEFI CA key» |
 | Microsoft Surface | UEFI → Security → Secure Boot → «Microsoft & 3rd party CA» |
 
+Для ноутбуков в домене этот пункт можно включить из Windows скриптом через SCCM, без захода в BIOS: см. [secure-boot-sccm.md](secure-boot-sccm.md).
+
 Если такого пункта нет, поищите режим ключей вроде «Factory Keys» или «Restore Factory Keys»: на некоторых моделях стандартный набор уже содержит нужный ключ.
 
 **2. Добавить наш загрузчик в доверенные вручную.** Некоторые BIOS умеют «Enroll EFI Image», «Add Trusted File» или «Append Image Hash». Скопируйте `ipxe-shim.efi` с сервера (`/srv/pxe/tftp/ipxeboot/x86_64-sb/`) на флешку FAT32, выберите его в этом пункте BIOS и сохраните. Прошивка запомнит отпечаток именно этого файла. Если shim на сервере обновится, процедуру придётся повторить. Пункт есть не у всех производителей, и обычно он работает только с флешки или диска, а не по сети.

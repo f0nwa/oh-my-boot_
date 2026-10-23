@@ -68,6 +68,8 @@ Any one of the three, once per machine.
 | HP | Advanced → Secure Boot Configuration → “Enable MS UEFI CA key” |
 | Microsoft Surface | UEFI → Security → Secure Boot → “Microsoft & 3rd party CA” |
 
+For domain laptops this option can be turned on from Windows with a script through SCCM, without entering the BIOS: see [secure-boot-sccm.md](secure-boot-sccm.md).
+
 If there is no such option, look for a key mode like “Factory Keys” or “Restore Factory Keys”: on some models the standard set already contains the key.
 
 **2. Add our loader to the trusted list by hand.** Some BIOSes offer “Enroll EFI Image”, “Add Trusted File” or “Append Image Hash”. Copy `ipxe-shim.efi` from the server (`/srv/pxe/tftp/ipxeboot/x86_64-sb/`) to a FAT32 USB stick, pick it in that BIOS option and save. The firmware remembers the fingerprint of exactly this file; if the shim on the server is updated, repeat this. Not every vendor has the option, and it usually works only from a USB stick or disk, not over the network.

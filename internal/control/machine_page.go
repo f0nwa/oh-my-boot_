@@ -40,7 +40,7 @@ type bootSession struct {
 	Start, End time.Time
 	Steps      []machineStep
 	Choice     string
-	Outcome    string // loader_failed, dhcp_only, loader, menu, files, stuck, winpe, winpe_left, copy, copy_broken, copied
+	Outcome    string // loader_failed, loader_rejected, dhcp_only, loader, menu, files, stuck, winpe, winpe_left, copy, copy_broken, copied
 	CopyRead   int64  // install image read by Setup
 	Problem    string // with files_failed: "missing:boot.wim" or "cut:boot.wim"
 	// Download is the boot file being sent now; only the latest boot has it.
@@ -53,6 +53,8 @@ func (b bootSession) OutcomeLabel() string {
 	switch b.Outcome {
 	case "loader_failed":
 		return "Загрузчик не получен"
+	case "loader_rejected":
+		return "Прошивка отклонила загрузчик"
 	case "dhcp_only":
 		return "Дальше DHCP не видно"
 	case "loader":
@@ -93,7 +95,7 @@ func (b bootSession) OK() bool {
 
 // Failed reports whether the attempt hit an error rather than just stopping.
 func (b bootSession) Failed() bool {
-	return b.Outcome == "loader_failed" || b.Outcome == "files_failed" || b.Outcome == "stuck" || b.Outcome == "winpe_left" || b.Outcome == "copy_broken"
+	return b.Outcome == "loader_failed" || b.Outcome == "loader_rejected" || b.Outcome == "files_failed" || b.Outcome == "stuck" || b.Outcome == "winpe_left" || b.Outcome == "copy_broken"
 }
 
 // Installing reports whether Setup took over, after which the machine no
@@ -212,6 +214,7 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 	for i := range sessions {
 		session := &sessions[i]
 		var progress bootProgress
+		var shimAt time.Time
 		problems := map[string]string{}
 		for i := range session.Steps {
 			step := &session.Steps[i]
@@ -228,7 +231,10 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 			case step.Failed:
 				progress.add("loader_failed")
 			case step.Stage == "TFTP":
-				progress.add("loader")
+				progress.add(loaderStage(step.Raw))
+				if loaderStage(step.Raw) == "loader_shim" {
+					shimAt = step.At
+				}
 			case step.Stage == "DHCP" && progress.loaderSent:
 				// iPXE asks for an address itself after the loader.
 				step.Stage, step.Text = "iPXE", "iPXE запросил адрес"
@@ -257,6 +263,9 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 		sort.Strings(failed)
 		progress.addInstall(installState[i])
 		session.Outcome = map[string]string{"files": "files", "menu": "menu", "ipxe": "loader", "loader": "loader", "loader_failed": "loader_failed", "pxe": "dhcp_only", "winpe": "winpe", "winpe_left": "winpe_left", "copy_broken": "copy_broken", "copy": "copy", "copied": "copied"}[progress.stage()]
+		if progress.shimOnly() && now.Sub(shimAt) > shimRejectAfter {
+			session.Outcome = "loader_rejected"
+		}
 		if session.Outcome == "files" && len(failed) > 0 {
 			session.Outcome, session.Problem = "files_failed", failed[0]
 		}
@@ -284,7 +293,7 @@ func stepStage(step machineStep) string {
 	case step.Stage == "TFTP" && step.Failed:
 		return "loader_failed"
 	case step.Stage == "TFTP":
-		return "loader"
+		return loaderStage(step.Raw)
 	case step.Stage == "Меню":
 		return "menu"
 	case step.Stage == "Выбор":

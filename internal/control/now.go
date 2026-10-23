@@ -77,6 +77,8 @@ func machineTrail(row machineRow, live bool) []trailStep {
 		done = 2
 	case "loader_failed":
 		failed = 1
+	case "loader_rejected":
+		done, failed = 2, 2
 	case "ipxe":
 		done = 3
 	case "menu":
@@ -120,6 +122,9 @@ func machineTrail(row machineRow, live bool) []trailStep {
 	}
 	if row.Firmware != "" && steps[1].State != "none" {
 		steps[1].Sub = row.Firmware
+	}
+	if row.Stage == "loader_rejected" {
+		steps[2].Sub = "отклонён прошивкой"
 	}
 	if row.Stage == "menu" && live {
 		steps[3].Sub = "ждёт выбора"
@@ -291,7 +296,7 @@ func fillNowMachines(view *nowView, rows []machineRow, now time.Time) {
 	for _, row := range rows {
 		live := now.Sub(row.LastSeen) <= liveWindow
 		day := now.Sub(row.LastSeen) <= 24*time.Hour
-		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: row.Stage == "loader_failed" || row.Stage == "files_failed" || row.Stage == "stuck" || row.Stage == "copy_broken"}
+		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: row.Stage == "loader_failed" || row.Stage == "loader_rejected" || row.Stage == "files_failed" || row.Stage == "stuck" || row.Stage == "copy_broken"}
 		if view.Last == nil {
 			last := machine
 			view.Last = &last

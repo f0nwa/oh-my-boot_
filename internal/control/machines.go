@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"net"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 
 // machineRow sums up what one PXE client (by MAC) did most recently.
 // Stage is the furthest step of its latest boot: pxe, loader,
-// loader_failed, ipxe, menu or files.
+// loader_failed, loader_rejected, ipxe, menu or files.
 type machineRow struct {
 	MAC, IP, Firmware, Stage, Choice string
 	LastSeen                         time.Time
@@ -173,6 +174,21 @@ func choiceKey(e boot.Event) (string, int) {
 	return "", 0
 }
 
+// shimRejectAfter is how long after the firmware got a UEFI shim the shim
+// may take to ask for iPXE. A shim that runs fetches ipxe.efi within a
+// second; when nothing follows, the firmware refused to start it, almost
+// always Secure Boot without the Microsoft UEFI CA in its db.
+const shimRejectAfter = 30 * time.Second
+
+// loaderStage tells a UEFI shim from the loader it starts: a shim first, the
+// iPXE it fetches over TFTP second.
+func loaderStage(file string) string {
+	if strings.Contains(strings.ToLower(path.Base(file)), "shim") {
+		return "loader_shim"
+	}
+	return "loader"
+}
+
 func firmwareOf(file string) string {
 	switch {
 	case strings.HasSuffix(file, ".efi"):
@@ -213,7 +229,7 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 		en := entry{at: e.At, ip: e.IP, stage: "pxe"}
 		switch e.Kind {
 		case "tftp-sent":
-			en.stage, en.firmware = "loader", firmwareOf(e.Detail)
+			en.stage, en.firmware = loaderStage(e.Detail), firmwareOf(e.Detail)
 		case "tftp-failed":
 			en.stage, en.firmware = "loader_failed", firmwareOf(e.Detail)
 		}
@@ -244,7 +260,7 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 		sort.Slice(entries, func(i, j int) bool { return entries[i].at.Before(entries[j].at) })
 		row := machineRow{MAC: mac}
 		var boot bootProgress
-		var last, bootWIMAt, bootStart time.Time
+		var last, bootWIMAt, bootStart, shimAt time.Time
 		bestRank := 0
 		problems := map[string]string{} // boot file -> its last problem in this boot
 		for _, en := range entries {
@@ -267,7 +283,7 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 			}
 			if last.IsZero() || en.at.Sub(last) > bootSessionGap || boot.restartedBy(en.stage) {
 				// A new boot attempt: progress and choice start over.
-				boot, row.Choice, bestRank, bootWIMAt, row.CopyRead = bootProgress{}, "", 0, time.Time{}, 0
+				boot, row.Choice, bestRank, bootWIMAt, row.CopyRead, shimAt = bootProgress{}, "", 0, time.Time{}, 0, time.Time{}
 				problems = map[string]string{}
 				bootStart = en.at
 			}
@@ -277,6 +293,9 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 			}
 			if en.bootWIM {
 				bootWIMAt = en.at
+			}
+			if en.stage == "loader_shim" {
+				shimAt = en.at
 			}
 			if en.file != "" {
 				// A file fetched again after a failure is fine again.
@@ -298,6 +317,9 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 			}
 		}
 		row.Stage = boot.stage()
+		if boot.shimOnly() && now.Sub(shimAt) > shimRejectAfter {
+			row.Stage = "loader_rejected"
+		}
 		if row.Stage == "files" {
 			var failed []string
 			for file, problem := range problems {
@@ -362,7 +384,11 @@ func (s *Server) menuNames(ctx context.Context) map[string]string {
 // again, so the furthest step counts, not the last line.
 type bootProgress struct {
 	loaderSent, loaderFailed, ipxe, menu, files bool
-	install                                     int // furthest share session state
+	// shim is a UEFI shim sent; chain is the loader it fetched after it.
+	// Without chain the shim never ran, and a DHCP answer after it is the
+	// firmware trying again, not iPXE.
+	shim, chain bool
+	install     int // furthest share session state
 }
 
 // restartedBy tells whether a step can only belong to a new boot of the
@@ -373,6 +399,8 @@ func (b bootProgress) restartedBy(stage string) bool {
 	switch stage {
 	case "loader", "loader_failed":
 		return b.ipxe || b.menu || b.files || b.install > 0
+	case "loader_shim":
+		return b.chain || b.ipxe || b.menu || b.files || b.install > 0
 	case "menu":
 		return b.files || b.install > 0
 	}
@@ -386,11 +414,13 @@ func (b *bootProgress) addInstall(state int) {
 func (b *bootProgress) add(stage string) {
 	switch stage {
 	case "pxe":
-		if b.loaderSent {
+		if b.loaderSent && (!b.shim || b.chain) {
 			b.ipxe = true
 		}
 	case "loader":
-		b.loaderSent = true
+		b.loaderSent, b.chain = true, true
+	case "loader_shim":
+		b.loaderSent, b.shim = true, true
 	case "loader_failed":
 		b.loaderFailed = true
 	case "menu":
@@ -398,6 +428,11 @@ func (b *bootProgress) add(stage string) {
 	case "files":
 		b.files = true
 	}
+}
+
+// shimOnly reports a boot that got a UEFI shim and nothing after it.
+func (b bootProgress) shimOnly() bool {
+	return b.shim && !b.chain && !b.ipxe && !b.menu && !b.files && b.install == 0
 }
 
 // stage names the furthest step: copied, copy, winpe, winpe_left, files,
@@ -455,6 +490,8 @@ func machineStageLabel(stage string) string {
 		return "Загрузчик получен"
 	case "loader_failed":
 		return "Ошибка загрузчика"
+	case "loader_rejected":
+		return "Прошивка отклонила загрузчик"
 	case "ipxe":
 		return "iPXE запущен"
 	case "menu":

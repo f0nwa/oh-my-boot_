@@ -34,11 +34,76 @@ Legacy BIOS machines get `ipxeboot/x86_64/undionly.kpxe`. BIOS has no Secure Boo
 - **Everything started from the menu must be signed too.** Windows and Ubuntu are. An unsigned image (a utility, an old Linux without a signed shim) will not start on a machine with Secure Boot; for it, Secure Boot has to be turned off on that machine.
 - **Drivers we add to WinPE do not affect booting.** Windows checks them, not the firmware.
 
-## If a machine with Secure Boot still does not boot
+## If a machine does not boot
 
-- **The “Microsoft UEFI CA” key is disabled in the firmware.** Microsoft signs other vendors' loaders (iPXE's shim, Linux shims) with the Microsoft UEFI CA key. Some new laptops, for example Secured-core PCs, trust only the Windows key by default. Turn on an option like “Allow Microsoft 3rd party UEFI CA” in the Secure Boot settings; vendors name it differently.
-- **Firmware with empty keys.** Virtual machines sometimes use firmware without Microsoft's keys. In Proxmox, for example, “Pre-Enroll keys” must be ticked when creating the EFI disk.
-- **A signature message or “Access denied” right after the loader is fetched** usually means the firmware does not trust the shim; check both points above.
+### What it looks like
+
+On the machine's screen, after the lines about downloading the loader:
+
+```
+NBP file downloaded successfully.
+BdsDxe: failed to load Boot0001 "UEFI PXEv4 ..." : Access Denied
+```
+
+The machine then tries IPv6 or the next boot device, and our menu never appears. Other models say “Security Violation” or “Image authorization failed” instead of “Access Denied”.
+
+In the panel, on the “Now” tab, DHCP and TFTP are green and the iPXE step is red with the note “rejected by firmware”. On the machine's page the outcome is “Firmware rejected the loader”. The panel shows this when the machine downloaded `ipxe-shim.efi` but did not ask for the next file, `ipxe.efi`, within 30 seconds. A shim that runs asks for `ipxe.efi` at once, so silence means the firmware did not start it.
+
+### Why
+
+With Secure Boot on, the firmware starts a file only if its signature is in the firmware's list of trusted keys (db). Our `ipxe-shim.efi` is signed with **Microsoft Corporation UEFI CA 2011**, the key Microsoft uses to sign other vendors' loaders. Ordinary computers trust it out of the box. **Secured-core PC** laptops and some business models trust only Windows' own key (Microsoft Windows Production PCA 2011) by default. To such firmware the shim is a stranger, and it refuses before the shim even starts.
+
+Putting the right certificate into the shim or the menu cannot help: the firmware checks the shim before it can do anything. A Ventoy USB stick gets the same refusal on such a laptop, because its shim is signed with the same key. Ventoy's “Enroll key” works only after the shim has started, so it does not help here.
+
+### What to do
+
+Any one of the three, once per machine.
+
+**1. Allow Microsoft's key for third-party loaders (recommended).** In the Secure Boot settings turn on the option about “3rd party” or “Microsoft UEFI CA”. Secure Boot stays on, and the machine trusts signed shims: ours and Linux ones. Names depend on the model and BIOS version; examples:
+
+| Vendor | Where to look |
+|---|---|
+| Lenovo (ThinkPad, ThinkCentre) | Security → Secure Boot → “Allow Microsoft 3rd Party UEFI CA” → On |
+| Dell | Secure Boot → “Enable Microsoft UEFI CA” (on some models under Expert Key Management) |
+| HP | Advanced → Secure Boot Configuration → “Enable MS UEFI CA key” |
+| Microsoft Surface | UEFI → Security → Secure Boot → “Microsoft & 3rd party CA” |
+
+If there is no such option, look for a key mode like “Factory Keys” or “Restore Factory Keys”: on some models the standard set already contains the key.
+
+**2. Add our loader to the trusted list by hand.** Some BIOSes offer “Enroll EFI Image”, “Add Trusted File” or “Append Image Hash”. Copy `ipxe-shim.efi` from the server (`/srv/pxe/tftp/ipxeboot/x86_64-sb/`) to a FAT32 USB stick, pick it in that BIOS option and save. The firmware remembers the fingerprint of exactly this file; if the shim on the server is updated, repeat this. Not every vendor has the option, and it usually works only from a USB stick or disk, not over the network.
+
+**3. Turn Secure Boot off.** The simplest, but it turns the protection off completely. Fine for a test bench or a machine that joins the regular fleet after installation: Secure Boot can be turned back on afterwards, and Windows boots with it.
+
+### Other causes
+
+- **Firmware with empty keys.** Virtual machines sometimes use firmware without Microsoft's keys. In Proxmox, “Pre-Enroll keys” must be ticked when creating the EFI disk.
+- **The TFTP step is red, not iPXE.** Then the loader never reached the machine and Secure Boot is not involved: check the network and DHCP settings.
+
+### How to reproduce on a virtual machine
+
+Strict “Secured-core” firmware can be built for a test VM in Proxmox, which helps to check the panel or a new loader version. On the Proxmox host:
+
+```
+# a diskless VM booting from the network only; use the bridge PXE runs on
+qm create 950 --name sb-strict-test --machine q35 --bios ovmf --cores 2 --memory 4096 \
+  --net0 virtio,bridge=vmbr0 --boot order=net0 \
+  --efidisk0 local-lvm:1,efitype=4m,pre-enrolled-keys=1
+
+# a fresh virt-firmware: the Proxmox package lacks the needed flags
+apt install -y python3-venv
+python3 -m venv /root/vf && /root/vf/bin/pip install -U virt-firmware
+
+# Windows-only keys: no Microsoft UEFI CA
+/root/vf/bin/virt-fw-vars --input /usr/share/pve-edk2-firmware/OVMF_VARS_4M.fd \
+  --output /root/sb-windows-only.fd \
+  --enroll-microsoft --microsoft-db win11 --microsoft-kek all --sb
+
+# write it to the stopped VM's EFI disk and start it
+dd if=/root/sb-windows-only.fd of=$(pvesm path local-lvm:vm-950-disk-0) bs=1M conv=notrunc
+qm start 950
+```
+
+The VM gets “Access Denied”, like a Secured-core laptop. To check fix 1, build the keys with `--microsoft-db all` instead of `win11`, write them with the same `dd` command and start the VM: the menu loads with Secure Boot on. Verified on 23.10.2026.
 
 ## How to check what the server serves
 

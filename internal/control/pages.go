@@ -32,6 +32,7 @@ type menuVersionRow struct {
 type pageData struct {
 	Journal               *journalView
 	Machine               *machineCard
+	MachineList           *machineList
 	Info                  requestContext
 	CSRF                  string
 	Lang                  string
@@ -135,6 +136,7 @@ func parsePages(lang string) *template.Template {
 		},
 		"dhcpKind":     dhcpKindLabel,
 		"machineStage": machineStageLabel,
+		"machineCol":   machineCol,
 		"deref":        func(v *bool) bool { return v != nil && *v },
 		"filterList":   installationFilters,
 		"size":         func(n int64) string { return humanSize(lang, n) },

@@ -314,3 +314,21 @@ Control keeps a list of every machine it has seen in the `machines` table of the
 Where it shows: on Now and in Journal → Machines the own name replaces the MAC (with the MAC small beneath it), and under the MAC the maker and model or, until the machine reaches the menu, the network card maker. The Journal also lists machines no longer in the boot log (“Not in the log”). A machine's page has a block with all details, a “Change name and model” form (administrator and operator) and “Remove the machine from the list” (administrator only). ⌘K search finds machines by name, model, serial number, note and network card maker. Changes are audited (`machine.edit`, `machine.delete`).
 
 Rollout 23.10.2026, 18:04: the migration was applied to `pxe_control` (as `pxe-control`); replaced `pxe-boot` (SHA-256 `ba1b1e7e…`) and `pxe-control` (`f6ab41ff…`); previous files are `/usr/local/bin/*.bak-202610231804`. The client menu does not change until it is published.
+
+## Firmware refusing to start the loader (Secure Boot), 23.10.2026
+
+If a machine downloaded `ipxe-shim.efi` over TFTP but did not ask for the next file, `ipxe.efi`, within 30 seconds, its firmware refused to start the shim. This is almost always Secure Boot without the Microsoft UEFI CA 2011 key, as on Secured-core laptops. On Now such a machine's iPXE step is red with the note “rejected by firmware”; on the machine's page the outcome is “Firmware rejected the loader”, with a hint about what to turn on in the BIOS. A firmware retry after a refusal no longer counts as iPXE starting. What it looks like, how to fix it and how to reproduce it on a VM: [secure-boot.md](secure-boot.md#if-a-machine-does-not-boot).
+
+Rollout 23.10.2026, 21:35: replaced `pxe-control`; the previous file is `/usr/local/bin/pxe-control.bak-202610232135`.
+
+## System → Machines page, 23.10.2026
+
+A table of every machine in the `machines` list, including those long gone from the boot log. Columns: name (or MAC), model or network card maker, serial number, last IP, firmware, when the machine was first and last seen, and the note (shortened; the full note is in the tooltip). A row leads to the machine's page, where its name, model and note are set.
+
+- **Search** (`?q=`) covers name, MAC, maker, model, network card maker, serial number, UUID, IP and note, ignoring case. A MAC can be typed in any form: `001b21`, `00-1B-21`, `00:1b:21`.
+- **Sorting** (`?sort=`) works on every column except the note. The default is last seen, newest first. Dates sort newest first, text and addresses alphabetically and numerically; empty values go last. Header links keep the search.
+- **Counters** above the table: total, named, and without a model (the machine has not reached the menu yet and no model was set by hand). While searching: “Found: N of M”.
+- Before showing the page, Control moves what the logs show right now into the list, so a machine that booted a minute ago is already there.
+- Every role can view the page. It works without JavaScript.
+
+Rollout 23.10.2026, 23:14: replaced `pxe-control` (SHA-256 `4c0dc98d…`); the previous file is `/usr/local/bin/pxe-control.bak-202610232314`.

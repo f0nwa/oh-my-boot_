@@ -84,7 +84,7 @@ func TestNavigationGroupsLibraryAndSystemPages(t *testing.T) {
 	}
 	observer := navigation("observer", "/account")
 	system := observer[len(observer)-1]
-	if system.Title != "Система" || system.Path != "/system" || len(system.Items) != 4 || !system.Active {
+	if system.Title != "Система" || system.Path != "/system" || len(system.Items) != 5 || system.Items[1].Path != "/machines" || !system.Active {
 		t.Fatalf("observer system section=%+v", system)
 	}
 }

@@ -22,7 +22,7 @@ func TestBuildMenuFromDraftKeepsOrderAndTitles(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(script)
-	first, second := strings.Index(text, "item windriver_2 Win11 key\n"), strings.Index(text, "item winiso_17 Windows 11\n")
+	first, second := strings.Index(text, "item windriver_2 Win11 key${sp"), strings.Index(text, "item winiso_17 Windows 11\n")
 	if first < 0 || second < 0 || first > second {
 		t.Fatalf("order or titles wrong:\n%s", text)
 	}

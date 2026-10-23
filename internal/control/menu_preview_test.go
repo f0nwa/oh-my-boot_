@@ -16,6 +16,9 @@ func TestParseMenuScreensReadsFoldersBackAndFixedItems(t *testing.T) {
 	for _, screen := range screens {
 		var items []string
 		for _, item := range screen.Items {
+			if item.Gap {
+				continue
+			}
 			mark := ""
 			switch {
 			case item.Folder:
@@ -30,7 +33,7 @@ func TestParseMenuScreensReadsFoldersBackAndFixedItems(t *testing.T) {
 		got = append(got, screen.Title+": "+strings.Join(items, ", "))
 	}
 	want := []string{
-		"PXE Platform: !Diagnostics, /Linux, /Windows, !Boot local disk",
+		"PXE Platform: /Linux, /Windows, !Boot local disk, !Diagnostics",
 		"PXE Platform / Linux: <.. Back, Ubuntu Desktop 26.04.1",
 		"PXE Platform / Windows: <.. Back, /Auto, Win11",
 		"PXE Platform / Windows / Auto: <.. Back, Win11 auto",
@@ -45,7 +48,7 @@ func TestParseMenuScreensReadsFoldersBackAndFixedItems(t *testing.T) {
 	for _, line := range menuTreeLines(screens) {
 		tree = append(tree, strings.Repeat("-", line.Depth)+line.Text)
 	}
-	if strings.Join(tree, ",") != "Diagnostics,Linux,-Ubuntu Desktop 26.04.1,Windows,-Auto,--Win11 auto,-Win11,Boot local disk" {
+	if strings.Join(tree, ",") != "Linux,-Ubuntu Desktop 26.04.1,Windows,-Auto,--Win11 auto,-Win11,Boot local disk,Diagnostics" {
 		t.Fatalf("tree=%v", tree)
 	}
 }
@@ -58,7 +61,7 @@ func TestMenuPreviewShowsTheSelectedItemsScreen(t *testing.T) {
 	if preview.Error != "" || preview.Title != "PXE Platform / Windows" || preview.Item == nil || preview.Position != 1 {
 		t.Fatalf("preview=%+v", preview)
 	}
-	if len(preview.Rows) != 2 || preview.Rows[0].Text != ".. Back" || !preview.Rows[1].Selected || preview.Rows[1].Href != "/menu?item=winiso_1" {
+	if len(preview.Rows) != 3 || preview.Rows[0].Text != ".. Back" || !preview.Rows[1].Gap || !preview.Rows[2].Selected || preview.Rows[2].Href != "/menu?item=winiso_1" {
 		t.Fatalf("rows=%+v", preview.Rows)
 	}
 	var added bool
@@ -71,7 +74,7 @@ func TestMenuPreviewShowsTheSelectedItemsScreen(t *testing.T) {
 		t.Fatalf("lines=%+v", preview.Lines)
 	}
 	root := buildMenuPreview(draft, nil, rows, nil, []WindowsProfile{profile}, nil, nil, "", "menu_root")
-	if root.Title != "PXE Platform" || root.Rows[1].Text != "Windows >" || root.Rows[1].Href != "/menu?screen=folder_1" {
+	if root.Title != "PXE Platform" || root.Rows[0].Text != "Windows" || root.Rows[0].Hint != ">" || root.Rows[0].Href != "/menu?screen=folder_1" || !root.Rows[1].Gap || root.Rows[2].Text != "Boot local disk" || root.Rows[2].Hint != "(10)" {
 		t.Fatalf("root=%+v", root.Rows)
 	}
 }

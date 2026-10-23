@@ -99,8 +99,8 @@ func TestDriverMenuRendersSeparateEntriesAndFolders(t *testing.T) {
 	}
 	text := string(script)
 	for _, want := range []string{
-		"item windriver_1 Windows 11 Laptop A\n",
-		"item windriver_2 Windows 11 Laptop B\n",
+		"item windriver_1 Windows 11 Laptop A${sp",
+		"item windriver_2 Windows 11 Laptop B${sp",
 		"item menu_root .. Back\n",
 		"initrd http://10.30.0.10:8080/assets/windows-driver-wims/" + configs[0].Build.WIMKey + "/boot.wim boot.wim\n",
 		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-driver-configs/2/pxe-setup.cmd\n",

@@ -4,7 +4,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const menuFolderMarker = "# pxe-platform:folders-v1 "
@@ -15,6 +18,7 @@ const menuDriverMarker = "# pxe-platform:windrivers-v1 "
 type menuProfile struct {
 	id                 string
 	title              string
+	hint               string // shown at the right edge of the item
 	base               string
 	windowsISOID       int64
 	answerID           int64
@@ -34,6 +38,117 @@ type menuTreeNode struct {
 	parent   *menuTreeNode
 	children []*menuTreeNode
 	profiles []menuProfile
+}
+
+// The look of the boot menu («Пульт»): grey text on near-black, amber
+// section lines, the chosen line on amber. iPXE colours are numbered 0 black,
+// 1 red, 2 green, 3 yellow, 4 blue, 5 magenta, 6 cyan, 7 white, and colour
+// pairs 1 normal, 2 selected, 3 separator.
+//
+// On UEFI the firmware's text console is 80x25 drawn in a corner of the
+// screen, in the firmware's own palette (OVMF shows "yellow" as olive). So
+// the menu switches to iPXE's own framebuffer console at 640x480: 80
+// columns that fill the screen, with exact colours set by "colour --rgb".
+// The framebuffer console draws bold text by OR-ing 0x555555 into the
+// colour, so the chosen line uses dark text on amber there. Where the switch
+// fails (no such mode) the firmware console stays, with white on yellow. BIOS
+// loaders from ipxe.org are built without the console commands; they keep
+// iPXE's own colours, and every line here fails harmlessly.
+//
+// iPXE splits a command line on whitespace and joins menu text back with
+// single spaces, and it has no quoting. It expands ${...} after splitting,
+// though, so runs of spaces come from settings: sp1…sp64 hold 1…64 spaces
+// as hex bytes and ${spN:string} prints them inside one word.
+var menuTheme = "console --x 640 --y 480 && set pxe_fb 1 || set pxe_fb 0\n" +
+	"colour --rgb 0x0E1013 0 || echo -n\n" +
+	"colour --rgb 0xF2A93B 3 || echo -n\n" +
+	"colour --rgb 0xC3C8CF 7 || echo -n\n" +
+	"cpair --foreground 7 --background 0 1 || echo -n\n" +
+	"iseq ${pxe_fb} 1 && cpair --foreground 0 --background 3 2 || cpair --foreground 7 --background 3 2 || echo -n\n" +
+	"cpair --foreground 3 --background 0 3 || echo -n\n" +
+	menuPadSettings() +
+	"iseq ${platform} efi && set pxe_fw UEFI || set pxe_fw BIOS\n"
+
+func menuPadSettings() string {
+	var b strings.Builder
+	for n := 1; n <= 64; n *= 2 {
+		b.WriteString(fmt.Sprintf("set sp%d:hex %s\n", n, strings.TrimSuffix(strings.Repeat("20:", n), ":")))
+	}
+	return b.String()
+}
+
+// menuPad is n spaces as iPXE will print them.
+func menuPad(n int) string {
+	var b strings.Builder
+	for size := 64; size >= 1; size /= 2 {
+		for n >= size {
+			b.WriteString(fmt.Sprintf("${sp%d:string}", size))
+			n -= size
+		}
+	}
+	return b.String()
+}
+
+var menuPadToken = regexp.MustCompile(`\$\{sp(1|2|4|8|16|32|64):string\}`)
+
+// expandMenuPad turns menuPad tokens back into spaces.
+func expandMenuPad(text string) string {
+	return menuPadToken.ReplaceAllStringFunc(text, func(token string) string {
+		n, _ := strconv.Atoi(menuPadToken.FindStringSubmatch(token)[1])
+		return strings.Repeat(" ", n)
+	})
+}
+
+// menuTitleSuffix names the machine in every screen title; iPXE fills the
+// variables on the machine itself.
+var menuTitleSuffix = menuPad(2) + "|" + menuPad(2) + "${netX/mac}" + menuPad(2) + "|" + menuPad(2) + "${pxe_fw}"
+
+// menuFooter is the last line of every screen.
+var menuFooter = "ip ${netX/ip}" + menuPad(4) + "Enter: boot" + menuPad(4) + "Esc: back"
+
+// menuScreenRows is how many list rows iPXE shows on an 80x25 screen.
+const menuScreenRows = 20
+
+// menuTimeoutMS is how long the main screen waits before booting the local
+// disk.
+const menuTimeoutMS = "10000"
+
+// menuItemWidth is the text width of a menu line on an 80-column screen.
+const menuItemWidth = 74
+
+// menuItemText puts a hint at the right edge of a menu line, after at least
+// three spaces; a hint that does not fit is left out.
+func menuItemText(title, hint string) string {
+	hint = menuHint(hint)
+	width := utf8.RuneCountInString(title)
+	if hint == "" || width+3+len(hint) > menuItemWidth {
+		return title
+	}
+	return title + menuPad(menuItemWidth-width-len(hint)) + hint
+}
+
+// splitMenuItemText undoes menuItemText.
+func splitMenuItemText(text string) (title, hint string) {
+	text = expandMenuPad(text)
+	if i := strings.Index(text, "   "); i > 0 {
+		return text[:i], strings.TrimSpace(text[i:])
+	}
+	return text, ""
+}
+
+// menuHint keeps the characters a menu line may hold and at most 32 of them.
+func menuHint(hint string) string {
+	var b strings.Builder
+	for _, r := range hint {
+		if r < 0x80 && (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune(" .,!:+-_()>", r)) {
+			b.WriteRune(r)
+		}
+	}
+	out := strings.Join(strings.Fields(b.String()), " ")
+	if len(out) > 32 {
+		out = strings.TrimSpace(out[:31]) + "."
+	}
+	return out
 }
 
 func validateMenuFolder(path string) error {
@@ -153,6 +268,7 @@ func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string,
 		}
 		out.WriteString(menuDriverMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
 	}
+	out.WriteString(menuTheme)
 	writeMenuNode(&out, root, title, diagnosticLabel)
 	out.WriteString(":diagnostics\n" + "echo " + diagnosticMessage + "\n" + "sleep 3\n" + "goto local\n")
 	for _, profile := range profiles {
@@ -168,24 +284,51 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 	if node.path != "" {
 		menuTitle += " / " + node.path
 	}
-	out.WriteString("menu " + menuTitle + "\n")
+	out.WriteString("menu " + menuTitle + menuTitleSuffix + "\n")
+	rows := 0
+	item := func(target, text string) {
+		out.WriteString("item " + target + " " + text + "\n")
+		rows++
+	}
+	gap := func(text string) {
+		if text == "" {
+			out.WriteString("item --gap\n")
+		} else {
+			out.WriteString("item --gap " + text + "\n")
+		}
+		rows++
+	}
 	parentLabel := "local"
-	if node.parent == nil {
-		out.WriteString("item diagnostics " + diagnosticLabel + "\n")
-	} else {
+	if node.parent != nil {
 		parentLabel = node.parent.label
-		out.WriteString("item " + parentLabel + " .. Back\n")
+		item(parentLabel, ".. Back")
+		gap("")
 	}
 	for _, child := range node.children {
-		out.WriteString("item " + child.label + " " + child.name + "\n")
+		item(child.label, menuItemText(child.name, ">"))
 	}
 	for _, profile := range node.profiles {
-		out.WriteString("item " + profile.id + " " + profile.title + "\n")
+		item(profile.id, menuItemText(profile.title, profile.hint))
 	}
 	if node.parent == nil {
-		out.WriteString("item local Boot local disk\n")
+		gap("")
+		item("local", "Boot local disk")
+		item("diagnostics", diagnosticLabel)
 	}
-	out.WriteString("choose target || goto " + parentLabel + "\n")
+	// The key line sits on the last row of an 80x25 screen when the list is
+	// short enough, under the list otherwise.
+	gap("")
+	for rows < menuScreenRows-1 {
+		gap("")
+	}
+	gap(menuFooter)
+	if node.parent == nil {
+		// Untouched, the machine goes on to its own disk: after Windows
+		// Setup reboots it must not wait in the menu.
+		out.WriteString("choose --default local --timeout " + menuTimeoutMS + " target || goto local\n")
+	} else {
+		out.WriteString("choose target || goto " + parentLabel + "\n")
+	}
 	out.WriteString("goto ${target} || goto " + parentLabel + "\n")
 	for _, child := range node.children {
 		writeMenuNode(out, child, title, diagnosticLabel)

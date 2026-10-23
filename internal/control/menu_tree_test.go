@@ -39,10 +39,10 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 	}
 	got := string(script)
 	for _, want := range []string{
-		"menu PXE Platform\n",
-		"menu PXE Platform / Linux\n",
-		"menu PXE Platform / Windows\n",
-		"menu PXE Platform / Windows / Установщики\n",
+		"menu PXE Platform" + menuTitleSuffix + "\n",
+		"menu PXE Platform / Linux" + menuTitleSuffix + "\n",
+		"menu PXE Platform / Windows" + menuTitleSuffix + "\n",
+		"menu PXE Platform / Windows / Установщики" + menuTitleSuffix + "\n",
 		"item ubuntu Ubuntu Desktop 26.04.1\n",
 		"iseq ${platform} efi && goto ubuntu_efi || goto ubuntu_boot\n" +
 			":ubuntu_efi\n" +
@@ -61,7 +61,7 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 			t.Errorf("missing %q in generated menu", want)
 		}
 	}
-	if strings.Count(got, "menu PXE Platform / Windows / Установщики\n") != 1 {
+	if strings.Count(got, "menu PXE Platform / Windows / Установщики"+menuTitleSuffix+"\n") != 1 {
 		t.Fatal("shared folder was emitted more than once")
 	}
 	if strings.Index(got, "item winiso_1 ") > strings.Index(got, "item winiso_2 ") {
@@ -71,9 +71,11 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 		t.Fatalf("expected one Back item per folder, got script:\n%s", got)
 	}
 	for _, want := range []string{
-		"item folder_1 Linux\nitem folder_2 Windows\nitem local Boot local disk\n",
-		":folder_2\nmenu PXE Platform / Windows\nitem menu_root .. Back\nitem folder_3 Установщики\nchoose target || goto menu_root\n",
-		":folder_3\nmenu PXE Platform / Windows / Установщики\nitem folder_2 .. Back\nitem winiso_1 Windows 10x64\nitem winiso_2 Windows 11 x64\nchoose target || goto folder_2\n",
+		"item folder_1 " + menuItemText("Linux", ">") + "\nitem folder_2 " + menuItemText("Windows", ">") + "\nitem --gap\nitem local Boot local disk\nitem diagnostics Diagnostics\n",
+		":folder_2\nmenu PXE Platform / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem folder_3 " + menuItemText("Установщики", ">") + "\n",
+		":folder_3\nmenu PXE Platform / Windows / Установщики" + menuTitleSuffix + "\nitem folder_2 .. Back\nitem --gap\nitem winiso_1 Windows 10x64\nitem winiso_2 Windows 11 x64\n",
+		"choose target || goto folder_2\n",
+		"choose --default local --timeout 10000 target || goto local\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("navigation section missing %q", want)

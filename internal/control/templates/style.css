@@ -237,15 +237,18 @@ td small{display:block}
 .screen-frame{flex:999 1 520px;min-width:0;max-width:1080px;margin:0}
 .screen-caption{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;padding:0 2px 8px}
 /* The machine screen stays dark in both themes: it is the machine's screen, not the interface. */
-.screen{background:#050605;border:1px solid var(--line);border-radius:8px;padding:22px 26px;min-height:400px;display:flex;flex-direction:column;font-family:var(--mono);font-size:15px;line-height:1.8;color:#C3CBC3;overflow-x:auto}
-.screen-title{color:#FFFFFF}
-.screen-rule{height:1px;background:#2A322A;margin:6px 0 10px}
-.screen-row{display:flex;justify-content:space-between;gap:16px;padding:0 8px;margin:0 -8px;border-radius:3px;color:#C3CBC3;text-decoration:none;white-space:pre}
-.screen-row:hover{background:#151A15;color:#E6EDE6}
-.screen-row.selected{background:var(--accent);color:#140F05}
-.screen-hint{color:#7C887C}.screen-hint.danger{color:#FF8A7E}
-.screen-row.selected .screen-hint{color:#3A2A0A}
-.screen-foot{margin-top:auto;padding-top:16px;color:#7C887C;font-size:13px}
+/* The machine's screen as iPXE's framebuffer console draws it on UEFI with
+   the «Пульт» colours: grey on near-black, amber separators, the chosen line
+   dark on amber (bold text gets 0x555555 OR-ed in). */
+.screen{background:#0E1013;border:1px solid var(--line);border-radius:8px;padding:18px 22px;min-height:400px;display:flex;flex-direction:column;font-family:var(--mono);font-size:15px;line-height:1.7;color:#C3C8CF;overflow-x:auto}
+.screen-title{color:#D7DDDF;text-align:center;white-space:pre;margin-bottom:1.7em}
+.screen-var{color:#F2A93B}
+.screen-row{display:flex;justify-content:space-between;gap:16px;padding:0 1ch;margin:0 -1ch;color:#C3C8CF;text-decoration:none;white-space:pre}
+.screen-row:hover{background:#1C2027;color:#FFFFFF}
+.screen-row.selected{background:#F2A93B;color:#5F5557;font-weight:600}
+.screen-hint{color:inherit}.screen-hint.danger{color:inherit}
+.screen-gap{color:#F2A93B;white-space:pre}
+.screen-foot{margin-top:auto;padding-top:16px;color:#F2A93B;white-space:pre}
 .screen-error{color:#FFB4AB;font-size:13px;line-height:1.5;white-space:normal}
 .inspector{flex:1 1 280px;max-width:400px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
 .inspector-block{padding:14px 16px;border-bottom:1px solid var(--line);margin:0}

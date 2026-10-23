@@ -57,7 +57,7 @@ func TestWindowsMenuPublishesSeparateProfilesAndFolders(t *testing.T) {
 	}
 	got := string(script)
 	for _, want := range []string{
-		"menu PXE Platform / Windows\nitem menu_root .. Back\nitem winiso_17 Windows 10 x64\nitem winiso_18 Windows 11 x64\n",
+		"menu PXE Platform / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem winiso_17 Windows 10 x64\nitem winiso_18 Windows 11 x64\n",
 		":winiso_17\nkernel http://10.30.0.10:8080/assets/windows/wimboot\n",
 		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/18/boot.wim boot.wim\n",
@@ -142,8 +142,8 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 	got := string(script)
 	for _, want := range []string{
 		"item winiso_17 Windows 11 x64\n",
-		"item winanswer_31 Windows 11 Lab A\n",
-		"item winanswer_32 Windows 11 Lab B\n",
+		"item winanswer_31 Windows 11 Lab A${sp",
+		"item winanswer_32 Windows 11 Lab B${sp",
 		"initrd -n pxe-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/pxe-answer.xml\n",
 		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-answers/32/pxe-setup.cmd\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim\n",

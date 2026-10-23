@@ -3,7 +3,6 @@ package control
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,6 +23,24 @@ type MenuDraft struct {
 	Ubuntu                bool
 	UbuntuFolder          string
 	Items                 []MenuDraftItem
+	// look names the menu design a published version was built with ("" for
+	// versions before the «Пульт» look); a draft always gets the current one.
+	look string
+}
+
+// menuLook is the design buildMenuTreeWithProfiles draws: pult-2 adds the
+// full-screen framebuffer console with exact colours on UEFI.
+const menuLook = "pult-2"
+
+// scriptLook tells which design a published script has.
+func scriptLook(script string) string {
+	switch {
+	case strings.Contains(script, "console --x 640 --y 480"):
+		return "pult-2"
+	case strings.Contains(script, "cpair --foreground 7 --background 3 2"):
+		return "pult-1"
+	}
+	return ""
 }
 
 // defaultMenuFolder marks an item whose folder should come from its object.
@@ -68,7 +85,11 @@ func menuProfileForKey(key, base string, profiles []WindowsProfile, answers []Wi
 			if !ok || !profileBootable(parent) || answer.State != "ready" || answer.Size <= 0 || !safeMenuText(answer.Title, 80) || !isASCII(answer.Title) || !validAnswerHash(answer.SHA256) {
 				return menuProfile{}, "", fmt.Errorf("Windows answer %d is not ready for PXE", answer.ID)
 			}
-			return menuProfile{id: key, title: answer.Title, base: base, windowsISOID: answer.ProfileID, answerID: answer.ID, answerSHA256: answer.SHA256}, answer.Folder, nil
+			hint := "auto install"
+			if answer.WipesDisk != nil && *answer.WipesDisk {
+				hint = "!! WIPES DISK"
+			}
+			return menuProfile{id: key, title: answer.Title, hint: hint, base: base, windowsISOID: answer.ProfileID, answerID: answer.ID, answerSHA256: answer.SHA256}, answer.Folder, nil
 		}
 	case "windriver":
 		for _, config := range configs {
@@ -80,11 +101,15 @@ func menuProfileForKey(key, base string, profiles []WindowsProfile, answers []Wi
 				return menuProfile{}, "", fmt.Errorf("WinPE driver configuration %d is not ready", config.ID)
 			}
 			answerHash := ""
+			hint := driverSummary(config)
 			if config.AnswerID > 0 {
 				found := false
 				for _, answer := range answers {
 					if answer.ID == config.AnswerID && answer.ProfileID == config.ProfileID && answer.State == "ready" && answer.Size > 0 && validAnswerHash(answer.SHA256) {
 						answerHash, found = answer.SHA256, true
+						if answer.WipesDisk != nil && *answer.WipesDisk {
+							hint = "!! WIPES DISK"
+						}
 						break
 					}
 				}
@@ -92,7 +117,7 @@ func menuProfileForKey(key, base string, profiles []WindowsProfile, answers []Wi
 					return menuProfile{}, "", fmt.Errorf("WinPE driver configuration answer is unavailable")
 				}
 			}
-			return menuProfile{id: key, title: config.Title, base: base, windowsISOID: config.ProfileID, driverConfigID: config.ID, driverAnswerID: config.AnswerID, driverAnswerSHA256: answerHash, driverWIMKey: config.Build.WIMKey, driverWIMSHA256: config.Build.WIMSHA256, driverScriptSHA256: config.Build.ScriptSHA256}, config.Folder, nil
+			return menuProfile{id: key, title: config.Title, hint: hint, base: base, windowsISOID: config.ProfileID, driverConfigID: config.ID, driverAnswerID: config.AnswerID, driverAnswerSHA256: answerHash, driverWIMKey: config.Build.WIMKey, driverWIMSHA256: config.Build.WIMSHA256, driverScriptSHA256: config.Build.ScriptSHA256}, config.Folder, nil
 		}
 	}
 	return menuProfile{}, "", unknownMenuItemError(key)
@@ -102,12 +127,20 @@ func menuProfileForKey(key, base string, profiles []WindowsProfile, answers []Wi
 // enabled, then the draft's items in order, with their titles and folders.
 func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) ([]byte, error) {
 	if len(d.Items) == 0 {
-		form := url.Values{"title": {d.Title}, "label": {d.Label}, "message": {d.Message}}
+		// Even an empty menu is drawn with today's look, so that publishing it
+		// clears the "new look" change.
+		ubuntuBase, folders := "", map[string]string{}
 		if d.Ubuntu {
-			form.Set("ubuntu", "on")
-			form.Set("folder_ubuntu", d.UbuntuFolder)
+			base, err := validatedBootURL(baseURL)
+			if err != nil {
+				return nil, err
+			}
+			if err := validateMenuFolder(d.UbuntuFolder); err != nil {
+				return nil, err
+			}
+			ubuntuBase, folders["ubuntu"] = base, d.UbuntuFolder
 		}
-		return BuildMenuFromForm(form, baseURL)
+		return buildMenuTree(d.Title, d.Label, d.Message, ubuntuBase, folders)
 	}
 	base, err := validatedBootURL(baseURL)
 	if err != nil {
@@ -159,7 +192,7 @@ var menuItemKey = regexp.MustCompile(`^win(iso|answer|driver)_[0-9]+$`)
 // draftFromVersion reads a published version back into a draft: its texts,
 // Ubuntu entry, and the Windows items in the order they appear.
 func draftFromVersion(v MenuVersion) MenuDraft {
-	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message}
+	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, look: scriptLook(v.Script)}
 	folders := menuFolderPaths(v.Script)
 	for _, line := range strings.Split(v.Script, "\n") {
 		fields := strings.SplitN(line, " ", 3)
@@ -175,7 +208,7 @@ func draftFromVersion(v MenuVersion) MenuDraft {
 		}
 		title := ""
 		if len(fields) == 3 {
-			title = fields[2]
+			title, _ = splitMenuItemText(fields[2])
 		}
 		d.Items = append(d.Items, MenuDraftItem{Key: fields[1], Folder: folders[fields[1]], Title: title})
 	}
@@ -192,6 +225,9 @@ type MenuChange struct {
 
 func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 	var changes []MenuChange
+	if active.look != draft.look {
+		changes = append(changes, MenuChange{Kind: "look"})
+	}
 	if active.Title != draft.Title || active.Label != draft.Label || active.Message != draft.Message || active.Ubuntu != draft.Ubuntu || active.UbuntuFolder != draft.UbuntuFolder {
 		changes = append(changes, MenuChange{Kind: "settings"})
 	}
@@ -256,6 +292,9 @@ func (s *Server) currentDraft(ctx context.Context) (MenuDraft, MenuDraft, error)
 		draft = active
 		draft.Items = append([]MenuDraftItem(nil), active.Items...)
 	}
+	// Publishing builds the draft with today's design, so a version drawn
+	// with an older one has something to publish.
+	draft.look = menuLook
 	return draft, active, nil
 }
 

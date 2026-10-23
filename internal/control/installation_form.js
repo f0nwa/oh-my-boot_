@@ -29,7 +29,7 @@
     }
     var drivers = form.querySelectorAll('input[name="package"]:checked, input[name="inf"]:checked').length > 0;
     var wipes = answer && answer.dataset.wipes === "true";
-    text("preview-title", "> " + (title.value || "Windows 11 x64"));
+    text("preview-title", (title.value || "Windows 11 x64"));
     text("preview-folder", folder.value ? " / " + folder.value.split("/").join(" / ") : "");
     text("preview-hint", wipes ? "!! WIPES DISK" : (drivers ? (en ? "drivers" : "драйверы") : ""));
     document.getElementById("preview-hint").classList.toggle("danger", !!wipes);

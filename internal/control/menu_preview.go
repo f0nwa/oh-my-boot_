@@ -18,6 +18,8 @@ type menuScreenItem struct {
 	Folder       bool // opens another screen
 	Back         bool // returns to the parent screen
 	Fixed        bool // diagnostics or local disk, not a menu item of the draft
+	Gap          bool // a separator line: blank, a heading or the key line
+	Hint         string
 }
 
 // parseMenuScreens reads the screens of a script built by
@@ -34,7 +36,7 @@ func parseMenuScreens(script string) []menuScreen {
 			if i > 0 && strings.HasPrefix(lines[i-1], ":") {
 				label = strings.TrimPrefix(lines[i-1], ":")
 			}
-			screens = append(screens, menuScreen{Label: label, Title: strings.TrimPrefix(line, "menu ")})
+			screens = append(screens, menuScreen{Label: label, Title: strings.TrimSuffix(strings.TrimPrefix(line, "menu "), menuTitleSuffix)})
 			labels[label] = true
 			current = &screens[len(screens)-1]
 			continue
@@ -49,16 +51,22 @@ func parseMenuScreens(script string) []menuScreen {
 		if !strings.HasPrefix(line, "item ") {
 			continue
 		}
+		if rest := strings.TrimPrefix(line, "item "); rest == "--gap" || strings.HasPrefix(rest, "--gap ") {
+			current.Items = append(current.Items, menuScreenItem{Gap: true, Text: strings.TrimSpace(strings.TrimPrefix(rest, "--gap"))})
+			continue
+		}
 		fields := strings.SplitN(strings.TrimPrefix(line, "item "), " ", 2)
 		if len(fields) != 2 {
 			continue
 		}
-		current.Items = append(current.Items, menuScreenItem{Target: fields[0], Text: fields[1]})
+		text, hint := splitMenuItemText(fields[1])
+		current.Items = append(current.Items, menuScreenItem{Target: fields[0], Text: text, Hint: hint})
 	}
 	for i := range screens {
 		for j := range screens[i].Items {
 			item := &screens[i].Items[j]
 			switch {
+			case item.Gap:
 			case item.Text == ".. Back":
 				item.Back, screens[i].Parent = true, item.Target
 			case item.Target == "diagnostics" || item.Target == "local":
@@ -75,7 +83,7 @@ func parseMenuScreens(script string) []menuScreen {
 func screenFor(screens []menuScreen, key string) string {
 	for _, screen := range screens {
 		for _, item := range screen.Items {
-			if item.Target == key && !item.Folder && !item.Back {
+			if item.Target == key && !item.Folder && !item.Back && !item.Gap {
 				return screen.Label
 			}
 		}
@@ -107,7 +115,7 @@ func menuTreeLines(screens []menuScreen) []menuTreeLine {
 	walk = func(label string, depth int) {
 		for _, item := range byLabel[label].Items {
 			switch {
-			case item.Back:
+			case item.Back, item.Gap:
 			case item.Folder:
 				lines = append(lines, menuTreeLine{Depth: depth, Label: item.Target, Text: item.Text, Folder: true, Parent: label})
 				walk(item.Target, depth+1)
@@ -126,6 +134,7 @@ func menuTreeLines(screens []menuScreen) []menuTreeLine {
 type previewRow struct {
 	Text, Href, Hint string
 	Selected, Danger bool
+	Gap              bool
 }
 
 // previewLine is one line of the structure column.
@@ -224,23 +233,33 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	}
 	preview.Title = screen.Title
 	for _, item := range screen.Items {
-		row := previewRow{Text: item.Text, Href: "/menu?item=" + item.Target}
+		if item.Gap {
+			// Blank lines that only push the key line down stay out of the
+			// preview; the key line is its footer.
+			if item.Text != "" && item.Text != menuFooter {
+				preview.Rows = append(preview.Rows, previewRow{Text: item.Text, Gap: true})
+			} else if item.Text == "" && len(preview.Rows) > 0 && !preview.Rows[len(preview.Rows)-1].Gap {
+				preview.Rows = append(preview.Rows, previewRow{Gap: true})
+			}
+			continue
+		}
+		row := previewRow{Text: item.Text, Href: "/menu?item=" + item.Target, Hint: item.Hint}
 		switch {
 		case item.Folder:
-			row.Text, row.Href = item.Text+" >", "/menu?screen="+item.Target
+			row.Href = "/menu?screen=" + item.Target
 		case item.Back:
 			row.Href = "/menu?screen=" + item.Target
+		case item.Target == "local" && screen.Label == screens[0].Label:
+			row.Hint = "(10)"
 		case !item.Fixed:
-			if install, ok := installByKey[item.Target]; ok {
-				if install.AnswerWipesDisk != nil && *install.AnswerWipesDisk {
-					row.Hint, row.Danger = "!! WIPES DISK", true
-				} else if install.Drivers != "" {
-					row.Hint = install.Drivers
-				}
-			}
+			row.Danger = item.Hint == "!! WIPES DISK"
 		}
 		row.Selected = key != "" && item.Target == key
 		preview.Rows = append(preview.Rows, row)
+	}
+	// A trailing blank line before the footer adds nothing.
+	for len(preview.Rows) > 0 && preview.Rows[len(preview.Rows)-1].Gap && preview.Rows[len(preview.Rows)-1].Text == "" {
+		preview.Rows = preview.Rows[:len(preview.Rows)-1]
 	}
 	treeLines := menuTreeLines(screens)
 	titles := map[string]int{}

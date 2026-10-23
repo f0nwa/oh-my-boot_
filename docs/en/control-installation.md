@@ -233,3 +233,23 @@ Rollout 23.10.2026 (10:30, fixed at 10:45): replaced `pxe-agent` (SHA-256 `feda3
 - Images API: upload and the folder list are available as `/storages/{id}/upload` and `/storages/{id}/folders`; the earlier `/smb-storages/…` paths still work.
 
 Rollout 23.10.2026, 13:16: replaced `pxe-agent` (SHA-256 `acc66103…`), `pxe-control` (`c6e3b050…`), `pxe-images` (`9f19758e…`) and `pxe-winiso-prepare` (`6725b513…`); previous files are `/usr/local/bin/*.bak-202610231316`. `pxe-images.service` gains `ReadWritePaths=-/var/lib/pxe-platform-images` (previous unit copied to `/root/pxe-images.service.bak-202610231316`), and `/var/lib/pxe-platform-images/iso` became `2770 root:pxe-images` (was `750`). A test upload of a 4-byte file to Local succeeded; the file and its catalog row were removed, and the audit log keeps an `iso.upload ok` line by user `claude`. The client menu did not change.
+
+## “Console” look for the boot menu, 23.10.2026
+
+The menu a machine sees is now drawn in the admin interface's style (variant 2 of the canvas mockups):
+
+- colours: grey text on black; the chosen line bright white on amber (brown in text mode); separators and the key line amber. They are set by `cpair` commands at the top of the script; a loader without that command keeps its own colours and boots as before;
+- every screen title reads `PXE Platform  |  <MAC>  |  UEFI/BIOS`; iPXE fills in the MAC and firmware on the machine itself;
+- a hint at the right edge of an item: `!! WIPES DISK` for an answer file that wipes the disk, `auto install` for other answer files, the driver list for WinPE builds, and `>` for folders;
+- on the main screen “Boot local disk” is the default and boots by itself after 10 seconds (the row shows the countdown), so a network-first machine no longer waits in the menu after Windows Setup reboots;
+- the last row of every screen is `ip <machine IP>    Enter: boot    Esc: back`.
+
+iPXE splits a command line on whitespace and joins item text with single spaces, and it has no quoting. Alignment therefore comes from settings `sp1`…`sp64` (1–64 spaces as hex) printed as `${spN:string}` inside a word, since iPXE expands settings after splitting the line. Verified on iPXE built from source (`bin-x86_64-linux/tap.linux` with the script embedded): colours, alignment, countdown, entering a folder and going back.
+
+Machines get the change only after publishing: the draft shows “New look of the machine screen”. The preview on the Menu page draws the screen in the same colours. Rollout 23.10.2026, 14:16: replaced `pxe-control` (SHA-256 `b4784a45…`); the previous one is `/usr/local/bin/pxe-control.bak-202610231416`. The client menu has not changed; an administrator publishes it.
+
+Follow-up 23.10.2026, 14:29 (`pxe-control` SHA-256 `08118533…`, previous `.bak-202610231429`), after checking on machines:
+
+- **UEFI.** The firmware text console is 80×25 in a corner of the screen, in the firmware's palette (OVMF draws “yellow” as olive). The menu now first switches to iPXE's own graphical console: `console --x 640 --y 480` gives the same 80 columns across the whole screen, and `colour --rgb` sets exact colours: background `#0E1013`, text `#C3C8CF`, amber `#F2A93B`. That console draws bold text by adding `0x555555` to the colour, so the chosen line is dark on amber. Without a 640×480 mode the firmware console stays, with the earlier scheme (white on yellow).
+- **Legacy BIOS.** BIOS loaders from ipxe.org are built without the `console`, `colour` and `cpair` commands (iPXE's sources disable them for BIOS as “not historically included in BIOS builds”). So BIOS shows iPXE's default colours, while the rest works: title, right-hand hints, countdown and key line. Custom colours on BIOS need our own `undionly.kpxe` build.
+- The draft again shows “New look of the machine screen” until the menu is published with the new variant.

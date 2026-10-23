@@ -107,6 +107,26 @@ qm start 950
 
 The VM gets “Access Denied”, like a Secured-core laptop. To check fix 1, build the keys with `--microsoft-db all` instead of `win11`, write them with the same `dd` command and start the VM: the menu loads with Secure Boot on. Verified on 23.10.2026.
 
+## The 2011 and 2023 keys
+
+Microsoft is rotating its Secure Boot keys: **Microsoft UEFI CA 2023** is replacing **Microsoft Corporation UEFI CA 2011**, both for third-party loaders. Firmware does not check key expiry, so loaders signed with the 2011 key keep working wherever that key is in db.
+
+What was checked on 23.10.2026:
+
+- **The server currently serves** the shim from iPXE v2.0.0 (March 2026), with one signature: Microsoft Corporation UEFI CA 2011.
+- **The current build on boot.ipxe.org** (`2.0.0+ g70f39`) carries two signatures, one chaining to UEFI CA 2011 and one to Microsoft UEFI CA 2023. That shim boots on firmware with either key. Microsoft dual-signs Linux distributions' shims the same way.
+- **We cannot add a signature ourselves.** Microsoft signs with its own private key, and changing a single byte of the shim breaks every signature on it.
+- **The new shim does not help Secured-core laptops.** Their db holds only Windows keys (Microsoft Windows Production PCA 2011 and **Windows** UEFI CA 2023), with no third-party key at all, neither 2011 nor 2023. They still need the BIOS option or the [SCCM script](secure-boot-sccm.md).
+- The new shim is for the future: machines left with only the 2023 third-party key, meaning firmware shipped without the 2011 key, or the case where Microsoft revokes it.
+
+The move to the dual-signed shim is in the [TODO](../../TODO.md). It needs a tagged iPXE release rather than a nightly build, and a VM test with three key sets: 2023 only, 2011 only, Windows only.
+
+## Why there is no EFI file choice like in iVentoy
+
+iVentoy lets you pick which EFI file to send to machines. Its loader is unsigned, so the file is matched to the firmware. Our chain is signed end to end, and one loader suits every machine, with or without Secure Boot. A global switch could only do harm here: a wrong choice breaks booting for the whole fleet at once.
+
+The choice that does matter is iPXE's network driver. `ipxe.efi` has its own network card drivers, while `snponly.efi` uses the firmware's driver. Some hardware (USB-C docks, USB adapters, some new network cards) works only with the latter. Both are signed and started through the shim, so choosing between them does not affect Secure Boot. It is planned per machine, model or vendor (by MAC prefix): stage 5 of the [machine list plan](../superpowers/plans/2026-10-23-machine-book.md).
+
 ## How to check what the server serves
 
 The signatures can be seen in the files themselves, for example with `strings -a`:

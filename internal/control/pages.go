@@ -33,6 +33,7 @@ type pageData struct {
 	Journal               *journalView
 	Machine               *machineCard
 	MachineList           *machineList
+	MachineImport         *machineImportPlan
 	Info                  requestContext
 	CSRF                  string
 	Lang                  string
@@ -134,15 +135,16 @@ func parsePages(lang string) *template.Template {
 			}
 			return false
 		},
-		"dhcpKind":     dhcpKindLabel,
-		"machineStage": machineStageLabel,
-		"machineCol":   machineCol,
-		"deref":        func(v *bool) bool { return v != nil && *v },
-		"filterList":   installationFilters,
-		"size":         func(n int64) string { return humanSize(lang, n) },
-		"arch":         isoArch,
-		"usedPercent":  usedPercent,
-		"usedBytes":    func(total, free int64) int64 { return max(total-free, 0) },
+		"dhcpKind":            dhcpKindLabel,
+		"machineStage":        machineStageLabel,
+		"machineCol":          machineCol,
+		"machineImportFields": func() []string { return []string{"name", "manufacturer", "product", "note"} },
+		"deref":               func(v *bool) bool { return v != nil && *v },
+		"filterList":          installationFilters,
+		"size":                func(n int64) string { return humanSize(lang, n) },
+		"arch":                isoArch,
+		"usedPercent":         usedPercent,
+		"usedBytes":           func(total, free int64) int64 { return max(total-free, 0) },
 	}).ParseFS(templateFS, "templates/*.html"))
 }
 

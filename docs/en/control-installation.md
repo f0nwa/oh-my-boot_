@@ -342,3 +342,17 @@ Rollout 23.10.2026, 23:14: replaced `pxe-control` (SHA-256 `4c0dc98d…`); the p
 - Rights: every role can view; administrators and operators can edit and add; only administrators can remove. `machine.add`, `machine.edit` and `machine.delete` are audited.
 
 Rollout 23.10.2026, 23:26: the `2026-10-23-machines-manual.sql` migration was applied to `pxe_control` (as `pxe-control`); replaced `pxe-control` (SHA-256 `4079bd4a…`); the previous file is `/usr/local/bin/pxe-control.bak-202610232326`.
+
+## Machines: CSV download and upload, 23.10.2026
+
+- **Download CSV** (`GET /machines.csv`, every role) gives the table as shown on the page, with the same search. Columns: MAC, Name, Maker, Model, Serial number, UUID, Note, First seen, Last seen. The file is UTF-8 with a BOM, semicolon-separated, with CRLF line ends, so Excel opens it with Cyrillic intact. A cell Excel would treat as a formula (starting with `=`, `+`, `-`, `@`) is written with a leading apostrophe, which is removed again on upload. Titles follow the interface language.
+- **Upload CSV** (`POST /machines/import`, administrators and operators). The first line holds column titles, in Russian or English, in any order. A MAC column is required. Name, Maker, Model and Note are loaded. Serial number, UUID and dates are read-only, and their columns are listed as not loaded. The separator is `;` or `,` (detected from the first line); quoted cells may contain the separator and line breaks. Files are limited to 1 MB and 5000 lines, UTF-8 only; for another encoding the page suggests saving as CSV UTF-8.
+- **Check first.** After the upload the page shows “To add”, “To change”, “Unchanged” and “Errors”, the lines with errors (invalid MAC, repeated MAC, text too long — those lines are skipped) and a table of changes, with the old value struck through and the new one highlighted. The list is not touched yet.
+- **Merge rule.** New MACs are added and marked “has not booted yet”. For known machines a filled cell replaces the name, maker, model or note, and an empty cell erases nothing. What the machine reported itself (SMBIOS) is never changed by an upload. A maker or model equal to the reported one means “as the machine reported” and clears a value a person set earlier. So a file that was just downloaded changes nothing when uploaded back.
+- **Apply** (`POST /machines/import-apply`). The check is kept in Control's memory for 30 minutes, only for the person who uploaded the file, and can be applied once. When applied, the file is compared with the list again so that changes made after the check are not overwritten. Everything is written in one transaction: all or nothing. `machine.import` is audited with the numbers of added and changed machines.
+
+## Fix: “+” in a machine's model, 23.10.2026
+
+iPXE sends a space in the machine report as `%20` but leaves `+` as it is. Boot read `+` as a space (as HTML forms do), so QEMU's model “Standard PC (Q35 + ICH9, 2009)” was stored as “Standard PC (Q35   ICH9, 2009)”. The `+` is now kept. Models already stored correct themselves the next time the machine boots to the menu.
+
+Rollout 23.10.2026, 23:36–23:38: replaced `pxe-control` (SHA-256 `044289c5…`, previous file `/usr/local/bin/pxe-control.bak-202610232336`) and `pxe-boot` (`3d2c17a5…`, previous file `/usr/local/bin/pxe-boot.bak-202610232338`). No migrations.

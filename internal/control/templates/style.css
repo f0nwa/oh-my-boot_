@@ -371,3 +371,6 @@ button[disabled]{opacity:.45;cursor:default}
 .machine-table .saved{color:var(--ok,var(--text-2))}
 .row-actions{width:1%;white-space:nowrap;vertical-align:top}.row-edit{margin:0}.row-edit>summary{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;min-height:0;font-weight:400;color:var(--text-2)}.row-edit>summary:hover{color:var(--text)}.row-edit .danger-zone{margin:4px 0 0}
 .row-edit[open]{white-space:normal}.row-edit .machine-form{display:flex;flex-direction:column;gap:8px;width:260px;margin:8px 0}.row-edit .machine-form label{margin:0;display:flex;flex-direction:column;gap:4px}
+.import-preview{margin:0 0 24px}.import-preview h2{margin-top:0}.import-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0 6px}.import-actions form,.import-actions p{margin:0}
+.import-bad{color:var(--bad)}.import-tag{white-space:nowrap}.import-add{color:var(--ok)}.import-edit{color:var(--accent-ink)}
+.import-errors ul{margin:6px 0 0;padding-left:20px}

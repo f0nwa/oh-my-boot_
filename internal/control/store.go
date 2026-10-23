@@ -398,6 +398,29 @@ ON CONFLICT (mac) DO NOTHING`,
 	return tag.RowsAffected() == 1, nil
 }
 
+// ApplyMachineImport adds and changes machines from a loaded file in one
+// transaction: all of it is written, or nothing.
+func (s Store) ApplyMachineImport(ctx context.Context, items []machineImportChange) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	for _, it := range items {
+		e := it.Edit
+		if it.Add {
+			_, err = tx.Exec(ctx, `INSERT INTO machines (mac,first_seen,last_seen,name,note,manufacturer_override,product_override,manual,updated_at)
+VALUES ($1,now(),now(),$2,$3,$4,$5,true,now()) ON CONFLICT (mac) DO NOTHING`, it.MAC, e.Name, e.Note, e.Manufacturer, e.Product)
+		} else {
+			_, err = tx.Exec(ctx, `UPDATE machines SET name=$2,note=$3,manufacturer_override=$4,product_override=$5,updated_at=now() WHERE mac=$1`, it.MAC, e.Name, e.Note, e.Manufacturer, e.Product)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 // DeleteMachine removes a machine from the book; if it boots again it comes
 // back without its name.
 func (s Store) DeleteMachine(ctx context.Context, mac string) error {

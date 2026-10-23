@@ -216,6 +216,11 @@ func (s *Server) refreshedBook(ctx context.Context) ([]MachineInfo, bool) {
 
 // machinesPage lists every machine in the book with search and sorting.
 func (s *Server) machinesPage(w http.ResponseWriter, r *http.Request) {
+	render(w, "machines", s.machinesData(r))
+}
+
+// machinesData collects the table for the page and the import preview.
+func (s *Server) machinesData(r *http.Request) pageData {
 	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), Form: pageForm(r)}
 	q := r.URL.Query()
 	machines, ok := s.refreshedBook(r.Context())
@@ -238,7 +243,7 @@ func (s *Server) machinesPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	render(w, "machines", data)
+	return data
 }
 
 // parseMAC reads a MAC typed in any common form — bc:24:11:aa:bb:01,

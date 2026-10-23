@@ -120,7 +120,7 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write([]byte("#!ipxe\n"))
 		if record != nil {
-			record(Event{Kind: "hello", Path: helloPath(r.URL.Query()), RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
+			record(Event{Kind: "hello", Path: helloPath(helloQuery(r.URL.RawQuery)), RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
 		}
 	})
 	mux.HandleFunc("/assets/", func(w http.ResponseWriter, r *http.Request) {
@@ -215,6 +215,14 @@ var HelloFields = []string{"manufacturer", "product", "serial", "uuid", "platfor
 
 // helloPath keeps the known fields of a hello request, each cut to 128
 // characters, as the logged path.
+// helloQuery reads the hello report. iPXE's uristring encodes a space as
+// %20 and leaves '+' alone, so '+' is a plus sign here, not a space as in
+// HTML forms: QEMU's model is "Standard PC (Q35 + ICH9, 2009)".
+func helloQuery(raw string) url.Values {
+	q, _ := url.ParseQuery(strings.ReplaceAll(raw, "+", "%2B"))
+	return q
+}
+
 func helloPath(query url.Values) string {
 	kept := url.Values{}
 	for _, field := range HelloFields {

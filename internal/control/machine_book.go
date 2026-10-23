@@ -48,6 +48,8 @@ type MachineBook interface {
 	SeeMachines(context.Context, []MachineSeen) error
 	// AddMachine adds a machine by hand; false when the MAC is already there.
 	AddMachine(context.Context, string, MachineEdit) (bool, error)
+	// ApplyMachineImport writes a loaded file in one transaction.
+	ApplyMachineImport(context.Context, []machineImportChange) error
 	EditMachine(context.Context, string, MachineEdit) error
 	DeleteMachine(context.Context, string) error
 }

@@ -5,8 +5,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -106,5 +108,25 @@ func TestHelloRecordsMachineDetails(t *testing.T) {
 	}
 	if got := events[0].Path; got != "/boot/hello?manufacturer=Dell+Inc.&platform=efi&product=OptiPlex+7090&serial=7XK2JQ3&uuid=4c4c4544-0058" {
 		t.Fatalf("path=%s", got)
+	}
+}
+
+// iPXE's uristring encodes a space as %20 but leaves '+' as it is, so a
+// literal '+' in an SMBIOS model is a plus, not a space. Seen on QEMU:
+// "Standard PC (Q35 + ICH9, 2009)".
+func TestHelloKeepsPlusSigns(t *testing.T) {
+	var events []Event
+	h, err := NewHandler(t.TempDir(), []byte("#!ipxe\n"), func(e Event) { events = append(events, e) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/boot/hello?manufacturer=QEMU&product=Standard%20PC%20%28Q35%20+%20ICH9%2C%202009%29&platform=efi", nil))
+	if len(events) != 1 {
+		t.Fatal("no event")
+	}
+	_, raw, _ := strings.Cut(events[0].Path, "?")
+	q, err := url.ParseQuery(raw)
+	if err != nil || q.Get("product") != "Standard PC (Q35 + ICH9, 2009)" {
+		t.Fatalf("path=%s product=%q", events[0].Path, q.Get("product"))
 	}
 }

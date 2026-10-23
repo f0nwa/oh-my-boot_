@@ -62,6 +62,17 @@ func (b *bookStore) AddMachine(_ context.Context, mac string, e MachineEdit) (bo
 	return true, nil
 }
 
+func (b *bookStore) ApplyMachineImport(ctx context.Context, items []machineImportChange) error {
+	for _, it := range items {
+		if it.Add {
+			_, _ = b.AddMachine(ctx, it.MAC, it.Edit)
+			continue
+		}
+		_ = b.EditMachine(ctx, it.MAC, it.Edit)
+	}
+	return nil
+}
+
 func (b *bookStore) DeleteMachine(_ context.Context, mac string) error {
 	delete(b.machines, mac)
 	return nil

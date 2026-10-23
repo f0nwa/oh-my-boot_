@@ -124,6 +124,7 @@ type Server struct {
 	draftMu           sync.Mutex
 	smbMu             sync.Mutex
 	bookCache         machineBookCache
+	machineImports    *machineImportStash
 	windowsMu         sync.Mutex
 }
 
@@ -137,6 +138,9 @@ type requestContext struct {
 type ctxKey struct{}
 
 func (s *Server) Handler() http.Handler {
+	if s.machineImports == nil {
+		s.machineImports = &machineImportStash{}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
@@ -168,6 +172,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /machines/{mac}", s.protect("images", withPageErrors(s.machinesPage, s.machineTableEdit)))
 	mux.HandleFunc("POST /machines/{mac}/delete", s.protect("delete", withPageErrors(s.machinesPage, s.machineTableDelete)))
 	mux.HandleFunc("GET /assets/machines.js", machinesScript)
+	mux.HandleFunc("GET /machines.csv", s.protect("view", s.machinesCSV))
+	mux.HandleFunc("POST /machines/import", s.protect("images", withPageErrors(s.machinesPage, s.machineImportPreview)))
+	mux.HandleFunc("POST /machines/import-apply", s.protect("images", withPageErrors(s.machinesPage, s.machineImportApply)))
 	mux.HandleFunc("GET /network", s.protect("view", s.networkPage))
 	mux.HandleFunc("POST /network/preview", s.protect("network", s.networkPreview))
 	mux.HandleFunc("POST /network/apply", s.protect("network", s.networkApply))
@@ -255,6 +262,13 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 				_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Minute))
 				r.Body = http.MaxBytesReader(w, r.Body, drivers.MaxArchiveBytes+(1<<20))
 				err = r.ParseMultipartForm(8 << 20)
+			} else if r.Pattern == "POST /machines/import" {
+				if r.ContentLength > maxMachineCSVBytes+(64<<10) {
+					http.Error(w, translate(normalizeLanguage(user.Language), "Файл больше 1 МБ"), http.StatusRequestEntityTooLarge)
+					return
+				}
+				r.Body = http.MaxBytesReader(w, r.Body, maxMachineCSVBytes+(64<<10))
+				err = r.ParseMultipartForm(2 << 20)
 			} else if r.Pattern == "POST /images/windows-profiles/{id}/answers" || r.Pattern == "POST /answers/upload" || r.Pattern == "POST /answers/{id}/inspect" {
 				r.Body = http.MaxBytesReader(w, r.Body, maxWindowsAnswerBytes+(32<<10))
 				err = r.ParseMultipartForm(2 << 20)

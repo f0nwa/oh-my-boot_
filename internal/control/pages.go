@@ -195,6 +195,8 @@ func humanSize(lang string, n int64) string {
 	switch {
 	case n >= 1<<40:
 		value, unit = float64(n)/(1<<40), "ТБ"
+	case n < 1<<20:
+		value, unit = float64(n)/(1<<10), "КБ"
 	case n < 1<<30:
 		value, unit = float64(n)/(1<<20), "МБ"
 	}

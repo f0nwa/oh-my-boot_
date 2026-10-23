@@ -259,3 +259,19 @@ Follow-up 23.10.2026, 14:49 (`pxe-control` SHA-256 `32fb3073…`, previous `.bak
 - **No per-machine resolution.** `console --x 640 --y 480` is a minimum, not an exact mode: iPXE looks through the modes the machine's graphics offer and takes the smallest one that is at least 640×480. One setting therefore suits every machine. If there is no such mode at all, the firmware text console stays and the menu still works.
 - **The right edge is no longer cut off.** iPXE's graphical console draws each character in a 9-pixel cell, so 640×480 gives 71 columns, not 80, and hints aligned to 80 columns were clipped (“aut”, “vioscs”). Item lines are now sized for the narrowest screen: 65 characters (71 less frame and padding). On wider screens the hints sit slightly left of the edge.
 - The menu script now carries `# pxe-platform:look pult-3`; from it the draft can tell that the published menu uses an older look and shows “New look of the machine screen”.
+
+## Steps on the Now page: “Image” merged into “Choice”, 23.10.2026
+
+There are now six steps: DHCP · TFTP · iPXE · Menu · Choice · Install. iPXE does not tell the server which item was chosen; the choice shows up as the first request for that installation's files. So the earlier “Choice” and “Image” always lit up together, and “Image” is gone. Instead, “Choice” shows whether the machine got the installation files:
+
+- the item name: the files arrived;
+- `boot.wim · 312.0 MB of 540.0 MB` (amber step): the file is being sent right now;
+- `boot.wim · file not found` or `boot.wim · transfer cut off` (red step): the machine did not get the file. The machine page shows the outcome “Installation file not received” with a hint on what to do.
+
+The labels under the steps no longer repeat the column names: DHCP shows the machine's IP, TFTP shows UEFI or BIOS, Menu shows “waiting for a choice” while the machine sits in the menu. The Machine column shows only the MAC.
+
+For this, Boot records how each file request ended: the HTTP status, the bytes sent and the file size; requests for missing files (404) are logged too. Requests logged before this change carry none of it and count as successful. Files being sent right now are served to Control over Boot's socket (`GET /transfers`) with the bytes sent so far.
+
+Rollout 23.10.2026, 15:31: the [migration](../../deploy/sql/2026-10-23-boot-transfer.sql) was applied to the `pxe_boot` database (columns `status`, `bytes`, `size` in `boot_events`; as `pxe-boot`); replaced `pxe-boot` (SHA-256 `efe081a6…`) and `pxe-control` (`ff2a7817…`); previous files are `/usr/local/bin/*.bak-202610231531`. The client menu did not change.
+
+Follow-up 23.10.2026, 15:41 (`pxe-control` SHA-256 `faf7de3f…`, previous `.bak-202610231541`): a machine's row resets when it boots again. Previously only a pause longer than 10 minutes started a new boot, so a quick reboot piled onto the last one: the choice, “Image” and the Setup state stayed. Now a new boot also starts when the firmware fetches a loader over TFTP again after iPXE already ran, or when iPXE fetches the menu again after the installation files. A WinPE connection to the share belongs to the boot it began in. Samba keeps listing a rebooted machine's connection for a while, and such a connection no longer carries over to the new boot.

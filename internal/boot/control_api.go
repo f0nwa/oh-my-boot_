@@ -13,7 +13,17 @@ type EventReader interface {
 
 // ControlHandler is served only over a permission-restricted Unix socket.
 func ControlHandler(p *Publisher, events EventReader) http.Handler {
+	return ControlHandlerWithTransfers(p, events, nil)
+}
+
+// ControlHandlerWithTransfers also answers GET /transfers: the files being
+// sent right now.
+func ControlHandlerWithTransfers(p *Publisher, events EventReader, transfers *Transfers) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /transfers", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(transfers.List())
+	})
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		_, hash := p.Current()
 		w.Header().Set("Content-Type", "application/json")

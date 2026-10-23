@@ -41,7 +41,7 @@ func TestMachineSessionsSplitBootsAndNameOutcome(t *testing.T) {
 	for _, step := range first.Steps {
 		stages = append(stages, step.Stage)
 	}
-	if strings.Join(stages, ",") != "DHCP,TFTP,Меню,Образ,Образ" {
+	if strings.Join(stages, ",") != "DHCP,TFTP,Меню,Выбор,Выбор" {
 		t.Fatalf("stages=%v", stages)
 	}
 }

@@ -35,9 +35,10 @@ type installEvent struct {
 	MAC, IP string
 	Session string
 	Profile string
-	Kind    string // connected, copy, copied, ended, seen
-	State   int    // the session's furthest state
-	Read    int64  // bytes of the install image read so far
+	Kind    string    // connected, copy, copied, ended, seen
+	State   int       // the session's furthest state
+	Read    int64     // bytes of the install image read so far
+	Started time.Time // when the share session began
 }
 
 // installLog is what the Agent saw on the install share. Known is false when
@@ -84,7 +85,7 @@ func installEvents(v agent.SMBSessions, httpEvents []boot.Event) installLog {
 		}
 		state := sessionState(s)
 		add := func(at time.Time, kind string) {
-			out.Events = append(out.Events, installEvent{At: at, MAC: mac, IP: s.IP, Session: s.ID, Profile: s.Profile, Kind: kind, State: state, Read: s.CopyRead})
+			out.Events = append(out.Events, installEvent{At: at, MAC: mac, IP: s.IP, Session: s.ID, Profile: s.Profile, Kind: kind, State: state, Read: s.CopyRead, Started: s.Started})
 		}
 		add(s.Started, "connected")
 		if s.Copying != nil {

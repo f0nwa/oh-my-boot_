@@ -17,7 +17,7 @@ func (s PostgresStore) Recent(limit int) ([]Event, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	rows, err := s.Pool.Query(ctx, "SELECT occurred_at, kind, path, remote_addr, mac FROM boot_events ORDER BY occurred_at DESC, id DESC LIMIT $1", limit)
+	rows, err := s.Pool.Query(ctx, "SELECT occurred_at, kind, path, remote_addr, mac, status, bytes, size FROM boot_events ORDER BY occurred_at DESC, id DESC LIMIT $1", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func (s PostgresStore) Recent(limit int) ([]Event, error) {
 	events := make([]Event, 0, limit)
 	for rows.Next() {
 		var e Event
-		if err := rows.Scan(&e.At, &e.Kind, &e.Path, &e.RemoteAddr, &e.MAC); err != nil {
+		if err := rows.Scan(&e.At, &e.Kind, &e.Path, &e.RemoteAddr, &e.MAC, &e.Status, &e.Bytes, &e.Size); err != nil {
 			return nil, err
 		}
 		events = append(events, e)
@@ -35,8 +35,8 @@ func (s PostgresStore) Recent(limit int) ([]Event, error) {
 
 func (s PostgresStore) Insert(ctx context.Context, event Event) error {
 	_, err := s.Pool.Exec(ctx,
-		"INSERT INTO boot_events (occurred_at, kind, path, remote_addr, mac) VALUES ($1, $2, $3, $4, $5)",
-		event.At, event.Kind, event.Path, event.RemoteAddr, event.MAC,
+		"INSERT INTO boot_events (occurred_at, kind, path, remote_addr, mac, status, bytes, size) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+		event.At, event.Kind, event.Path, event.RemoteAddr, event.MAC, event.Status, event.Bytes, event.Size,
 	)
 	return err
 }

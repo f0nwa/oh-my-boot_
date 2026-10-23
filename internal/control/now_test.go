@@ -24,16 +24,16 @@ func TestMachineTrailMarksDoneCurrentAndFailedSteps(t *testing.T) {
 		live bool
 		want string
 	}{
-		{machineRow{Stage: "pxe"}, true, "done,current,none,none,none,none,none"},
-		{machineRow{Stage: "loader_failed", Firmware: "BIOS"}, true, "done,failed,none,none,none,none,none"},
-		{machineRow{Stage: "menu"}, true, "done,done,done,done,current,none,none"},
-		{machineRow{Stage: "menu"}, false, "done,done,done,done,none,none,none"},
-		{machineRow{Stage: "files", Choice: "Win11"}, false, "done,done,done,done,done,done,none"},
-		{machineRow{Stage: "files", Choice: "Win11"}, true, "done,done,done,done,done,done,current"},
-		{machineRow{Stage: "copy", Choice: "Win11"}, false, "done,done,done,done,done,done,current"},
-		{machineRow{Stage: "copied", Choice: "Win11"}, false, "done,done,done,done,done,done,done"},
-		{machineRow{Stage: "stuck", Choice: "Win11"}, false, "done,done,done,done,done,done,failed"},
-		{machineRow{Stage: "files"}, true, "done,done,done,done,current,none,none"},
+		{machineRow{Stage: "pxe"}, true, "done,current,none,none,none,none"},
+		{machineRow{Stage: "loader_failed", Firmware: "BIOS"}, true, "done,failed,none,none,none,none"},
+		{machineRow{Stage: "menu"}, true, "done,done,done,done,current,none"},
+		{machineRow{Stage: "menu"}, false, "done,done,done,done,none,none"},
+		{machineRow{Stage: "files", Choice: "Win11"}, false, "done,done,done,done,done,none"},
+		{machineRow{Stage: "files", Choice: "Win11"}, true, "done,done,done,done,done,current"},
+		{machineRow{Stage: "copy", Choice: "Win11"}, false, "done,done,done,done,done,current"},
+		{machineRow{Stage: "copied", Choice: "Win11"}, false, "done,done,done,done,done,done"},
+		{machineRow{Stage: "stuck", Choice: "Win11"}, false, "done,done,done,done,done,failed"},
+		{machineRow{Stage: "files"}, true, "done,done,done,done,current,none"},
 	}
 	for _, c := range cases {
 		if got := trailStates(machineTrail(c.row, c.live)); got != c.want {

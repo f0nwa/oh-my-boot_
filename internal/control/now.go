@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"net/http"
@@ -10,11 +11,13 @@ import (
 	"pxe-platform/internal/boot"
 )
 
-// trailStep is one of the seven boot steps shown for a machine on the
+// trailStep is one of the six boot steps shown for a machine on the
 // «Сейчас» page. State is done, current, failed or none.
 type trailStep struct {
 	Label, Sub, State string
-	Bytes             int64 // shown after Sub
+	Bytes             int64  // shown after Sub
+	Total             int64  // with Bytes: "Bytes of Total"
+	File              string // a boot file name, shown before Sub
 }
 
 type nowMachine struct {
@@ -48,10 +51,13 @@ type nowView struct {
 // booting right now.
 const liveWindow = 3 * time.Minute
 
-var trailLabels = []string{"DHCP", "TFTP", "iPXE", "Меню", "Выбор", "Образ", "Установка"}
+var trailLabels = []string{"DHCP", "TFTP", "iPXE", "Меню", "Выбор", "Установка"}
 
-// machineTrail turns a machine summary into the seven boot steps. The step
+// machineTrail turns a machine summary into the six boot steps. The step
 // after the last completed one is current while the machine is still active.
+// «Выбор» covers the boot files of the chosen item: iPXE does not report the
+// choice itself, so the first file request is the choice, and the last ones
+// (boot.wim) are its download.
 func machineTrail(row machineRow, live bool) []trailStep {
 	done := 1 // the machine is in the log, so DHCP answered
 	failed := -1
@@ -64,14 +70,20 @@ func machineTrail(row machineRow, live bool) []trailStep {
 		done = 3
 	case "menu":
 		done = 4
+	case "files_failed":
+		done, failed = 4, 4
 	case "files", "winpe", "copy":
-		done = 6
+		done = 5
 	case "stuck", "winpe_left", "copy_broken":
-		done, failed = 6, 6
+		done, failed = 5, 5
 	case "copied":
-		done = 7
+		done = 6
 	}
 	if row.Stage == "files" && row.Choice == "" {
+		done = 4
+	}
+	// A boot file still on its way: the choice is made but not yet loaded.
+	if row.Download != nil && row.Stage == "files" {
 		done = 4
 	}
 	// While Setup holds the share, the machine is busy even if the last
@@ -90,20 +102,28 @@ func machineTrail(row machineRow, live bool) []trailStep {
 		}
 		steps[i] = step
 	}
-	// The firmware may come from an earlier boot; show it only on a step this
-	// boot reached.
+	// The address and the firmware may come from an earlier boot; show them
+	// only on steps this boot reached.
+	if row.IP != "" && steps[0].State != "none" {
+		steps[0].Sub = row.IP
+	}
 	if row.Firmware != "" && steps[1].State != "none" {
 		steps[1].Sub = row.Firmware
-	}
-	if row.Choice != "" {
-		steps[4].Sub = row.Choice
 	}
 	if row.Stage == "menu" && live {
 		steps[3].Sub = "ждёт выбора"
 	}
-	steps[6].Sub = map[string]string{"winpe": "WinPE подключился", "copy": "копирует Windows", "copied": "скопировано, перезагрузка", "stuck": "застрял в WinPE", "winpe_left": "отключился", "copy_broken": "связь прервалась"}[row.Stage]
+	steps[4].Sub = row.Choice
+	switch {
+	case row.Stage == "files_failed":
+		steps[4].File, steps[4].Sub = problemFile(row.Problem), problemText(row.Problem)
+	case row.Download != nil:
+		steps[4].File, steps[4].Sub = fileName(row.Download.Path), ""
+		steps[4].Bytes, steps[4].Total = row.Download.Bytes, row.Download.Size
+	}
+	steps[5].Sub = map[string]string{"winpe": "WinPE подключился", "copy": "копирует Windows", "copied": "скопировано, перезагрузка", "stuck": "застрял в WinPE", "winpe_left": "отключился", "copy_broken": "связь прервалась"}[row.Stage]
 	if row.Stage == "copy" || row.Stage == "copied" || row.Stage == "copy_broken" {
-		steps[6].Bytes = row.CopyRead
+		steps[5].Bytes = row.CopyRead
 	}
 	return steps
 }
@@ -211,12 +231,14 @@ func (s *Server) nowPage(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	install := s.loadInstallLog(r.Context(), httpEvents)
-	for _, row := range machineRowsWith(httpEvents, dhcp, install, s.menuNames(r.Context()), now) {
+	rows := machineRowsWith(httpEvents, dhcp, install, s.menuNames(r.Context()), now)
+	attachDownloads(rows, s.bootTransfers(r.Context()), now)
+	for _, row := range rows {
 		if now.Sub(row.LastSeen) > 24*time.Hour && len(view.Machines) >= 5 {
 			continue
 		}
 		live := now.Sub(row.LastSeen) <= liveWindow
-		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: row.Stage == "loader_failed" || row.Stage == "stuck" || row.Stage == "copy_broken"}
+		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: row.Stage == "loader_failed" || row.Stage == "files_failed" || row.Stage == "stuck" || row.Stage == "copy_broken"}
 		if live {
 			view.Booting++
 		}
@@ -250,4 +272,17 @@ func nowScript(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(nowJS)
+}
+
+// bootTransfers asks Boot which files it is sending now; without Boot there
+// are none.
+func (s *Server) bootTransfers(ctx context.Context) []boot.Transfer {
+	if s.Boot == nil {
+		return nil
+	}
+	transfers, err := s.Boot.Transfers(ctx)
+	if err != nil {
+		return nil
+	}
+	return transfers
 }

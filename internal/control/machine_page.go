@@ -25,7 +25,10 @@ type machineStep struct {
 	Text   string
 	Raw    string
 	Failed bool
-	Bytes  int64 // install image read, shown after the text
+	Bytes  int64 // bytes sent or read, shown after the text
+	Size   int64 // with Bytes: the whole file
+	// problem marks a boot file this step failed to deliver.
+	problem string
 
 	bootWIM bool
 }
@@ -38,7 +41,10 @@ type bootSession struct {
 	Choice     string
 	Outcome    string // loader_failed, dhcp_only, loader, menu, files, stuck, winpe, winpe_left, copy, copy_broken, copied
 	CopyRead   int64  // install image read by Setup
-	bootWIMAt  time.Time
+	Problem    string // with files_failed: "missing:boot.wim" or "cut:boot.wim"
+	// Download is the boot file being sent now; only the latest boot has it.
+	Download  *boot.Transfer
+	bootWIMAt time.Time
 }
 
 // OutcomeLabel names where the attempt stopped, in words.
@@ -64,9 +70,16 @@ func (b bootSession) OutcomeLabel() string {
 		return "Файлы скопированы, перезагрузка"
 	case "copy_broken":
 		return "Связь прервалась во время копирования"
+	case "files_failed":
+		return "Файл установки не получен"
 	}
 	return "Получила файлы установки"
 }
+
+// ProblemText says how a boot file failed; ProblemFile names it.
+func (b bootSession) ProblemText() string { return problemText(b.Problem) }
+
+func (b bootSession) ProblemFile() string { return problemFile(b.Problem) }
 
 // OK reports whether the attempt reached the installation files.
 func (b bootSession) OK() bool {
@@ -79,7 +92,7 @@ func (b bootSession) OK() bool {
 
 // Failed reports whether the attempt hit an error rather than just stopping.
 func (b bootSession) Failed() bool {
-	return b.Outcome == "loader_failed" || b.Outcome == "stuck" || b.Outcome == "winpe_left" || b.Outcome == "copy_broken"
+	return b.Outcome == "loader_failed" || b.Outcome == "files_failed" || b.Outcome == "stuck" || b.Outcome == "winpe_left" || b.Outcome == "copy_broken"
 }
 
 // Installing reports whether Setup took over, after which the machine no
@@ -121,7 +134,14 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 		if e.MAC != mac {
 			continue
 		}
-		step := machineStep{At: e.At, Stage: "iPXE", Text: "Файл загрузки", Raw: e.Path, bootWIM: isBootWIM(e)}
+		problem := fileProblem(e)
+		step := machineStep{At: e.At, Stage: "iPXE", Text: "Файл загрузки", Raw: e.Path, bootWIM: isBootWIM(e) && problem == "", Size: e.Size, Bytes: e.Bytes}
+		switch problem {
+		case "missing":
+			step.Text, step.Failed, step.problem = "Файл не найден", true, "missing:"+fileName(e.Path)
+		case "cut":
+			step.Text, step.Failed, step.problem = "Передача прервалась", true, "cut:"+fileName(e.Path)
+		}
 		key, rank := choiceKey(e)
 		switch {
 		case e.Kind == "menu":
@@ -131,17 +151,24 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 			if title == "" {
 				title = key
 			}
-			step.Stage, step.Text = "Образ", title
+			step.Stage = "Выбор"
+			if problem == "" {
+				step.Text = title
+			}
 			choices = append(choices, choice{e.At, title, rank})
 		}
 		steps = append(steps, step)
 	}
 	sort.SliceStable(steps, func(i, j int) bool { return steps[i].At.Before(steps[j].At) })
 	var sessions []bootSession
+	var progress bootProgress
 	for _, step := range steps {
-		if len(sessions) == 0 || step.At.Sub(sessions[len(sessions)-1].End) > bootSessionGap {
+		stage := stepStage(step)
+		if len(sessions) == 0 || step.At.Sub(sessions[len(sessions)-1].End) > bootSessionGap || progress.restartedBy(stage) {
 			sessions = append(sessions, bootSession{Start: step.At})
+			progress = bootProgress{}
 		}
+		progress.add(stage)
 		current := &sessions[len(sessions)-1]
 		current.Steps = append(current.Steps, step)
 		current.End = step.At
@@ -156,8 +183,10 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 		if e.MAC != mac || e.Kind == "seen" {
 			continue
 		}
+		// The boot the share session began in, not the one running when
+		// Samba last listed it.
 		for i := len(sessions) - 1; i >= 0; i-- {
-			if !sessions[i].Start.After(e.At) {
+			if !sessions[i].Start.After(e.Started) {
 				sessions[i].Steps = append(sessions[i].Steps, installStep(e))
 				installState[i] = max(installState[i], e.State)
 				sessions[i].CopyRead = max(sessions[i].CopyRead, e.Read)
@@ -171,11 +200,19 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 	for i := range sessions {
 		session := &sessions[i]
 		var progress bootProgress
+		problems := map[string]string{}
 		for i := range session.Steps {
 			step := &session.Steps[i]
+			if step.Stage == "Выбор" || step.Stage == "iPXE" && step.Raw != "" {
+				// The last request for a file decides: a retry that worked
+				// clears the earlier failure.
+				problems[fileName(step.Raw)] = step.problem
+			}
 			switch {
 			case step.Stage == "Установка":
 				// counted from the share sessions below
+			case step.problem != "":
+				progress.add("files")
 			case step.Failed:
 				progress.add("loader_failed")
 			case step.Stage == "TFTP":
@@ -186,7 +223,7 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 				progress.add("pxe")
 			case step.Stage == "Меню":
 				progress.add("menu")
-			case step.Stage == "Образ":
+			case step.Stage == "Выбор":
 				progress.add("files")
 			}
 		}
@@ -199,8 +236,18 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 				}
 			}
 		}
+		var failed []string
+		for _, problem := range problems {
+			if problem != "" {
+				failed = append(failed, problem)
+			}
+		}
+		sort.Strings(failed)
 		progress.addInstall(installState[i])
 		session.Outcome = map[string]string{"files": "files", "menu": "menu", "ipxe": "loader", "loader": "loader", "loader_failed": "loader_failed", "pxe": "dhcp_only", "winpe": "winpe", "winpe_left": "winpe_left", "copy_broken": "copy_broken", "copy": "copy", "copied": "copied"}[progress.stage()]
+		if session.Outcome == "files" && len(failed) > 0 {
+			session.Outcome, session.Problem = "files_failed", failed[0]
+		}
 		// Only the latest boot can still be waiting for WinPE.
 		if session.Outcome == "files" && install.Known && i == len(sessions)-1 && !session.bootWIMAt.IsZero() && session.bootWIMAt.After(install.Since) && now.Sub(session.bootWIMAt) > stuckAfter {
 			session.Outcome = "stuck"
@@ -216,6 +263,24 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 		sessions[i], sessions[j] = sessions[j], sessions[i]
 	}
 	return sessions
+}
+
+// stepStage classifies a timeline step the way machineRows classifies log
+// entries, to tell where a new boot begins.
+func stepStage(step machineStep) string {
+	switch {
+	case step.Stage == "TFTP" && step.Failed:
+		return "loader_failed"
+	case step.Stage == "TFTP":
+		return "loader"
+	case step.Stage == "Меню":
+		return "menu"
+	case step.Stage == "Выбор":
+		return "files"
+	case step.Stage == "DHCP":
+		return "pxe"
+	}
+	return ""
 }
 
 // machinePage shows one machine: where its boots stopped and every step of
@@ -252,6 +317,10 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.Sessions = machineSessionsWith(mac, httpEvents, dhcp, install, names, now)
+	if len(data.Machines) == 1 && len(data.Sessions) > 0 {
+		attachDownloads(data.Machines, s.bootTransfers(r.Context()), now)
+		data.Sessions[0].Download = data.Machines[0].Download
+	}
 	if n, err := strconv.Atoi(r.URL.Query().Get("boot")); err == nil && n >= 0 && n < len(data.Sessions) {
 		data.SessionIndex = n
 	}

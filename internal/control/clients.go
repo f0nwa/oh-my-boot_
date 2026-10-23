@@ -340,3 +340,10 @@ func (c *AgentClient) SMBSessions(ctx context.Context) (agent.SMBSessions, error
 	err := localCall(ctx, c.http, "GET", "/smb-sessions", nil, &v)
 	return v, err
 }
+
+// Transfers returns the boot files being sent right now.
+func (c *BootClient) Transfers(ctx context.Context) ([]boot.Transfer, error) {
+	var v []boot.Transfer
+	err := localCall(ctx, c.http, "GET", "/transfers", nil, &v)
+	return v, err
+}

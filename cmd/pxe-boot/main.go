@@ -46,7 +46,8 @@ func main() {
 		reader = boot.PostgresStore{Pool: pool}
 	}
 	recorder := boot.NewRecorder(store, log.Default())
-	handler, err := boot.NewDynamicHandlerWithISO(*assets, publisher, recorder.Record, os.Getenv("PXE_BOOT_UBUNTU_ISO"))
+	transfers := boot.NewTransfers()
+	handler, err := boot.NewDynamicHandlerWithTransfers(*assets, publisher, recorder.Record, os.Getenv("PXE_BOOT_UBUNTU_ISO"), transfers)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func main() {
 	if err := os.Chmod(*controlSocket, 0660); err != nil {
 		log.Fatal(err)
 	}
-	controlServer := &http.Server{Handler: boot.ControlHandler(publisher, reader), ReadHeaderTimeout: 5 * time.Second}
+	controlServer := &http.Server{Handler: boot.ControlHandlerWithTransfers(publisher, reader, transfers), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

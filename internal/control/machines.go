@@ -21,6 +21,45 @@ type machineRow struct {
 	LastSeen                         time.Time
 	Boots                            int
 	CopyRead                         int64 // install image read by Setup in this boot
+	// Problem is the boot file this boot failed to get, as "missing:boot.wim"
+	// or "cut:boot.wim"; the stage is then files_failed.
+	Problem string
+	// Download is a boot file being sent to the machine right now.
+	Download *boot.Transfer
+}
+
+// fileProblem tells how a boot file request ended badly: missing (an HTTP
+// error) or cut (fewer bytes sent than the file holds). Events logged before
+// transfers were recorded carry no status and count as fine.
+func fileProblem(e boot.Event) string {
+	switch {
+	case e.Status >= 400:
+		return "missing"
+	case e.Status == 200 && e.Size > 0 && e.Bytes < e.Size:
+		return "cut"
+	}
+	return ""
+}
+
+// fileName is the last part of a request path.
+func fileName(path string) string {
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:]
+	}
+	return path
+}
+
+// problemText says in words how a boot file failed; problemFile names it.
+func problemText(problem string) string {
+	if strings.HasPrefix(problem, "missing:") {
+		return "файл не найден"
+	}
+	return "передача прервалась"
+}
+
+func problemFile(problem string) string {
+	_, name, _ := strings.Cut(problem, ":")
+	return name
 }
 
 const macMatchWindow = 30 * time.Minute
@@ -145,7 +184,10 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 		rank      int
 		install   int // share session state; install moments never start a new boot
 		read      int64
-		bootWIM   bool // WinPE was fetched
+		started   time.Time // share session start of an install moment
+		file      string    // boot file name of an HTTP request
+		problem   string    // missing or cut, from fileProblem
+		bootWIM   bool      // WinPE was fetched
 	}
 	byMAC := map[string][]entry{}
 	for _, e := range resolveDHCPMACs(dhcp, httpEvents) {
@@ -170,23 +212,33 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 			en.stage = "menu"
 		}
 		en.key, en.rank = choiceKey(e)
-		en.bootWIM = isBootWIM(e)
+		en.problem = fileProblem(e)
+		en.bootWIM = isBootWIM(e) && en.problem == ""
+		if e.Kind != "menu" {
+			en.file = fileName(e.Path)
+		}
 		byMAC[e.MAC] = append(byMAC[e.MAC], en)
 	}
 	for _, e := range install.Events {
-		byMAC[e.MAC] = append(byMAC[e.MAC], entry{at: e.At, ip: e.IP, stage: "install", install: e.State, read: e.Read})
+		byMAC[e.MAC] = append(byMAC[e.MAC], entry{at: e.At, ip: e.IP, stage: "install", install: e.State, read: e.Read, started: e.Started})
 	}
 	var rows []machineRow
 	for mac, entries := range byMAC {
 		sort.Slice(entries, func(i, j int) bool { return entries[i].at.Before(entries[j].at) })
 		row := machineRow{MAC: mac}
 		var boot bootProgress
-		var last, bootWIMAt time.Time
+		var last, bootWIMAt, bootStart time.Time
 		bestRank := 0
+		problems := map[string]string{} // boot file -> its last problem in this boot
 		for _, en := range entries {
 			if en.install > 0 {
 				// Setup may run for an hour after the last boot request; it
-				// belongs to that boot.
+				// belongs to that boot. A share session that began before
+				// this boot belongs to an earlier one, even if Samba still
+				// lists it after the machine rebooted.
+				if en.started.Before(bootStart) {
+					continue
+				}
 				if en.install >= boot.install {
 					row.CopyRead = en.read
 				}
@@ -196,9 +248,11 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 				}
 				continue
 			}
-			if !last.IsZero() && en.at.Sub(last) > bootSessionGap {
+			if last.IsZero() || en.at.Sub(last) > bootSessionGap || boot.restartedBy(en.stage) {
 				// A new boot attempt: progress and choice start over.
 				boot, row.Choice, bestRank, bootWIMAt, row.CopyRead = bootProgress{}, "", 0, time.Time{}, 0
+				problems = map[string]string{}
+				bootStart = en.at
 			}
 			last = en.at
 			if en.at.After(row.LastSeen) {
@@ -206,6 +260,10 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 			}
 			if en.bootWIM {
 				bootWIMAt = en.at
+			}
+			if en.file != "" {
+				// A file fetched again after a failure is fine again.
+				problems[en.file] = en.problem
 			}
 			if en.ip != "" {
 				row.IP = en.ip
@@ -223,6 +281,18 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 			}
 		}
 		row.Stage = boot.stage()
+		if row.Stage == "files" {
+			var failed []string
+			for file, problem := range problems {
+				if problem != "" {
+					failed = append(failed, file)
+				}
+			}
+			sort.Strings(failed)
+			if len(failed) > 0 {
+				row.Stage, row.Problem = "files_failed", problems[failed[0]]+":"+failed[0]
+			}
+		}
 		// WinPE that never reached the share while the Agent was watching.
 		if row.Stage == "files" && install.Known && !bootWIMAt.IsZero() && bootWIMAt.After(install.Since) && now.Sub(bootWIMAt) > stuckAfter {
 			row.Stage = "stuck"
@@ -234,6 +304,20 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].LastSeen.After(rows[j].LastSeen) })
 	return rows
+}
+
+// attachDownloads gives each machine the boot file being sent to its IP right
+// now, if any.
+func attachDownloads(rows []machineRow, transfers []boot.Transfer, now time.Time) {
+	for i := range rows {
+		for j := range transfers {
+			if rows[i].IP != "" && eventIP(transfers[j].RemoteAddr) == rows[i].IP {
+				rows[i].Download = &transfers[j]
+				// A download in progress means the machine is active now.
+				rows[i].LastSeen = now
+			}
+		}
+	}
 }
 
 // menuNames maps menu keys to object titles for the machine summary.
@@ -262,6 +346,20 @@ func (s *Server) menuNames(ctx context.Context) map[string]string {
 type bootProgress struct {
 	loaderSent, loaderFailed, ipxe, menu, files bool
 	install                                     int // furthest share session state
+}
+
+// restartedBy tells whether a step can only belong to a new boot of the
+// machine: the firmware fetching a loader again after iPXE already ran, or
+// iPXE fetching the menu again after the boot files. A quick reboot then
+// starts a new row state instead of piling onto the last one.
+func (b bootProgress) restartedBy(stage string) bool {
+	switch stage {
+	case "loader", "loader_failed":
+		return b.ipxe || b.menu || b.files || b.install > 0
+	case "menu":
+		return b.files || b.install > 0
+	}
+	return false
 }
 
 func (b *bootProgress) addInstall(state int) {
@@ -346,6 +444,8 @@ func machineStageLabel(stage string) string {
 		return "Меню"
 	case "files":
 		return "Загрузка файлов"
+	case "files_failed":
+		return "Файл установки не получен"
 	case "stuck":
 		return "Застрял в WinPE"
 	case "winpe":

@@ -17,6 +17,12 @@ type Event struct {
 	RemoteAddr string    `json:"remote_addr"`
 	MAC        string    `json:"mac,omitempty"`
 	At         time.Time `json:"at"`
+	// Status, Bytes and Size describe how a file request ended: the HTTP
+	// status, the body bytes sent and the file's size. Zero in events
+	// logged before 23.10.2026 and for the menu.
+	Status int   `json:"status,omitempty"`
+	Bytes  int64 `json:"bytes,omitempty"`
+	Size   int64 `json:"size,omitempty"`
 }
 
 // NewHandler serves a menu snapshot and files confined to assetDir.
@@ -36,6 +42,11 @@ func NewDynamicHandler(assetDir string, publisher *Publisher, record func(Event)
 // NewDynamicHandlerWithISO exposes one explicitly configured Ubuntu ISO.
 // The rest of its storage is never mapped into the HTTP server.
 func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func(Event), isoPath string) (http.Handler, error) {
+	return NewDynamicHandlerWithTransfers(assetDir, publisher, record, isoPath, nil)
+}
+
+// NewDynamicHandlerWithTransfers also lists the files being sent in transfers.
+func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, record func(Event), isoPath string, transfers *Transfers) (http.Handler, error) {
 	if publisher == nil {
 		return nil, fmt.Errorf("publisher is required")
 	}
@@ -103,6 +114,14 @@ func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func
 			return
 		}
 		name := strings.TrimPrefix(r.URL.Path, "/assets/")
+		// A missing file is logged too: a 404 on boot.wim is where an
+		// installation stops.
+		notFound := func() {
+			http.NotFound(w, r)
+			if record != nil {
+				record(Event{Kind: "asset", Path: r.URL.Path, RemoteAddr: r.RemoteAddr, At: time.Now().UTC(), Status: http.StatusNotFound})
+			}
+		}
 		if name == "" || strings.Contains(name, "\\") || strings.HasPrefix(name, "/") {
 			http.NotFound(w, r)
 			return
@@ -123,7 +142,7 @@ func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func
 		candidate := filepath.Join(root, filepath.FromSlash(name))
 		resolved, err := filepath.EvalSymlinks(candidate)
 		if err != nil {
-			http.NotFound(w, r)
+			notFound()
 			return
 		}
 		rel, err := filepath.Rel(root, resolved)
@@ -131,14 +150,27 @@ func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func
 			http.NotFound(w, r)
 			return
 		}
-		info, err := os.Stat(resolved)
-		if err != nil || !info.Mode().IsRegular() {
-			http.NotFound(w, r)
+		file, err := os.Open(resolved)
+		if err != nil {
+			notFound()
 			return
 		}
-		http.ServeFile(w, r, resolved)
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil || !info.Mode().IsRegular() {
+			notFound()
+			return
+		}
+		id, live := transfers.start(r.URL.Path, r.RemoteAddr, info.Size())
+		sw := &statusWriter{ResponseWriter: w}
+		http.ServeContent(sw, r, info.Name(), info.ModTime(), countingFile{File: file, sent: &live.sent})
+		transfers.finish(id)
 		if record != nil {
-			record(Event{Kind: "asset", Path: r.URL.Path, RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
+			event := Event{Kind: "asset", Path: r.URL.Path, RemoteAddr: r.RemoteAddr, At: time.Now().UTC(), Status: sw.status, Bytes: sw.bytes}
+			if r.Method == http.MethodGet {
+				event.Size = info.Size()
+			}
+			record(event)
 		}
 	})
 	return mux, nil

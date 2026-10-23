@@ -19,6 +19,10 @@ sudo -u pxe-images env PXE_IMAGES_DATABASE_URL='host=/var/run/postgresql dbname=
   /usr/local/bin/pxe-imagesctl add-path -name Local -kind local -root /var/lib/pxe-platform-images/iso
 ```
 
+To upload ISO files into the local storage from the admin interface, give the `pxe-images` group write access to the directory (`sudo chmod 2770 /var/lib/pxe-platform-images/iso`). The `pxe-images.service` unit already allows writing to `/var/lib/pxe-platform-images` (`ReadWritePaths=-/var/lib/pxe-platform-images`). While the directory is read-only, the storage works as before, but it is missing from the upload storage list and marked “read-only” on the Storages page. Windows profiles can be prepared from ISO files in local storages inside `/var/lib/pxe-platform-images`: the Agent mounts ISO files only from SMB connections and from that directory.
+
+Free space is shown for every available storage (statfs of its root, at most 3 seconds): when choosing the upload storage and on the Storages and System pages. For SMB it is the space on the NAS share; for a local storage, on the server's file system.
+
 Another directory that is already mounted is registered with a separate command, a new name and `-kind mounted`. The path must be a real mount point with no symbolic links in it; Images checks it before registration, before walking the files and after the walk. If the mount disappears or changes, the previous catalog is kept. A managed SMB connection is added in the admin interface.
 
 On the **Images** page, an administrator or operator presses **Refresh**. The request starts a background scan and returns the page at once; the state and the found files appear after the page is reloaded. An observer sees the catalog but cannot start a scan. The audit log records that the request was accepted, and the scan result is shown in the storage state. If reading fails, the previous records are kept and the storage is marked unavailable. After a service restart, an interrupted scan is also marked as failed, and the scan can be started again.

@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"pxe-platform/internal/images"
+	"pxe-platform/internal/smbstorage"
 )
 
 //go:embed iso_upload.js
@@ -19,9 +21,31 @@ func (s *Server) isoUploadScript(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(isoUploadJS)
 }
 
+// uploadStorage finds a storage that takes ISO uploads: a ready SMB storage,
+// or a local one this server may write to.
+func (s *Server) uploadStorage(ctx context.Context, idText string) (images.Storage, bool) {
+	id, err := strconv.ParseInt(idText, 10, 64)
+	if err != nil || id <= 0 || s.Images == nil {
+		return images.Storage{}, false
+	}
+	catalog, err := s.Images.Catalog(ctx)
+	if err != nil {
+		return images.Storage{}, false
+	}
+	for _, storage := range catalog.Storages {
+		if storage.ID == id && storage.Uploads && storage.State == "ready" {
+			if storage.Kind == "smb" && smbstorage.Validate(storage.Key, storage.Server, storage.Share, storage.Subpath) != nil {
+				return images.Storage{}, false
+			}
+			return storage, true
+		}
+	}
+	return images.Storage{}, false
+}
+
 func (s *Server) imagesFolders(w http.ResponseWriter, r *http.Request) {
-	storage, ok := s.smbStorage(r.Context(), r.PathValue("id"))
-	if !ok || storage.State != "ready" {
+	storage, ok := s.uploadStorage(r.Context(), r.PathValue("id"))
+	if !ok {
 		http.Error(w, "Хранилище недоступно", http.StatusNotFound)
 		return
 	}
@@ -36,12 +60,12 @@ func (s *Server) imagesFolders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) imagesUpload(w http.ResponseWriter, r *http.Request) {
-	if s.SMB == nil || s.Images == nil {
+	if s.Images == nil {
 		http.Error(w, "Служба загрузки недоступна", http.StatusServiceUnavailable)
 		return
 	}
-	storage, ok := s.smbStorage(r.Context(), r.PathValue("id"))
-	if !ok || storage.State != "ready" {
+	storage, ok := s.uploadStorage(r.Context(), r.PathValue("id"))
+	if !ok || (storage.Kind == "smb" && s.SMB == nil) {
 		http.Error(w, "Хранилище недоступно", http.StatusNotFound)
 		return
 	}
@@ -54,10 +78,14 @@ func (s *Server) imagesUpload(w http.ResponseWriter, r *http.Request) {
 	deadline := time.Now().Add(2 * time.Hour)
 	_ = controller.SetReadDeadline(deadline)
 	_ = controller.SetWriteDeadline(deadline)
-	if err := s.SMB.EnableUpload(r.Context(), storage.Key, storage.Server, storage.Share, storage.Subpath); err != nil {
-		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.upload", "mount-error", strconv.FormatInt(storage.ID, 10))
-		http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права SMB.", http.StatusServiceUnavailable)
-		return
+	// An SMB storage is written through a separate read-write mount that the
+	// Agent connects on demand; a local storage is written directly.
+	if storage.Kind == "smb" {
+		if err := s.SMB.EnableUpload(r.Context(), storage.Key, storage.Server, storage.Share, storage.Subpath); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.upload", "mount-error", strconv.FormatInt(storage.ID, 10))
+			http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права SMB.", http.StatusServiceUnavailable)
+			return
+		}
 	}
 	result, err := s.Images.UploadISO(r.Context(), storage.ID, folder, name, r.Body, r.ContentLength)
 	if err != nil {

@@ -138,7 +138,7 @@ func SelectWindowsISO(catalog images.Catalog, storageID int64, imagePath, title,
 			break
 		}
 	}
-	if storage == nil || storage.Kind != "smb" || storage.State != "ready" || !filepath.IsAbs(storage.Root) {
+	if storage == nil || (storage.Kind != "smb" && !(storage.Kind == "local" && localISOStorage(storage.Root))) || storage.State != "ready" || !filepath.IsAbs(storage.Root) {
 		return WindowsProfileSource{}, fmt.Errorf("ISO storage is unavailable")
 	}
 	for _, image := range catalog.Images {
@@ -182,6 +182,13 @@ func windowsProfileSourceProblem(catalog images.Catalog, profile WindowsProfile)
 		return fmt.Errorf("исходный ISO профиля %d изменился", profile.ID)
 	}
 	return nil
+}
+
+// localISOStorage reports whether a local storage lies where the Agent may
+// mount profile ISOs from.
+func localISOStorage(root string) bool {
+	rel, err := filepath.Rel(agent.LocalISORoot, filepath.Clean(root))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../") && filepath.IsAbs(root)
 }
 
 func capitalizeFirst(text string) string {

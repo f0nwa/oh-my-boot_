@@ -39,6 +39,7 @@ func main() {
 	}
 	windows := &agent.WindowsISOManager{
 		SourceRoot: "/mnt/pxe-platform-smb",
+		LocalRoot:  agent.LocalISORoot,
 		ConfigRoot: "/etc/pxe-platform/winiso",
 		MountRoot:  "/mnt/pxe-platform-iso/profiles",
 		AssetRoot:  "/srv/pxe/tftp/windows-profiles",

@@ -367,3 +367,28 @@ func TestStoredWindowsISORequestComparesModifiedAsInstant(t *testing.T) {
 		t.Fatal("different or broken configuration accepted")
 	}
 }
+
+func TestResolveWindowsISOSourceAcceptsLocalStorage(t *testing.T) {
+	smbRoot, local, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	write := func(dir string) WindowsISORequest {
+		if err := os.MkdirAll(filepath.Join(dir, "iso"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		iso := filepath.Join(dir, "iso", "win11.iso")
+		if err := os.WriteFile(iso, []byte("iso"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		info, _ := os.Stat(iso)
+		return WindowsISORequest{ID: 4, StorageRoot: filepath.Join(dir, "iso"), RelativePath: "win11.iso", Size: info.Size(), Modified: info.ModTime()}
+	}
+	req := write(local)
+	if _, err := resolveWindowsISOSource(smbRoot, req, local); err != nil {
+		t.Fatalf("local storage rejected: %v", err)
+	}
+	if _, err := resolveWindowsISOSource(smbRoot, req); err == nil {
+		t.Fatal("local storage accepted without a local root")
+	}
+	if _, err := resolveWindowsISOSource(smbRoot, write(outside), local); err == nil {
+		t.Fatal("storage outside both roots accepted")
+	}
+}

@@ -41,26 +41,44 @@ func safeUploadError(err error) string {
 	}
 }
 
-func (s *Server) readySMB(r *http.Request) (Storage, int) {
+// uploadTarget finds a ready storage that accepts ISO uploads and the
+// directory to write into: the separate read-write mount of an SMB storage,
+// or the root of a local storage this service may write to.
+func (s *Server) uploadTarget(r *http.Request) (Storage, string, int) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
-		return Storage{}, http.StatusBadRequest
+		return Storage{}, "", http.StatusBadRequest
 	}
 	storage, err := s.repo.Storage(r.Context(), id)
-	if err != nil || storage.ID != id || storage.Kind != "smb" || smbstorage.Validate(storage.Key, storage.Server, storage.Share, storage.Subpath) != nil {
-		return Storage{}, http.StatusNotFound
+	if err != nil || storage.ID != id {
+		return Storage{}, "", http.StatusNotFound
 	}
-	if storage.State != "ready" {
-		return Storage{}, http.StatusConflict
+	switch storage.Kind {
+	case "smb":
+		if smbstorage.Validate(storage.Key, storage.Server, storage.Share, storage.Subpath) != nil {
+			return Storage{}, "", http.StatusNotFound
+		}
+		if storage.State != "ready" {
+			return Storage{}, "", http.StatusConflict
+		}
+		if _, ok := s.mountIdentity(storage.Root); !ok {
+			return Storage{}, "", http.StatusServiceUnavailable
+		}
+		return storage, s.uploadRoot(storage.Key), 0
+	case "local":
+		if storage.State != "ready" {
+			return Storage{}, "", http.StatusConflict
+		}
+		if validateRootPath(storage.Root) != nil || !s.writable(storage.Root) {
+			return Storage{}, "", http.StatusForbidden
+		}
+		return storage, storage.Root, 0
 	}
-	if _, ok := s.mountIdentity(storage.Root); !ok {
-		return Storage{}, http.StatusServiceUnavailable
-	}
-	return storage, 0
+	return Storage{}, "", http.StatusNotFound
 }
 
 func (s *Server) folders(w http.ResponseWriter, r *http.Request) {
-	storage, status := s.readySMB(r)
+	storage, _, status := s.uploadTarget(r)
 	if status != 0 {
 		http.Error(w, "storage unavailable", status)
 		return
@@ -76,7 +94,7 @@ func (s *Server) folders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
-	storage, status := s.readySMB(r)
+	storage, uploadRoot, status := s.uploadTarget(r)
 	if status != 0 {
 		http.Error(w, "storage unavailable", status)
 		return
@@ -86,8 +104,13 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid ISO name or size", http.StatusBadRequest)
 		return
 	}
-	uploadRoot := s.uploadRoot(storage.Key)
-	mountBefore, ok := s.mountIdentity(uploadRoot)
+	// An SMB upload goes through its own mount; it must not change under
+	// the transfer.
+	smb := storage.Kind == "smb"
+	mountBefore, ok := "", true
+	if smb {
+		mountBefore, ok = s.mountIdentity(uploadRoot)
+	}
 	if !ok {
 		http.Error(w, "upload mount unavailable", http.StatusServiceUnavailable)
 		return
@@ -110,7 +133,7 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "ISO upload failed: "+safeUploadError(err), uploadErrorStatus(err))
 		return
 	}
-	if mountAfter, ok := s.mountIdentity(uploadRoot); !ok || mountAfter != mountBefore {
+	if mountAfter, ok := s.mountIdentity(uploadRoot); smb && (!ok || mountAfter != mountBefore) {
 		http.Error(w, "upload mount changed", http.StatusServiceUnavailable)
 		return
 	}

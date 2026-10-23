@@ -224,3 +224,12 @@ While Setup holds the connection, the machine counts as active. The end of the i
 For `smbstatus`, `pxe-agent.service` gains `ReadWritePaths=-/run/samba` (without it smbstatus cannot create its messaging context; the “-” keeps the unit working where Samba is not installed). The smbstatus warning “no network interfaces found” inside the Agent sandbox is expected; the JSON is complete.
 
 Rollout 23.10.2026 (10:30, fixed at 10:45): replaced `pxe-agent` (SHA-256 `feda3ab3…`) and `pxe-control` (SHA-256 `f542e891…`) and updated `/etc/systemd/system/pxe-agent.service`. Previous files: `/usr/local/bin/pxe-agent.bak-202610231029`, `/usr/local/bin/pxe-control.bak-202610231029`, `/root/pxe-agent.service.bak-202610231029`. The client menu did not change.
+
+## ISO uploads to local storage and free space, 23.10.2026
+
+- On the ISO Images page, the Storage list now offers, besides SMB shares, the server's local storages that the Images service may write to. Each entry shows where it is (“network share” or “on this server”) and how much is free; if the file will not fit, the browser says so before the transfer starts.
+- Every available storage shows its space: “free X of Y · used N%” with a bar (yellow from 85%, red from 95%), on the Storages page (Space column) and on System → Overview. Images computes it on every catalog request (statfs of the root, at most 3 seconds so that a hung share does not hold the page).
+- A Windows profile can be prepared from an ISO in a local storage inside `/var/lib/pxe-platform-images`: the Agent and `pxe-winiso-prepare` now mount ISO files from that directory too, not only from SMB connections.
+- Images API: upload and the folder list are available as `/storages/{id}/upload` and `/storages/{id}/folders`; the earlier `/smb-storages/…` paths still work.
+
+Rollout 23.10.2026, 13:16: replaced `pxe-agent` (SHA-256 `acc66103…`), `pxe-control` (`c6e3b050…`), `pxe-images` (`9f19758e…`) and `pxe-winiso-prepare` (`6725b513…`); previous files are `/usr/local/bin/*.bak-202610231316`. `pxe-images.service` gains `ReadWritePaths=-/var/lib/pxe-platform-images` (previous unit copied to `/root/pxe-images.service.bak-202610231316`), and `/var/lib/pxe-platform-images/iso` became `2770 root:pxe-images` (was `750`). A test upload of a 4-byte file to Local succeeded; the file and its catalog row were removed, and the audit log keeps an `iso.upload ok` line by user `claude`. The client menu did not change.

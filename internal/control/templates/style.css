@@ -335,3 +335,11 @@ button[disabled]{opacity:.45;cursor:default}
 .content{padding:18px 16px 32px}
 .service-strip{margin:-18px -16px 18px}
 }
+/* Storage space: a thin bar and a line of text */
+.space{display:flex;flex-direction:column;gap:4px;min-width:180px;max-width:320px}
+.space-bar{display:block;height:4px;border-radius:2px;background:var(--line-strong);overflow:hidden}
+.space-bar>span{display:block;height:100%;border-radius:2px;background:var(--ok)}
+.space-warn .space-bar>span{background:var(--accent)}.space-bad .space-bar>span{background:var(--bad)}
+.space-text{font-size:12px;color:var(--muted);white-space:nowrap}
+.space-bad .space-text{color:var(--bad)}
+.kv-list li{flex-wrap:wrap}.kv-list li>.space{flex-basis:100%;max-width:none}

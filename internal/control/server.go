@@ -438,7 +438,9 @@ func (s *Server) libraryData(r *http.Request) pageData {
 			for _, storage := range catalog.Storages {
 				names[storage.ID] = storage.Name
 				ready[storage.ID] = storage.State == "ready"
-				smb[storage.ID] = storage.Kind == "smb"
+				// The Agent mounts profile ISOs from SMB storages and from
+				// local ones under its local ISO root.
+				smb[storage.ID] = storage.Kind == "smb" || (storage.Kind == "local" && localISOStorage(storage.Root))
 			}
 			for _, image := range catalog.Images {
 				unsupported := strings.Contains(strings.ToLower(path.Base(image.Path)), "arm64")

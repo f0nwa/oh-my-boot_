@@ -170,14 +170,14 @@ func (c *ImagesClient) Catalog(ctx context.Context) (images.Catalog, error) {
 func (c *ImagesClient) Folders(ctx context.Context, id int64) ([]string, error) {
 	var folders []string
 	client := &http.Client{Transport: c.http.Transport, Timeout: 30 * time.Second}
-	err := localCall(ctx, client, "GET", "/smb-storages/"+strconv.FormatInt(id, 10)+"/folders", nil, &folders)
+	err := localCall(ctx, client, "GET", "/storages/"+strconv.FormatInt(id, 10)+"/folders", nil, &folders)
 	return folders, err
 }
 
 func (c *ImagesClient) UploadISO(ctx context.Context, id int64, folder, name string, body io.Reader, size int64) (images.UploadResult, error) {
 	var result images.UploadResult
 	query := url.Values{"folder": {folder}, "name": {name}}
-	path := "/smb-storages/" + strconv.FormatInt(id, 10) + "/upload?" + query.Encode()
+	path := "/storages/" + strconv.FormatInt(id, 10) + "/upload?" + query.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix"+path, io.NopCloser(body))
 	if err != nil {
 		return result, err

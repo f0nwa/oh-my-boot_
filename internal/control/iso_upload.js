@@ -9,6 +9,7 @@
     "Соединение прервано.": "Connection lost.",
     "Загрузка отменена.": "Upload cancelled.",
     "Начинаю загрузку…": "Starting upload…",
+    "Не хватит места: в хранилище свободно %s ГБ.": "Not enough space: the storage has %s GB free.",
     "Передано %s% — после передачи сервер проверит файл.": "Transferred %s% — the server will check the file after the transfer."
   };
   const tr = (text, ...args) => {
@@ -55,6 +56,12 @@
     if (!iso || !storage.value || !folder.options.length || request) return;
     if (!/\.iso$/i.test(iso.name) || iso.size <= 0 || iso.size > 32 * 1024 ** 3) {
       status.textContent = tr('Выберите ISO размером до 32 ГБ.');
+      return;
+    }
+    // The server checks again; this saves a long transfer that would fail.
+    const free = Number(storage.selectedOptions[0]?.dataset.free || 0);
+    if (free > 0 && iso.size > free) {
+      status.textContent = tr('Не хватит места: в хранилище свободно %s ГБ.', (free / 1024 ** 3).toFixed(1));
       return;
     }
     request = new XMLHttpRequest();

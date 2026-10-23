@@ -137,6 +137,8 @@ func parsePages(lang string) *template.Template {
 		"filterList":   installationFilters,
 		"size":         func(n int64) string { return humanSize(lang, n) },
 		"arch":         isoArch,
+		"usedPercent":  usedPercent,
+		"usedBytes":    func(total, free int64) int64 { return max(total-free, 0) },
 	}).ParseFS(templateFS, "templates/*.html"))
 }
 
@@ -190,7 +192,10 @@ func humanSize(lang string, n int64) string {
 		return "—"
 	}
 	value, unit := float64(n)/(1<<30), "ГБ"
-	if n < 1<<30 {
+	switch {
+	case n >= 1<<40:
+		value, unit = float64(n)/(1<<40), "ТБ"
+	case n < 1<<30:
 		value, unit = float64(n)/(1<<20), "МБ"
 	}
 	text := strconv.FormatFloat(value, 'f', 1, 64)
@@ -198,6 +203,14 @@ func humanSize(lang string, n int64) string {
 		text = strings.Replace(text, ".", ",", 1)
 	}
 	return text + " " + translate(lang, unit)
+}
+
+// usedPercent is how full a file system is, 0–100.
+func usedPercent(total, free int64) int {
+	if total <= 0 {
+		return 0
+	}
+	return int(min(max((total-free)*100/total, 0), 100))
 }
 
 // isoArch names the architecture an ISO file name says it is for.

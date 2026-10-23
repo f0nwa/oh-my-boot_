@@ -59,6 +59,7 @@ func (CommandWindowsISOMounter) Unmount(ctx context.Context, target string) erro
 
 type WindowsISORuntime struct {
 	SourceRoot string
+	LocalRoot  string
 	MountRoot  string
 	AssetRoot  string
 	Template   []byte
@@ -68,7 +69,7 @@ type WindowsISORuntime struct {
 }
 
 func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequest) (WindowsISOResult, error) {
-	source, err := resolveWindowsISOSource(runtime.SourceRoot, req)
+	source, err := resolveWindowsISOSource(runtime.SourceRoot, req, runtime.LocalRoot)
 	if err != nil {
 		return WindowsISOResult{}, err
 	}
@@ -110,7 +111,14 @@ func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequ
 	return WindowsISOResult{InstallFile: installFile}, nil
 }
 
-func resolveWindowsISOSource(allowedRoot string, req WindowsISORequest) (string, error) {
+// LocalISORoot holds the local ISO storages of this server; an ISO for a
+// Windows profile comes either from an SMB storage or from under this root.
+const LocalISORoot = "/var/lib/pxe-platform-images"
+
+// resolveWindowsISOSource finds the ISO of a profile request. Its storage
+// must be one SMB mount directly under allowedRoot, or localRoot or a
+// directory inside it.
+func resolveWindowsISOSource(allowedRoot string, req WindowsISORequest, localRoot ...string) (string, error) {
 	if req.ID <= 0 || req.Size <= 0 || !filepath.IsAbs(req.StorageRoot) || req.RelativePath == "" || path.IsAbs(req.RelativePath) || path.Clean(req.RelativePath) != req.RelativePath || strings.ContainsAny(req.RelativePath, "\\\x00") || !strings.EqualFold(path.Ext(req.RelativePath), ".iso") {
 		return "", fmt.Errorf("invalid Windows ISO source")
 	}
@@ -124,7 +132,9 @@ func resolveWindowsISOSource(allowedRoot string, req WindowsISORequest) (string,
 	}
 	relStorage, err := filepath.Rel(allowed, storage)
 	if err != nil || relStorage == "." || relStorage == ".." || strings.HasPrefix(relStorage, ".."+string(filepath.Separator)) || strings.ContainsRune(relStorage, filepath.Separator) {
-		return "", fmt.Errorf("ISO storage is outside the managed SMB root")
+		if !insideLocalRoot(storage, localRoot) {
+			return "", fmt.Errorf("ISO storage is outside the managed SMB and local roots")
+		}
 	}
 	components := strings.Split(req.RelativePath, "/")
 	candidate := storage
@@ -147,6 +157,23 @@ func resolveWindowsISOSource(allowedRoot string, req WindowsISORequest) (string,
 		return "", fmt.Errorf("ISO source changed or is unavailable")
 	}
 	return candidate, nil
+}
+
+func insideLocalRoot(storage string, roots []string) bool {
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		local, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(local, storage)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+			return true
+		}
+	}
+	return false
 }
 
 func inspectMountedWindowsISO(root string) (string, error) {

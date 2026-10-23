@@ -31,14 +31,19 @@ type Server struct {
 	uploads       map[int64]bool
 	uploadRoot    func(string) string
 	mountIdentity func(string) (string, bool)
+	writable      func(string) bool
+	space         func(string) (total, free int64, ok bool)
 }
 
 func NewServer(repo APIRepository) *Server {
-	return &Server{repo: repo, active: map[int64]bool{}, uploads: map[int64]bool{}, uploadRoot: smbstorage.UploadRoot, mountIdentity: MountIdentity}
+	return &Server{repo: repo, active: map[int64]bool{}, uploads: map[int64]bool{}, uploadRoot: smbstorage.UploadRoot, mountIdentity: MountIdentity, writable: Writable, space: Space}
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /storages/{id}/folders", s.folders)
+	mux.HandleFunc("POST /storages/{id}/upload", s.uploadISO)
+	// Earlier names, from when only SMB storages took uploads.
 	mux.HandleFunc("GET /smb-storages/{id}/folders", s.folders)
 	mux.HandleFunc("POST /smb-storages/{id}/upload", s.uploadISO)
 	mux.HandleFunc("POST /smb-storages", func(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +113,7 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "catalog unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		s.describeSpace(catalog.Storages)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(catalog)

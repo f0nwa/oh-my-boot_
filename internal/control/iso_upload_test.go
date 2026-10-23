@@ -20,7 +20,7 @@ func (r *countedReader) Read(p []byte) (int, error) {
 }
 
 func uploadStorage() images.Storage {
-	return images.Storage{ID: 7, Name: "DSM", Kind: "smb", Key: "0123456789abcdef0123456789abcdef", Server: "192.168.10.10", Share: "Downloads", Subpath: "iso", State: "ready"}
+	return images.Storage{ID: 7, Name: "DSM", Kind: "smb", Key: "0123456789abcdef0123456789abcdef", Server: "192.168.10.10", Share: "Downloads", Subpath: "iso", State: "ready", Uploads: true, Total: 2 << 40, Free: 566 << 30}
 }
 
 func TestISOUploadRejectsObserverAndBadCSRFBeforeReadingBody(t *testing.T) {
@@ -73,5 +73,65 @@ func TestISOPageOffersUploadForReadySMBStorage(t *testing.T) {
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "iso-upload-form") || !strings.Contains(res.Body.String(), "DSM") || !strings.Contains(res.Body.String(), `<select id="iso-folder" name="folder"></select>`) {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func localStorage(uploads bool) images.Storage {
+	return images.Storage{ID: 3, Name: "Local", Kind: "local", Root: "/var/lib/pxe-platform-images/iso", State: "ready", Uploads: uploads, Total: 39 << 30, Free: 26 << 30}
+}
+
+func TestISOUploadIntoLocalStorageNeedsNoSMBMount(t *testing.T) {
+	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{localStorage(true)}}}
+	events := []string{}
+	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, Images: api, SMB: &fakeSMBMountAPI{events: &events}}
+	req := httptest.NewRequest(http.MethodPost, "/images/upload/3?name=win.iso", strings.NewReader("iso-data"))
+	req.ContentLength = 8
+	req.Header.Set("X-CSRF-Token", CSRFToken("test-token"))
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusCreated || api.uploaded != "iso-data" || len(events) != 0 {
+		t.Fatalf("status=%d body=%s events=%v", res.Code, res.Body.String(), events)
+	}
+	// A read-only local storage takes no uploads.
+	api = &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{localStorage(false)}}}
+	s.Images = api
+	req = httptest.NewRequest(http.MethodPost, "/images/upload/3?name=win.iso", strings.NewReader("iso-data"))
+	req.ContentLength = 8
+	req.Header.Set("X-CSRF-Token", CSRFToken("test-token"))
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	res = httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusNotFound || api.uploaded != "" {
+		t.Fatalf("read-only local: status=%d", res.Code)
+	}
+}
+
+func TestISOPageListsUploadTargetsWithFreeSpace(t *testing.T) {
+	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{uploadStorage(), localStorage(true)}}}
+	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, Images: api}
+	for _, page := range []string{"/images", "/storages", "/system"} {
+		req := httptest.NewRequest(http.MethodGet, page, nil)
+		req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+		res := httptest.NewRecorder()
+		s.Handler().ServeHTTP(res, req)
+		body := res.Body.String()
+		want := []string{"свободно 566,0 ГБ из 2,0 ТБ", "свободно 26,0 ГБ из 39,0 ГБ"}
+		if page == "/images" {
+			want = []string{`<option value="7" data-free="607737872384">DSM · сетевая папка · свободно 566,0 ГБ</option>`, `<option value="3" data-free="27917287424">Local · на этом сервере · свободно 26,0 ГБ</option>`}
+		}
+		for _, w := range want {
+			if !strings.Contains(body, w) {
+				t.Fatalf("%s lacks %q: %s", page, w, body)
+			}
+		}
+	}
+}
+
+func TestLocalISOStorageMustBeUnderTheAgentRoot(t *testing.T) {
+	for root, want := range map[string]bool{"/var/lib/pxe-platform-images/iso": true, "/var/lib/pxe-platform-images": true, "/srv/iso": false, "/var/lib/pxe-platform-images/../x": false} {
+		if got := localISOStorage(root); got != want {
+			t.Errorf("%s: %v", root, got)
+		}
 	}
 }

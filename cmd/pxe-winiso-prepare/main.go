@@ -41,6 +41,7 @@ func main() {
 	}
 	runtime := agent.WindowsISORuntime{
 		SourceRoot: "/mnt/pxe-platform-smb",
+		LocalRoot:  agent.LocalISORoot,
 		MountRoot:  "/mnt/pxe-platform-iso/profiles",
 		AssetRoot:  "/srv/pxe/tftp/windows-profiles",
 		Template:   template,

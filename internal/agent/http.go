@@ -232,7 +232,7 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		if !decodeSMBRequest(w, r, &req) {
 			return
 		}
-		if _, err := resolveWindowsISOSource(windows.SourceRoot, req); err != nil {
+		if _, err := resolveWindowsISOSource(windows.SourceRoot, req, windows.LocalRoot); err != nil {
 			http.Error(w, "invalid Windows ISO source", http.StatusBadRequest)
 			return
 		}

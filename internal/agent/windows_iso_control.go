@@ -15,6 +15,7 @@ import (
 type WindowsISOManager struct {
 	mu         sync.Mutex
 	SourceRoot string
+	LocalRoot  string
 	ConfigRoot string
 	MountRoot  string
 	AssetRoot  string
@@ -26,7 +27,7 @@ type WindowsISOManager struct {
 func (m *WindowsISOManager) Check(ctx context.Context, req WindowsISORequest) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, err := resolveWindowsISOSource(m.SourceRoot, req); err != nil {
+	if _, err := resolveWindowsISOSource(m.SourceRoot, req, m.LocalRoot); err != nil {
 		return err
 	}
 	id := strconv.FormatInt(req.ID, 10)
@@ -58,7 +59,7 @@ func (m *WindowsISOManager) Check(ctx context.Context, req WindowsISORequest) er
 func (m *WindowsISOManager) Prepare(ctx context.Context, req WindowsISORequest) (WindowsISOResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, err := resolveWindowsISOSource(m.SourceRoot, req); err != nil {
+	if _, err := resolveWindowsISOSource(m.SourceRoot, req, m.LocalRoot); err != nil {
 		return WindowsISOResult{}, err
 	}
 	if m.Systemctl == nil {

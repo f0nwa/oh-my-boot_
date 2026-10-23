@@ -21,6 +21,12 @@ type Storage struct {
 	State      string     `json:"state"`
 	Error      string     `json:"error,omitempty"`
 	LastScanAt *time.Time `json:"last_scan_at,omitempty"`
+	// Filled when the catalog is served, not stored: the size of the file
+	// system under Root and what is free on it, and whether ISO files can be
+	// uploaded into it.
+	Total   int64 `json:"total,omitempty"`
+	Free    int64 `json:"free,omitempty"`
+	Uploads bool  `json:"uploads,omitempty"`
 }
 
 type Image struct {

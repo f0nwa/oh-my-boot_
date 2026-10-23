@@ -101,3 +101,84 @@ func TestImagesUploadHTTPRecordsCompletedFileInSelectedFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestImagesUploadIntoWritableLocalStorage(t *testing.T) {
+	root := realTempDir(t)
+	repo := &uploadRepository{httpRepository: httpRepository{memoryRepository: memoryRepository{
+		storages: map[int64]Storage{3: {ID: 3, Name: "Local", Kind: "local", Root: root, State: "ready"}},
+		images:   map[int64]map[string]Image{},
+		state:    map[int64]string{3: "ready"},
+	}}}
+	server := NewServer(repo)
+	// A local upload never uses the SMB upload mount.
+	server.uploadRoot = func(string) string { t.Fatal("SMB upload root used for a local storage"); return "" }
+	server.mountIdentity = func(string) (string, bool) { return "", false }
+	writable := false
+	server.writable = func(string) bool { return writable }
+	req := func() *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/storages/3/upload?name=win.iso", strings.NewReader("iso-data"))
+		r.ContentLength = 8
+		res := httptest.NewRecorder()
+		server.Handler().ServeHTTP(res, r)
+		return res
+	}
+	if res := req(); res.Code != http.StatusForbidden || len(repo.recorded) != 0 {
+		t.Fatalf("read-only local storage: status=%d", res.Code)
+	}
+	writable = true
+	if res := req(); res.Code != http.StatusCreated || len(repo.recorded) != 1 || repo.recorded[0].Path != "win.iso" || repo.recorded[0].StorageID != 3 {
+		t.Fatalf("local upload status=%d body=%s recorded=%+v", res.Code, res.Body.String(), repo.recorded)
+	}
+	if _, err := os.Stat(filepath.Join(root, "win.iso")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestImagesCatalogReportsSpaceAndUploads(t *testing.T) {
+	root := realTempDir(t)
+	repo := &uploadRepository{httpRepository: httpRepository{memoryRepository: memoryRepository{
+		storages: map[int64]Storage{
+			1: {ID: 1, Name: "NAS", Kind: "smb", Root: root, State: "ready"},
+			2: {ID: 2, Name: "Local", Kind: "local", Root: root, State: "ready"},
+			3: {ID: 3, Name: "Off", Kind: "local", Root: root, State: "unavailable"},
+		},
+		images: map[int64]map[string]Image{},
+		state:  map[int64]string{1: "ready", 2: "ready", 3: "unavailable"},
+	}}}
+	server := NewServer(repo)
+	server.space = func(string) (int64, int64, bool) { return 100 << 30, 40 << 30, true }
+	server.writable = func(string) bool { return false }
+	res := httptest.NewRecorder()
+	server.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/catalog", nil))
+	var catalog Catalog
+	if err := json.Unmarshal(res.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Storage{}
+	for _, s := range catalog.Storages {
+		got[s.Name] = s
+	}
+	if s := got["NAS"]; s.Total != 100<<30 || s.Free != 40<<30 || !s.Uploads {
+		t.Fatalf("NAS = %+v", s)
+	}
+	if s := got["Local"]; s.Total != 100<<30 || s.Uploads {
+		t.Fatalf("read-only local = %+v", s)
+	}
+	if s := got["Off"]; s.Total != 0 || s.Uploads {
+		t.Fatalf("unavailable = %+v", s)
+	}
+}
+
+func TestSpaceAndWritableOnARealDirectory(t *testing.T) {
+	dir := t.TempDir()
+	total, free, ok := Space(dir)
+	if !ok || total <= 0 || free < 0 || free > total {
+		t.Fatalf("space = %d %d %v", total, free, ok)
+	}
+	if !Writable(dir) {
+		t.Fatal("temp dir not writable")
+	}
+	if _, _, ok := Space(filepath.Join(dir, "missing")); ok {
+		t.Fatal("space of a missing path")
+	}
+}

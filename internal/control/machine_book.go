@@ -23,6 +23,8 @@ type MachineInfo struct {
 	Name, Note            string
 	ManufacturerOverride  string
 	ProductOverride       string
+	// Manual marks a machine a person added by MAC before it ever booted.
+	Manual bool
 }
 
 // MachineSeen is what one look at the logs says about a machine.
@@ -44,6 +46,8 @@ type MachineEdit struct {
 type MachineBook interface {
 	Machines(context.Context) ([]MachineInfo, error)
 	SeeMachines(context.Context, []MachineSeen) error
+	// AddMachine adds a machine by hand; false when the MAC is already there.
+	AddMachine(context.Context, string, MachineEdit) (bool, error)
 	EditMachine(context.Context, string, MachineEdit) error
 	DeleteMachine(context.Context, string) error
 }

@@ -380,6 +380,18 @@ func cleanMachineText(value string, max int) (string, bool) {
 	return value, true
 }
 
+// parseMachineEdit reads the name, maker, model and note fields of a machine
+// form; false when one is too long or holds control characters.
+func parseMachineEdit(r *http.Request) (MachineEdit, bool) {
+	var edit MachineEdit
+	var valid [4]bool
+	edit.Name, valid[0] = cleanMachineText(r.PostFormValue("name"), 80)
+	edit.Manufacturer, valid[1] = cleanMachineText(r.PostFormValue("manufacturer"), 120)
+	edit.Product, valid[2] = cleanMachineText(r.PostFormValue("product"), 120)
+	edit.Note, valid[3] = cleanMachineText(r.PostFormValue("note"), 500)
+	return edit, valid[0] && valid[1] && valid[2] && valid[3]
+}
+
 // machineEdit stores a machine's name, note and maker or model override.
 func (s *Server) machineEdit(w http.ResponseWriter, r *http.Request) {
 	mac := strings.ToLower(r.PathValue("mac"))
@@ -388,13 +400,8 @@ func (s *Server) machineEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный MAC-адрес", http.StatusBadRequest)
 		return
 	}
-	var edit MachineEdit
-	var valid [4]bool
-	edit.Name, valid[0] = cleanMachineText(r.PostFormValue("name"), 80)
-	edit.Manufacturer, valid[1] = cleanMachineText(r.PostFormValue("manufacturer"), 120)
-	edit.Product, valid[2] = cleanMachineText(r.PostFormValue("product"), 120)
-	edit.Note, valid[3] = cleanMachineText(r.PostFormValue("note"), 500)
-	if !valid[0] || !valid[1] || !valid[2] || !valid[3] {
+	edit, valid := parseMachineEdit(r)
+	if !valid {
 		http.Error(w, "Слишком длинный текст или недопустимые символы", http.StatusBadRequest)
 		return
 	}

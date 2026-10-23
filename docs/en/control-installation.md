@@ -332,3 +332,13 @@ A table of every machine in the `machines` list, including those long gone from 
 - Every role can view the page. It works without JavaScript.
 
 Rollout 23.10.2026, 23:14: replaced `pxe-control` (SHA-256 `4c0dc98d…`); the previous file is `/usr/local/bin/pxe-control.bak-202610232314`.
+
+## Machines: editing in the table and adding a MAC by hand, 23.10.2026
+
+- **Edit in the row.** Every machine in the System → Machines table has “Edit”: name, maker, model, note. An empty maker or model means “as the machine reported”; the reported values show as placeholders in the fields. With JavaScript the row saves without reloading the page, and an error (text too long) shows inside the row. Without JavaScript the form posts normally and returns to the same page with the same search and order, at that row (`#m-<MAC>`). Route `POST /machines/{mac}`.
+- **Add a MAC.** A machine can be added before its first boot, for example to name it right away. The MAC is accepted in any form (`bc:24:11:aa:bb:01`, `BC-24-11-AA-BB-01`, `bc2411aabb01`, `bc24.11aa.bb01`) and stored as `bc:24:11:aa:bb:01`. All-zero, broadcast and multicast addresses are rejected: they are not network cards. If the MAC is already there, the form answers “This MAC is already in the list” with a link to the machine and changes nothing. Route `POST /machines`.
+- **“Has not booted yet”.** A machine added by hand shows “has not booted yet” instead of the last-seen time, and “added by hand, has not booted yet” on its page. First seen is the time it was added. The mark clears at its first boot. It is stored in the new `machines.manual` column ([migration](../../deploy/sql/2026-10-23-machines-manual.sql)).
+- **Remove from the list** is in the same row, administrator only, with a confirmation. Route `POST /machines/{mac}/delete`.
+- Rights: every role can view; administrators and operators can edit and add; only administrators can remove. `machine.add`, `machine.edit` and `machine.delete` are audited.
+
+Rollout 23.10.2026, 23:26: the `2026-10-23-machines-manual.sql` migration was applied to `pxe_control` (as `pxe-control`); replaced `pxe-control` (SHA-256 `4079bd4a…`); the previous file is `/usr/local/bin/pxe-control.bak-202610232326`.

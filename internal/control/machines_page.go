@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	_ "embed"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,6 +24,10 @@ type machineList struct {
 	Total     int // machines in the book
 	Named     int // with a name given by a person
 	NoModel   int // never reported a model and none was written in
+	// CanEdit and CanDelete follow the viewer's role.
+	CanEdit, CanDelete bool
+	// Duplicate is a MAC that «Добавить MAC» found already in the list.
+	Duplicate string
 }
 
 type machineListRow struct {
@@ -211,13 +216,152 @@ func (s *Server) refreshedBook(ctx context.Context) ([]MachineInfo, bool) {
 
 // machinesPage lists every machine in the book with search and sorting.
 func (s *Server) machinesPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r)}
+	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), Form: pageForm(r)}
 	q := r.URL.Query()
-	if machines, ok := s.refreshedBook(r.Context()); ok {
+	machines, ok := s.refreshedBook(r.Context())
+	if ok {
 		list := buildMachineList(machines, q.Get("q"), q.Get("sort"))
 		data.MachineList = &list
 	} else {
 		data.MachineList = &machineList{Query: q.Get("q")}
 	}
+	role := data.Info.User.Role
+	data.MachineList.CanEdit = ok && Allowed(role, "images")
+	data.MachineList.CanDelete = ok && Allowed(role, "delete")
+	// A failed «Добавить MAC» for a MAC already in the list links to it.
+	if data.Error != "" && data.Form != nil {
+		if mac, valid := parseMAC(data.Form.Get("mac")); valid {
+			for _, m := range machines {
+				if m.MAC == mac {
+					data.MachineList.Duplicate = mac
+				}
+			}
+		}
+	}
 	render(w, "machines", data)
+}
+
+// parseMAC reads a MAC typed in any common form — bc:24:11:aa:bb:01,
+// BC-24-11-AA-BB-01, bc2411aabb01, bc24.11aa.bb01 — as aa:bb:cc:dd:ee:ff.
+// All-zero, broadcast and multicast addresses are not network cards.
+func parseMAC(v string) (string, bool) {
+	var digits strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(v)) {
+		switch {
+		case r >= '0' && r <= '9' || r >= 'a' && r <= 'f':
+			digits.WriteRune(r)
+		case r == ':' || r == '-' || r == '.' || r == ' ':
+		default:
+			return "", false
+		}
+	}
+	d := digits.String()
+	if len(d) != 12 || d == "000000000000" {
+		return "", false
+	}
+	if first := strings.IndexByte("0123456789abcdef", d[1]); first&1 == 1 {
+		return "", false // multicast and broadcast
+	}
+	parts := make([]string, 6)
+	for i := range parts {
+		parts[i] = d[2*i : 2*i+2]
+	}
+	return strings.Join(parts, ":"), true
+}
+
+// machinesReturn is the table address to go back to after a form: the same
+// search and order, the message, and the machine's row.
+func machinesReturn(r *http.Request, message, mac string) string {
+	v := url.Values{}
+	if q := strings.TrimSpace(r.PostFormValue("q")); q != "" && len(q) <= 200 {
+		v.Set("q", q)
+	}
+	if sortBy := r.PostFormValue("sort"); sortBy != "last" {
+		if _, ok := machineSorts[sortBy]; ok {
+			v.Set("sort", sortBy)
+		}
+	}
+	v.Set("message", message)
+	out := "/machines?" + v.Encode()
+	if mac != "" {
+		out += "#m-" + mac
+	}
+	return out
+}
+
+// machineAdd adds a machine by MAC before it ever boots.
+func (s *Server) machineAdd(w http.ResponseWriter, r *http.Request) {
+	book, ok := s.Store.(MachineBook)
+	if !ok {
+		http.Error(w, "Список машин недоступен", http.StatusServiceUnavailable)
+		return
+	}
+	mac, valid := parseMAC(r.PostFormValue("mac"))
+	if !valid {
+		http.Error(w, "Неверный MAC-адрес: нужно 12 шестнадцатеричных цифр, например bc:24:11:aa:bb:01", http.StatusBadRequest)
+		return
+	}
+	edit, valid := parseMachineEdit(r)
+	if !valid {
+		http.Error(w, "Слишком длинный текст или недопустимые символы", http.StatusBadRequest)
+		return
+	}
+	added, err := book.AddMachine(r.Context(), mac, edit)
+	if err != nil {
+		http.Error(w, "Не удалось сохранить машину", http.StatusServiceUnavailable)
+		return
+	}
+	if !added {
+		http.Error(w, "Такой MAC уже есть в списке", http.StatusConflict)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.add", "ok", mac)
+	http.Redirect(w, r, machinesReturn(r, "Машина добавлена", mac), http.StatusSeeOther)
+}
+
+// machineTableEdit saves a row edited in the table and returns to it.
+func (s *Server) machineTableEdit(w http.ResponseWriter, r *http.Request) {
+	mac := strings.ToLower(r.PathValue("mac"))
+	book, ok := s.Store.(MachineBook)
+	if !macAddress.MatchString(mac) || !ok {
+		http.Error(w, "Неверный MAC-адрес", http.StatusBadRequest)
+		return
+	}
+	edit, valid := parseMachineEdit(r)
+	if !valid {
+		http.Error(w, "Слишком длинный текст или недопустимые символы", http.StatusBadRequest)
+		return
+	}
+	if err := book.EditMachine(r.Context(), mac, edit); err != nil {
+		http.Error(w, "Не удалось сохранить машину", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.edit", "ok", mac)
+	http.Redirect(w, r, machinesReturn(r, "Машина сохранена", mac), http.StatusSeeOther)
+}
+
+// machineTableDelete removes a machine from the list and returns to the table.
+func (s *Server) machineTableDelete(w http.ResponseWriter, r *http.Request) {
+	mac := strings.ToLower(r.PathValue("mac"))
+	book, ok := s.Store.(MachineBook)
+	if !macAddress.MatchString(mac) || !ok {
+		http.Error(w, "Неверный MAC-адрес", http.StatusBadRequest)
+		return
+	}
+	if err := book.DeleteMachine(r.Context(), mac); err != nil {
+		http.Error(w, "Не удалось удалить машину", http.StatusServiceUnavailable)
+		return
+	}
+	s.bookCache.forget(mac)
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.delete", "ok", mac)
+	http.Redirect(w, r, machinesReturn(r, "Машина удалена из списка", ""), http.StatusSeeOther)
+}
+
+//go:embed machines.js
+var machinesJS []byte
+
+func machinesScript(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(machinesJS)
 }

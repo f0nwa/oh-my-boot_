@@ -36,7 +36,7 @@ func (b *bookStore) SeeMachines(_ context.Context, seen []MachineSeen) error {
 		if !ok {
 			m = MachineInfo{MAC: s.MAC, FirstSeen: s.At}
 		}
-		m.LastSeen, m.LastIP, m.Firmware = s.At, s.IP, s.Firmware
+		m.LastSeen, m.LastIP, m.Firmware, m.Manual = s.At, s.IP, s.Firmware, false
 		if !s.DetectedAt.IsZero() && (m.DetectedAt == nil || s.DetectedAt.After(*m.DetectedAt)) {
 			at := s.DetectedAt
 			m.Manufacturer, m.Product, m.Serial, m.UUID, m.DetectedAt = s.Manufacturer, s.Product, s.Serial, s.UUID, &at
@@ -51,6 +51,15 @@ func (b *bookStore) EditMachine(_ context.Context, mac string, e MachineEdit) er
 	m.MAC, m.Name, m.Note, m.ManufacturerOverride, m.ProductOverride = mac, e.Name, e.Note, e.Manufacturer, e.Product
 	b.machines[mac] = m
 	return nil
+}
+
+func (b *bookStore) AddMachine(_ context.Context, mac string, e MachineEdit) (bool, error) {
+	if _, ok := b.machines[mac]; ok {
+		return false, nil
+	}
+	now := time.Now()
+	b.machines[mac] = MachineInfo{MAC: mac, FirstSeen: now, LastSeen: now, Manual: true, Name: e.Name, Note: e.Note, ManufacturerOverride: e.Manufacturer, ProductOverride: e.Product}
+	return true, nil
 }
 
 func (b *bookStore) DeleteMachine(_ context.Context, mac string) error {

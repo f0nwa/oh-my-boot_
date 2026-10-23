@@ -92,3 +92,4 @@ CREATE TABLE IF NOT EXISTS machines (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS machines_last_seen_idx ON machines (last_seen DESC);
+ALTER TABLE machines ADD COLUMN IF NOT EXISTS manual BOOLEAN NOT NULL DEFAULT false;

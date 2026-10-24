@@ -369,3 +369,16 @@ A rule labels machines by the first 3, 4 or 5 bytes of the MAC: a batch of lapto
 - These rules will later carry the choice of network loader per vendor (stage 5 of the machine list plan).
 
 Rollout 23.10.2026, 23:46: the `2026-10-23-mac-prefix-rules.sql` migration was applied to `pxe_control` (as `pxe-control`); replaced `pxe-control` (SHA-256 `956c9dd3…`); the previous file is `/usr/local/bin/pxe-control.bak-202610232346`.
+
+## Answer file editor, 24.10.2026
+
+“Library → Answer files → Create in editor” and “Open in editor” on every ready file. Details: [answer-editor.md](answer-editor.md).
+
+- The generator is a Go port of cschneegans/unattend-generator (MIT) in `internal/unattend`; on 106 golden files its output matches the original byte for byte.
+- Foreign files open with nothing lost: known settings go into the form, the rest stays verbatim under “Custom XML”.
+- Saving to an image creates a new answer file the same way as an XML upload; editing an existing file does not change it. Audit `windows-answer.create … editor=1`.
+- The Agent returns a stored file by number and SHA-256: `POST /windows-answer/xml` (404 — no file, 409 — another hash).
+- The WinPE script of an answer file maps the profile folder once more as `I:` and copies the answer file to `X:\autounattend.xml`, so the “wipe and partition automatically” mode (`pe.cmd`) finds the image in network installs. Variants published earlier keep their old script and pass the check as before.
+- The “wipes disk” label is set only for running diskpart with a script (`diskpart /s`, `diskpart <`), not for any mention of diskpart.
+
+Rollout 24.10.2026: no migrations. 03:28 — `pxe-control` (“wipes disk” label); 09:32 — `pxe-agent` (XML download); 10:35 — `pxe-control` (editor); 10:59 — `pxe-agent` and `pxe-control` (`I:` mapping). Now: `pxe-control` SHA-256 `39a26fc6…`, `pxe-agent` `ec73e582…`; previous files are `/usr/local/bin/*.bak-<date>`. After the rollout answer files #3, 5 and 7 pass the Agent check (HTTP 204); #3 opens in the editor with a summary and “wipes disk” label that match the file.

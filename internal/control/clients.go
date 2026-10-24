@@ -159,6 +159,7 @@ func (c *AgentClient) CheckWindowsAnswer(ctx context.Context, req agent.WindowsA
 	}
 	return localCall(ctx, c.http, "POST", "/windows-answer/check", body, nil)
 }
+
 // WindowsAnswerXML fetches a stored answer file; the hash must match.
 func (c *AgentClient) WindowsAnswerXML(ctx context.Context, req agent.WindowsAnswerCheck) ([]byte, error) {
 	body, err := json.Marshal(req)

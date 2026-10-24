@@ -201,6 +201,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
 	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))
 	mux.HandleFunc("POST /answers/{id}/inspect", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerInspect)))
+	mux.HandleFunc("GET /answers/editor", s.protect("view", s.answerEditorNew))
+	mux.HandleFunc("GET /answers/{id}/edit", s.protect("view", s.answerEditorEdit))
+	mux.HandleFunc("POST /answers/editor", s.protect("view", s.answerEditorPost))
+	mux.HandleFunc("POST /answers/editor/save", s.protect("images", s.answerEditorSave))
+	mux.HandleFunc("GET /assets/answer_editor.js", answerEditorScript)
 	mux.HandleFunc("POST /answers/upload", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
 	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))
@@ -272,6 +277,10 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 				}
 				r.Body = http.MaxBytesReader(w, r.Body, maxMachineCSVBytes+(64<<10))
 				err = r.ParseMultipartForm(2 << 20)
+			} else if r.Pattern == "POST /answers/editor" || r.Pattern == "POST /answers/editor/save" {
+				// The editor posts all its settings, kept XML included.
+				r.Body = http.MaxBytesReader(w, r.Body, 2*maxWindowsAnswerBytes+(64<<10))
+				err = r.ParseForm()
 			} else if r.Pattern == "POST /images/windows-profiles/{id}/answers" || r.Pattern == "POST /answers/upload" || r.Pattern == "POST /answers/{id}/inspect" {
 				r.Body = http.MaxBytesReader(w, r.Body, maxWindowsAnswerBytes+(32<<10))
 				err = r.ParseMultipartForm(2 << 20)

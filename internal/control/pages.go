@@ -30,6 +30,7 @@ type menuVersionRow struct {
 }
 
 type pageData struct {
+	Editor                *editorView
 	Journal               *journalView
 	Machine               *machineCard
 	MachineList           *machineList
@@ -140,11 +141,20 @@ func parsePages(lang string) *template.Template {
 		"machineCol":          machineCol,
 		"machineImportFields": func() []string { return []string{"name", "manufacturer", "product", "note"} },
 		"deref":               func(v *bool) bool { return v != nil && *v },
-		"filterList":          installationFilters,
-		"size":                func(n int64) string { return humanSize(lang, n) },
-		"arch":                isoArch,
-		"usedPercent":         usedPercent,
-		"usedBytes":           func(total, free int64) int64 { return max(total-free, 0) },
+		"dict": func(kv ...any) map[string]any {
+			m := make(map[string]any, len(kv)/2)
+			for i := 0; i+1 < len(kv); i += 2 {
+				m[kv[i].(string)] = kv[i+1]
+			}
+			return m
+		},
+		"add1":        func(i int) int { return i + 1 },
+		"list":        func(s ...string) []string { return s },
+		"filterList":  installationFilters,
+		"size":        func(n int64) string { return humanSize(lang, n) },
+		"arch":        isoArch,
+		"usedPercent": usedPercent,
+		"usedBytes":   func(total, free int64) int64 { return max(total-free, 0) },
 	}).ParseFS(templateFS, "templates/*.html"))
 }
 

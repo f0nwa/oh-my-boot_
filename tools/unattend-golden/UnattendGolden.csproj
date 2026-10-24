@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs the original C# generator on our JSON settings to make golden
+       files for the Go port. Not part of the PXE Platform build. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Schneegans.Unattend</RootNamespace>
+    <AssemblyName>UnattendGenerator</AssemblyName>
+    <Nullable>enable</Nullable>
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- The <Build> element names the upstream commit, as on the website. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <InformationalVersion>1.0.0+$(UpstreamCommit)</InformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="upstream/*.cs;upstream/modifier/*.cs" Exclude="upstream/Example.cs" />
+    <Compile Include="Program.cs" />
+    <EmbeddedResource Include="upstream/resource/*" LogicalName="Schneegans.Unattend.resource.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,18 @@
+{
+  "LanguageSettings": {"$type": "UnattendedLanguageSettings", "ImageLanguage": "ru-RU",
+    "LocaleAndKeyboard": {"Locale": "ru-RU", "Keyboard": "00000419"},
+    "LocaleAndKeyboard2": {"Locale": "en-US", "Keyboard": "00000409"},
+    "GeoLocation": "244"},
+  "AccountSettings": {"$type": "UnattendedAccountSettings",
+    "Accounts": [{"Name": "admin", "DisplayName": "Админ", "Password": "pa\"ss<&>", "Group": "Administrators"},
+                 {"Name": "user", "DisplayName": "", "Password": "", "Group": "Users"}],
+    "AutoLogonSettings": {"$type": "OwnAutoLogonSettings"}, "ObscurePasswords": false},
+  "ComputerNameSettings": {"$type": "CustomComputerNameSettings", "Name": "PC-01"},
+  "TimeZoneSettings": {"$type": "ExplicitTimeZoneSettings", "TimeZone": "Russian Standard Time"},
+  "PESettings": {"$type": "DefaultPESettings", "EditionSettings": {"$type": "UnattendedEditionSettings", "Edition": "pro"}, "BypassRequirementsCheck": false},
+  "WifiSettings": {"$type": "SkipWifiSettings"},
+  "ExpressSettings": "EnableAll",
+  "LockoutSettings": {"$type": "CustomLockoutSettings", "LockoutThreshold": 5, "LockoutDuration": 30, "LockoutWindow": 10},
+  "PasswordExpirationSettings": {"$type": "UnlimitedPasswordExpirationSettings"},
+  "BypassNetworkCheck": true
+}

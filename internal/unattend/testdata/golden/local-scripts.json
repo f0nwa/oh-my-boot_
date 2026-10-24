@@ -1,0 +1,16 @@
+{
+  "AccountSettings": {"$type": "InteractiveLocalAccountSettings"},
+  "ComputerNameSettings": {"$type": "ScriptComputerNameSettings", "Script": "return 'PC-' + (Get-Random)"},
+  "PESettings": {"$type": "DefaultPESettings", "EditionSettings": {"$type": "FirmwareEditionSettings"}, "BypassRequirementsCheck": true},
+  "KeepSensitiveFiles": true,
+  "ScriptSettings": {"RestartExplorer": true, "Scripts": [
+    {"Content": "echo hello > C:\\hello.txt", "Phase": "System", "Type": "Cmd"},
+    {"Content": "Write-Host 'first logon'\nGet-Date", "Phase": "FirstLogon", "Type": "Ps1"},
+    {"Content": "[HKEY_CURRENT_USER\\Software\\Test]\n\"A\"=dword:00000001", "Phase": "DefaultUser", "Type": "Reg"},
+    {"Content": "WScript.Echo \"hi\"", "Phase": "UserOnce", "Type": "Vbs"},
+    {"Content": "Set-Content -Path $env:TEMP\\x -Value 'ü'", "Phase": "UserOnce", "Type": "Ps1"}
+  ]},
+  "ColorSettings": {"$type": "CustomColorSettings", "SystemTheme": "Dark", "AppsTheme": "Light", "EnableTransparency": true, "AccentColorOnStart": false, "AccentColorOnBorders": true, "AccentColor": "#0078d4"},
+  "WallpaperSettings": {"$type": "SolidWallpaperSettings", "Color": "#1a2b3c"},
+  "LockScreenSettings": {"$type": "ScriptLockScreenSettings", "Script": "return [byte[]]@(1,2,3)"}
+}

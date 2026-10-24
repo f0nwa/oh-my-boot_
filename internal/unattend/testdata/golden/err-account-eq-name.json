@@ -1,0 +1,2 @@
+{"ComputerNameSettings": {"$type": "CustomComputerNameSettings", "Name": "Boss"},
+ "AccountSettings": {"$type": "UnattendedAccountSettings", "Accounts": [{"Name": "boss", "DisplayName": "", "Password": "", "Group": "Administrators"}], "AutoLogonSettings": {"$type": "OwnAutoLogonSettings"}, "ObscurePasswords": false}}

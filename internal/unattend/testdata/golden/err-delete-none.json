@@ -1,0 +1,1 @@
+{"AccountSettings": {"$type": "UnattendedAccountSettings", "Accounts": [{"Name": "a", "DisplayName": "", "Password": "", "Group": "Administrators"}], "AutoLogonSettings": {"$type": "NoneAutoLogonSettings"}, "ObscurePasswords": false}}

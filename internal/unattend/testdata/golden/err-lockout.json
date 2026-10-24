@@ -1,0 +1,1 @@
+{"LockoutSettings": {"$type": "CustomLockoutSettings", "LockoutThreshold": 5, "LockoutDuration": 10, "LockoutWindow": 30}}

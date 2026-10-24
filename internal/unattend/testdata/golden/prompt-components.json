@@ -1,0 +1,10 @@
+{
+  "ComputerNameSettings": {"$type": "PromptComputerNameSettings"},
+  "WallpaperSettings": {"$type": "ScriptWallpaperSettings", "Script": "return [byte[]]@()"},
+  "AppLockerSettings": {"$type": "ConfigureAppLockerSettings", "PolicyXml": "<AppLockerPolicy Version=\"1\"><RuleCollection Type=\"Exe\" EnforcementMode=\"AuditOnly\" /></AppLockerPolicy>"},
+  "Components": [
+    {"Key": {"Component": "Microsoft-Windows-Shell-Setup", "Pass": "oobeSystem"}, "Value": "<RegisteredOwner>Иван</RegisteredOwner><FirstLogonCommands><SynchronousCommand><CommandLine>cmd</CommandLine></SynchronousCommand></FirstLogonCommands>"},
+    {"Key": {"Component": "Microsoft-Windows-TerminalServices-LocalSessionManager", "Pass": "specialize"}, "Value": "<fDenyTSConnections>false</fDenyTSConnections>"}
+  ],
+  "ProcessorArchitectures": ["x86", "amd64"]
+}

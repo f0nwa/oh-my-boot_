@@ -1,0 +1,13 @@
+{
+  "AccountSettings": {"$type": "UnattendedAccountSettings",
+    "Accounts": [{"Name": "Иван", "DisplayName": "Иван Петров", "Password": "секрет", "Group": "Users"}],
+    "AutoLogonSettings": {"$type": "BuiltinAutoLogonSettings", "Password": "Adm1n!"}, "ObscurePasswords": true},
+  "PESettings": {"$type": "DefaultPESettings", "EditionSettings": {"$type": "CustomEditionSettings", "ProductKey": {"Value": "vk7jg-nphtm-c97jm-9mpgt-3v66t"}}, "BypassRequirementsCheck": true},
+  "ActivationKey": {"Value": "W269N-WFGWX-YVC9B-4J6C9-T83GX"},
+  "PasswordExpirationSettings": {"$type": "CustomPasswordExpirationSettings", "MaxAge": 90},
+  "LockoutSettings": {"$type": "DisableLockoutSettings"},
+  "ProcessorArchitectures": ["arm64", "x86", "amd64"],
+  "UseNarrator": true,
+  "ExpressSettings": "Interactive",
+  "HidePowerShellWindows": true
+}

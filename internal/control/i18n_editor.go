@@ -346,8 +346,10 @@ var editorMessages = map[string]string{
 	"Не удалось прочитать файл ответов у агента":                 "Could not read the answer file from the agent",
 	"Файл больше 1 МБ: сохранить к образу нельзя, скачать можно": "The file is over 1 MB: it cannot be saved to an image, but it can be downloaded",
 	"Файл ответов #%d сохранён":                                  "Answer file #%d saved",
-	"Создать в редакторе":                                        "Create in editor",
-	"Открыть в редакторе":                                        "Open in editor",
+	"Загрузить файл":                                             "Load file",
+	"Файл можно загрузить в UTF-8 (с BOM или без), UTF-16 или Windows-1251; тип ставится по расширению. При установке .ps1 записывается в UTF-8 с BOM, .reg и .vbs — в UTF-16, .cmd — в кодировке ANSI Windows.": "Files may be UTF-8 (with or without BOM), UTF-16 or Windows-1251; the type follows the extension. During setup .ps1 is written as UTF-8 with BOM, .reg and .vbs as UTF-16, .cmd in the Windows ANSI code page.",
+	"Создать в редакторе": "Create in editor",
+	"Открыть в редакторе": "Open in editor",
 }
 
 // The editor's text joins the dictionary when the package starts; the

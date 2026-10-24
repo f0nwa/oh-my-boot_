@@ -418,3 +418,4 @@ button[disabled]{opacity:.45;cursor:default}
 .ed-banner{display:flex;gap:12px;align-items:flex-start;margin:0 0 16px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.ed-banner .dot{margin-top:5px}.ed-banner .chips{margin-top:6px}
 @media (max-width:1180px){.ed{grid-template-columns:200px minmax(0,1fr)}.ed-side{grid-column:1/-1;position:static}}
 @media (max-width:760px){.ed{grid-template-columns:minmax(0,1fr)}.ed-toc{position:static;flex-direction:row;flex-wrap:wrap}.ed-row2,.ed-row3{grid-template-columns:minmax(0,1fr)}}
+.ed-file{display:flex;align-items:center;gap:8px;margin-top:4px;white-space:nowrap}table[data-rows="ScriptSettings.Scripts"] td:first-child{width:58%}.ed-file .btn{margin:0;min-height:28px;font-size:12px;position:relative}.ed-file small{font-size:11px}

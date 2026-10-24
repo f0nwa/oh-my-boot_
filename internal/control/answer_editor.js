@@ -40,31 +40,79 @@
   });
 
   // New list rows: copy the last row with the next number, emptied.
+  function addRow(path) {
+    var table = form.querySelector('table[data-rows="' + path + '"]');
+    if (!table) return null;
+    var rows = table.querySelectorAll('tr[data-row]');
+    var last = rows[rows.length - 1];
+    var prefix = path + '.';
+    var max = -1;
+    table.querySelectorAll('[name^="' + prefix + '"]').forEach(function (el) {
+      var n = parseInt(el.name.slice(prefix.length), 10);
+      if (n > max) max = n;
+    });
+    var row = last.cloneNode(true);
+    row.querySelectorAll('[name]').forEach(function (el) {
+      var rest = el.name.slice(prefix.length);
+      el.name = prefix + (max + 1) + rest.slice(rest.indexOf('.'));
+      if (el.type === 'checkbox') el.checked = false;
+      else if (el.tagName === 'SELECT') el.selectedIndex = 0;
+      else el.value = '';
+    });
+    row.querySelectorAll('[data-loaded]').forEach(function (el) { el.textContent = ''; });
+    row.querySelectorAll('input[type=file]').forEach(function (el) { el.value = ''; });
+    last.parentNode.appendChild(row);
+    return row;
+  }
   form.querySelectorAll('[data-add]').forEach(function (b) {
     b.addEventListener('click', function (e) {
-      var path = b.dataset.add;
-      var table = form.querySelector('table[data-rows="' + path + '"]');
-      if (!table) return;
+      var row = addRow(b.dataset.add);
+      if (!row) return;
       e.preventDefault();
-      var rows = table.querySelectorAll('tr[data-row]');
-      var last = rows[rows.length - 1];
-      var prefix = path + '.';
-      var max = -1;
-      table.querySelectorAll('[name^="' + prefix + '"]').forEach(function (el) {
-        var n = parseInt(el.name.slice(prefix.length), 10);
-        if (n > max) max = n;
-      });
-      var row = last.cloneNode(true);
-      row.querySelectorAll('[name]').forEach(function (el) {
-        var rest = el.name.slice(prefix.length);
-        el.name = prefix + (max + 1) + rest.slice(rest.indexOf('.'));
-        if (el.type === 'checkbox') el.checked = false;
-        else if (el.tagName === 'SELECT') el.selectedIndex = 0;
-        else el.value = '';
-      });
-      last.parentNode.appendChild(row);
       var first = row.querySelector('input,textarea');
       if (first) first.focus();
+    });
+  });
+
+  // Script files: the encoding by the byte order mark, else UTF-8 if the
+  // bytes are valid UTF-8, else Windows-1251; the type by the extension.
+  var scriptTypes = { ps1: 'Ps1', cmd: 'Cmd', bat: 'Cmd', reg: 'Reg', vbs: 'Vbs' };
+  function decodeScript(buffer) {
+    var b = new Uint8Array(buffer);
+    if (b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF) return { text: new TextDecoder('utf-8').decode(b.subarray(3)), encoding: 'UTF-8 BOM' };
+    if (b[0] === 0xFF && b[1] === 0xFE) return { text: new TextDecoder('utf-16le').decode(b.subarray(2)), encoding: 'UTF-16 LE' };
+    if (b[0] === 0xFE && b[1] === 0xFF) return { text: new TextDecoder('utf-16be').decode(b.subarray(2)), encoding: 'UTF-16 BE' };
+    try {
+      return { text: new TextDecoder('utf-8', { fatal: true }).decode(b), encoding: 'UTF-8' };
+    } catch (e) {
+      return { text: new TextDecoder('windows-1251').decode(b), encoding: 'Windows-1251' };
+    }
+  }
+  function fillScript(row, file, decoded) {
+    var content = row.querySelector('textarea[name$=".Content"]');
+    var type = row.querySelector('select[name$=".Type"]');
+    content.value = decoded.text.replace(/\r\n?/g, '\n');
+    var ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (scriptTypes[ext]) type.value = scriptTypes[ext];
+    var note = row.querySelector('[data-loaded]');
+    if (note) note.textContent = file.name + ' · ' + decoded.encoding;
+  }
+  form.addEventListener('change', function (e) {
+    var input = e.target;
+    if (!input.matches('[data-script-file]') || !input.files.length) return;
+    var row = input.closest('tr[data-row]');
+    var path = row.closest('table[data-rows]').dataset.rows;
+    var files = Array.prototype.slice.call(input.files);
+    Promise.all(files.map(function (f) { return f.arrayBuffer(); })).then(function (buffers) {
+      buffers.forEach(function (buffer, i) {
+        var target = row;
+        if (i > 0 || row.querySelector('textarea[name$=".Content"]').value.trim() !== '' && row.querySelector('[data-loaded]').textContent === '') {
+          target = addRow(path);
+        }
+        fillScript(target, files[i], decodeScript(buffer));
+      });
+      input.value = '';
+      schedule();
     });
   });
 
@@ -135,5 +183,6 @@
   form.addEventListener('input', schedule);
   form.addEventListener('change', function (e) { if (e.target.matches('[data-variant]')) syncVariants(); schedule(); });
   form.querySelectorAll('[data-nojs]').forEach(function (el) { el.hidden = true; });
+  form.querySelectorAll('[data-jsonly]').forEach(function (el) { el.hidden = false; });
   syncVariants();
 })();

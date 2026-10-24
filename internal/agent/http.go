@@ -208,6 +208,30 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("POST /windows-answer/xml", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows answer unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req WindowsAnswerCheck
+		if !decodeAgentRequest(w, r, &req, 8<<10) {
+			return
+		}
+		xml, err := windows.AnswerXML(r.Context(), req)
+		switch {
+		case errors.Is(err, errAnswerMissing):
+			http.Error(w, "Windows answer file not found", http.StatusNotFound)
+			return
+		case errors.Is(err, errAnswerHashDiffers):
+			http.Error(w, "Windows answer file differs", http.StatusConflict)
+			return
+		case err != nil:
+			http.Error(w, "invalid answer asset identity", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write(xml)
+	})
 	mux.HandleFunc("POST /windows-iso/check", func(w http.ResponseWriter, r *http.Request) {
 		if windows == nil {
 			http.Error(w, "Windows ISO unavailable", http.StatusServiceUnavailable)

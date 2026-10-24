@@ -103,6 +103,29 @@ type Config struct {
 	DesktopIcons                  DesktopIconSettings
 	StickyKeysSettings            StickyKeysSettings
 	StartFolderSettings           StartFolderSettings
+
+	// PXE Platform extensions, not in upstream. They stay empty for files
+	// made in the editor and keep what an opened foreign file has beyond the
+	// recognized settings.
+	ExtraXML        []ExtraXML       // merged into the result by Build
+	ImportedScripts []ImportedScript // run by the script sequences
+}
+
+// ExtraXML is one element of a foreign answer file kept as it was. Pass and
+// Component name the component it belongs to ("" for a root element), Path
+// the element inside the component it goes into ("OOBE", "" for the
+// component itself).
+type ExtraXML struct {
+	Pass, Component, Arch, Path, XML string
+}
+
+// ImportedScript is a script sequence of a foreign file made by the
+// Schneegans generator (Specialize.ps1 and the like). It is written to
+// C:\Windows\Setup\Scripts\Imported\Name and run from the same phase.
+type ImportedScript struct {
+	Phase   ScriptPhase
+	Name    string
+	Content string
 }
 
 // Default is Configuration.Default.
@@ -136,6 +159,8 @@ func Default() Config {
 		DesktopIcons:               DefaultDesktopIconSettings{},
 		StickyKeysSettings:         DefaultStickyKeysSettings{},
 		StartFolderSettings:        DefaultStartFolderSettings{},
+		ExtraXML:                   []ExtraXML{},
+		ImportedScripts:            []ImportedScript{},
 	}
 }
 

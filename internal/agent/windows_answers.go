@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -141,4 +142,36 @@ func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck, expectedSc
 		return fmt.Errorf("answer startup script differs")
 	}
 	return nil
+}
+
+var (
+	errAnswerMissing     = errors.New("answer file is missing")
+	errAnswerHashDiffers = errors.New("answer file hash differs")
+)
+
+// AnswerXML returns the stored answer file of a variant, for the editor. The
+// hash must match, so Control gets the file it knows, not another one.
+func (m *WindowsISOManager) AnswerXML(_ context.Context, req WindowsAnswerCheck) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := validWindowsAnswerRequest(req); err != nil {
+		return nil, err
+	}
+	final := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
+	info, err := os.Lstat(final)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, errAnswerMissing
+	}
+	if err := requireRegularISOFile(final, "pxe-answer.xml"); err != nil {
+		return nil, errAnswerMissing
+	}
+	xml, err := os.ReadFile(filepath.Join(final, "pxe-answer.xml"))
+	if err != nil {
+		return nil, errAnswerMissing
+	}
+	sum := sha256.Sum256(xml)
+	if hex.EncodeToString(sum[:]) != req.SHA256 {
+		return nil, errAnswerHashDiffers
+	}
+	return xml, nil
 }

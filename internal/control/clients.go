@@ -159,6 +159,35 @@ func (c *AgentClient) CheckWindowsAnswer(ctx context.Context, req agent.WindowsA
 	}
 	return localCall(ctx, c.http, "POST", "/windows-answer/check", body, nil)
 }
+// WindowsAnswerXML fetches a stored answer file; the hash must match.
+func (c *AgentClient) WindowsAnswerXML(ctx context.Context, req agent.WindowsAnswerCheck) ([]byte, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/windows-answer/xml", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		message, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
+		return nil, fmt.Errorf("local API /windows-answer/xml: %d %s", res.StatusCode, string(message))
+	}
+	xml, err := io.ReadAll(io.LimitReader(res.Body, maxWindowsAnswerBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(xml)) > maxWindowsAnswerBytes {
+		return nil, fmt.Errorf("local API /windows-answer/xml: answer file is too large")
+	}
+	return xml, nil
+}
+
 func NewImagesClient(path string) *ImagesClient { return &ImagesClient{http: socketHTTP(path)} }
 
 func (c *ImagesClient) Catalog(ctx context.Context) (images.Catalog, error) {

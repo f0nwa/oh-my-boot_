@@ -290,6 +290,9 @@ func ParseXML(data []byte) (*Document, error) {
 	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.Strict = true
+	// Open has already turned UTF-16 into UTF-8; any other declared encoding
+	// is read as UTF-8, which is right for ASCII content.
+	dec.CharsetReader = func(_ string, r io.Reader) (io.Reader, error) { return r, nil }
 	doc := NewDocument()
 	cur := doc
 	type scope map[string]string // prefix -> URI

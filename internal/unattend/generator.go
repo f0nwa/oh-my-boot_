@@ -81,6 +81,7 @@ var modifiers = []func(*modifierContext){
 	timeZoneModifier,
 	appLockerModifier,
 	scriptModifier,
+	importedScriptsModifier, // PXE Platform extension
 	specializeModifier,
 	userOnceModifier,
 	defaultUserModifier,

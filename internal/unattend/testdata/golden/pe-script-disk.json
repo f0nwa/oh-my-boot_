@@ -1,0 +1,27 @@
+{
+ "PESettings": {
+  "$type": "GeneratePESettings",
+  "PartitionSettings": {
+   "$type": "UnattendedPartitionSettings",
+   "TargetDiskSettings": {
+    "$type": "ScriptTargetDiskSettings",
+    "Script": "WScript.Echo 0 ' a&b <c> \"d\" %e% ^f |g"
+   },
+   "PartitionLayout": "GPT",
+   "RecoveryMode": "Partition"
+  },
+  "InstallFromSettings": {
+   "$type": "EditionInstallFromSettings",
+   "Edition": "pro"
+  },
+  "PagingFileSettings": {
+   "$type": "AutomaticPagingFileSettings"
+  },
+  "DisableDefender": false,
+  "Disable8Dot3Names": false,
+  "PauseBeforeFormatting": false,
+  "PauseBeforeReboot": false,
+  "CompactOs": false,
+  "SkipIntegrityCheck": false
+ }
+}

@@ -1,0 +1,1 @@
+{"WifiSettings": {"$type": "ParameterizedWifiSettings", "Name": "Home", "Password": "12345678", "ConnectAutomatically": false, "Authentication": "WPA3SAE", "NonBroadcast": false}}

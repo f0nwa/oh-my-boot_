@@ -3,7 +3,6 @@ package unattend
 import (
 	"encoding/base64"
 	"fmt"
-	"reflect"
 	"strings"
 	"unicode/utf16"
 )
@@ -562,69 +561,3 @@ func prettyModifier(m *modifierContext) {
 }
 
 // Not yet ported: these accept only settings that leave the document alone.
-
-// notPortedPrefix starts the message for settings this port cannot generate yet.
-const notPortedPrefix = "Not supported yet: "
-
-func notPorted(what string) {
-	fail("%s%s.", notPortedPrefix, what)
-}
-
-func diskModifier(m *modifierContext) {
-	if _, ok := m.config.PESettings.(DefaultPESettings); !ok {
-		notPorted("DiskModifier for " + fmt.Sprintf("%T", m.config.PESettings))
-	}
-	m.must("//s:PEScriptCopy").RemoveSelf()
-}
-
-func bloatwareModifier(m *modifierContext) {
-	if len(m.config.Bloatwares) > 0 {
-		notPorted("BloatwareModifier")
-	}
-}
-
-func optimizationsModifier(m *modifierContext) {
-	if !optimizationsAtDefault(m.config) {
-		notPorted("OptimizationsModifier")
-	}
-}
-
-func wifiModifier(m *modifierContext) {
-	el := m.must("//u:OOBE/u:HideWirelessSetupInOOBE")
-	switch s := m.config.WifiSettings.(type) {
-	case InteractiveWifiSettings:
-		el.SetInnerText("false")
-	case SkipWifiSettings:
-		el.SetInnerText("true")
-	default:
-		notPorted(fmt.Sprintf("WifiModifier for %T", s))
-	}
-}
-
-// optimizationFields are the settings OptimizationsModifier reads; PESettings
-// matters to it only through DisableDefender.
-var optimizationFields = []string{
-	"AllowPowerShellScripts", "ClassicContextMenu", "DeleteEdgeDesktopIcon", "DeleteJunctions", "DeleteWindowsOld",
-	"DesktopIcons", "DisableAppSuggestions", "DisableAutomaticRestartSignOn", "DisableBingResults", "DisableCoreIsolation",
-	"DisableEdgeStartupBoost", "DisableFastStartup", "DisableLastAccess", "DisablePointerPrecision", "DisableSac",
-	"DisableSmartScreen", "DisableSystemRestore", "DisableUac", "DisableWidgets", "DisableWindowsUpdate", "DisableWpbt",
-	"Effects", "EnableLongPaths", "EnableRemoteDesktop", "HardenSystemDriveAcl", "HideEdgeFre", "HideFiles",
-	"HideInfoTip", "HideTaskViewButton", "LaunchToThisPC", "LeftTaskbar", "LockKeySettings", "MakeEdgeUninstallable",
-	"ParallelsTools", "PreventAutomaticReboot", "PreventDeviceApps", "PreventDeviceEncryption", "ProcessAuditSettings",
-	"ShowAllTrayIcons", "ShowEndTask", "ShowFileExtensions", "StartFolderSettings", "StartPinsSettings",
-	"StartTilesSettings", "StickyKeysSettings", "TaskbarIcons", "TaskbarSearch", "TurnOffSystemSounds",
-	"UseConfigurationSet", "VBoxGuestAdditions", "VMwareTools", "VirtIoGuestTools",
-}
-
-func optimizationsAtDefault(c Config) bool {
-	if c.IsDefenderDisabled() {
-		return false
-	}
-	have, def := reflect.ValueOf(c), reflect.ValueOf(Default())
-	for _, name := range optimizationFields {
-		if !reflect.DeepEqual(have.FieldByName(name).Interface(), def.FieldByName(name).Interface()) {
-			return false
-		}
-	}
-	return true
-}

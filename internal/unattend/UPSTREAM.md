@@ -1,29 +1,38 @@
 # Upstream
 
-This package is a Go port of [cschneegans/unattend-generator](https://github.com/cschneegans/unattend-generator)
-(MIT, © 2024-2025 Christoph Schneegans, see `LICENSE-unattend-generator.txt`).
+Пакет — порт на Go библиотеки [cschneegans/unattend-generator](https://github.com/cschneegans/unattend-generator)
+(MIT, © 2024-2025 Christoph Schneegans, см. `LICENSE-unattend-generator.txt`).
 
-- Ported commit: `27237f82e9a8498d9c5bab7d398dc34b7682a1e8` (11.10.2026).
-- `resource/` is copied from that commit without changes.
-- The port is checked against the original: `testdata/golden/*.json` are settings,
-  `*.xml` (or `*.err`) what the original generator made of them, regenerated with
-  `scripts/unattend-golden.sh` (needs the .NET 8 SDK).
+- Перенесён коммит `27237f82e9a8498d9c5bab7d398dc34b7682a1e8` (11.10.2026), **полностью**:
+  все модификаторы, включая диск и Windows PE, удаление приложений, Wi-Fi и оптимизации.
+- `resource/` скопирован из этого коммита без изменений.
+- Порт сверяется с оригиналом: `testdata/golden/*.json` — настройки, `*.xml`
+  (или `*.err`) — что из них сделал оригинал. Эталоны перестраивает
+  `scripts/unattend-golden.sh` (нужен .NET 8 SDK); `go test` сравнивает байт в байт.
 
-Not ported: the final XSD validation of the generated document
-(`Util.ValidateAgainstSchema`). The golden files cover the output, and the
-editor does not let invalid values through.
+## Расхождения с оригиналом
 
-## Порядок компонентов
+- **Проверка по XSD не перенесена** (`Util.ValidateAgainstSchema` для итогового
+  файла, профиля Wi-Fi и AppLocker). Порт проверяет только, что XML правильно
+  построен.
+- **Тексты ошибок разбора XML** (свой XML Wi-Fi, панели задач, плиток «Пуска»,
+  AppLocker) — от Go, а не от .NET: начало сообщения то же, причина своими словами.
+- **JSON закреплений «Пуска»** проверяется как в Newtonsoft (оборванный текст
+  допустим, неверный токен — ошибка), но без его вольностей: комментарии и
+  одинарные кавычки порт не принимает.
+- **Порядок своих компонентов.** В оригинале `Components` — `ImmutableDictionary`,
+  и порядок, в котором компоненты раздела «Свой XML» дописываются в проход,
+  зависит от хешей .NET. Порт добавляет их в порядке настроек. Эталоны держат не
+  больше одного своего компонента на проход.
+- **Внутренние сбои** (ошибка самого порта) возвращаются ошибкой
+  `unattend: internal error: …`, а не роняют процесс.
 
-В оригинале `Components` — `ImmutableDictionary`, и порядок, в котором
-компоненты из раздела «Свой XML» дописываются в проход, на сайте
-случаен. Порт добавляет их в порядке настроек. Поэтому эталоны держат не
-больше одного своего компонента на проход — иначе сравнение байт в байт
-зависело бы от хешей .NET.
+## Обновление до нового коммита upstream
 
-## Что ещё не перенесено
-
-Разметка диска и PE-скрипты (кроме варианта по умолчанию), удаление
-программ, оптимизации и профили Wi-Fi пока возвращают ошибку
-`Not supported yet: …` — генерация не падает, а сообщает, что этих
-настроек порт ещё не умеет. Они переносятся задачами 2–5 плана.
+1. Поменять коммит в `tools/unattend-golden/fetch.sh`, `UpstreamCommit` в
+   `generator.go` и в этом файле; удалить `tools/unattend-golden/upstream/`.
+2. Скопировать новый `resource/`; запустить `scripts/unattend-golden.sh` —
+   эталоны пересоберутся новым оригиналом.
+3. `git diff` по `upstream/modifier/*.cs` между старым и новым коммитом
+   показывает, какие модификаторы переносить; `go test ./internal/unattend/`
+   показывает, где вывод разошёлся.

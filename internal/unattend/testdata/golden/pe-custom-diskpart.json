@@ -1,0 +1,22 @@
+{
+ "PESettings": {
+  "$type": "GeneratePESettings",
+  "PartitionSettings": {
+   "$type": "CustomPartitionSettings",
+   "Script": "select disk 0\nclean\nconvert gpt\ncreate partition efi size=300\nformat quick fs=fat32\nassign letter = \"S\"\ncreate partition primary\nformat quick fs=ntfs label=\"Windows\"\nASSIGN LETTER W"
+  },
+  "InstallFromSettings": {
+   "$type": "EditionInstallFromSettings",
+   "Edition": "pro"
+  },
+  "PagingFileSettings": {
+   "$type": "AutomaticPagingFileSettings"
+  },
+  "DisableDefender": false,
+  "Disable8Dot3Names": false,
+  "PauseBeforeFormatting": false,
+  "PauseBeforeReboot": false,
+  "CompactOs": false,
+  "SkipIntegrityCheck": false
+ }
+}

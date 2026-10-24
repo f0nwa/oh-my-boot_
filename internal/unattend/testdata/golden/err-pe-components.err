@@ -1,0 +1,1 @@
+Cannot create .cmd script with custom components (‘Microsoft-Windows-PnpCustomizationsWinPE’) for the ‘windowsPE’ pass. To load drivers in the PE stage, add them to the ‘$WinPEDriver$’ folder or use a custom script to run the ‘drvload.exe’ command.

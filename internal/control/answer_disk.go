@@ -8,13 +8,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 // AnswerWipesDisk reports whether an answer file writes to disks without
 // asking: a DiskConfiguration with WillWipeDisk=true or CreatePartition
-// entries, a fixed InstallTo target, or a command that runs diskpart.
+// entries, a fixed InstallTo target, or a command that runs a diskpart
+// script ("diskpart /s file" or "diskpart < file"; a mere mention, such as
+// "use diskpart" in a message or "list disk | diskpart", does not count).
 // It is a hint for people choosing the file, not a safety barrier. known is
 // false when the XML could not be read to the end, for example in UTF-16.
 func AnswerWipesDisk(data []byte) (wipes, known bool) {
@@ -46,7 +49,7 @@ func AnswerWipesDisk(data []byte) (wipes, known bool) {
 				path = path[:len(path)-1]
 			}
 		case xml.CharData:
-			if len(path) > 0 && (path[len(path)-1] == "Path" || path[len(path)-1] == "CommandLine") && strings.Contains(strings.ToLower(string(t)), "diskpart") {
+			if len(path) > 0 && (path[len(path)-1] == "Path" || path[len(path)-1] == "CommandLine") && diskpartScript.MatchString(string(t)) {
 				return true, true
 			}
 			if inDisk > 0 && len(path) > 0 && path[len(path)-1] == "WillWipeDisk" && strings.EqualFold(strings.TrimSpace(string(t)), "true") {
@@ -55,6 +58,8 @@ func AnswerWipesDisk(data []byte) (wipes, known bool) {
 		}
 	}
 }
+
+var diskpartScript = regexp.MustCompile(`(?i)diskpart(\.exe)?"?\s*(/s\s|<)`)
 
 // windowsAnswerInspect records the disk flag for an answer file uploaded before
 // the flag existed. The file must be the same one, checked by SHA-256.

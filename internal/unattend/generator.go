@@ -94,11 +94,11 @@ var modifiers = []func(*modifierContext){
 
 // modifierContext is ModifierContext with the helpers of Modifier.
 type modifierContext struct {
-	doc                                        *Document
-	config                                     Config
-	data                                       *Data
+	doc                                           *Document
+	config                                        Config
+	data                                          *Data
 	specialize, firstLogon, userOnce, defaultUser *sequence
-	cmd                                        commandBuilder
+	cmd                                           commandBuilder
 }
 
 func (m *modifierContext) must(expr string) *Node { return m.doc.MustSelectNode(expr, namespaces) }
@@ -302,7 +302,9 @@ func (b commandBuilder) writeToFilePE(path string, lines []string) []string {
 	return result
 }
 
-func isSpace(r rune) bool { return strings.ContainsRune(" \t\n\r\v\f\u0085\u00a0", r) || r == '\u2028' || r == '\u2029' }
+func isSpace(r rune) bool {
+	return strings.ContainsRune(" \t\n\r\v\f\u0085\u00a0", r) || r == '\u2028' || r == '\u2029'
+}
 
 // echoProcess is EchoProcessor.Process: trimmed, non-empty lines turned into
 // echo statements, with cmd metacharacters escaped when asked.

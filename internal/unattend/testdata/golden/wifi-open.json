@@ -1,0 +1,1 @@
+{"WifiSettings": {"$type": "ParameterizedWifiSettings", "Name": "Guest", "Password": "", "ConnectAutomatically": true, "Authentication": "Open", "NonBroadcast": true}}

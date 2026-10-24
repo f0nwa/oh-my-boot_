@@ -111,22 +111,6 @@ func TestUnknownSetting(t *testing.T) {
 	}
 }
 
-func TestNotPortedIsAnError(t *testing.T) {
-	d, err := LoadData()
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := Default()
-	c.Bloatwares = []string{"RemoveCopilot"}
-	c.WifiSettings = XmlWifiSettings{Xml: "<x/>"}
-	c.DisableUac = true
-	for _, c := range []Config{c} {
-		if _, err := GenerateBytes(d, c); err == nil || !strings.HasPrefix(err.Error(), notPortedPrefix) {
-			t.Fatalf("want a not-ported error, got %v", err)
-		}
-	}
-}
-
 func TestParseXMLRejectsMalformed(t *testing.T) {
 	for _, s := range []string{"<a>", "<a></b>", "<a><b></a></b>"} {
 		if _, err := ParseXML([]byte(s)); err == nil {

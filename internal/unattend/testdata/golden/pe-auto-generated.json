@@ -1,0 +1,42 @@
+{
+ "PESettings": {
+  "$type": "GeneratePESettings",
+  "PartitionSettings": {
+   "$type": "UnattendedPartitionSettings",
+   "TargetDiskSettings": {
+    "$type": "GeneratedTargetDiskSettings"
+   },
+   "PartitionLayout": "Automatic",
+   "RecoveryMode": "Partition"
+  },
+  "InstallFromSettings": {
+   "$type": "NameInstallFromSettings",
+   "Name": "Windows 11 Pro"
+  },
+  "PagingFileSettings": {
+   "$type": "CustomPagingFileSettings",
+   "InitialSizeMiB": 1024,
+   "MaxSizeMiB": 4096
+  },
+  "DisableDefender": false,
+  "Disable8Dot3Names": false,
+  "PauseBeforeFormatting": false,
+  "PauseBeforeReboot": false,
+  "CompactOs": false,
+  "SkipIntegrityCheck": false
+ },
+ "LanguageSettings": {
+  "$type": "UnattendedLanguageSettings",
+  "ImageLanguage": "ru-RU",
+  "LocaleAndKeyboard": {
+   "Locale": "ru-RU",
+   "Keyboard": "00000419"
+  },
+  "GeoLocation": "203"
+ },
+ "TimeZoneSettings": {
+  "$type": "ExplicitTimeZoneSettings",
+  "TimeZone": "Russian Standard Time"
+ },
+ "UseNarrator": true
+}

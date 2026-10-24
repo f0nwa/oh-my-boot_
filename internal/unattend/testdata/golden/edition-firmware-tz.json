@@ -1,0 +1,7 @@
+{
+  "PESettings": {"$type": "DefaultPESettings", "EditionSettings": {"$type": "UnattendedEditionSettings", "Edition": "home"}, "BypassRequirementsCheck": false},
+  "TimeZoneSettings": {"$type": "ExplicitTimeZoneSettings", "TimeZone": "UTC"},
+  "ExpressSettings": "DisableAll",
+  "LanguageSettings": {"$type": "UnattendedLanguageSettings", "ImageLanguage": "zh-CN",
+    "LocaleAndKeyboard": {"Locale": "aa", "Keyboard": "00000409"}, "GeoLocation": "45"}
+}

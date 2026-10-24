@@ -1,0 +1,1 @@
+Your diskpart script must contain a line such as ‘ASSIGN LETTER=S’ to assign the drive letter ‘S:’ to the system partition.

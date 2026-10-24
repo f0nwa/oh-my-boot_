@@ -141,4 +141,3 @@ func checkComputerName(name string) error {
 	}
 	return nil
 }
-

@@ -1,0 +1,1 @@
+{"LockKeySettings": {"$type": "ConfigureLockKeySettings", "CapsLock": {"Initial": "On", "Behavior": "Toggle"}, "NumLock": {"Initial": "Off", "Behavior": "Toggle"}, "ScrollLock": {"Initial": "Off", "Behavior": "Toggle"}}}

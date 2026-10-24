@@ -1,0 +1,31 @@
+{
+ "PESettings": {
+  "$type": "GeneratePESettings",
+  "PartitionSettings": {
+   "$type": "UnattendedPartitionSettings",
+   "TargetDiskSettings": {
+    "$type": "GeneratedTargetDiskSettings",
+    "MinSizeGiB": 50,
+    "MaxSizeGiB": null,
+    "Index": null,
+    "AssertNoPartitions": false,
+    "AssertInterfaceType": true,
+    "AssertMediaType": true
+   },
+   "PartitionLayout": "MBR",
+   "RecoveryMode": "Partition"
+  },
+  "InstallFromSettings": {
+   "$type": "InteractiveInstallFromSettings"
+  },
+  "PagingFileSettings": {
+   "$type": "AutomaticPagingFileSettings"
+  },
+  "DisableDefender": false,
+  "Disable8Dot3Names": false,
+  "PauseBeforeFormatting": false,
+  "PauseBeforeReboot": false,
+  "CompactOs": false,
+  "SkipIntegrityCheck": false
+ }
+}

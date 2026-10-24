@@ -1,0 +1,7 @@
+{
+ "PESettings": {
+  "$type": "ScriptPESetttings",
+  "Script": "@echo off\r\necho a&b <c> \"d\" %PATH% ^ |\r\n\r\n   wpeutil reboot   "
+ },
+ "UseNarrator": true
+}

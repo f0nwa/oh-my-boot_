@@ -1,0 +1,221 @@
+{
+ "AllowPowerShellScripts": true,
+ "ClassicContextMenu": true,
+ "DeleteEdgeDesktopIcon": true,
+ "DeleteJunctions": true,
+ "DeleteWindowsOld": true,
+ "DisableAppSuggestions": true,
+ "DisableAutomaticRestartSignOn": true,
+ "DisableBingResults": true,
+ "DisableCoreIsolation": true,
+ "DisableEdgeStartupBoost": true,
+ "DisableFastStartup": true,
+ "DisableLastAccess": true,
+ "DisablePointerPrecision": true,
+ "DisableSac": true,
+ "DisableSmartScreen": true,
+ "DisableSystemRestore": true,
+ "DisableUac": true,
+ "DisableWidgets": true,
+ "DisableWindowsUpdate": true,
+ "DisableWpbt": true,
+ "EnableLongPaths": true,
+ "EnableRemoteDesktop": true,
+ "HardenSystemDriveAcl": true,
+ "HideEdgeFre": true,
+ "HideInfoTip": true,
+ "HideTaskViewButton": true,
+ "LaunchToThisPC": true,
+ "LeftTaskbar": true,
+ "MakeEdgeUninstallable": true,
+ "ParallelsTools": true,
+ "PreventAutomaticReboot": true,
+ "PreventDeviceApps": true,
+ "PreventDeviceEncryption": true,
+ "ShowAllTrayIcons": true,
+ "ShowEndTask": true,
+ "ShowFileExtensions": true,
+ "TurnOffSystemSounds": true,
+ "UseConfigurationSet": true,
+ "VBoxGuestAdditions": true,
+ "VMwareTools": true,
+ "VirtIoGuestTools": true,
+ "HideFiles": "None",
+ "TaskbarSearch": "Label",
+ "TaskbarIcons": {
+  "$type": "EmptyTaskbarIcons"
+ },
+ "StartPinsSettings": {
+  "$type": "EmptyStartPinsSettings"
+ },
+ "StartTilesSettings": {
+  "$type": "EmptyStartTilesSettings"
+ },
+ "Effects": {
+  "$type": "CustomEffects",
+  "Settings": [
+   {
+    "Key": "DropShadow",
+    "Value": true
+   },
+   {
+    "Key": "ControlAnimations",
+    "Value": false
+   },
+   {
+    "Key": "FontSmoothing",
+    "Value": true
+   }
+  ]
+ },
+ "DesktopIcons": {
+  "$type": "CustomDesktopIconSettings",
+  "Settings": [
+   {
+    "Key": "Home",
+    "Value": true
+   },
+   {
+    "Key": "Network",
+    "Value": false
+   },
+   {
+    "Key": "Gallery",
+    "Value": true
+   },
+   {
+    "Key": "Desktop",
+    "Value": false
+   },
+   {
+    "Key": "Documents",
+    "Value": true
+   },
+   {
+    "Key": "Videos",
+    "Value": false
+   },
+   {
+    "Key": "RecycleBin",
+    "Value": true
+   },
+   {
+    "Key": "UserFiles",
+    "Value": false
+   },
+   {
+    "Key": "ControlPanel",
+    "Value": true
+   },
+   {
+    "Key": "Pictures",
+    "Value": false
+   },
+   {
+    "Key": "Downloads",
+    "Value": true
+   },
+   {
+    "Key": "ThisPC",
+    "Value": false
+   },
+   {
+    "Key": "Music",
+    "Value": true
+   }
+  ]
+ },
+ "StartFolderSettings": {
+  "$type": "CustomStartFolderSettings",
+  "Settings": [
+   {
+    "Key": "PersonalFolder",
+    "Value": false
+   },
+   {
+    "Key": "Network",
+    "Value": true
+   },
+   {
+    "Key": "Videos",
+    "Value": true
+   },
+   {
+    "Key": "Pictures",
+    "Value": false
+   },
+   {
+    "Key": "Music",
+    "Value": true
+   },
+   {
+    "Key": "Downloads",
+    "Value": true
+   },
+   {
+    "Key": "Documents",
+    "Value": false
+   },
+   {
+    "Key": "FileExplorer",
+    "Value": true
+   },
+   {
+    "Key": "Settings",
+    "Value": true
+   }
+  ]
+ },
+ "StickyKeysSettings": {
+  "$type": "CustomStickyKeysSettings",
+  "Flags": [
+   "HotKeyActive",
+   "TwoKeysOff",
+   "HotKeySound"
+  ]
+ },
+ "LockKeySettings": {
+  "$type": "ConfigureLockKeySettings",
+  "CapsLock": {
+   "Initial": "Off",
+   "Behavior": "Ignore"
+  },
+  "NumLock": {
+   "Initial": "On",
+   "Behavior": "Toggle"
+  },
+  "ScrollLock": {
+   "Initial": "On",
+   "Behavior": "Ignore"
+  }
+ },
+ "ProcessAuditSettings": {
+  "$type": "EnabledProcessAuditSettings",
+  "IncludeCommandLine": true
+ },
+ "PESettings": {
+  "$type": "GeneratePESettings",
+  "PartitionSettings": {
+   "$type": "UnattendedPartitionSettings",
+   "TargetDiskSettings": {
+    "$type": "FixedTargetDiskSettings",
+    "Index": 0
+   },
+   "PartitionLayout": "GPT",
+   "RecoveryMode": "Partition"
+  },
+  "InstallFromSettings": {
+   "$type": "EditionInstallFromSettings",
+   "Edition": "pro"
+  },
+  "PagingFileSettings": {
+   "$type": "AutomaticPagingFileSettings"
+  },
+  "DisableDefender": true,
+  "Disable8Dot3Names": true,
+  "PauseBeforeFormatting": false,
+  "PauseBeforeReboot": false,
+  "CompactOs": false,
+  "SkipIntegrityCheck": false
+ }
+}

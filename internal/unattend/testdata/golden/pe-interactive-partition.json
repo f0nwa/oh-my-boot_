@@ -1,0 +1,21 @@
+{
+ "PESettings": {
+  "$type": "GeneratePESettings",
+  "PartitionSettings": {
+   "$type": "InteractivePartitionSettings"
+  },
+  "InstallFromSettings": {
+   "$type": "EditionInstallFromSettings",
+   "Edition": "pro"
+  },
+  "PagingFileSettings": {
+   "$type": "AutomaticPagingFileSettings"
+  },
+  "DisableDefender": false,
+  "Disable8Dot3Names": false,
+  "PauseBeforeFormatting": false,
+  "PauseBeforeReboot": false,
+  "CompactOs": false,
+  "SkipIntegrityCheck": false
+ }
+}

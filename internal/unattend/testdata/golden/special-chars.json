@@ -1,0 +1,19 @@
+{
+  "LanguageSettings": {"$type": "UnattendedLanguageSettings", "ImageLanguage": "de-DE",
+    "LocaleAndKeyboard": {"Locale": "aa-DJ", "Keyboard": "00000407"},
+    "LocaleAndKeyboard2": {"Locale": "ja-JP", "Keyboard": "0445:{81ea0a17-aa39-455b-ba20-ea79a8f98966}{c7f2f349-36a2-4f2e-977b-5c18baf1ae7d}"},
+    "LocaleAndKeyboard3": {"Locale": "ru-RU", "Keyboard": "00000419"},
+    "GeoLocation": "203"},
+  "AccountSettings": {"$type": "UnattendedAccountSettings",
+    "Accounts": [{"Name": "Админ", "DisplayName": "a&b<c>\"d%e^|' ё", "Password": "a&b<c>\"d%e^|'\tя", "Group": "Administrators"}],
+    "AutoLogonSettings": {"$type": "OwnAutoLogonSettings"}, "ObscurePasswords": false},
+  "ComputerNameSettings": {"$type": "CustomComputerNameSettings", "Name": "ПК-Ёж"},
+  "ScriptSettings": {"RestartExplorer": false, "Scripts": [
+    {"Content": "echo a&b<c>\"d%e^| ё\r\nset X=%PATH%", "Phase": "System", "Type": "Cmd"},
+    {"Content": "Write-Host \"a&b<c>'d%e^| ё\"\n\n# конец", "Phase": "System", "Type": "Ps1"},
+    {"Content": "'ё <&> \"x\"\nWScript.Echo 1", "Phase": "FirstLogon", "Type": "Vbs"},
+    {"Content": "Write-Host 'ü \"q\"'", "Phase": "UserOnce", "Type": "Ps1"},
+    {"Content": "Set-ItemProperty -Path 'HKU:\\DefaultUser\\x' -Name 'ё' -Value '\"&\"'", "Phase": "DefaultUser", "Type": "Ps1"}
+  ]},
+  "Components": [{"Key": {"Component": "Microsoft-Windows-Shell-Setup", "Pass": "oobeSystem"}, "Value": "<RegisteredOrganization>ООО «Рога &amp; копыта» &lt;x&gt;</RegisteredOrganization>"}]
+}

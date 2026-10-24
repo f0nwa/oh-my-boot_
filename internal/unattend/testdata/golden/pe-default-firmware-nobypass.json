@@ -1,0 +1,9 @@
+{
+ "PESettings": {
+  "$type": "DefaultPESettings",
+  "EditionSettings": {
+   "$type": "FirmwareEditionSettings"
+  },
+  "BypassRequirementsCheck": false
+ }
+}

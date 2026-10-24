@@ -66,8 +66,8 @@ type KeyboardIdentifier struct {
 // UserLocale is a locale with its default keyboard and location.
 type UserLocale struct {
 	ID, DisplayName, LCID string
-	KeyboardLayout       *KeyboardIdentifier
-	GeoLocation          *GeoLocation
+	KeyboardLayout        *KeyboardIdentifier
+	GeoLocation           *GeoLocation
 }
 
 // TimeOffset is a Windows time zone.
@@ -233,8 +233,8 @@ func loadData() (*Data, error) {
 
 	var locales []struct {
 		ID, DisplayName, LCID string
-		KeyboardLayout       *string
-		GeoLocation          *string
+		KeyboardLayout        *string
+		GeoLocation           *string
 	}
 	if err := loadJSON("UserLocale.json", &locales); err != nil {
 		return nil, err

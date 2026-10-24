@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -46,9 +47,31 @@ func RenderProfileStartup(template []byte, password string, profileID int64, ins
 	return out, nil
 }
 
+// answerImageLetter is the drive letter under which an answer variant maps
+// its profile folder, so that the profile's files lie at the drive root.
+const answerImageLetter = "I:"
+
+var mediaMapping = regexp.MustCompile(`(?m)^net use Y: (\\\\[^ \r\n]+) ([^\r\n]*)\r$`)
+
 // RenderAnswerStartup turns a prepared ISO startup script into a strict
 // answer-file variant without changing its network credential or ISO binding.
+//
+// Besides Setup's /Unattend option it prepares for answer files whose
+// windowsPE pass runs its own pe.cmd (the editor's «wipe and partition»):
+// pe.cmd looks for <drive>:\sources\install.wim and <drive>:\autounattend.xml,
+// so the profile folder is mapped once more as I: and the answer file is
+// copied to X:\autounattend.xml. Setup itself does not use either.
 func RenderAnswerStartup(base []byte, profileID int64) ([]byte, error) {
+	return renderAnswerStartup(base, profileID, true)
+}
+
+// RenderAnswerStartupLegacy is the variant script made before the I: mapping;
+// answer variants prepared then keep it.
+func RenderAnswerStartupLegacy(base []byte, profileID int64) ([]byte, error) {
+	return renderAnswerStartup(base, profileID, false)
+}
+
+func renderAnswerStartup(base []byte, profileID int64, peImage bool) ([]byte, error) {
 	if profileID <= 0 {
 		return nil, fmt.Errorf("invalid Windows ISO profile")
 	}
@@ -58,7 +81,16 @@ func RenderAnswerStartup(base []byte, profileID int64) ([]byte, error) {
 		if bytes.Count(base, command) != 1 {
 			continue
 		}
-		replacement := append([]byte("if not exist X:\\Windows\\System32\\pxe-answer.xml goto failed\r\n"), command[:len(command)-2]...)
+		var replacement []byte
+		if peImage {
+			if m := mediaMapping.FindSubmatch(base); m != nil {
+				// A failed mapping only matters to pe.cmd; Setup goes on.
+				replacement = append(replacement, []byte("net use "+answerImageLetter+" "+string(m[1])+"\\"+id+" "+strings.TrimSpace(string(m[2]))+"\r\n")...)
+			}
+			replacement = append(replacement, []byte("copy /y X:\\Windows\\System32\\pxe-answer.xml X:\\autounattend.xml >nul\r\n")...)
+		}
+		replacement = append(replacement, []byte("if not exist X:\\Windows\\System32\\pxe-answer.xml goto failed\r\n")...)
+		replacement = append(replacement, command[:len(command)-2]...)
 		replacement = append(replacement, []byte(" /Unattend:X:\\Windows\\System32\\pxe-answer.xml\r\n")...)
 		return bytes.Replace(base, command, replacement, 1), nil
 	}

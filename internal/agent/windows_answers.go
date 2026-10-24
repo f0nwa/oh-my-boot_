@@ -115,6 +115,20 @@ func (m *WindowsISOManager) answerStartup(profileID int64) ([]byte, error) {
 	return winpe.RenderAnswerStartup(base, profileID)
 }
 
+// legacyAnswerStartup is the script of variants prepared before the
+// profile folder was mapped for pe.cmd; such variants stay valid.
+func (m *WindowsISOManager) legacyAnswerStartup(profileID int64) []byte {
+	base, err := os.ReadFile(filepath.Join(m.AssetRoot, strconv.FormatInt(profileID, 10), "pxe-setup.cmd"))
+	if err != nil {
+		return nil
+	}
+	legacy, err := winpe.RenderAnswerStartupLegacy(base, profileID)
+	if err != nil {
+		return nil
+	}
+	return legacy
+}
+
 func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck, expectedScript []byte) error {
 	final := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
 	info, err := os.Lstat(final)
@@ -139,7 +153,10 @@ func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck, expectedSc
 		return err
 	}
 	if !bytes.Equal(script, expectedScript) {
-		return fmt.Errorf("answer startup script differs")
+		legacy := m.legacyAnswerStartup(req.ProfileID)
+		if legacy == nil || !bytes.Equal(script, legacy) {
+			return fmt.Errorf("answer startup script differs")
+		}
 	}
 	return nil
 }

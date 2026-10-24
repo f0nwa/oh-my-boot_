@@ -82,3 +82,36 @@ func TestRenderAnswerStartupRequiresXMLAndPassesItToSetup(t *testing.T) {
 		t.Fatal("accepted missing Setup command")
 	}
 }
+
+// TestRenderAnswerStartupMapsProfileForPECmd: the answer variant maps the
+// profile folder as I: (pe.cmd looks for I:\sources\install.wim) and copies
+// the answer file to X:\autounattend.xml, after the share is connected and
+// before Setup starts. The legacy variant does neither.
+func TestRenderAnswerStartupMapsProfileForPECmd(t *testing.T) {
+	template, err := os.ReadFile("../../deploy/boot-assets/windows-profiles/pxe-setup.cmd.in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := RenderProfileStartup(template, strings.Repeat("A", 32), 17, "install.wim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderAnswerStartup(base, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(got)
+	mapping := `net use I: \\10.30.0.10\pxeisos\17 %PXE_ISO_PASSWORD% /user:pxe-iso /persistent:no >nul 2>&1` + "\r\n"
+	copyLine := `copy /y X:\Windows\System32\pxe-answer.xml X:\autounattend.xml >nul` + "\r\n"
+	ready, m, c, setup := strings.Index(text, ":media_ready"), strings.Index(text, mapping), strings.Index(text, copyLine), strings.Index(text, `Y:\17\sources\setup.exe`)
+	if ready < 0 || m < ready || c < m || setup < c || strings.Count(text, "net use I:") != 1 {
+		t.Fatalf("mapping not between the share and Setup:\n%s", text)
+	}
+	if !strings.Contains(text, `/Unattend:X:\Windows\System32\pxe-answer.xml`) || strings.Contains(text, "AAAAAAAA\\") {
+		t.Fatalf("bad Setup line or credential:\n%s", text)
+	}
+	legacy, err := RenderAnswerStartupLegacy(base, 17)
+	if err != nil || strings.Contains(string(legacy), "net use I:") || strings.Contains(string(legacy), "autounattend.xml") {
+		t.Fatalf("legacy variant changed: %v\n%s", err, legacy)
+	}
+}

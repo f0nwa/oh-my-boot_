@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"pxe-platform/internal/winpe"
 	"strings"
 	"testing"
 )
@@ -95,4 +96,31 @@ func TestWindowsAnswerAgentUnitAllowsAssetWrites(t *testing.T) {
 		}
 	}
 	t.Fatal("Agent systemd sandbox does not allow answer asset writes")
+}
+
+// TestWindowsAnswerAcceptsLegacyStartup: variants prepared before the pe.cmd
+// mapping keep their script and still pass the check.
+func TestWindowsAnswerAcceptsLegacyStartup(t *testing.T) {
+	m, check, _ := preparedAnswer(t)
+	base, err := os.ReadFile(filepath.Join(m.AssetRoot, "17", "pxe-setup.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := winpe.RenderAnswerStartupLegacy(base, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(m.AnswerRoot, "4", "pxe-setup.cmd")
+	if err := os.WriteFile(script, legacy, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.CheckAnswer(context.Background(), check); err != nil {
+		t.Fatalf("legacy script rejected: %v", err)
+	}
+	if err := os.WriteFile(script, []byte("@echo off\r\nformat C:\r\n"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.CheckAnswer(context.Background(), check); err == nil {
+		t.Fatal("accepted a foreign script")
+	}
 }

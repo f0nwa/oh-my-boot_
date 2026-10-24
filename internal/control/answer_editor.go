@@ -625,10 +625,6 @@ func editionName(d *unattend.Data, k string) string {
 func editorWarnings(lang string, c unattend.Config) []editorWarning {
 	t := func(s string) string { return translate(lang, s) }
 	var out []editorWarning
-	switch c.PESettings.(type) {
-	case unattend.GeneratePESettings, unattend.ScriptPESetttings:
-		out = append(out, editorWarning{"disk", t("При установке по сети этот режим пока не работает: pe.cmd ищет install.wim в корне дисков, а PXE Platform подключает образ как Y:\\<профиль>\\sources. Для USB и ISO работает.")})
-	}
 	if a, ok := c.AccountSettings.(unattend.UnattendedAccountSettings); ok {
 		if c.KeepSensitiveFiles && len(a.Accounts) > 0 {
 			out = append(out, editorWarning{"accounts", t("Файл с паролями останется на установленной Windows (C:\\Windows\\Panther). Снимите «Оставить файл ответов на диске», если это не нужно.")})

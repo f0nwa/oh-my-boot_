@@ -118,3 +118,28 @@ func TestParseXMLRejectsMalformed(t *testing.T) {
 		}
 	}
 }
+
+// TestPEScriptFindsPXEImage pins what winpe.RenderAnswerStartup relies on:
+// pe.cmd looks for the image on I: and for the answer file on X:.
+func TestPEScriptFindsPXEImage(t *testing.T) {
+	d, err := LoadData()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Default()
+	c.PESettings = FormDefault(reflect.TypeOf(GeneratePESettings{})).Interface().(GeneratePESettings)
+	doc, err := Generate(d, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := doc.MustSelectNode("//s:PEScriptCopy", namespaces).InnerText()
+	for _, want := range []string{
+		"for %%d in (C D E F G H I J K L M N O P Q T U V X Y Z) do (",
+		`if exist %%d:\sources\install.wim set "IMAGE_FILE=%%d:\sources\install.wim"`,
+		`if exist %%d:\autounattend.xml set "XML_FILE=%%d:\autounattend.xml"`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("pe.cmd lacks %q", want)
+		}
+	}
+}

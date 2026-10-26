@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"io"
@@ -108,6 +109,9 @@ func (s *Server) ueficaUSBDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	detail := fmt.Sprintf("%d-%s", id, loader)
 	user := requestInfo(r).User.ID
+	// The audit row must be written even when the browser cancels the
+	// download, which also cancels the request context.
+	auditCtx := context.WithoutCancel(r.Context())
 	result, err := s.UEFICAUSB.BuildUEFICAUSB(r.Context(), id, loader)
 	var body io.ReadCloser
 	var size int64
@@ -116,7 +120,7 @@ func (s *Server) ueficaUSBDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("uefica-usb %s: %v", detail, err)
-		_ = s.Store.Audit(r.Context(), user, "uefica-usb.download", "error", detail)
+		_ = s.Store.Audit(auditCtx, user, "uefica-usb.download", "error", detail)
 		http.Error(w, "Не удалось собрать флешку", http.StatusBadGateway)
 		return
 	}
@@ -130,5 +134,5 @@ func (s *Server) ueficaUSBDownload(w http.ResponseWriter, r *http.Request) {
 	if n, err := io.Copy(w, body); err != nil || n != size {
 		outcome = "error"
 	}
-	_ = s.Store.Audit(r.Context(), user, "uefica-usb.download", outcome, detail)
+	_ = s.Store.Audit(auditCtx, user, "uefica-usb.download", outcome, detail)
 }

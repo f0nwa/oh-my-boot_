@@ -25,12 +25,17 @@ func (s *ueficaStore) WindowsProfiles(context.Context) ([]WindowsProfile, error)
 	return s.profiles, nil
 }
 
-func (s *ueficaStore) Audit(_ context.Context, _ int64, action, result, detail string) error {
+// Audit drops the row on a cancelled context, as pgx does.
+func (s *ueficaStore) Audit(ctx context.Context, _ int64, action, result, detail string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.audits = append(s.audits, action+"|"+result+"|"+detail)
 	return nil
 }
 
 type fakeUEFICAUSB struct {
+	cancel   context.CancelFunc // set: the download is cancelled on the first read
 	archives []ueficausb.Archive
 	builds   []string
 	buildErr error
@@ -72,6 +77,9 @@ func (f *fakeUEFICAUSB) UEFICAUSBArchives(context.Context) ([]ueficausb.Archive,
 }
 
 func (f *fakeUEFICAUSB) OpenUEFICAUSB(context.Context, string) (io.ReadCloser, int64, error) {
+	if f.cancel != nil {
+		return io.NopCloser(&cancelReader{cancel: f.cancel}), int64(len(f.data)), nil
+	}
 	half := len(f.data) / 2
 	return io.NopCloser(&slowReader{parts: [][]byte{[]byte(f.data[:half]), []byte(f.data[half:])}, pause: f.pause}), int64(len(f.data)), nil
 }
@@ -209,5 +217,29 @@ func TestUEFICAUSBDownloadExtendsWriteDeadline(t *testing.T) {
 	data, err := io.ReadAll(res.Body)
 	if err != nil || len(data) != len(usb.data) {
 		t.Fatalf("got %d of %d bytes: %v", len(data), len(usb.data), err)
+	}
+}
+
+// cancelReader imitates a browser that cancels the download: the request
+// context ends and the stream from the Agent breaks.
+type cancelReader struct{ cancel context.CancelFunc }
+
+func (c *cancelReader) Read([]byte) (int, error) {
+	c.cancel()
+	return 0, context.Canceled
+}
+
+func TestUEFICAUSBCancelledDownloadIsAudited(t *testing.T) {
+	s, store, usb := ueficaServer("operator")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	usb.cancel = cancel
+	form := url.Values{"profile_id": {"17"}, "loader": {"2011"}, "csrf": {CSRFToken("test-token")}}
+	req := httptest.NewRequest(http.MethodPost, "/usb/uefica", strings.NewReader(form.Encode())).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	s.Handler().ServeHTTP(httptest.NewRecorder(), req)
+	if strings.Join(store.audits, ",") != "uefica-usb.download|error|17-2011" {
+		t.Fatalf("audits %v", store.audits)
 	}
 }

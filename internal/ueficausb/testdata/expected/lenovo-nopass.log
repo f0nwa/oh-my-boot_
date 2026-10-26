@@ -1,0 +1,2 @@
+SetBiosSetting Allow3rdPartyUEFICA,Enable
+SaveBiosSettings 

@@ -88,6 +88,14 @@ It should print `True`. The machine should then boot from the network into our m
 
 To only check without changes (for example, to survey the fleet in advance), use the same package with a separate program that adds `-CheckOnly`.
 
+## Fleet report: `-Report`
+
+`-Report` changes nothing and writes no log; it prints one CSV line: `serial,manufacturer,model,secureboot,option,biospassword`, for example `PF1ABC,LENOVO,20XW,on,disabled,yes`. Values: `secureboot` is `on`/`off`; `option` is `enabled`/`disabled`/`missing`/`unknown`; `biospassword` is `yes`/`no`/`unknown` (the BIOS administrator password, from the vendor's WMI). Exit code 0. Use it as a ManageEngine or SCCM script: collect the lines from all machines to see where the key is already on and where turning it on will need a password.
+
+```
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Enable-MicrosoftUefiCA.ps1 -Report
+```
+
 ## Script tests
 
 The script's logic is covered by Pester tests with WMI replaced. They check which calls each vendor gets, with which parameters, and that the password never reaches the log:

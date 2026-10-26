@@ -17,6 +17,7 @@ import (
 	"pxe-platform/internal/boot"
 	"pxe-platform/internal/drivers"
 	"pxe-platform/internal/images"
+	"pxe-platform/internal/ueficausb"
 )
 
 type Storage interface {
@@ -94,6 +95,12 @@ type DriverConfigAPI interface {
 	CheckDriverConfig(context.Context, agent.DriverBuildCheck) error
 }
 
+// UEFICAUSBAPI builds and streams the "enable the Microsoft UEFI CA key" USB stick archive.
+type UEFICAUSBAPI interface {
+	BuildUEFICAUSB(ctx context.Context, profileID int64, loader string) (ueficausb.Result, error)
+	OpenUEFICAUSB(ctx context.Context, key string) (io.ReadCloser, int64, error)
+}
+
 type AssetCleanupAPI interface {
 	RemoveWindowsProfile(context.Context, int64) error
 	RemoveWindowsAnswer(context.Context, int64) error
@@ -118,6 +125,7 @@ type Server struct {
 	DriverConfigs     DriverConfigAPI
 	Cleanup           AssetCleanupAPI
 	StorageRecovery   StorageRecoveryAPI
+	UEFICAUSB         UEFICAUSBAPI
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
 	menuMu            sync.Mutex
@@ -197,6 +205,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
+	mux.HandleFunc("POST /images/windows-profiles/{id}/uefica-usb", s.protect("view", withPageErrors(s.imagesPage, s.ueficaUSBDownload)))
 	mux.HandleFunc("GET /answers", s.protect("view", s.answersPage))
 	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
 	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))

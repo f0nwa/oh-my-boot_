@@ -70,11 +70,36 @@ Any one of the three, once per machine.
 
 For domain laptops this option can be turned on from Windows with a script through SCCM, without entering the BIOS: see [secure-boot-sccm.md](secure-boot-sccm.md).
 
+For machines outside the domain, or with a foreign or broken Windows, use the USB stick from the admin page: it boots with Secure Boot on and turns this option on after you confirm (see [below](#usb-stick-for-machines-outside-the-domain)).
+
 If there is no such option, look for a key mode like “Factory Keys” or “Restore Factory Keys”: on some models the standard set already contains the key.
 
 **2. Add our loader to the trusted list by hand.** Some BIOSes offer “Enroll EFI Image”, “Add Trusted File” or “Append Image Hash”. Copy `ipxe-shim.efi` from the server (`/srv/pxe/tftp/ipxeboot/x86_64-sb/`) to a FAT32 USB stick, pick it in that BIOS option and save. The firmware remembers the fingerprint of exactly this file; if the shim on the server is updated, repeat this. Not every vendor has the option, and it usually works only from a USB stick or disk, not over the network.
 
 **3. Turn Secure Boot off.** The simplest, but it turns the protection off completely. Fine for a test bench or a machine that joins the regular fleet after installation: Secure Boot can be turned back on afterwards, and Windows boots with it.
+
+### USB stick for machines outside the domain
+
+**Library → ISO images**, next to a prepared profile: **USB stick: enable the UEFI CA key**. The admin page builds `pxe-uefica-<profile>-<2011|2023>.zip` from that ISO's WinPE (about 600 MB; the first build takes up to a minute, later downloads come from a cache). Unpack it into the root of a FAT32 USB stick (MBR or GPT) and boot the machine from it with the boot menu (F12). Secure Boot may stay on: WinPE is signed with the Windows key. All roles can download it; the audit log records `uefica-usb.download`.
+
+On screen (in English, with the keyboard switched to US):
+
+- manufacturer, model, serial number, Secure Boot, the option state, whether a BIOS password is set;
+- if the option is off: a BitLocker warning and the question "Y or N, then Enter";
+- if a BIOS administrator password is set (or the BIOS refused without one): the password prompt, at most two attempts, the screen is cleared after each; the password is not stored anywhere;
+- after a change the machine restarts in 10 seconds; otherwise "R, Enter" restarts and a plain Enter opens a command prompt.
+
+| Code | Meaning |
+|---|---|
+| 20 | option turned on, restart (not 0 on purpose: a crashed script may leave 0, which must not restart the machine) |
+| 10 | already on, or Secure Boot not in use (BIOS/CSM mode) |
+| 2 | not Lenovo/Dell/HP, or the model has no such option |
+| 3 | the BIOS did not accept the password |
+| 1 | WMI error or a script failure; any other code is treated as an error too |
+
+The stick's boot loader is chosen at download: **PCA 2011** is the ISO's loader and fits almost all machines; **UEFI CA 2023** is `bootmgfw_EX.efi` from `boot.wim` (as Microsoft's `Make2023BootableMedia.ps1` does), for machines where the 2011 loader is already revoked. One stick cannot serve both: the firmware starts only `efi/boot/bootx64.efi`, and Microsoft does not sign the Windows loader with both keys at once.
+
+Limits: BitLocker cannot be suspended from WinPE, so Windows asks for the recovery key once after the change; the logic is VBScript (WinPE has no PowerShell), and if Microsoft removes VBScript from WinPE the fallback is a PowerShell stick built with the ADK; Dell over WMI means models from 2018 on. The vendor logic is the same as in the [SCCM script](secure-boot-sccm.md); WMI stub scenarios are in `internal/ueficausb/testdata/uefica-tests.cmd` (on Windows, or on Linux with Wine: `UEFICA_WINE=1 wine cmd /c uefica-tests.cmd`).
 
 ### Other causes
 

@@ -1,0 +1,3 @@
+SetBiosSetting Allow3rdPartyUEFICA,Enable
+WmiOpcodeInterface WmiOpcodePasswordAdmin:pw1
+SaveBiosSettings 

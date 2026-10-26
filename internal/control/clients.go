@@ -17,6 +17,7 @@ import (
 	"pxe-platform/internal/drivers"
 	"pxe-platform/internal/images"
 	"pxe-platform/internal/network"
+	"pxe-platform/internal/ueficausb"
 )
 
 type BootStatus struct {
@@ -407,4 +408,37 @@ func (c *BootClient) ClearJournal(ctx context.Context) (int64, error) {
 // ClearSMBSessions forgets finished WinPE share sessions.
 func (c *AgentClient) ClearSMBSessions(ctx context.Context) error {
 	return localCall(ctx, c.http, "POST", "/smb-sessions/clear", nil, nil)
+}
+
+// BuildUEFICAUSB has the Agent build (or find in its cache) the
+// "enable the Microsoft UEFI CA key" USB stick archive of a profile.
+func (c *AgentClient) BuildUEFICAUSB(ctx context.Context, profileID int64, loader string) (ueficausb.Result, error) {
+	body, err := json.Marshal(agent.UEFICAUSBRequest{ProfileID: profileID, Loader: loader})
+	if err != nil {
+		return ueficausb.Result{}, err
+	}
+	var result ueficausb.Result
+	err = localCall(ctx, c.http, http.MethodPost, "/uefica-usb/build", body, &result)
+	return result, err
+}
+
+// OpenUEFICAUSB streams a built archive. The client has no overall timeout:
+// a download over a slow link may take long; ctx cancels it.
+func (c *AgentClient) OpenUEFICAUSB(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	client := *c.http
+	client.Timeout = 0
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/uefica-usb/file/"+url.PathEscape(key), nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	if res.StatusCode != http.StatusOK {
+		message, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
+		res.Body.Close()
+		return nil, 0, fmt.Errorf("local API /uefica-usb/file: %d %s", res.StatusCode, string(message))
+	}
+	return res.Body, res.ContentLength, nil
 }

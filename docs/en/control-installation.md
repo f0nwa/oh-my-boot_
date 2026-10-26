@@ -382,3 +382,15 @@ Rollout 23.10.2026, 23:46: the `2026-10-23-mac-prefix-rules.sql` migration was a
 - The “wipes disk” label is set only for running diskpart with a script (`diskpart /s`, `diskpart <`), not for any mention of diskpart.
 
 Rollout 24.10.2026: no migrations. 03:28 — `pxe-control` (“wipes disk” label); 09:32 — `pxe-agent` (XML download); 10:35 — `pxe-control` (editor); 10:59 — `pxe-agent` and `pxe-control` (`I:` mapping). Now: `pxe-control` SHA-256 `39a26fc6…`, `pxe-agent` `ec73e582…`; previous files are `/usr/local/bin/*.bak-<date>`. After the rollout answer files #3, 5 and 7 pass the Agent check (HTTP 204); #3 opens in the editor with a summary and “wipes disk” label that match the file.
+
+## USB stick "enable the UEFI CA key", 26.10.2026
+
+**Library → ISO images → USB stick: enable the UEFI CA key** next to a prepared profile. Details: [secure-boot.md](secure-boot.md#usb-stick-for-machines-outside-the-domain).
+
+- Package `internal/ueficausb`: the stick's scripts (`uefica.cmd`, `uefica.vbs`, `winpeshl.ini`, `README.txt`) are embedded in the agent; the build runs `wimlib-imagex export … 1 --boot`, then `update` with the three files in `Windows/System32`; for "UEFI CA 2023" it adds `bootmgfw_EX.efi` and the `Fonts_EX` fonts.
+- Agent: `POST /uefica-usb/build {profile_id, loader}` returns the archive key; `GET /uefica-usb/file/{key}` returns the archive. The cache is `/var/lib/pxe-platform-agent/uefica-usb`, keyed by the SHA-256 of the source `boot.wim`, the scripts version and the loader; a rebuild removes the old archive of the same profile and loader.
+- Control: `POST /images/windows-profiles/{id}/uefica-usb` (action `view`, all roles) streams the archive with no write time limit; audit `uefica-usb.download` (`ok`/`error`, `<profile>-<loader>`).
+
+Rollout 26.10.2026 20:43: no migrations. `pxe-agent` SHA-256 `8032a17e…`, `pxe-control` `9afd921b…`; previous files are `/usr/local/bin/*.bak-202610262043`. Check: as `claude`, archives of profile 3 (Windows 11 26H2) were downloaded: "2011" is 613 MB in 17 s (8 s from the cache), its `boot.wim` has one bootable image with the three stick files, `bootx64.efi` is signed by Microsoft Windows Production PCA 2011; in "2023" `bootx64.efi` and `bootmgr.efi` are signed by Windows UEFI CA 2023 and the fonts come from `Fonts_EX`. The audit log has `uefica-usb.download|ok|3-2011` and `3-2023`. The stick has not yet booted a VM or real hardware (see TODO).
+
+Fixes after review, 26.10.2026 21:05 (`pxe-agent` only, SHA-256 `c72af814…`): "changed" is now exit code 20, not 0, so a script failure can no longer restart the machine; any unknown code counts as an error; an array WMI value (Dell `CurrentValue`) is read by its first element; WMI is called with `authenticationLevel=pktPrivacy`; a quote typed at a prompt no longer aborts the script; the password is read before any check, so it never lands in the next prompt. The cache rebuilt itself: the archive key includes the scripts version.

@@ -64,6 +64,9 @@ type errorCapture struct {
 
 func (c *errorCapture) Header() http.Header { return c.header }
 
+// Unwrap lets http.ResponseController reach the connection (write deadlines).
+func (c *errorCapture) Unwrap() http.ResponseWriter { return c.target }
+
 func (c *errorCapture) WriteHeader(status int) {
 	if c.wroteHeader {
 		return

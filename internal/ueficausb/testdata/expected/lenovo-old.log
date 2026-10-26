@@ -1,0 +1,2 @@
+SetBiosSetting Allow3rdPartyUEFICA,Enable,pw1,ascii,us
+SaveBiosSettings pw1,ascii,us

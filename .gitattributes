@@ -1,2 +1,5 @@
 deploy/boot-assets/windows11/*.cmd.in text eol=crlf
 deploy/boot-assets/windows11/*.ini text eol=crlf
+internal/ueficausb/files/* -text
+internal/ueficausb/testdata/*.vbs -text
+internal/ueficausb/testdata/*.cmd -text

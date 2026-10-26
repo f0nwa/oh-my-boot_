@@ -120,6 +120,22 @@ Describe 'Invoke-Main' {
             Invoke-Main | Should -Be 3010
         }
 
+        It 'reports without changing anything' {
+            Mock Get-BiosSerial { 'PF1ABC' }
+            Mock Get-Model { '20XW' }
+            Mock Get-BiosWmi -ParameterFilter { $Class -eq 'Lenovo_BiosPasswordSettings' } { [pscustomobject]@{ PasswordState = 2 } }
+            Invoke-Main -Report | Should -Be 'PF1ABC,LENOVO,20XW,on,disabled,yes'
+            $script:set | Should -BeNullOrEmpty
+            Should -Invoke Suspend-BitLockerOnce -Times 0
+        }
+
+        It 'reports unknown password state when the class is missing' {
+            Mock Get-BiosSerial { 'PF1ABC' }
+            Mock Get-Model { 'ThinkPad, X1' }
+            Mock Get-BiosWmi -ParameterFilter { $Class -eq 'Lenovo_BiosPasswordSettings' } { throw 'Invalid class' }
+            Invoke-Main -Report | Should -Be 'PF1ABC,LENOVO,"ThinkPad, X1",on,disabled,unknown'
+        }
+
         It 'flags firmware that only carries the 2023 CA' {
             Mock Get-BiosWmi -ParameterFilter { $Class -eq 'Lenovo_BiosSetting' } { [pscustomobject]@{ CurrentSetting = 'Allow3rdPartyUEFICA,Enable' } }
             Invoke-Main | Should -Be 5

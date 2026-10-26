@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"pxe-platform/internal/agent"
+	"pxe-platform/internal/ueficausb"
 )
 
 func main() {
@@ -54,7 +55,8 @@ func main() {
 	defer listener.Close()
 	recovery := &agent.StorageRecovery{SMB: smb, Windows: windows, ConfigPath: *recoveryConfig}
 	smbSessions := agent.NewSMBWatcher("/var/lib/pxe-platform-agent/smb-sessions.json")
-	server := &http.Server{Handler: agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), ReadHeaderTimeout: 5 * time.Second}
+	usbBuilder := &ueficausb.Builder{MediaRoot: "/mnt/pxe-platform-iso/profiles", CacheRoot: "/var/lib/pxe-platform-agent/uefica-usb", Runner: agent.ExecDriverCommandRunner{}, FreeBytes: agent.FreeBytes}
+	server := &http.Server{Handler: agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// Recover storage mounts and Windows ISO profiles that failed, for example

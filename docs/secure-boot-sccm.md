@@ -88,6 +88,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Enable-MicrosoftUefiCA
 
 Только проверить, без изменений (например, чтобы оценить парк заранее), можно тем же пакетом с отдельной программой и параметром `-CheckOnly`.
 
+## Отчёт по парку: `-Report`
+
+`-Report` ничего не меняет и не пишет в лог, а выводит одну строку CSV: `serial,manufacturer,model,secureboot,option,biospassword`, например `PF1ABC,LENOVO,20XW,on,disabled,yes`. Значения: `secureboot` — `on`/`off`; `option` — `enabled`/`disabled`/`missing`/`unknown`; `biospassword` — `yes`/`no`/`unknown` (пароль администратора BIOS по WMI производителя). Код выхода 0. Подходит для скрипта ManageEngine или SCCM: собрать строки со всех машин и увидеть, где ключ уже включён, а где для включения понадобится пароль.
+
+```
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Enable-MicrosoftUefiCA.ps1 -Report
+```
+
 ## Тесты скрипта
 
 Логика скрипта покрыта тестами Pester с подменой WMI. Они проверяют, какие вызовы и с какими параметрами получает каждый производитель, и что пароль не попадает в лог:

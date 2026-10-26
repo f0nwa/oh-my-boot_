@@ -35,6 +35,12 @@ Report what would be done, change nothing.
 .PARAMETER NoBitLockerSuspend
 Do not suspend BitLocker before the restart.
 
+.PARAMETER Report
+Change nothing and print one CSV line for inventory (ManageEngine, SCCM):
+serial,manufacturer,model,secureboot,option,biospassword
+with secureboot on/off, option enabled/disabled/missing/unknown and
+biospassword yes/no/unknown. Exit code 0; nothing is written to the log.
+
 .PARAMETER LogPath
 Where to append the log. Defaults to %WINDIR%\Temp\PXE-MicrosoftUefiCA.log.
 
@@ -54,6 +60,7 @@ param(
     [string]$PasswordFile,
     [switch]$CheckOnly,
     [switch]$NoBitLockerSuspend,
+    [switch]$Report,
     [string]$LogPath = (Join-Path $env:WINDIR 'Temp\PXE-MicrosoftUefiCA.log')
 )
 
@@ -87,6 +94,8 @@ function Get-DbText {
 }
 
 function Get-Manufacturer { (Get-CimInstance -ClassName Win32_ComputerSystem).Manufacturer }
+
+function Get-Model { ([string](Get-CimInstance -ClassName Win32_ComputerSystem).Model).Trim() }
 
 function Get-BiosSerial { ([string](Get-CimInstance -ClassName Win32_BIOS).SerialNumber).Trim() }
 
@@ -258,13 +267,63 @@ function Set-HPUefiCA([string]$Pass, [bool]$CheckOnly) {
 
 # ---- main ------------------------------------------------------------------
 
+# ---- report -----------------------------------------------------------------
+
+# 'yes', 'no' or 'unknown': whether a BIOS administrator password is set.
+function Get-BiosPasswordState([string]$Maker) {
+    try {
+        switch -Regex ($Maker) {
+            '^LENOVO' {
+                $row = Get-BiosWmi 'root\wmi' 'Lenovo_BiosPasswordSettings' | Select-Object -First 1
+                if ($null -eq $row) { return 'unknown' }
+                if (([int]$row.PasswordState -band 2) -ne 0) { return 'yes' } else { return 'no' }
+            }
+            '^Dell' {
+                $row = Get-BiosCim 'root\dcim\sysman\wmisecurity' 'PasswordObject' | Where-Object { $_.NameId -eq 'Admin' } | Select-Object -First 1
+                if ($null -eq $row) { return 'unknown' }
+                if ([int]$row.IsPasswordSet -eq 1) { return 'yes' } else { return 'no' }
+            }
+            '^(HP|Hewlett)' {
+                $row = Get-BiosWmi 'root\HP\InstrumentedBIOS' 'HP_BIOSPassword' | Where-Object { $_.Name -eq 'Setup Password' } | Select-Object -First 1
+                if ($null -eq $row) { return 'unknown' }
+                if ([int]$row.IsSet -eq 1) { return 'yes' } else { return 'no' }
+            }
+        }
+    } catch { }
+    'unknown'
+}
+
+function ConvertTo-CsvField([string]$Value) {
+    if ($Value -match '[",\r\n]') { return '"' + $Value.Replace('"', '""') + '"' }
+    $Value
+}
+
+# One CSV line: serial,manufacturer,model,secureboot,option,biospassword.
+function Get-UefiCAReport {
+    $maker = [string](Get-Manufacturer)
+    $sb = if (Get-SecureBootState) { 'on' } else { 'off' }
+    $option = 'missing'
+    $check = switch -Regex ($maker) {
+        '^LENOVO'       { Set-LenovoUefiCA '' $true; break }
+        '^Dell'         { Set-DellUefiCA '' $true; break }
+        '^(HP|Hewlett)' { Set-HPUefiCA '' $true; break }
+    }
+    if ($check) {
+        $option = switch ($check.Status) { 'Enabled' { 'enabled' } 'Changed' { 'disabled' } 'Missing' { 'missing' } default { 'unknown' } }
+    }
+    $fields = @((Get-BiosSerial), $maker.Trim(), (Get-Model), $sb, $option, (Get-BiosPasswordState $maker))
+    ($fields | ForEach-Object { ConvertTo-CsvField ([string]$_) }) -join ','
+}
+
 function Invoke-Main {
     param(
         [string]$Password,
         [string]$PasswordFile,
         [switch]$CheckOnly,
-        [switch]$NoBitLockerSuspend
+        [switch]$NoBitLockerSuspend,
+        [switch]$Report
     )
+    if ($Report) { return Get-UefiCAReport }
     try {
         $sb = Get-SecureBootState
         if ($null -eq $sb) { Write-UefiCALog 'not a UEFI machine: nothing to do'; return 0 }
@@ -315,6 +374,9 @@ function Invoke-Main {
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
+    if ($Report) {
+        try { Write-Output (Get-UefiCAReport); exit 0 } catch { Write-Output "error: $($_.Exception.Message)"; exit 1 }
+    }
     $code = Invoke-Main -Password $Password -PasswordFile $PasswordFile -CheckOnly:$CheckOnly -NoBitLockerSuspend:$NoBitLockerSuspend
     Write-Output "exit $code (log: $LogPath)"
     exit $code

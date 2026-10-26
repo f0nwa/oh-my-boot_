@@ -31,6 +31,7 @@ type menuVersionRow struct {
 
 type pageData struct {
 	Editor                *editorView
+	USB                   *usbView
 	Journal               *journalView
 	Machine               *machineCard
 	MachineList           *machineList

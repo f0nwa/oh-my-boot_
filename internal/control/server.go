@@ -99,6 +99,7 @@ type DriverConfigAPI interface {
 type UEFICAUSBAPI interface {
 	BuildUEFICAUSB(ctx context.Context, profileID int64, loader string) (ueficausb.Result, error)
 	OpenUEFICAUSB(ctx context.Context, key string) (io.ReadCloser, int64, error)
+	UEFICAUSBArchives(ctx context.Context) ([]ueficausb.Archive, error)
 }
 
 type AssetCleanupAPI interface {
@@ -205,7 +206,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
-	mux.HandleFunc("POST /images/windows-profiles/{id}/uefica-usb", s.protect("view", withPageErrors(s.imagesPage, s.ueficaUSBDownload)))
+	mux.HandleFunc("GET /usb", s.protect("view", s.usbPage))
+	mux.HandleFunc("POST /usb/uefica", s.protect("view", withPageErrors(s.usbPage, s.ueficaUSBDownload)))
+	mux.HandleFunc("GET /assets/usb.js", usbScript)
 	mux.HandleFunc("GET /answers", s.protect("view", s.answersPage))
 	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
 	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))

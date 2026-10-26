@@ -71,7 +71,7 @@ func TestNavigationGroupsLibraryAndSystemPages(t *testing.T) {
 		t.Fatalf("sections=%v", titles)
 	}
 	tabs := subnav(groups)
-	if len(tabs) != 3 || tabs[0].Path != "/images" || !tabs[1].Active || tabs[1].Path != "/drivers" {
+	if len(tabs) != 4 || tabs[0].Path != "/images" || !tabs[1].Active || tabs[1].Path != "/drivers" || tabs[3].Path != "/usb" {
 		t.Fatalf("library tabs=%+v", tabs)
 	}
 	if tabs := subnav(navigation("admin", "/installations/new")); tabs != nil {

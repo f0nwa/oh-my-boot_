@@ -400,3 +400,41 @@ func hashFile(name string) (string, int64, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), n, nil
 }
+
+// Archive is a built stick archive in the cache.
+type Archive struct {
+	ProfileID int64  `json:"profile_id"`
+	Loader    Loader `json:"loader"`
+	Size      int64  `json:"size"`
+}
+
+// Archives lists the finished archives of the cache by file name, without
+// hashing anything. An archive of a profile re-prepared since is still
+// listed: the next Build notices the new boot.wim and replaces it.
+func (b *Builder) Archives() ([]Archive, error) {
+	entries, err := os.ReadDir(b.CacheRoot)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []Archive{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	list := []Archive{}
+	for _, e := range entries {
+		key, ok := strings.CutSuffix(e.Name(), ".zip")
+		if !ok || !keyPattern.MatchString(key) || !e.Type().IsRegular() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(b.CacheRoot, e.Name()+".sha256")); err != nil {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		parts := strings.SplitN(key, "-", 3)
+		id, _ := strconv.ParseInt(parts[0], 10, 64)
+		list = append(list, Archive{ProfileID: id, Loader: Loader(parts[1]), Size: info.Size()})
+	}
+	return list, nil
+}

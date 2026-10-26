@@ -31,6 +31,7 @@ func (s *ueficaStore) Audit(_ context.Context, _ int64, action, result, detail s
 }
 
 type fakeUEFICAUSB struct {
+	archives []ueficausb.Archive
 	builds   []string
 	buildErr error
 	data     string
@@ -66,6 +67,10 @@ func (s *slowReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+func (f *fakeUEFICAUSB) UEFICAUSBArchives(context.Context) ([]ueficausb.Archive, error) {
+	return f.archives, nil
+}
+
 func (f *fakeUEFICAUSB) OpenUEFICAUSB(context.Context, string) (io.ReadCloser, int64, error) {
 	half := len(f.data) / 2
 	return io.NopCloser(&slowReader{parts: [][]byte{[]byte(f.data[:half]), []byte(f.data[half:])}, pause: f.pause}), int64(len(f.data)), nil
@@ -85,11 +90,11 @@ func ueficaServer(role string) (*Server, *ueficaStore, *fakeUEFICAUSB) {
 }
 
 func ueficaPost(s *Server, id, loader string, csrf bool) *httptest.ResponseRecorder {
-	form := url.Values{"loader": {loader}}
+	form := url.Values{"profile_id": {id}, "loader": {loader}}
 	if csrf {
 		form.Set("csrf", CSRFToken("test-token"))
 	}
-	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles/"+id+"/uefica-usb", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/usb/uefica", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
@@ -97,16 +102,41 @@ func ueficaPost(s *Server, id, loader string, csrf bool) *httptest.ResponseRecor
 	return res
 }
 
-func TestUEFICAUSBButtonForEveryRole(t *testing.T) {
+func TestUSBPageForEveryRole(t *testing.T) {
 	for _, role := range []string{"observer", "operator", "admin"} {
 		s, _, _ := ueficaServer(role)
-		body := libraryGet(t, s, "/images")
-		if !strings.Contains(body, `action="/images/windows-profiles/17/uefica-usb"`) || !strings.Contains(body, `value="2011" checked`) {
-			t.Fatalf("%s: no stick form for the ready profile", role)
+		body := libraryGet(t, s, "/usb")
+		for _, want := range []string{`href="/usb"`, "USB-носители", `action="/usb/uefica"`, `name="profile_id" value="17" checked`, `name="loader" value="2011" checked`, "pxe-uefica-17-2011.zip", "Скачать архив"} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s: /usb lacks %q", role, want)
+			}
 		}
-		if strings.Contains(body, `action="/images/windows-profiles/18/uefica-usb"`) {
-			t.Fatalf("%s: stick form for a profile in error", role)
+		if strings.Contains(body, `value="18"`) {
+			t.Fatalf("%s: a profile in error is offered", role)
 		}
+	}
+}
+
+func TestUSBPageSelectionAndCache(t *testing.T) {
+	s, _, usb := ueficaServer("admin")
+	s.Store.(*ueficaStore).profiles = append(s.Store.(*ueficaStore).profiles, WindowsProfile{ID: 19, WindowsProfileSource: WindowsProfileSource{Title: "Win 10", Path: "w10.iso"}, State: "ready"})
+	usb.archives = []ueficausb.Archive{{ProfileID: 19, Loader: "2023", Size: 613436355}}
+	body := libraryGet(t, s, "/usb?profile_id=19&loader=2023")
+	for _, want := range []string{`name="profile_id" value="19" checked`, `name="loader" value="2023" checked`, "pxe-uefica-19-2023.zip", "в кэше", "585,0 МБ"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("/usb?profile_id=19 lacks %q", want)
+		}
+	}
+	if strings.Contains(body, `value="17" checked`) {
+		t.Fatal("profile 17 still selected")
+	}
+}
+
+func TestImagesPageLinksToUSB(t *testing.T) {
+	s, _, _ := ueficaServer("observer")
+	body := libraryGet(t, s, "/images")
+	if !strings.Contains(body, `href="/usb?profile_id=17"`) || strings.Contains(body, `href="/usb?profile_id=18"`) || strings.Contains(body, "uefica-usb") {
+		t.Fatal("ISO page must link ready profiles to /usb and have no stick form")
 	}
 }
 
@@ -167,8 +197,8 @@ func TestUEFICAUSBDownloadExtendsWriteDeadline(t *testing.T) {
 	srv.Config.WriteTimeout = 100 * time.Millisecond
 	srv.Start()
 	defer srv.Close()
-	form := url.Values{"loader": {"2011"}, "csrf": {CSRFToken("test-token")}}
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/images/windows-profiles/17/uefica-usb", strings.NewReader(form.Encode()))
+	form := url.Values{"profile_id": {"17"}, "loader": {"2011"}, "csrf": {CSRFToken("test-token")}}
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/usb/uefica", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res, err := http.DefaultClient.Do(req)

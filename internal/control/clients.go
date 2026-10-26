@@ -422,6 +422,13 @@ func (c *AgentClient) BuildUEFICAUSB(ctx context.Context, profileID int64, loade
 	return result, err
 }
 
+// UEFICAUSBArchives lists the stick archives the Agent has built.
+func (c *AgentClient) UEFICAUSBArchives(ctx context.Context) ([]ueficausb.Archive, error) {
+	var list []ueficausb.Archive
+	err := localCall(ctx, c.http, http.MethodGet, "/uefica-usb/archives", nil, &list)
+	return list, err
+}
+
 // OpenUEFICAUSB streams a built archive. The client has no overall timeout:
 // a download over a slow link may take long; ctx cancels it.
 func (c *AgentClient) OpenUEFICAUSB(ctx context.Context, key string) (io.ReadCloser, int64, error) {

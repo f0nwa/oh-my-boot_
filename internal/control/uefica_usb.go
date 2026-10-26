@@ -1,6 +1,7 @@
 package control
 
 import (
+	_ "embed"
 	"fmt"
 	"io"
 	"log"
@@ -9,8 +10,76 @@ import (
 	"time"
 )
 
+// «Библиотека → USB-носители»: the WinPE USB stick that enables the
+// Microsoft UEFI CA key, built from a ready ISO profile with the chosen
+// boot loader. Works without JavaScript; usb.js only refreshes the summary.
+
+//go:embed usb.js
+var usbJS []byte
+
+func usbScript(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	_, _ = w.Write(usbJS)
+}
+
+// usbProfile is a ready ISO profile offered for the stick, with the sizes of
+// its archives already in the Agent's cache by loader ("2011", "2023").
+type usbProfile struct {
+	ID     int64
+	Title  string
+	Path   string
+	Cached map[string]int64
+}
+
+type usbView struct {
+	Profiles []usbProfile
+	Selected usbProfile
+	Loader   string
+}
+
+// Archive is the file name the download gets.
+func (v usbView) Archive() string {
+	return fmt.Sprintf("pxe-uefica-%d-%s.zip", v.Selected.ID, v.Loader)
+}
+
+func (s *Server) usbPage(w http.ResponseWriter, r *http.Request) {
+	data := s.libraryData(r)
+	view := &usbView{Loader: "2011"}
+	cached := map[int64]map[string]int64{}
+	if s.UEFICAUSB != nil {
+		if list, err := s.UEFICAUSB.UEFICAUSBArchives(r.Context()); err == nil {
+			for _, a := range list {
+				if cached[a.ProfileID] == nil {
+					cached[a.ProfileID] = map[string]int64{}
+				}
+				cached[a.ProfileID][string(a.Loader)] = a.Size
+			}
+		}
+	}
+	for _, p := range data.WindowsProfiles {
+		if p.State == "ready" {
+			view.Profiles = append(view.Profiles, usbProfile{ID: p.ID, Title: p.Title, Path: p.Path, Cached: cached[p.ID]})
+		}
+	}
+	form := r.URL.Query()
+	if posted := pageForm(r); posted != nil {
+		form = posted
+	}
+	if loader := form.Get("loader"); loader == "2011" || loader == "2023" {
+		view.Loader = loader
+	}
+	want, _ := strconv.ParseInt(form.Get("profile_id"), 10, 64)
+	for i, p := range view.Profiles {
+		if i == 0 || p.ID == want {
+			view.Selected = p
+		}
+	}
+	data.USB = view
+	render(w, "usb", data)
+}
+
 // ueficaUSBDownload streams the "enable the Microsoft UEFI CA key" USB stick
-// archive of a ready Windows ISO profile. Errors are shown on the ISO page.
+// archive of a ready Windows ISO profile. Errors are shown on the USB page.
 func (s *Server) ueficaUSBDownload(w http.ResponseWriter, r *http.Request) {
 	if s.UEFICAUSB == nil {
 		http.Error(w, "Сборка флешки недоступна", http.StatusServiceUnavailable)
@@ -21,7 +90,7 @@ func (s *Server) ueficaUSBDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неизвестный загрузчик", http.StatusBadRequest)
 		return
 	}
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseInt(r.FormValue("profile_id"), 10, 64)
 	ready := false
 	if err == nil {
 		profiles, err := s.Store.WindowsProfiles(r.Context())

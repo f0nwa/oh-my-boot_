@@ -1,0 +1,25 @@
+{{define "usb"}}{{template "top" .}}{{$v := .USB}}<div class="page-head"><div><h1>{{t "USB-носители"}}</h1><p class="lead">{{t "Загрузочные носители WinPE для машин, которые не загружаются по сети. Сейчас один: включить в BIOS ключ Microsoft UEFI CA (Lenovo, Dell, HP)."}}</p></div></div>
+{{if not $v.Profiles}}<p class="muted">{{t "Нет подготовленных образов ISO. Подготовьте профиль в «Образах ISO»: носитель собирается из его WinPE."}}</p>{{else}}
+<form id="usb" class="usb" method="post" action="/usb/uefica" data-cached="{{t "в кэше"}}" data-build="{{t "соберётся при скачивании, до минуты"}}"><input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+<div class="usb-main">
+<fieldset class="step"><legend>1 · {{t "Образ WinPE"}}</legend><p class="hint usb-note">{{t "Носитель собирается из WinPE подготовленного ISO. Подойдёт любой: от образа зависит только язык WinPE, на машину это не влияет."}}</p>
+<div class="choices">{{range $v.Profiles}}<label class="choice"><input type="radio" name="profile_id" value="{{.ID}}"{{if eq .ID $v.Selected.ID}} checked{{end}} data-title="{{.Title}}" data-2011="{{with index .Cached "2011"}}{{size .}}{{end}}" data-2023="{{with index .Cached "2023"}}{{size .}}{{end}}"><span class="choice-body"><span class="choice-title">{{.Title}}</span><small class="choice-note"><span class="mono">winiso_{{.ID}}</span> · <span class="mono">{{.Path}}</span></small></span><span class="chips">{{with index .Cached "2011"}}<span class="chip">2011 · {{t "в кэше"}} · {{size .}}</span>{{end}}{{with index .Cached "2023"}}<span class="chip">2023 · {{t "в кэше"}} · {{size .}}</span>{{end}}</span></label>{{end}}</div></fieldset>
+<fieldset class="step"><legend>2 · {{t "Загрузчик (ключ Secure Boot)"}}</legend><div class="choices">
+<label class="choice"><input type="radio" name="loader" value="2011"{{if eq $v.Loader "2011"}} checked{{end}} data-title="PCA 2011"><span class="choice-body"><span class="choice-title">Microsoft Windows Production PCA 2011</span><small class="choice-note">{{t "Загрузчик с ISO как есть. Подходит почти всем машинам."}}</small></span></label>
+<label class="choice"><input type="radio" name="loader" value="2023"{{if eq $v.Loader "2023"}} checked{{end}} data-title="UEFI CA 2023"><span class="choice-body"><span class="choice-title">Windows UEFI CA 2023</span><small class="choice-note">{{t "Для машин, где загрузчик 2011 уже отозван (DBX). Если носитель «2011» не грузится с «Access Denied» — берите этот."}}</small></span></label>
+</div></fieldset>
+<fieldset class="step"><legend>3 · {{t "Что будет на экране"}}</legend><pre class="usb-console"><b>Manufacturer:  LENOVO</b>
+Model:         20XW0055RT
+Serial number: PF3ABC12
+Secure Boot:   on
+UEFI CA key:   disabled (Allow3rdPartyUEFICA=Disable)
+BIOS password: yes
+
+If this disk has BitLocker and its Windows must keep working, have the
+recovery key ready: Windows will ask for it once after this change.
+
+<i>Enable the Microsoft UEFI CA key now? Type Y or N and press Enter: _</i></pre><p class="hint usb-note">{{t "Раскладка переключается на английскую. Пароль BIOS — не больше двух попыток, после каждой экран очищается. После изменения — перезагрузка через 10 секунд; без изменений машина не перезагружается."}}</p></fieldset>
+</div>
+<aside class="usb-side"><div class="summary"><h2>{{t "Итог"}}</h2><ul class="ed-say"><li><span class="k">{{t "Образ"}}</span><span id="usb-image">{{$v.Selected.Title}}</span></li><li><span class="k">{{t "Загрузчик"}}</span><span id="usb-loader">{{if eq $v.Loader "2023"}}UEFI CA 2023{{else}}PCA 2011{{end}}</span></li><li><span class="k">{{t "Архив"}}</span><span class="mono" id="usb-archive">{{$v.Archive}}</span></li><li><span class="k">{{t "Размер"}}</span><span id="usb-size">{{with index $v.Selected.Cached $v.Loader}}{{size .}} · {{t "в кэше"}}{{else}}{{t "соберётся при скачивании, до минуты"}}{{end}}</span></li></ul><button class="btn btn-primary btn-wide usb-download">{{t "Скачать архив"}}</button></div>
+<div class="summary"><h2>{{t "Как записать"}}</h2><ol class="usb-howto"><li>{{t "Отформатировать флешку в FAT32 (MBR или GPT)."}}</li><li>{{t "Распаковать архив в корень, сохранив папки."}}</li><li>{{t "Загрузиться с флешки через меню F12 — Secure Boot не выключать."}}</li><li>{{t "Подтвердить Y, при пароле BIOS — ввести его."}}</li><li>{{t "После перезагрузки выбрать сеть в меню F12."}}</li></ol></div></aside>
+</form><script defer src="/assets/usb.js"></script>{{end}}{{template "bottom" .}}{{end}}

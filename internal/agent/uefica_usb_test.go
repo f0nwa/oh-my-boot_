@@ -84,3 +84,24 @@ func TestUEFICAUSBPassesOtherRoutes(t *testing.T) {
 		t.Fatalf("got %q", rec.Body)
 	}
 }
+
+func TestUEFICAUSBArchives(t *testing.T) {
+	h := ueficaHandler(t)
+	list := func() string {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/uefica-usb/archives", nil))
+		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "application/json" {
+			t.Fatalf("archives: %d %v", rec.Code, rec.Header())
+		}
+		return strings.TrimSpace(rec.Body.String())
+	}
+	if got := list(); got != "[]" {
+		t.Fatalf("empty: %s", got)
+	}
+	if rec := ueficaBuild(t, h, `{"profile_id":17,"loader":"2011"}`); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body)
+	}
+	if got := list(); !strings.HasPrefix(got, `[{"profile_id":17,"loader":"2011","size":`) {
+		t.Fatalf("after build: %s", got)
+	}
+}

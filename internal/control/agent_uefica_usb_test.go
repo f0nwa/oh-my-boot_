@@ -42,6 +42,10 @@ func TestAgentClientUEFICAUSB(t *testing.T) {
 	if err != nil || int64(len(data)) != size || size != result.Size {
 		t.Fatalf("read %d of %d (%d): %v", len(data), size, result.Size, err)
 	}
+	archives, err := client.UEFICAUSBArchives(context.Background())
+	if err != nil || len(archives) != 1 || archives[0].ProfileID != 17 || archives[0].Loader != "2023" || archives[0].Size != result.Size {
+		t.Fatalf("archives %+v %v", archives, err)
+	}
 	if _, err := client.BuildUEFICAUSB(context.Background(), 99, "2011"); err == nil {
 		t.Fatal("missing profile accepted")
 	}

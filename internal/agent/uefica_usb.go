@@ -20,7 +20,7 @@ type UEFICAUSBRequest struct {
 // FreeBytes reports the free space of the file system that holds root.
 func FreeBytes(root string) (uint64, error) { return driverFreeBytes(root) }
 
-// HandlerWithUEFICAUSB adds POST /uefica-usb/build and GET /uefica-usb/file/{key}.
+// HandlerWithUEFICAUSB adds POST /uefica-usb/build, GET /uefica-usb/archives and GET /uefica-usb/file/{key}.
 func HandlerWithUEFICAUSB(inner http.Handler, b *ueficausb.Builder) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", inner)
@@ -39,6 +39,18 @@ func HandlerWithUEFICAUSB(inner http.Handler, b *ueficausb.Builder) http.Handler
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(result)
+	})
+	mux.HandleFunc("GET /uefica-usb/archives", func(w http.ResponseWriter, r *http.Request) {
+		if b == nil {
+			http.Error(w, "USB stick builder unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		list, err := b.Archives()
+		if !writeUEFICAUSBError(w, err) {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(list)
 	})
 	mux.HandleFunc("GET /uefica-usb/file/{key}", func(w http.ResponseWriter, r *http.Request) {
 		if b == nil {

@@ -426,3 +426,23 @@ func TestBuildWithRealWimlib(t *testing.T) {
 		}
 	}
 }
+
+func TestArchivesListsBuiltSticks(t *testing.T) {
+	b, _ := newBuilder(t)
+	if list, err := b.Archives(); err != nil || len(list) != 0 {
+		t.Fatalf("empty cache: %v %v", list, err)
+	}
+	r, err := b.Build(context.Background(), 17, LoaderUEFICA2023)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(b.CacheRoot, "junk.zip"), "x")
+	writeFile(t, filepath.Join(b.CacheRoot, "18-2011-0123456789abcdef.zip"), "no checksum: unfinished")
+	if err := os.Mkdir(filepath.Join(b.CacheRoot, ".build-1"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	list, err := b.Archives()
+	if err != nil || len(list) != 1 || list[0] != (Archive{ProfileID: 17, Loader: LoaderUEFICA2023, Size: r.Size}) {
+		t.Fatalf("archives %+v %v", list, err)
+	}
+}

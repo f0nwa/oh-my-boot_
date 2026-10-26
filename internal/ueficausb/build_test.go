@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeRunner imitates wimlib-imagex: export writes the target WIM, extract
@@ -444,5 +445,27 @@ func TestArchivesListsBuiltSticks(t *testing.T) {
 	list, err := b.Archives()
 	if err != nil || len(list) != 1 || list[0] != (Archive{ProfileID: 17, Loader: LoaderUEFICA2023, Size: r.Size}) {
 		t.Fatalf("archives %+v %v", list, err)
+	}
+}
+
+func TestBuildSetsFileTimes(t *testing.T) {
+	b, _ := newBuilder(t)
+	isoTime := time.Date(2025, 5, 1, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(filepath.Join(b.MediaRoot, "17", "efi", "boot", "bootx64.efi"), isoTime, isoTime); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().Add(-time.Minute)
+	r, err := b.Build(context.Background(), 17, LoaderPCA2011)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := readZip(t, b, r)
+	if got := files["efi/boot/bootx64.efi"].Modified; !got.Equal(isoTime) {
+		t.Fatalf("ISO file time %v, want %v", got, isoTime)
+	}
+	for _, name := range []string{"README.txt", "sources/boot.wim"} {
+		if got := files[name].Modified; got.Before(before) {
+			t.Fatalf("%s time %v is not the build time", name, got)
+		}
 	}
 }

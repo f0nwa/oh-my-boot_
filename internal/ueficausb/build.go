@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Runner runs a command with standard input; agent.ExecDriverCommandRunner fits.
@@ -328,12 +329,21 @@ func writeZip(name string, files []mediaFile) (int64, string, error) {
 	h := sha256.New()
 	counter := &countingWriter{w: io.MultiWriter(out, h)}
 	z := zip.NewWriter(counter)
+	now := time.Now()
 	for _, f := range files {
 		method := zip.Deflate
 		if f.store {
 			method = zip.Store
 		}
-		w, err := z.CreateHeader(&zip.FileHeader{Name: f.name, Method: method})
+		// Files from the ISO keep their date; files made by the build
+		// (boot.wim, README.txt) get the build time.
+		modified := now
+		if f.source != "" {
+			if info, err := os.Stat(f.source); err == nil {
+				modified = info.ModTime()
+			}
+		}
+		w, err := z.CreateHeader(&zip.FileHeader{Name: f.name, Method: method, Modified: modified})
 		if err != nil {
 			return 0, "", err
 		}

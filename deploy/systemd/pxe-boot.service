@@ -1,5 +1,5 @@
 [Unit]
-Description=PXE Platform boot HTTP service
+Description=Oh My Boot boot HTTP service
 After=network-online.target
 Wants=network-online.target
 

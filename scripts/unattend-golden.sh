@@ -1,6 +1,6 @@
 #!/bin/sh
 # Regenerates the golden files of internal/unattend with the original C#
-# generator. Needs the .NET 8 SDK; the PXE Platform build does not.
+# generator. Needs the .NET 8 SDK; the Oh My Boot build does not.
 # Usage: scripts/unattend-golden.sh [file.json …]   (default: all)
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)

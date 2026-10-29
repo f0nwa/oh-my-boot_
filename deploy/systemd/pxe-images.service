@@ -1,5 +1,5 @@
 [Unit]
-Description=PXE Platform ISO catalog
+Description=Oh My Boot ISO catalog
 After=network-online.target postgresql.service
 Wants=network-online.target
 

@@ -9,7 +9,7 @@ import (
 
 func TestMenuOrderSavesNewOrder(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "A"}, {Key: "winanswer_31", Title: "B"}, {Key: "windriver_1", Title: "C", Folder: "Lab"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "A"}, {Key: "winanswer_31", Title: "B"}, {Key: "windriver_1", Title: "C", Folder: "Lab"}}}
 	s, published := draftServer(t, store)
 	res := menuPost(t, s, "/menu/order", url.Values{"key": {"windriver_1", "winiso_17", "winanswer_31"}})
 	got := []string{}
@@ -23,7 +23,7 @@ func TestMenuOrderSavesNewOrder(t *testing.T) {
 
 func TestMenuOrderRejectsDifferentItems(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17"}, {Key: "winanswer_31"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17"}, {Key: "winanswer_31"}}}
 	s, _ := draftServer(t, store)
 	for _, keys := range [][]string{{"winiso_17"}, {"winiso_17", "winiso_17"}, {"winiso_17", "windriver_1"}} {
 		res := menuPost(t, s, "/menu/order", url.Values{"key": keys})
@@ -56,7 +56,7 @@ func TestObserverMenuRowsAreReadOnly(t *testing.T) {
 
 func TestRestoreFromMenuPageStaysOnMenu(t *testing.T) {
 	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready"}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready"}
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/menu")
 	if !strings.Contains(body, `action="/menu/items/winiso_17/restore"`) {

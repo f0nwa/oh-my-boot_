@@ -34,7 +34,7 @@ func TestAnswersPageShowsUsage(t *testing.T) {
 
 func TestDeletedDraftObjectStaysVisibleOnInstallations(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_99", Title: "Gone"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_99", Title: "Gone"}}}
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/installations")
 	if !strings.Contains(body, "winanswer_99") || !strings.Contains(body, "Gone") {

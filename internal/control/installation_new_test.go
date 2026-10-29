@@ -79,7 +79,7 @@ func TestNewInstallationWithPackageCreatesConfig(t *testing.T) {
 
 func TestNewInstallationDuplicateIsRejected(t *testing.T) {
 	s, store := newInstallServer(t)
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_1"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_1"}}}
 	saved := len(store.saved)
 	res := menuPost(t, s, "/installations", url.Values{"profile_id": {"1"}, "title": {"Again"}})
 	if res.Code < 400 || !strings.Contains(res.Body.String(), "Такая установка уже в меню") || len(store.saved) != saved {

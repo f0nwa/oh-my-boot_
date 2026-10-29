@@ -32,7 +32,7 @@ var wipesTrue, wipesFalse = true, false
 func samplePageData(lang string) pageData {
 	data := samplePageDataBase(lang)
 	data.Preview = &menuPreview{
-		Title: "PXE Platform / Windows",
+		Title: "oh my boot_ / Windows",
 		Rows:  []previewRow{{Text: ".. Back", Href: "/menu?screen=menu_root"}, {Text: "Windows 11", Href: "/menu?item=winiso_2", Selected: true}, {Text: "Ready", Href: "/menu?item=winanswer_5", Hint: "!! WIPES DISK", Danger: true}},
 		Lines: []previewLine{{Text: "Diagnostics", Key: "diagnostics", Href: "/menu?item=diagnostics", Mark: "·", Fixed: true}, {Text: "Windows", Href: "/menu?screen=folder_1", Mark: "▾", Folder: true}, {Text: "Windows 11", Key: "winiso_2", Parent: "folder_1", Href: "/menu?item=winiso_2", Pad: "  ", Mark: "·", Selected: true, Movable: true},
 			{Text: "Lab", Key: "winanswer_3", Parent: "folder_1", Href: "/menu?item=winanswer_3", Pad: "  ", Mark: "·", Added: true, Broken: true, ShowKey: true, Movable: true}},
@@ -61,7 +61,7 @@ func samplePageDataBase(lang string) pageData {
 		Users:   []User{{ID: 1, Username: "admin", Role: "admin", Enabled: true}, {ID: 2, Username: "viewer", Role: "observer"}},
 		Network: cfg, OldNetwork: cfg, Confirmation: "confirm", HasNetwork: true,
 		Versions:      []menuVersionRow{{MenuVersion: MenuVersion{ID: 2, At: now, Title: "PXE", Active: true}, Restorable: true}, {MenuVersion: MenuVersion{ID: 1, At: now, Title: "Old"}, Restorable: false}, {MenuVersion: MenuVersion{ID: 0, At: now, Title: "Older"}, Restorable: true}},
-		Draft:         MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "ready", Ubuntu: true, Items: []MenuDraftItem{{Key: "winiso_2"}, {Key: "winanswer_3", Folder: "Windows/Tests"}}},
+		Draft:         MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "ready", Ubuntu: true, Items: []MenuDraftItem{{Key: "winiso_2"}, {Key: "winanswer_3", Folder: "Windows/Tests"}}},
 		DraftRows:     []menuDraftRow{{Item: MenuDraftItem{Key: "winiso_2"}, Title: "Windows 11", Kind: "Образ", Available: true}, {Item: MenuDraftItem{Key: "winanswer_3"}, Title: "Lab", Kind: "Образ и файл ответов", Error: "Windows answer 3 is not ready for PXE"}},
 		Changes:       []MenuChange{{Kind: "add", Key: "winanswer_3", Title: "Lab"}, {Kind: "remove", Key: "windriver_4", Title: "VirtIO"}, {Kind: "change", Key: "winiso_2", Title: "Windows 11"}, {Kind: "order"}, {Kind: "settings"}},
 		ActiveVersion: 2,

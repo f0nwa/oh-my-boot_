@@ -14,7 +14,7 @@ func TestMenuHasDiagnosticsAndLocalBoot(t *testing.T) {
 	if !strings.HasPrefix(text, "#!ipxe\n") {
 		t.Fatalf("missing iPXE header: %q", text)
 	}
-	for _, fragment := range []string{"menu PXE Platform", "item diagnostics Diagnostics", "item local Boot local disk", "choose target", ":diagnostics", ":local", "exit"} {
+	for _, fragment := range []string{"menu oh my boot_", "item diagnostics Diagnostics", "item local Boot local disk", "choose target", ":diagnostics", ":local", "exit"} {
 		if !strings.Contains(text, fragment) {
 			t.Errorf("menu missing %q: %s", fragment, text)
 		}

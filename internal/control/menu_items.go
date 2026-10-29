@@ -98,15 +98,16 @@ func (s *Server) menuItemRename(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) menuSettings(w http.ResponseWriter, r *http.Request) {
 	s.editDraft(w, r, "menu.draft.settings", "Настройки меню сохранены", func(d *MenuDraft) error {
-		title, label, message := r.FormValue("title"), r.FormValue("label"), r.FormValue("message")
-		if !safeMenuText(title, 80) || !safeMenuText(label, 80) || !safeMenuText(message, 120) {
+		// The menu title is the product name; a "title" field is ignored.
+		label, message := r.FormValue("label"), r.FormValue("message")
+		if !safeMenuText(label, 80) || !safeMenuText(message, 120) {
 			return draftError("Недопустимый текст меню")
 		}
 		folder := r.FormValue("folder_ubuntu")
 		if validateMenuFolder(folder) != nil {
 			return draftError("Недопустимый каталог в меню")
 		}
-		d.Title, d.Label, d.Message, d.Ubuntu, d.UbuntuFolder = title, label, message, r.FormValue("ubuntu") == "on", folder
+		d.Title, d.Label, d.Message, d.Ubuntu, d.UbuntuFolder = productMenuTitle, label, message, r.FormValue("ubuntu") == "on", folder
 		return nil
 	})
 }

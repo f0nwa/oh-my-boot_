@@ -55,7 +55,7 @@ func TestInstallationsPageShowsPendingNotice(t *testing.T) {
 	if body := libraryGet(t, s, "/installations"); strings.Contains(body, `class="draftbar"`) || !strings.Contains(body, "Windows 11") {
 		t.Fatalf("clean page: %s", body)
 	}
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "winanswer_31"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "winanswer_31"}}}
 	body := libraryGet(t, s, "/installations")
 	if !strings.Contains(body, `class="draftbar"`) || !strings.Contains(body, `<span class="change-add">+1</span>`) || !strings.Contains(body, `action="/menu/publish"`) {
 		t.Fatalf("pending page: %s", body)

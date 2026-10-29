@@ -27,7 +27,7 @@ func folderTestProfiles() []WindowsProfile {
 
 func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 	form := url.Values{
-		"title": {"PXE Platform"}, "label": {"Diagnostics"}, "message": {"Ready"},
+		"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"},
 		"ubuntu": {"on"}, "winiso_1": {"on"}, "winiso_2": {"on"},
 		"folder_ubuntu":   {"Linux"},
 		"folder_winiso_1": {"Windows/Установщики"},
@@ -39,10 +39,10 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 	}
 	got := string(script)
 	for _, want := range []string{
-		"menu PXE Platform" + menuTitleSuffix + "\n",
-		"menu PXE Platform / Linux" + menuTitleSuffix + "\n",
-		"menu PXE Platform / Windows" + menuTitleSuffix + "\n",
-		"menu PXE Platform / Windows / Установщики" + menuTitleSuffix + "\n",
+		"menu oh my boot_" + menuTitleSuffix + "\n",
+		"menu oh my boot_ / Linux" + menuTitleSuffix + "\n",
+		"menu oh my boot_ / Windows" + menuTitleSuffix + "\n",
+		"menu oh my boot_ / Windows / Установщики" + menuTitleSuffix + "\n",
 		"item ubuntu Ubuntu Desktop 26.04.1\n",
 		"iseq ${platform} efi && goto ubuntu_efi || goto ubuntu_boot\n" +
 			":ubuntu_efi\n" +
@@ -61,7 +61,7 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 			t.Errorf("missing %q in generated menu", want)
 		}
 	}
-	if strings.Count(got, "menu PXE Platform / Windows / Установщики"+menuTitleSuffix+"\n") != 1 {
+	if strings.Count(got, "menu oh my boot_ / Windows / Установщики"+menuTitleSuffix+"\n") != 1 {
 		t.Fatal("shared folder was emitted more than once")
 	}
 	if strings.Index(got, "item winiso_1 ") > strings.Index(got, "item winiso_2 ") {
@@ -72,8 +72,8 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 	}
 	for _, want := range []string{
 		"item folder_1 " + menuItemText("Linux", ">") + "\nitem folder_2 " + menuItemText("Windows", ">") + "\nitem --gap\nitem local Boot local disk\nitem diagnostics Diagnostics\n",
-		":folder_2\nmenu PXE Platform / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem folder_3 " + menuItemText("Установщики", ">") + "\n",
-		":folder_3\nmenu PXE Platform / Windows / Установщики" + menuTitleSuffix + "\nitem folder_2 .. Back\nitem --gap\nitem winiso_1 Windows 10x64\nitem winiso_2 Windows 11 x64\n",
+		":folder_2\nmenu oh my boot_ / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem folder_3 " + menuItemText("Установщики", ">") + "\n",
+		":folder_3\nmenu oh my boot_ / Windows / Установщики" + menuTitleSuffix + "\nitem folder_2 .. Back\nitem --gap\nitem winiso_1 Windows 10x64\nitem winiso_2 Windows 11 x64\n",
 		"choose target || goto folder_2\n",
 		"choose --default local --timeout 10000 target || goto local\n",
 	} {

@@ -13,13 +13,13 @@ func Menu(baseURL string) ([]byte, error) {
 	}
 	script := "#!ipxe\n" +
 		"set base " + u.String() + "\n" +
-		"menu PXE Platform\n" +
+		"menu oh my boot_\n" +
 		"item diagnostics Diagnostics\n" +
 		"item local Boot local disk\n" +
 		"choose target || goto local\n" +
 		"goto ${target}\n" +
 		":diagnostics\n" +
-		"echo PXE Platform network boot is ready\n" +
+		"echo Oh My Boot network boot is ready\n" +
 		"sleep 3\n" +
 		"goto local\n" +
 		":local\n" +

@@ -7,7 +7,7 @@ import (
 
 func TestParseMenuScreensReadsFoldersBackAndFixedItems(t *testing.T) {
 	profiles := []menuProfile{{id: "ubuntu", title: "Ubuntu Desktop 26.04.1"}, {id: "winiso_1", title: "Win11"}, {id: "winanswer_2", title: "Win11 auto"}}
-	script, err := buildMenuTreeWithProfiles("PXE Platform", "Diagnostics", "Ready", profiles, map[string]string{"ubuntu": "Linux", "winiso_1": "Windows", "winanswer_2": "Windows/Auto"})
+	script, err := buildMenuTreeWithProfiles("oh my boot_", "Diagnostics", "Ready", profiles, map[string]string{"ubuntu": "Linux", "winiso_1": "Windows", "winanswer_2": "Windows/Auto"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,10 +33,10 @@ func TestParseMenuScreensReadsFoldersBackAndFixedItems(t *testing.T) {
 		got = append(got, screen.Title+": "+strings.Join(items, ", "))
 	}
 	want := []string{
-		"PXE Platform: /Linux, /Windows, !Boot local disk, !Diagnostics",
-		"PXE Platform / Linux: <.. Back, Ubuntu Desktop 26.04.1",
-		"PXE Platform / Windows: <.. Back, /Auto, Win11",
-		"PXE Platform / Windows / Auto: <.. Back, Win11 auto",
+		"oh my boot_: /Linux, /Windows, !Boot local disk, !Diagnostics",
+		"oh my boot_ / Linux: <.. Back, Ubuntu Desktop 26.04.1",
+		"oh my boot_ / Windows: <.. Back, /Auto, Win11",
+		"oh my boot_ / Windows / Auto: <.. Back, Win11 auto",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("screens:\n%s", strings.Join(got, "\n"))
@@ -55,10 +55,10 @@ func TestParseMenuScreensReadsFoldersBackAndFixedItems(t *testing.T) {
 
 func TestMenuPreviewShowsTheSelectedItemsScreen(t *testing.T) {
 	profile := WindowsProfile{ID: 1, WindowsProfileSource: WindowsProfileSource{Title: "Win11", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
-	draft := MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_1", Title: "Win11", Folder: defaultMenuFolder}}}
+	draft := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_1", Title: "Win11", Folder: defaultMenuFolder}}}
 	rows := menuDraftRows(draft, []WindowsProfile{profile}, nil, nil)
 	preview := buildMenuPreview(draft, []MenuChange{{Kind: "add", Key: "winiso_1"}}, rows, nil, []WindowsProfile{profile}, nil, nil, "winiso_1", "")
-	if preview.Error != "" || preview.Title != "PXE Platform / Windows" || preview.Item == nil || preview.Position != 1 {
+	if preview.Error != "" || preview.Title != "oh my boot_ / Windows" || preview.Item == nil || preview.Position != 1 {
 		t.Fatalf("preview=%+v", preview)
 	}
 	if len(preview.Rows) != 3 || preview.Rows[0].Text != ".. Back" || !preview.Rows[1].Gap || !preview.Rows[2].Selected || preview.Rows[2].Href != "/menu?item=winiso_1" {
@@ -74,7 +74,7 @@ func TestMenuPreviewShowsTheSelectedItemsScreen(t *testing.T) {
 		t.Fatalf("lines=%+v", preview.Lines)
 	}
 	root := buildMenuPreview(draft, nil, rows, nil, []WindowsProfile{profile}, nil, nil, "", "menu_root")
-	if root.Title != "PXE Platform" || root.Rows[0].Text != "Windows" || root.Rows[0].Hint != ">" || root.Rows[0].Href != "/menu?screen=folder_1" || !root.Rows[1].Gap || root.Rows[2].Text != "Boot local disk" || root.Rows[2].Hint != "(10)" {
+	if root.Title != "oh my boot_" || root.Rows[0].Text != "Windows" || root.Rows[0].Hint != ">" || root.Rows[0].Href != "/menu?screen=folder_1" || !root.Rows[1].Gap || root.Rows[2].Text != "Boot local disk" || root.Rows[2].Hint != "(10)" {
 		t.Fatalf("root=%+v", root.Rows)
 	}
 }

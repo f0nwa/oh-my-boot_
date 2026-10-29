@@ -1,5 +1,5 @@
 [Unit]
-Description=PXE Platform HTTPS control dashboard
+Description=Oh My Boot HTTPS control dashboard
 After=network-online.target postgresql.service pxe-boot.service pxe-agent.service
 Wants=network-online.target
 

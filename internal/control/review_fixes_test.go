@@ -25,7 +25,7 @@ func TestAddThenPublishLeavesNoPendingChanges(t *testing.T) {
 
 func TestReaddingRemovedItemRestoresItsTitleAndFolder(t *testing.T) {
 	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Custom", Folder: "Lab"}})
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready"}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready"}
 	s, _ := draftServer(t, store)
 	menuPost(t, s, "/installations/winiso_17/add", url.Values{})
 	draft, active, _ := s.currentDraft(context.Background())
@@ -74,7 +74,7 @@ func TestInstallationsSearchFiltersByTitle(t *testing.T) {
 
 func TestPendingAddCanBeDroppedFromChanges(t *testing.T) {
 	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "winanswer_31", Title: "Lab"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "winanswer_31", Title: "Lab"}}}
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/menu")
 	i := strings.Index(body, `class="menu-changes"`)

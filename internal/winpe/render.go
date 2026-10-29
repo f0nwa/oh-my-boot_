@@ -105,7 +105,7 @@ func RenderDriverStartup(base []byte, infPaths []string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid WinPE startup script or driver selection")
 	}
 	var added strings.Builder
-	added.WriteString("\r\nset PXE_DRIVER_LOG=X:\\pxe-driver.log\r\necho PXE Platform: loading WinPE drivers...\r\n")
+	added.WriteString("\r\nset PXE_DRIVER_LOG=X:\\pxe-driver.log\r\necho Oh My Boot: loading WinPE drivers...\r\n")
 	for _, name := range infPaths {
 		if !safeDriverBatchPath(name) {
 			return nil, fmt.Errorf("INF path cannot be used in WinPE startup")
@@ -116,7 +116,7 @@ func RenderDriverStartup(base []byte, infPaths []string) ([]byte, error) {
 	}
 	added.WriteString("wpeinit\r\n")
 	out := bytes.Replace(base, needle, []byte(added.String()), 1)
-	out = append(out, []byte("\r\n:driver_failed\r\necho PXE Platform: a selected WinPE driver failed to load.\r\ntype %PXE_DRIVER_LOG%\r\ncmd /k\r\n")...)
+	out = append(out, []byte("\r\n:driver_failed\r\necho Oh My Boot: a selected WinPE driver failed to load.\r\ntype %PXE_DRIVER_LOG%\r\ncmd /k\r\n")...)
 	return out, nil
 }
 

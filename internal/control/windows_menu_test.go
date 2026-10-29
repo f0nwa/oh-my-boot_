@@ -50,14 +50,14 @@ func TestWindowsMenuPublishesSeparateProfilesAndFolders(t *testing.T) {
 		{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 10 x64", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"},
 		{ID: 18, WindowsProfileSource: WindowsProfileSource{Title: "Windows 11 x64", Folder: "Windows"}, State: "ready", InstallFile: "install.esd"},
 	}
-	form := url.Values{"title": {"PXE Platform"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "winiso_18": {"on"}, "folder_winiso_17": {"Windows"}, "folder_winiso_18": {"Windows"}}
+	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "winiso_18": {"on"}, "folder_winiso_17": {"Windows"}, "folder_winiso_18": {"Windows"}}
 	script, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", profiles)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := string(script)
 	for _, want := range []string{
-		"menu PXE Platform / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem winiso_17 Windows 10 x64\nitem winiso_18 Windows 11 x64\n",
+		"menu oh my boot_ / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem winiso_17 Windows 10 x64\nitem winiso_18 Windows 11 x64\n",
 		":winiso_17\nkernel http://10.30.0.10:8080/assets/windows/wimboot\n",
 		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/18/boot.wim boot.wim\n",
@@ -74,7 +74,7 @@ func TestWindowsMenuPublishesSeparateProfilesAndFolders(t *testing.T) {
 
 func TestWindowsProfileMenuUsesPlainInitrdNamesForBIOS(t *testing.T) {
 	profile := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 10 x64", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
-	form := url.Values{"title": {"PXE Platform"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}}
+	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}}
 	script, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", []WindowsProfile{profile})
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 		{ID: 31, ProfileID: 17, Title: "Windows 11 Lab A", Folder: "Windows/Lab", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"},
 		{ID: 32, ProfileID: 17, Title: "Windows 11 Lab B", Folder: "Windows/Lab", SHA256: strings.Repeat("b", 64), Size: 100, State: "ready"},
 	}
-	form := url.Values{"title": {"PXE Platform"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "winanswer_31": {"on"}, "winanswer_32": {"on"}, "folder_winanswer_32": {"Windows/Other"}}
+	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "winanswer_31": {"on"}, "winanswer_32": {"on"}, "folder_winanswer_32": {"Windows/Other"}}
 	script, err := BuildMenuFromFormWithProfilesAndAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, answers)
 	if err != nil {
 		t.Fatal(err)

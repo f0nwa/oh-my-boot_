@@ -166,7 +166,7 @@ func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Меню не собрано: "+err.Error(), 400)
 		return
 	}
-	published := MenuVersion{Title: draft.Title, Label: draft.Label, Message: draft.Message, Script: string(script)}
+	published := MenuVersion{Title: productMenuTitle, Label: draft.Label, Message: draft.Message, Script: string(script)}
 	if s.publishMenu(w, r, published, "menu.publish") {
 		// Store the draft as it reads back from the published script, so
 		// object titles and folders it relied on no longer look like changes.
@@ -227,7 +227,7 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 	}
 	if len(versions) == 0 {
 		oldSum := sha256.Sum256(previous)
-		initial := MenuVersion{Title: "PXE Platform", Label: "Diagnostics", Message: "PXE Platform network boot is ready", Script: string(previous), SHA256: hex.EncodeToString(oldSum[:])}
+		initial := MenuVersion{Title: productMenuTitle, Label: "Diagnostics", Message: defaultMenuMessage, Script: string(previous), SHA256: hex.EncodeToString(oldSum[:])}
 		if err := s.Store.SaveActiveMenu(r.Context(), 0, initial); err != nil {
 			http.Error(w, "Не удалось сохранить начальное меню", 503)
 			return false

@@ -104,7 +104,7 @@ type Config struct {
 	StickyKeysSettings            StickyKeysSettings
 	StartFolderSettings           StartFolderSettings
 
-	// PXE Platform extensions, not in upstream. They stay empty for files
+	// Oh My Boot extensions, not in upstream. They stay empty for files
 	// made in the editor and keep what an opened foreign file has beyond the
 	// recognized settings.
 	ExtraXML        []ExtraXML       // merged into the result by Build

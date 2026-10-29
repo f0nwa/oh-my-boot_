@@ -1,5 +1,5 @@
 [Unit]
-Description=PXE Platform dedicated dnsmasq
+Description=Oh My Boot dedicated dnsmasq
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=/etc/pxe-platform/dnsmasq.conf

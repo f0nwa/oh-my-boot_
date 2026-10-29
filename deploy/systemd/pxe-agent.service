@@ -1,5 +1,5 @@
 [Unit]
-Description=PXE Platform network agent
+Description=Oh My Boot network agent
 After=network.target
 
 [Service]

@@ -83,7 +83,7 @@ func (m *SMBManager) EnableUpload(ctx context.Context, key, server, share, subpa
 			return err
 		}
 		options := "credentials=" + credPath + ",rw,nosuid,nodev,noexec,uid=" + m.ImagesUID + ",gid=" + m.ImagesGID + ",file_mode=0640,dir_mode=0750"
-		unit := "[Unit]\nDescription=PXE Platform SMB ISO upload " + key + "\nAfter=network-online.target\nWants=network-online.target\n\n" +
+		unit := "[Unit]\nDescription=Oh My Boot SMB ISO upload " + key + "\nAfter=network-online.target\nWants=network-online.target\n\n" +
 			"[Mount]\nWhat=" + source + "\nWhere=" + target + "\nType=cifs\nOptions=" + options + "\n\n" +
 			"[Install]\nWantedBy=multi-user.target\n"
 		if err := writeAtomic(unitPath, []byte(unit), 0644); err != nil {
@@ -160,7 +160,7 @@ func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
 		return err
 	}
 	options := "credentials=" + credPath + ",ro,nosuid,nodev,noexec,uid=" + m.ImagesUID + ",gid=" + m.ImagesGID + ",file_mode=0440,dir_mode=0550"
-	unit := "[Unit]\nDescription=PXE Platform SMB ISO storage " + req.Key + "\nAfter=network-online.target\nWants=network-online.target\n\n" +
+	unit := "[Unit]\nDescription=Oh My Boot SMB ISO storage " + req.Key + "\nAfter=network-online.target\nWants=network-online.target\n\n" +
 		"[Mount]\nWhat=" + source + "\nWhere=" + target + "\nType=cifs\nOptions=" + options + "\n\n" +
 		"[Install]\nWantedBy=multi-user.target\n"
 	if err := writeAtomic(unitPath, []byte(unit), 0644); err != nil {

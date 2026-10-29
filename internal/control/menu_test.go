@@ -18,7 +18,7 @@ func TestMenuBuildRejectsCommandInjection(t *testing.T) {
 }
 
 func TestMenuFormAddsUbuntuOnlyWhenSelected(t *testing.T) {
-	form := url.Values{"title": {"PXE Platform"}, "label": {"Diagnostics"}, "message": {"Ready"}, "ubuntu": {"on"}}
+	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "ubuntu": {"on"}}
 	withUbuntu, err := BuildMenuFromForm(form, "http://10.30.0.10:8080")
 	if err != nil || !strings.Contains(string(withUbuntu), "item ubuntu Ubuntu Desktop") {
 		t.Fatalf("Ubuntu was not added: %v %q", err, withUbuntu)
@@ -43,7 +43,7 @@ func TestMenuBuildKeepsStructuredText(t *testing.T) {
 }
 
 func TestUbuntuMenuLoadsKernelInitrdAndISOOverHTTP(t *testing.T) {
-	script, err := BuildUbuntuMenu("PXE Platform", "Diagnostics", "Ready", "http://10.30.0.10:8080")
+	script, err := BuildUbuntuMenu("oh my boot_", "Diagnostics", "Ready", "http://10.30.0.10:8080")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -149,7 +149,7 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 			}
 			ubuntuBase, folders["ubuntu"] = base, d.UbuntuFolder
 		}
-		return buildMenuTree(d.Title, d.Label, d.Message, ubuntuBase, folders)
+		return buildMenuTree(productMenuTitle, d.Label, d.Message, ubuntuBase, folders)
 	}
 	base, err := validatedBootURL(baseURL)
 	if err != nil {
@@ -193,7 +193,7 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 			return nil, err
 		}
 	}
-	return buildMenuTreeWithProfiles(d.Title, d.Label, d.Message, entries, folders)
+	return buildMenuTreeWithProfiles(productMenuTitle, d.Label, d.Message, entries, folders)
 }
 
 var menuItemKey = regexp.MustCompile(`^win(iso|answer|driver)_[0-9]+$`)
@@ -282,7 +282,7 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 // draft. Without a stored draft the active version is the draft, so nothing
 // shows as pending after an upgrade.
 func (s *Server) currentDraft(ctx context.Context) (MenuDraft, MenuDraft, error) {
-	active := MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "PXE Platform network boot is ready"}
+	active := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: defaultMenuMessage}
 	versions, err := s.Store.MenuVersions(ctx)
 	if err != nil {
 		return MenuDraft{}, MenuDraft{}, err
@@ -301,9 +301,13 @@ func (s *Server) currentDraft(ctx context.Context) (MenuDraft, MenuDraft, error)
 		draft = active
 		draft.Items = append([]MenuDraftItem(nil), active.Items...)
 	}
-	// Publishing builds the draft with today's design, so a version drawn
-	// with an older one has something to publish.
+	// Publishing builds the draft with today's design and the product name,
+	// so a version drawn with an older one has something to publish.
 	draft.look = menuLook
+	draft.Title = productMenuTitle
+	if draft.Message == legacyMenuMessage {
+		draft.Message = defaultMenuMessage
+	}
 	return draft, active, nil
 }
 

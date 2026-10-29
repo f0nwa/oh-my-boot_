@@ -82,7 +82,7 @@ func BuildMenuFromForm(form url.Values, baseURL string) ([]byte, error) {
 	}
 	for _, folder := range folders {
 		if folder != "" {
-			return buildMenuTree(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase, folders)
+			return buildMenuTree(productMenuTitle, form.Get("label"), form.Get("message"), ubuntuBase, folders)
 		}
 	}
 	return buildMenu(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase)

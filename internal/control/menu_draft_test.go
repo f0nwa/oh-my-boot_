@@ -16,7 +16,7 @@ func draftFixture() ([]WindowsProfile, []WindowsAnswerVariant, []DriverConfig) {
 
 func TestBuildMenuFromDraftKeepsOrderAndTitles(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	d := MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "windriver_2", Title: "Win11 key"}, {Key: "winiso_17"}}}
+	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "windriver_2", Title: "Win11 key"}, {Key: "winiso_17"}}}
 	script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs)
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestBuildMenuFromDraftKeepsOrderAndTitles(t *testing.T) {
 
 func TestBuildMenuFromDraftRejectsCyrillicTitle(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	d := MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Ключ"}}}
+	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Ключ"}}}
 	if _, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs); err == nil {
 		t.Fatal("Cyrillic title accepted")
 	}
@@ -38,7 +38,7 @@ func TestBuildMenuFromDraftRejectsCyrillicTitle(t *testing.T) {
 
 func TestBuildMenuFromDraftRejectsMissingObject(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	d := MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_99"}}}
+	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_99"}}}
 	_, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs)
 	if err == nil || !strings.Contains(err.Error(), "winanswer_99") {
 		t.Fatalf("err=%v", err)
@@ -47,7 +47,7 @@ func TestBuildMenuFromDraftRejectsMissingObject(t *testing.T) {
 
 func TestBuildMenuFromDraftUsesItemFolder(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	d := MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Ubuntu: true, Items: []MenuDraftItem{{Key: "winanswer_31", Folder: "Windows/Tests"}}}
+	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Ubuntu: true, Items: []MenuDraftItem{{Key: "winanswer_31", Folder: "Windows/Tests"}}}
 	script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs)
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestBuildMenuFromDraftUsesItemFolder(t *testing.T) {
 
 func TestDraftFromVersionRoundTrip(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	want := MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Ubuntu: true, UbuntuFolder: "Linux", Items: []MenuDraftItem{
+	want := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Ubuntu: true, UbuntuFolder: "Linux", Items: []MenuDraftItem{
 		{Key: "winiso_17", Folder: "", Title: "Windows 11"},
 		{Key: "windriver_1", Folder: "Windows/Laptops", Title: "Laptop A"},
 		{Key: "winanswer_31", Folder: "Windows/Tests", Title: "Lab"},
@@ -142,7 +142,7 @@ func newDraftStore(t *testing.T, role string, active []MenuDraftItem) *draftStor
 	profiles, answers, configs := draftFixture()
 	store := &draftStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: role, Enabled: true}}}, profiles: profiles, answers: answers, configs: configs}
 	if active != nil {
-		d := MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: "Ready", Items: active}
+		d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: active}
 		script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs)
 		if err != nil {
 			t.Fatal(err)

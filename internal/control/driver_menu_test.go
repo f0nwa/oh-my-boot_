@@ -92,7 +92,7 @@ func TestMenuDistinguishesDuplicateDriverConfigTitles(t *testing.T) {
 
 func TestDriverMenuRendersSeparateEntriesAndFolders(t *testing.T) {
 	profile, answer, configs := driverMenuFixture()
-	form := url.Values{"title": {"PXE Platform"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "windriver_1": {"on"}, "windriver_2": {"on"}}
+	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "windriver_1": {"on"}, "windriver_2": {"on"}}
 	script, err := BuildMenuFromFormWithDriverConfigs(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
 	if err != nil {
 		t.Fatal(err)

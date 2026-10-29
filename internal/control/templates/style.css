@@ -1,4 +1,4 @@
-/* PXE Platform — «Пульт». Tokens and rules: DESIGN.md at the repository root. */
+/* Oh My Boot — «Пульт». Tokens and rules: DESIGN.md at the repository root; the mark: docs/brand. */
 @font-face{font-family:Geist;src:url(/assets/fonts/Geist-Variable.woff2) format("woff2");font-weight:100 900;font-display:swap}
 @font-face{font-family:"Geist Mono";src:url(/assets/fonts/GeistMono-Variable.woff2) format("woff2");font-weight:100 900;font-display:swap}
 
@@ -18,8 +18,11 @@ a{color:var(--text)}a:hover{color:var(--text-2)}
 
 /* Header */
 .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;min-height:52px;padding:0 var(--edge);background:var(--panel);border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;text-decoration:none}
-.logo rect{fill:none;stroke:var(--text);stroke-width:1.5}.logo .logo-prompt{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-linecap:round}
+.brand{display:flex;align-items:center;gap:10px;font-size:15px;text-decoration:none}
+.logo{flex:none}.logo-plate{fill:#0E1013}.logo-ring{fill:none;stroke:#E6E8EB;stroke-width:3}.logo-cursor{fill:var(--accent)}
+:root[data-theme=dark] .logo-plate{fill:#1F242C}@media (prefers-color-scheme:dark){:root[data-theme=system] .logo-plate{fill:#1F242C}}
+.wordmark{font-family:var(--mono);font-weight:500;letter-spacing:0;white-space:nowrap}.wordmark-cursor{display:inline-block;width:.6em;height:.12em;vertical-align:-.1em;background:var(--accent)}
+.login-brand{display:flex;align-items:center;gap:16px;margin-bottom:20px}.login-brand .wordmark{font-size:28px}.login .page-head{margin-bottom:16px}
 .topnav{display:flex;flex-wrap:wrap;gap:2px}
 .topnav a{padding:6px 10px;border-radius:6px;text-decoration:none;color:var(--text-2)}
 .topnav a:hover{background:var(--chip);color:var(--text)}

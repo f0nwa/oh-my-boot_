@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
 Lets a Lenovo, Dell or HP laptop trust the Microsoft UEFI CA, so it can boot
-PXE Platform's signed iPXE shim with Secure Boot on.
+Oh My Boot's signed iPXE shim with Secure Boot on.
 
 .DESCRIPTION
 Secured-core laptops ship trusting only Windows' own Secure Boot key. The

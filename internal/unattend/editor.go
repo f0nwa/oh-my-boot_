@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-// PXE Platform extensions around the port: the result keeps its settings in
+// Oh My Boot extensions around the port: the result keeps its settings in
 // an element of our own namespace, so the editor opens its files exactly,
 // and elements of foreign files are merged back in.
 
@@ -111,7 +111,7 @@ func editorSettings(doc *Document) (*Config, error) {
 }
 
 // importedScriptsModifier runs the imported script sequences of a foreign
-// file from the same phases (PXE Platform extension).
+// file from the same phases (Oh My Boot extension).
 func importedScriptsModifier(m *modifierContext) {
 	for _, s := range m.config.ImportedScripts {
 		path := m.embedTextFile(`C:\Windows\Setup\Scripts\Imported\`+s.Name, s.Content, nil, nil)

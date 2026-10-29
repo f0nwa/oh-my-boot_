@@ -28,6 +28,21 @@ func TestValidateAcceptsFullAndProxy(t *testing.T) {
 	}
 }
 
+func TestValidateUEFILoaderValues(t *testing.T) {
+	for _, loader := range []string{"", "ipxe", "grub-test"} {
+		c := fullConfig()
+		c.UEFILoader = loader
+		if err := Validate(c); err != nil {
+			t.Errorf("loader %q rejected: %v", loader, err)
+		}
+	}
+	c := fullConfig()
+	c.UEFILoader = "unknown"
+	if err := Validate(c); err == nil {
+		t.Fatal("unknown UEFI loader accepted")
+	}
+}
+
 func TestValidateRejectsUnsafeNetworkConfiguration(t *testing.T) {
 	cases := map[string]func(*Config){
 		"no interface":        func(c *Config) { c.Interface = "" },

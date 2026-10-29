@@ -22,16 +22,20 @@ func RenderDnsmasq(c Config) (string, error) {
 	fmt.Fprintln(&b, "dhcp-match=set:ipxe,175")
 	fmt.Fprintln(&b, "dhcp-match=set:efi64,option:client-arch,7")
 	fmt.Fprintln(&b, "dhcp-match=set:efi64,option:client-arch,9")
+	uefiBootFile := "ipxeboot/x86_64-sb/ipxe-shim.efi"
+	if c.UEFILoader == "grub-test" {
+		uefiBootFile = "debian-installer/amd64/bootnetx64.efi"
+	}
 	if c.Mode == "full" {
 		fmt.Fprintf(&b, "dhcp-range=%s,%s,12h\n", c.DHCPStart, c.DHCPEnd)
-		fmt.Fprintf(&b, "dhcp-boot=tag:!ipxe,tag:efi64,ipxeboot/x86_64-sb/ipxe-shim.efi,,%s\n", c.ServerIP)
+		fmt.Fprintf(&b, "dhcp-boot=tag:!ipxe,tag:efi64,%s,,%s\n", uefiBootFile, c.ServerIP)
 		fmt.Fprintf(&b, "dhcp-boot=tag:!ipxe,tag:!efi64,ipxeboot/x86_64/undionly.kpxe,,%s\n", c.ServerIP)
 	} else {
 		prefix, _ := netip.ParsePrefix(c.Subnet)
 		fmt.Fprintf(&b, "dhcp-range=%s,proxy\n", prefix.Addr())
 		fmt.Fprintf(&b, "pxe-service=tag:!ipxe,X86PC,PXE,ipxeboot/x86_64/undionly.kpxe,%s\n", c.ServerIP)
-		fmt.Fprintf(&b, "pxe-service=tag:!ipxe,BC_EFI,PXE,ipxeboot/x86_64-sb/ipxe-shim.efi,%s\n", c.ServerIP)
-		fmt.Fprintf(&b, "pxe-service=tag:!ipxe,X86-64_EFI,PXE,ipxeboot/x86_64-sb/ipxe-shim.efi,%s\n", c.ServerIP)
+		fmt.Fprintf(&b, "pxe-service=tag:!ipxe,BC_EFI,PXE,%s,%s\n", uefiBootFile, c.ServerIP)
+		fmt.Fprintf(&b, "pxe-service=tag:!ipxe,X86-64_EFI,PXE,%s,%s\n", uefiBootFile, c.ServerIP)
 	}
 	// Keep the iPXE rule last: dnsmasq applies the last matching boot rule.
 	fmt.Fprintf(&b, "dhcp-boot=tag:ipxe,%s,,%s\n", c.BootURL, c.ServerIP)

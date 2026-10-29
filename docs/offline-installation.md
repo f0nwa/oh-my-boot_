@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | Пакеты Ubuntu | `apt` из репозиториев Ubuntu | `.deb` из комплекта, локальный репозиторий |
 | Go 1.26 и Go-модули (`pgx`, `golang.org/x/...`) | go.dev и proxy.golang.org при `go build` | Готовые статические бинарные файлы (`CGO_ENABLED=0`), Go на сервере не нужен |
-| iPXE v2.0.0 `ipxeboot.tar.gz` | GitHub через `scripts/fetch-ipxe.sh` | Архив из комплекта, тот же скрипт с адресом `file://` |
+| iPXE v2.0.0 и shim 16.1 с подписями 2011/2023 | GitHub через `scripts/fetch-ipxe.sh` | Архив и shim из комплекта, тот же скрипт с адресами `file://` |
 | wimboot 2.9.0 | GitHub | Файл из комплекта |
 | Драйверы virtio-win (только для ВМ) | Зеркало Fedora | ZIP из комплекта, импорт через страницу «Драйверы» |
 
@@ -35,7 +35,7 @@ pxe-offline/
   COMMIT                    коммит, из которого собраны файлы
   bin/                      восемь бинарных файлов Linux x86_64
   debs/                     .deb со всеми зависимостями и индекс Packages.gz
-  assets/                   ipxeboot.tar.gz, wimboot, expected.sha256
+  assets/                   ipxeboot.tar.gz, ipxe-shimx64.efi, wimboot, expected.sha256
   pxe-platform-src.tar.gz   deploy/, scripts/ и docs/ того же коммита
   SHA256SUMS
 ```
@@ -97,9 +97,11 @@ docker run --rm --platform linux/amd64 -v "$KIT/debs:/out" ubuntu:26.04 sh -ec '
 ```sh
 mkdir -p "$KIT/assets" && cd "$KIT/assets"
 curl -fL -o ipxeboot.tar.gz https://github.com/ipxe/ipxe/releases/download/v2.0.0/ipxeboot.tar.gz
+curl -fL -o ipxe-shimx64.efi https://github.com/ipxe/shim/releases/download/ipxe-16.1/ipxe-shimx64.efi
 curl -fL -o wimboot https://github.com/ipxe/wimboot/releases/download/v2.9.0/wimboot
 cat > expected.sha256 <<'SUMS'
 01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1  ipxeboot.tar.gz
+5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf  ipxe-shimx64.efi
 5f067ccdc4d084d5bf77b6c853bd0f8402dfc2b4cd1b103d358993ae97fae8e3  wimboot
 SUMS
 sha256sum -c expected.sha256      # на macOS: shasum -a 256 -c expected.sha256
@@ -167,12 +169,14 @@ cd /opt/pxe-platform-src
 
 ### 3.3 iPXE и wimboot
 
-`fetch-ipxe.sh` скачивает архив через `curl`, а `curl` понимает адреса `file://`. Скрипт так же проверяет SHA-256 и не перезаписывает существующий каталог:
+`fetch-ipxe.sh` читает архив и shim через `curl`, а `curl` понимает адреса `file://`. Скрипт проверяет обе контрольные суммы, заменяет в распакованном архиве только `shimx64.efi` и не перезаписывает существующий каталог:
 
 ```sh
 sudo ./scripts/fetch-ipxe.sh \
   file:///opt/pxe-offline/assets/ipxeboot.tar.gz \
   01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1 \
+  file:///opt/pxe-offline/assets/ipxe-shimx64.efi \
+  5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf \
   /srv/pxe/tftp
 ```
 

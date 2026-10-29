@@ -49,3 +49,37 @@ func TestRenderDnsmasqProxyNeverAllocatesLeases(t *testing.T) {
 		t.Fatalf("proxy mode allocated leases:\n%s", text)
 	}
 }
+
+func TestRenderDnsmasqGRUBOffersDebianShimToUEFIOnly(t *testing.T) {
+	for _, mode := range []string{"full", "proxy"} {
+		t.Run(mode, func(t *testing.T) {
+			c := fullConfig()
+			c.UEFILoader = "grub-test"
+			c.Mode = mode
+			if mode == "proxy" {
+				c.DHCPStart, c.DHCPEnd = "", ""
+			}
+			got, err := RenderDnsmasq(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantUEFI := "dhcp-boot=tag:!ipxe,tag:efi64,debian-installer/amd64/bootnetx64.efi,,192.0.2.10"
+			wantBIOS := "dhcp-boot=tag:!ipxe,tag:!efi64,ipxeboot/x86_64/undionly.kpxe,,192.0.2.10"
+			if mode == "proxy" {
+				wantUEFI = "pxe-service=tag:!ipxe,X86-64_EFI,PXE,debian-installer/amd64/bootnetx64.efi,192.0.2.10"
+				wantBIOS = "pxe-service=tag:!ipxe,X86PC,PXE,ipxeboot/x86_64/undionly.kpxe,192.0.2.10"
+				if !strings.Contains(got, "pxe-service=tag:!ipxe,BC_EFI,PXE,debian-installer/amd64/bootnetx64.efi,192.0.2.10\n") {
+					t.Fatalf("BC_EFI does not get Debian shim:\n%s", got)
+				}
+			}
+			for _, line := range []string{wantUEFI, wantBIOS, "dhcp-boot=tag:ipxe,http://192.0.2.10:8080/boot/menu.ipxe,,192.0.2.10"} {
+				if !strings.Contains(got, line+"\n") {
+					t.Errorf("missing %q:\n%s", line, got)
+				}
+			}
+			if strings.Contains(got, "ipxeboot/x86_64-sb/ipxe-shim.efi") {
+				t.Fatalf("UEFI still gets iPXE shim:\n%s", got)
+			}
+		})
+	}
+}

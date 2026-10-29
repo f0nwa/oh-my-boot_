@@ -14,7 +14,7 @@ It covers only the replacements for steps that download something. Service confi
 | --- | --- | --- |
 | Ubuntu packages | `apt` from the Ubuntu archive | `.deb` files from the kit, as a local repository |
 | Go 1.26 and Go modules (`pgx`, `golang.org/x/...`) | go.dev and proxy.golang.org during `go build` | Prebuilt static binaries (`CGO_ENABLED=0`); no Go needed on the server |
-| iPXE v2.0.0 `ipxeboot.tar.gz` | GitHub via `scripts/fetch-ipxe.sh` | Archive from the kit, same script with a `file://` URL |
+| iPXE v2.0.0 and the 2011/2023 dual-signed shim 16.1 | GitHub via `scripts/fetch-ipxe.sh` | Archive and shim from the kit, same script with `file://` URLs |
 | wimboot 2.9.0 | GitHub | File from the kit |
 | virtio-win drivers (VMs only) | Fedora mirror | ZIP from the kit, imported on the **Drivers** page |
 
@@ -35,7 +35,7 @@ pxe-offline/
   COMMIT                    the commit the files were built from
   bin/                      eight Linux x86_64 binaries
   debs/                     .deb files with all dependencies and a Packages.gz index
-  assets/                   ipxeboot.tar.gz, wimboot, expected.sha256
+  assets/                   ipxeboot.tar.gz, ipxe-shimx64.efi, wimboot, expected.sha256
   pxe-platform-src.tar.gz   deploy/, scripts/ and docs/ of the same commit
   SHA256SUMS
 ```
@@ -97,9 +97,11 @@ Build the kit shortly before the installation. If the server was updated after t
 ```sh
 mkdir -p "$KIT/assets" && cd "$KIT/assets"
 curl -fL -o ipxeboot.tar.gz https://github.com/ipxe/ipxe/releases/download/v2.0.0/ipxeboot.tar.gz
+curl -fL -o ipxe-shimx64.efi https://github.com/ipxe/shim/releases/download/ipxe-16.1/ipxe-shimx64.efi
 curl -fL -o wimboot https://github.com/ipxe/wimboot/releases/download/v2.9.0/wimboot
 cat > expected.sha256 <<'SUMS'
 01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1  ipxeboot.tar.gz
+5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf  ipxe-shimx64.efi
 5f067ccdc4d084d5bf77b6c853bd0f8402dfc2b4cd1b103d358993ae97fae8e3  wimboot
 SUMS
 sha256sum -c expected.sha256      # on macOS: shasum -a 256 -c expected.sha256
@@ -167,12 +169,14 @@ From here on, run all commands with `deploy/...` and `scripts/...` paths from `/
 
 ### 3.3 iPXE and wimboot
 
-`fetch-ipxe.sh` downloads the archive with `curl`, and `curl` accepts `file://` URLs. The script still checks SHA-256 and does not overwrite an existing folder:
+`fetch-ipxe.sh` reads both the archive and shim with `curl`, which accepts `file://` URLs. The script checks both SHA-256 digests, replaces only `shimx64.efi` in the extracted archive, and does not overwrite an existing folder:
 
 ```sh
 sudo ./scripts/fetch-ipxe.sh \
   file:///opt/pxe-offline/assets/ipxeboot.tar.gz \
   01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1 \
+  file:///opt/pxe-offline/assets/ipxe-shimx64.efi \
+  5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf \
   /srv/pxe/tftp
 ```
 

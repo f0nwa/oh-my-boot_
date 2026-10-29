@@ -1,6 +1,8 @@
 # Secure Boot: preparing domain laptops with SCCM
 
-This guide is for Lenovo, Dell and HP laptops that get “Access Denied” at PXE boot. In the panel their iPXE step is red: “Firmware rejected the loader”. [secure-boot.md](secure-boot.md#if-a-machine-does-not-boot) explains why. In short, the firmware trusts only Windows' key and not Microsoft UEFI CA 2011, the key our loader is signed with.
+This guide is for Lenovo, Dell and HP laptops that get “Access Denied” at PXE boot. In the panel their iPXE step is red: “Firmware rejected the loader”. [secure-boot.md](secure-boot.md#if-a-machine-does-not-boot) explains why. In short, the firmware may trust only Windows keys, not the third-party Microsoft UEFI CAs 2011 or 2023 that sign our loader.
+
+**Current script limitation:** after the server shim update on 29 October 2026, either third-party CA 2011 or 2023 can allow it to boot, but `Enable-MicrosoftUefiCA.ps1` still treats only CA 2011 as ready. On a 2023-only machine its exit code 5 and attempt to enable the firmware option no longer describe a necessary change. Until the script is updated, use only `-CheckOnly` on such machines and inspect `db` separately. [Server shim status](secure-boot.md#the-2011-and-2023-keys).
 
 The script `scripts/windows/Enable-MicrosoftUefiCA.ps1` turns on the BIOS option “allow Microsoft's key for third-party loaders” from Windows, without entering the BIOS. Secure Boot stays on.
 
@@ -30,7 +32,7 @@ The change takes effect after a restart. The log goes to `C:\Windows\Temp\PXE-Mi
 | 2 | The model has no such option, or no vendor WMI interface | Older Dells: Dell Command \| Configure, option `--MSUefiCA`. Otherwise, by hand in the BIOS |
 | 3 | A BIOS password is needed, or the one given was refused | Check the password for this serial number |
 | 4 | Not Lenovo, Dell or HP | By hand in the BIOS |
-| 5 | The option is on, but the firmware carries only the new UEFI CA 2023, not 2011 | Our loader is signed with the 2011 key. For now the only option is to turn Secure Boot off on this machine |
+| 5 | The option is on, but the script found only the third-party UEFI CA 2023, not 2011 | This code is outdated for the new shim: inspect `db`; CA 2023 is enough for the first boot stage |
 | 1 | Unexpected error | See the log |
 
 ## BIOS passwords
@@ -64,13 +66,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Enable-MicrosoftUefiCA
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Enable-MicrosoftUefiCA.ps1 -Password '<password>'
 ```
 
-After the restart, check that the key is there:
+After the restart, inspect `db`. The current script expects the 2011 key:
 
 ```
 [Text.Encoding]::ASCII.GetString((Get-SecureBootUEFI db).Bytes) -match 'Microsoft Corporation UEFI CA 2011'
 ```
 
-It should print `True`. The machine should then boot from the network into our menu with Secure Boot on.
+If the command prints `True`, `db` contains the third-party CA 2011 corresponding to one of the new shim's signatures. If `db` contains only the third-party `Microsoft UEFI CA 2023`, this check prints `False` even though the firmware may also accept the new shim. Verify the actual menu boot separately on the laptop.
 
 ## Rolling out with SCCM
 

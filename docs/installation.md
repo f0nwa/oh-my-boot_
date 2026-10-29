@@ -43,6 +43,8 @@ Fetch the pinned iPXE v2.0.0 release. The script verifies SHA-256 before publish
 sudo ./scripts/fetch-ipxe.sh \
   https://github.com/ipxe/ipxe/releases/download/v2.0.0/ipxeboot.tar.gz \
   01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1 \
+  https://github.com/ipxe/shim/releases/download/ipxe-16.1/ipxe-shimx64.efi \
+  5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf \
   /srv/pxe/tftp
 ```
 

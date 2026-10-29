@@ -13,18 +13,22 @@ import (
 var interfaceName = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 
 type Config struct {
-	Mode      string `json:"mode"`
-	Interface string `json:"interface"`
-	ServerIP  string `json:"server_ip"`
-	Subnet    string `json:"subnet"`
-	DHCPStart string `json:"dhcp_start"`
-	DHCPEnd   string `json:"dhcp_end"`
-	BootURL   string `json:"boot_url"`
-	TFTPRoot  string `json:"tftp_root"`
+	Mode       string `json:"mode"`
+	Interface  string `json:"interface"`
+	ServerIP   string `json:"server_ip"`
+	Subnet     string `json:"subnet"`
+	DHCPStart  string `json:"dhcp_start"`
+	DHCPEnd    string `json:"dhcp_end"`
+	BootURL    string `json:"boot_url"`
+	TFTPRoot   string `json:"tftp_root"`
+	UEFILoader string `json:"uefi_loader,omitempty"`
 }
 
 // Validate rejects settings that could enable DHCP on the wrong network.
 func Validate(c Config) error {
+	if c.UEFILoader != "" && c.UEFILoader != "ipxe" && c.UEFILoader != "grub-test" {
+		return fmt.Errorf("UEFI loader must be ipxe or grub-test")
+	}
 	if c.Mode != "full" && c.Mode != "proxy" {
 		return fmt.Errorf("mode must be full or proxy")
 	}

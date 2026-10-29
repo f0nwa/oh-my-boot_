@@ -15,6 +15,7 @@ func networkForm(r *http.Request) network.Config {
 	return network.Config{
 		Mode: r.FormValue("mode"), Interface: r.FormValue("interface"), ServerIP: r.FormValue("server_ip"), Subnet: r.FormValue("subnet"),
 		DHCPStart: r.FormValue("dhcp_start"), DHCPEnd: r.FormValue("dhcp_end"), BootURL: r.FormValue("boot_url"), TFTPRoot: r.FormValue("tftp_root"),
+		UEFILoader: r.FormValue("uefi_loader"),
 	}
 }
 

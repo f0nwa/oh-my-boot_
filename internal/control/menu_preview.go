@@ -144,6 +144,8 @@ type previewLine struct {
 	Parent                  string
 	Folder, Fixed           bool
 	Selected, Added, Broken bool
+	// Off marks "Boot local disk" when the main screen does not boot it by itself.
+	Off bool
 	// ShowKey adds the item key when two lines would read the same.
 	ShowKey bool
 	// Movable lines are draft items that can be dragged among siblings.
@@ -190,7 +192,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	case "diagnostics":
 		preview.Builtin = "Диагностический пункт показывает сообщение и загружает машину с локального диска. Его подпись — в «Настройках меню»."
 	case "local":
-		preview.Builtin = "Загрузка с локального диска — всегда последний пункт главного экрана."
+		preview.Builtin = "Загрузка с локального диска — всегда последний пункт главного экрана. Здесь задаётся, загружается ли он сам, если ничего не выбрано."
 	}
 	added := map[string]bool{}
 	for _, change := range changes {
@@ -273,6 +275,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	for _, line := range treeLines {
 		out := previewLine{Text: line.Text, Key: line.Key, Parent: line.Parent, Pad: strings.Repeat("  ", line.Depth), Folder: line.Folder, Fixed: line.Fixed, Added: added[line.Key], Broken: broken[line.Key], Selected: key != "" && line.Key == key, ShowKey: !line.Folder && titles[line.Text] > 1}
 		out.Movable = menuItemKey.MatchString(line.Key)
+		out.Off = line.Key == "local" && !draft.LocalTimerOn()
 		if line.Folder {
 			out.Href, out.Mark = "/menu?screen="+line.Label, "▾"
 		} else {

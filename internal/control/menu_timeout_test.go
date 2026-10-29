@@ -2,6 +2,7 @@ package control
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -39,24 +40,52 @@ func TestLocalDiskTimerSecondsAndOff(t *testing.T) {
 	}
 }
 
-func TestMenuSettingsSetLocalDiskTimer(t *testing.T) {
+func TestLocalDiskTimerIsSetOnItsMenuItem(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready"}
 	s, _ := draftServer(t, store)
-	form := url.Values{"label": {"Diagnostics"}, "message": {"Ready"}, "local_timer": {"on"}, "local_timeout": {"30"}}
-	if res := menuPost(t, s, "/menu/settings", form); res.Code != http.StatusSeeOther || !store.draft.LocalTimerOn() || store.draft.LocalTimeoutSeconds() != 30 {
-		t.Fatalf("status=%d draft=%+v", res.Code, store.draft)
+	form := url.Values{"local_timer": {"on"}, "local_timeout": {"30"}}
+	res := menuPost(t, s, "/menu/local-timer", form)
+	if res.Code != http.StatusSeeOther || !strings.Contains(res.Header().Get("Location"), "item=local") || !store.draft.LocalTimerOn() || store.draft.LocalTimeoutSeconds() != 30 {
+		t.Fatalf("status=%d location=%q draft=%+v", res.Code, res.Header().Get("Location"), store.draft)
 	}
 	form.Del("local_timer")
-	if res := menuPost(t, s, "/menu/settings", form); res.Code != http.StatusSeeOther || store.draft.LocalTimerOn() {
+	if res := menuPost(t, s, "/menu/local-timer", form); res.Code != http.StatusSeeOther || store.draft.LocalTimerOn() || store.draft.LocalTimeoutSeconds() != 30 {
 		t.Fatalf("timer not turned off: status=%d draft=%+v", res.Code, store.draft)
 	}
 	for _, bad := range []string{"0", "3601", "x", ""} {
 		form.Set("local_timer", "on")
 		form.Set("local_timeout", bad)
-		if res := menuPost(t, s, "/menu/settings", form); res.Code == http.StatusSeeOther {
+		if res := menuPost(t, s, "/menu/local-timer", form); res.Code == http.StatusSeeOther {
 			t.Fatalf("accepted %q seconds", bad)
 		}
+	}
+	// Saving the other menu settings leaves the timer as it is.
+	store.draft.NoLocalTimer, store.draft.LocalTimeout = true, 45
+	if res := menuPost(t, s, "/menu/settings", url.Values{"label": {"Diagnostics"}, "message": {"Ready"}}); res.Code != http.StatusSeeOther || store.draft.LocalTimerOn() || store.draft.LocalTimeout != 45 {
+		t.Fatalf("menu settings changed the timer: status=%d draft=%+v", res.Code, store.draft)
+	}
+}
+
+func TestLocalDiskItemShowsTimerAndGreysOutWhenOff(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", LocalTimeout: 25, Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}}}
+	s, _ := draftServer(t, store)
+	get := func() string {
+		res := httptest.NewRecorder()
+		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=local", nil))
+		return res.Body.String()
+	}
+	body := get()
+	if !strings.Contains(body, `action="/menu/local-timer"`) || !strings.Contains(body, `name="local_timeout"`) || !strings.Contains(body, `value="25"`) || strings.Contains(body, "tree-off") {
+		t.Fatal("the local disk item has no timer settings or is greyed out while on")
+	}
+	if strings.Contains(body[strings.Index(body, `action="/menu/settings"`):], `name="local_timer"`) && strings.Index(body, `action="/menu/settings"`) < strings.Index(body, `action="/menu/local-timer"`) {
+		t.Fatal("the timer is still in the menu settings")
+	}
+	store.draft.NoLocalTimer = true
+	if body := get(); !strings.Contains(body, "tree-off") {
+		t.Fatal("the local disk line is not greyed out with the timer off")
 	}
 }
 

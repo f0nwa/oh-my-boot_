@@ -29,6 +29,8 @@ func (s *Server) editDraft(w http.ResponseWriter, r *http.Request, action, messa
 	target := "/menu?message=" + strings.ReplaceAll(message, " ", "+")
 	if r.FormValue("return") == "/installations" {
 		target = "/installations?message=" + strings.ReplaceAll(message, " ", "+")
+	} else if action == "menu.draft.local_timer" {
+		target += "&item=local"
 	} else if key := r.PathValue("key"); menuItemKey.MatchString(key) && action != "menu.draft.remove" {
 		// Keep the edited item selected on the menu page.
 		target += "&item=" + key
@@ -108,16 +110,25 @@ func (s *Server) menuSettings(w http.ResponseWriter, r *http.Request) {
 		if validateMenuFolder(folder) != nil {
 			return draftError("Недопустимый каталог в меню")
 		}
+		d.Title, d.Label, d.Message, d.Ubuntu, d.UbuntuFolder = productMenuTitle, label, message, r.FormValue("ubuntu") == "on", folder
+		return nil
+	})
+}
+
+// menuLocalTimer sets whether the main screen boots the local disk by itself
+// and after how many seconds; it is edited on the "Boot local disk" item.
+func (s *Server) menuLocalTimer(w http.ResponseWriter, r *http.Request) {
+	s.editDraft(w, r, "menu.draft.local_timer", "Таймер загрузки с диска сохранён", func(d *MenuDraft) error {
 		timerOn := r.FormValue("local_timer") == "on"
 		seconds, err := strconv.Atoi(strings.TrimSpace(r.FormValue("local_timeout")))
-		if timerOn && (err != nil || seconds < 1 || seconds > maxLocalTimeout) {
+		valid := err == nil && seconds >= 1 && seconds <= maxLocalTimeout
+		if timerOn && !valid {
 			return draftError("Время до загрузки с диска — от 1 до 3600 секунд")
 		}
-		if err == nil && seconds >= 1 && seconds <= maxLocalTimeout {
+		if valid {
 			d.LocalTimeout = seconds
 		}
 		d.NoLocalTimer = !timerOn
-		d.Title, d.Label, d.Message, d.Ubuntu, d.UbuntuFolder = productMenuTitle, label, message, r.FormValue("ubuntu") == "on", folder
 		return nil
 	})
 }

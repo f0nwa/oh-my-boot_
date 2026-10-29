@@ -229,7 +229,7 @@ td small{display:block}
 .tree-mark{color:var(--faint);width:12px;font-family:var(--mono);font-size:12px;flex:none}
 .tree-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tree-text small{margin-left:4px}
-.tree-folder .tree-text{font-weight:600}.tree-fixed .tree-text{color:var(--text-2)}
+.tree-folder .tree-text{font-weight:600}.tree-off .tree-text{color:var(--faint)}
 .tree-line .dot{margin-right:0}
 .tree-removed{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 8px;color:var(--faint)}
 .tree-removed .tree-text{text-decoration:line-through}

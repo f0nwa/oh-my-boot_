@@ -54,7 +54,7 @@ func TestPageErrorIsNotTakenFromQuery(t *testing.T) {
 
 func TestMenuFormNoLongerOffersStaticWindowsItems(t *testing.T) {
 	res := httptest.NewRecorder()
-	render(res, "menu", pageData{Info: requestContext{User: User{ID: 1, Role: "admin"}, CSRF: "x"}})
+	render(res, "menu", pageData{Info: requestContext{User: User{ID: 1, Role: "admin"}, CSRF: "x"}, Preview: &menuPreview{Key: "ubuntu", Builtin: "Ubuntu Desktop"}})
 	body := res.Body.String()
 	for _, gone := range []string{`name="windows10"`, `name="windows11"`, `name="folder_windows10"`, `name="folder_windows11"`} {
 		if strings.Contains(body, gone) {

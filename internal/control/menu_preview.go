@@ -144,7 +144,7 @@ type previewLine struct {
 	Parent                  string
 	Folder, Fixed           bool
 	Selected, Added, Broken bool
-	// Off marks "Boot local disk" when the main screen does not boot it by itself.
+	// Off marks a built-in item whose automatic action or visibility is disabled.
 	Off bool
 	// ShowKey adds the item key when two lines would read the same.
 	ShowKey bool
@@ -188,9 +188,9 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	}
 	switch key {
 	case "ubuntu":
-		preview.Builtin = "Ubuntu Desktop — встроенный пункт. Он включается и переносится в другую папку в «Настройках меню»."
+		preview.Builtin = "Ubuntu Desktop — встроенный пункт. Здесь можно включить его и выбрать каталог в меню."
 	case "diagnostics":
-		preview.Builtin = "Диагностический пункт показывает сообщение и загружает машину с локального диска. Его подпись — в «Настройках меню»."
+		preview.Builtin = "Диагностический пункт показывает сообщение и загружает машину с локального диска. Здесь можно изменить его подпись и сообщение."
 	case "local":
 		preview.Builtin = "Загрузка с локального диска — всегда последний пункт главного экрана. Здесь задаётся, загружается ли он сам, если ничего не выбрано."
 	}
@@ -264,6 +264,14 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 		preview.Rows = preview.Rows[:len(preview.Rows)-1]
 	}
 	treeLines := menuTreeLines(screens)
+	if !draft.Ubuntu {
+		// Keep the hidden client item selectable in the editor for re-enabling.
+		treeLines = append(treeLines, menuTreeLine{Text: "Ubuntu Desktop 26.04.1", Key: "ubuntu", Parent: screens[0].Label, Fixed: true})
+	}
+	if !draft.DiagnosticsOn() {
+		// Keep the hidden client item selectable in the editor for re-enabling.
+		treeLines = append(treeLines, menuTreeLine{Text: draft.Label, Key: "diagnostics", Parent: screens[0].Label, Fixed: true})
+	}
 	titles := map[string]int{}
 	for _, line := range treeLines {
 		titles[line.Text]++
@@ -275,7 +283,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	for _, line := range treeLines {
 		out := previewLine{Text: line.Text, Key: line.Key, Parent: line.Parent, Pad: strings.Repeat("  ", line.Depth), Folder: line.Folder, Fixed: line.Fixed, Added: added[line.Key], Broken: broken[line.Key], Selected: key != "" && line.Key == key, ShowKey: !line.Folder && titles[line.Text] > 1}
 		out.Movable = menuItemKey.MatchString(line.Key)
-		out.Off = line.Key == "local" && !draft.LocalTimerOn()
+		out.Off = line.Key == "local" && !draft.LocalTimerOn() || line.Key == "diagnostics" && !draft.DiagnosticsOn() || line.Key == "ubuntu" && !draft.Ubuntu
 		if line.Folder {
 			out.Href, out.Mark = "/menu?screen="+line.Label, "▾"
 		} else {

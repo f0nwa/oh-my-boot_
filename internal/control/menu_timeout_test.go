@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -76,15 +77,22 @@ func TestLocalDiskItemShowsTimerAndGreysOutWhenOff(t *testing.T) {
 		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=local", nil))
 		return res.Body.String()
 	}
+	localTreeLine := func(body string) string {
+		end := strings.Index(body, `href="/menu?item=local"`)
+		if end < 0 {
+			t.Fatal("local disk is missing from the structure")
+		}
+		return body[strings.LastIndex(body[:end], `<div class="tree-line`):end]
+	}
 	body := get()
-	if !strings.Contains(body, `action="/menu/local-timer"`) || !strings.Contains(body, `name="local_timeout"`) || !strings.Contains(body, `value="25"`) || strings.Contains(body, "tree-off") {
+	if !strings.Contains(body, `action="/menu/local-timer"`) || !strings.Contains(body, `name="local_timeout"`) || !strings.Contains(body, `value="25"`) || strings.Contains(localTreeLine(body), "tree-off") {
 		t.Fatal("the local disk item has no timer settings or is greyed out while on")
 	}
-	if strings.Contains(body[strings.Index(body, `action="/menu/settings"`):], `name="local_timer"`) && strings.Index(body, `action="/menu/settings"`) < strings.Index(body, `action="/menu/local-timer"`) {
-		t.Fatal("the timer is still in the menu settings")
+	if strings.Contains(body, `action="/menu/settings"`) {
+		t.Fatal("Ubuntu settings are shown with the local disk item")
 	}
 	store.draft.NoLocalTimer = true
-	if body := get(); !strings.Contains(body, "tree-off") {
+	if body := get(); !strings.Contains(localTreeLine(body), "tree-off") {
 		t.Fatal("the local disk line is not greyed out with the timer off")
 	}
 }
@@ -96,5 +104,24 @@ func TestLocalDiskTimerChangeIsPending(t *testing.T) {
 	draft, active, err := s.currentDraft(t.Context())
 	if err != nil || len(diffMenuDraft(active, draft)) == 0 {
 		t.Fatalf("err=%v: turning the timer off is not a pending change", err)
+	}
+}
+
+func TestLocalDiskHintUsesCorrectUnits(t *testing.T) {
+	for _, lang := range []string{langRU, langEN} {
+		for _, seconds := range []int{1, 2, 5, 21} {
+			data := samplePageData(lang)
+			data.Draft.LocalTimeout = seconds
+			res := httptest.NewRecorder()
+			render(res, "menu", data)
+			body := res.Body.String()
+			want := "через " + strconv.Itoa(seconds) + " с загружает локальный диск"
+			if lang == langEN {
+				want = "waits " + strconv.Itoa(seconds) + " s before booting from the local disk"
+			}
+			if res.Code != http.StatusOK || !strings.Contains(body, want) {
+				t.Fatalf("lang=%s seconds=%d: countdown unit missing, status=%d", lang, seconds, res.Code)
+			}
+		}
 	}
 }

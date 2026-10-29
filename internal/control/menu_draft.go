@@ -22,6 +22,8 @@ type MenuDraft struct {
 	Title, Label, Message string
 	Ubuntu                bool
 	UbuntuFolder          string
+	// NoDiagnostics omits the built-in diagnostics item from the client menu.
+	NoDiagnostics bool
 	// LocalTimeout is how many seconds the main screen waits before booting
 	// the local disk; 0 means the default. NoLocalTimer makes the menu wait
 	// for a choice instead.
@@ -42,6 +44,9 @@ const maxLocalTimeout = 3600
 
 // LocalTimerOn reports whether the main screen boots the local disk by itself.
 func (d MenuDraft) LocalTimerOn() bool { return !d.NoLocalTimer }
+
+// DiagnosticsOn reports whether the built-in diagnostics item is shown.
+func (d MenuDraft) DiagnosticsOn() bool { return !d.NoDiagnostics }
 
 // LocalTimeoutSeconds is the wait before booting the local disk; with the
 // timer off it is the value the settings form offers when it is turned on.
@@ -181,7 +186,7 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 			}
 			ubuntuBase, folders["ubuntu"] = base, d.UbuntuFolder
 		}
-		return buildMenuTreeTimed(productMenuTitle, d.Label, d.Message, ubuntuBase, folders, d.localTimer())
+		return buildMenuTreeTimed(productMenuTitle, d.Label, d.Message, ubuntuBase, folders, d.localTimer(), d.DiagnosticsOn())
 	}
 	base, err := validatedBootURL(baseURL)
 	if err != nil {
@@ -225,7 +230,7 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 			return nil, err
 		}
 	}
-	return buildMenuTreeWithProfilesTimed(productMenuTitle, d.Label, d.Message, entries, folders, d.localTimer())
+	return buildMenuTreeWithProfilesTimed(productMenuTitle, d.Label, d.Message, entries, folders, d.localTimer(), d.DiagnosticsOn())
 }
 
 var menuItemKey = regexp.MustCompile(`^win(iso|answer|driver)_[0-9]+$`)
@@ -233,7 +238,7 @@ var menuItemKey = regexp.MustCompile(`^win(iso|answer|driver)_[0-9]+$`)
 // draftFromVersion reads a published version back into a draft: its texts,
 // Ubuntu entry, and the Windows items in the order they appear.
 func draftFromVersion(v MenuVersion) MenuDraft {
-	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, look: scriptLook(v.Script)}
+	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, NoDiagnostics: v.Script != "", look: scriptLook(v.Script)}
 	if seconds := menuLocalTimer(v.Script); seconds == 0 {
 		d.NoLocalTimer = true
 	} else {
@@ -249,6 +254,10 @@ func draftFromVersion(v MenuVersion) MenuDraft {
 			d.Ubuntu, d.UbuntuFolder = true, folders["ubuntu"]
 			continue
 		}
+		if fields[1] == "diagnostics" {
+			d.NoDiagnostics = false
+			continue
+		}
 		if !menuItemKey.MatchString(fields[1]) {
 			continue
 		}
@@ -262,20 +271,38 @@ func draftFromVersion(v MenuVersion) MenuDraft {
 }
 
 // MenuChange is one difference between the published menu and the draft.
-// Kind is add, remove, change (title or folder), order or settings.
+// Label names the changed setting, while Before and After show its values.
 type MenuChange struct {
-	Kind  string
-	Key   string
-	Title string
+	Kind, Key, Title string
+	Label            string
+	Before, After    string
 }
 
 func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 	var changes []MenuChange
 	if active.look != draft.look {
-		changes = append(changes, MenuChange{Kind: "look"})
+		changes = append(changes, MenuChange{Kind: "look", Label: "Оформление меню", Before: "Прежнее", After: "Текущее"})
 	}
-	if active.Title != draft.Title || active.Label != draft.Label || active.Message != draft.Message || active.Ubuntu != draft.Ubuntu || active.UbuntuFolder != draft.UbuntuFolder || active.localTimer() != draft.localTimer() {
-		changes = append(changes, MenuChange{Kind: "settings"})
+	if active.Title != draft.Title {
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Заголовок меню", Before: active.Title, After: draft.Title})
+	}
+	if active.NoDiagnostics != draft.NoDiagnostics {
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Пункт Diagnostics", Before: menuVisibility(active.DiagnosticsOn()), After: menuVisibility(draft.DiagnosticsOn())})
+	}
+	if active.Label != draft.Label {
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Название Diagnostics", Before: active.Label, After: draft.Label})
+	}
+	if active.Message != draft.Message {
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Сообщение Diagnostics", Before: active.Message, After: draft.Message})
+	}
+	if active.Ubuntu != draft.Ubuntu {
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Пункт Ubuntu Desktop", Before: menuVisibility(active.Ubuntu), After: menuVisibility(draft.Ubuntu)})
+	}
+	if active.UbuntuFolder != draft.UbuntuFolder {
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Каталог Ubuntu Desktop", Before: menuFolderName(active.UbuntuFolder), After: menuFolderName(draft.UbuntuFolder)})
+	}
+	if active.localTimer() != draft.localTimer() {
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Автозагрузка с диска", Before: menuTimerName(active.localTimer()), After: menuTimerName(draft.localTimer())})
 	}
 	activeByKey := map[string]MenuDraftItem{}
 	for _, item := range active.Items {
@@ -300,8 +327,11 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 			continue
 		}
 		draftOrder = append(draftOrder, item.Key)
-		if old.Title != item.Title || old.Folder != item.Folder {
-			changes = append(changes, MenuChange{Kind: "change", Key: item.Key, Title: item.Title})
+		if old.Title != item.Title {
+			changes = append(changes, MenuChange{Kind: "change", Key: item.Key, Title: menuItemName(item), Label: "Название пункта", Before: menuTitleName(old.Title), After: menuTitleName(item.Title)})
+		}
+		if old.Folder != item.Folder {
+			changes = append(changes, MenuChange{Kind: "change", Key: item.Key, Title: menuItemName(item), Label: "Каталог пункта", Before: menuFolderName(old.Folder), After: menuFolderName(item.Folder)})
 		}
 	}
 	for _, item := range active.Items {
@@ -310,9 +340,55 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 		}
 	}
 	if strings.Join(activeOrder, ",") != strings.Join(draftOrder, ",") {
-		changes = append(changes, MenuChange{Kind: "order"})
+		changes = append(changes, MenuChange{Kind: "order", Label: "Порядок пунктов", Before: menuOrderNames(activeOrder, activeByKey), After: menuOrderNames(draftOrder, draftByKey)})
 	}
 	return changes
+}
+
+func menuVisibility(on bool) string {
+	if on {
+		return "Показан"
+	}
+	return "Скрыт"
+}
+
+func menuTimerName(seconds int) string {
+	if seconds == 0 {
+		return "Выключена"
+	}
+	return fmt.Sprintf("%d с", seconds)
+}
+
+func menuTitleName(title string) string {
+	if title == "" {
+		return "По умолчанию"
+	}
+	return title
+}
+
+func menuFolderName(folder string) string {
+	switch folder {
+	case "":
+		return "Главное меню"
+	case defaultMenuFolder:
+		return "Каталог установки"
+	}
+	return folder
+}
+
+func menuItemName(item MenuDraftItem) string {
+	if item.Title != "" {
+		return item.Title
+	}
+	return item.Key
+}
+
+func menuOrderNames(keys []string, items map[string]MenuDraftItem) string {
+	names := make([]string, 0, len(keys))
+	for _, key := range keys {
+		names = append(names, menuItemName(items[key]))
+	}
+	return strings.Join(names, " → ")
 }
 
 // currentDraft returns the stored draft and the active version read as a

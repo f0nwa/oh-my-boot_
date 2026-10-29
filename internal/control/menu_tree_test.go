@@ -129,7 +129,7 @@ func TestMenuFoldersPagePrefillsActiveFolder(t *testing.T) {
 		authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}},
 		versions:      []MenuVersion{{Script: string(script), Active: true}},
 	}}
-	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
+	req := httptest.NewRequest(http.MethodGet, "/menu?item=ubuntu", nil)
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)

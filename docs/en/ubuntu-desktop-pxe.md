@@ -2,7 +2,7 @@
 
 [Русская версия](../ubuntu-desktop-pxe.md)
 
-A profile was prepared for `ubuntu-26.04.1-desktop-amd64.iso` from the connected SMB folder. Boot serves only this ISO at `/images/ubuntu-desktop.iso`, and the `casper/vmlinuz` and `casper/initrd` files extracted from it at `/assets/ubuntu/`. In the Control menu the Ubuntu item is enabled with a separate checkbox; publishing keeps the previous version for rollback. The other ISO files in the SMB folder are not served over HTTP.
+A profile was prepared for `ubuntu-26.04.1-desktop-amd64.iso` from the connected SMB folder. Boot serves only this ISO at `/images/ubuntu-desktop.iso`, and the `casper/vmlinuz` and `casper/initrd` files extracted from it at `/assets/ubuntu/`. In the Control menu the Ubuntu item is enabled in its properties; publishing keeps the previous version for rollback. The other ISO files in the SMB folder are not served over HTTP.
 
 After the kernel starts, `casper` gets an address over DHCP, downloads the ISO over HTTP and mounts it. This was confirmed by reading `scripts/casper` in the initrd of this image: the `iso-url=*.iso` and `url=*.iso` parameters select `NETBOOT=url`, and then `wget` downloads the file. For a 6.5 GB ISO, the test client needs at least 12 GB of RAM; 16 GB was planned for the check. The first full client boot still needed checking; a successful HTTP response alone does not confirm that the live system starts or that Secure Boot works with this kernel.
 
@@ -24,7 +24,7 @@ Copy the kernel and initrd from the same ISO to `/srv/pxe/tftp/ubuntu/vmlinuz` a
 
 ## Check and rollback
 
-In the HTTPS admin interface, open **Menu**, select **Ubuntu Desktop 26.04.1** and press **Publish**. Then start the test PXE VM with 16 GB of RAM, choose Ubuntu and wait for the live system desktop. Check SeaBIOS, OVMF without Secure Boot and OVMF with Secure Boot separately. Network access to the menu already worked before this check, but kernel boot compatibility in the three modes was not yet established.
+In the HTTPS admin interface, open **Menu**, select **Ubuntu Desktop 26.04.1**, check **Show Ubuntu Desktop item** in its properties, then press **Publish menu**. Then start the test PXE VM with 16 GB of RAM, choose Ubuntu and wait for the live system desktop. Check SeaBIOS, OVMF without Secure Boot and OVMF with Secure Boot separately. Network access to the menu already worked before this check, but kernel boot compatibility in the three modes was not yet established.
 
 If the boot fails, restore the previous diagnostics version in **Menu → Versions** in the admin interface. On the test server, the previous binaries, unit and settings are kept in `/var/backups/pxe-platform-pre-ubuntu-20261016/`. Removing the Ubuntu item from the menu does not require turning off PXE, DHCP or the SMB storage.
 

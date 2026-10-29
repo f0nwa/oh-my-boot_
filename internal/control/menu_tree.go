@@ -198,12 +198,12 @@ func menuFolderPaths(script string) map[string]string {
 }
 
 func buildMenuTree(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string) ([]byte, error) {
-	return buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase, folders, defaultLocalTimeout)
+	return buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase, folders, defaultLocalTimeout, true)
 }
 
 // buildMenuTreeTimed is buildMenuTree with the wait before the main screen
 // boots the local disk, in seconds; 0 waits for a choice.
-func buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string, localTimer int) ([]byte, error) {
+func buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string, localTimer int, diagnosticsOn bool) ([]byte, error) {
 	if !safeMenuText(title, 80) || !safeMenuText(diagnosticLabel, 80) || !safeMenuText(diagnosticMessage, 120) {
 		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
 	}
@@ -211,14 +211,14 @@ func buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase st
 	if ubuntuBase != "" {
 		profiles = append(profiles, menuProfile{id: "ubuntu", title: "Ubuntu Desktop 26.04.1", base: ubuntuBase})
 	}
-	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, localTimer)
+	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, localTimer, diagnosticsOn)
 }
 
 func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string) ([]byte, error) {
-	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, defaultLocalTimeout)
+	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, defaultLocalTimeout, true)
 }
 
-func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string, localTimer int) ([]byte, error) {
+func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string, localTimer int, diagnosticsOn bool) ([]byte, error) {
 	if localTimer < 0 || localTimer > maxLocalTimeout {
 		return nil, fmt.Errorf("invalid wait before booting the local disk")
 	}
@@ -292,8 +292,10 @@ func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage st
 		out.WriteString(menuDriverMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
 	}
 	out.WriteString(menuTheme)
-	writeMenuNode(&out, root, title, diagnosticLabel, localTimer)
-	out.WriteString(":diagnostics\n" + "echo " + diagnosticMessage + "\n" + "sleep 3\n" + "goto local\n")
+	writeMenuNode(&out, root, title, diagnosticLabel, localTimer, diagnosticsOn)
+	if diagnosticsOn {
+		out.WriteString(":diagnostics\n" + "echo " + diagnosticMessage + "\n" + "sleep 3\n" + "goto local\n")
+	}
 	for _, profile := range profiles {
 		writeProfileBoot(&out, profile)
 	}
@@ -301,7 +303,7 @@ func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage st
 	return []byte(out.String()), nil
 }
 
-func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLabel string, localTimer int) {
+func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLabel string, localTimer int, diagnosticsOn bool) {
 	out.WriteString(":" + node.label + "\n")
 	menuTitle := title
 	if node.path != "" {
@@ -336,7 +338,9 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 	if node.parent == nil {
 		gap("")
 		item("local", "Boot local disk")
-		item("diagnostics", diagnosticLabel)
+		if diagnosticsOn {
+			item("diagnostics", diagnosticLabel)
+		}
 	}
 	// The key line sits on the last row of an 80x25 screen when the list is
 	// short enough, under the list otherwise.
@@ -358,7 +362,7 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 	}
 	out.WriteString("goto ${target} || goto " + parentLabel + "\n")
 	for _, child := range node.children {
-		writeMenuNode(out, child, title, diagnosticLabel, localTimer)
+		writeMenuNode(out, child, title, diagnosticLabel, localTimer, diagnosticsOn)
 	}
 }
 

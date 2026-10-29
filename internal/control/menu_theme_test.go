@@ -59,7 +59,7 @@ func TestPublishedThemedMenuReadsBackWithoutChanges(t *testing.T) {
 		t.Fatalf("changes after a round trip: %+v (items %+v)", changes, back.Items)
 	}
 	// A version published before the new look has the look to publish.
-	old := draftFromVersion(MenuVersion{Title: d.Title, Label: d.Label, Message: d.Message, Script: "#!ipxe\nmenu oh my boot_\nitem windriver_2 Win11 key\nitem winiso_17 Windows 11\nchoose target\n"})
+	old := draftFromVersion(MenuVersion{Title: d.Title, Label: d.Label, Message: d.Message, Script: "#!ipxe\nmenu oh my boot_\nitem windriver_2 Win11 key\nitem winiso_17 Windows 11\nitem diagnostics Diagnostics\nchoose target\n"})
 	if changes := diffMenuDraft(old, d); len(changes) != 1 || changes[0].Kind != "look" {
 		t.Fatalf("old version: %+v", changes)
 	}

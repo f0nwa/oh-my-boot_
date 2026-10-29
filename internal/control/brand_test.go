@@ -42,7 +42,10 @@ func TestOldMenuNameIsReplacedOnlyByPublishing(t *testing.T) {
 
 func TestMenuPageHasNoTitleField(t *testing.T) {
 	res := httptest.NewRecorder()
-	render(res, "menu", samplePageData(langRU))
+	data := samplePageData(langRU)
+	data.Preview.Key, data.Preview.Builtin = "ubuntu", "Ubuntu Desktop"
+	data.Preview.Item = nil
+	render(res, "menu", data)
 	body := res.Body.String()
 	start := strings.Index(body, `action="/menu/settings"`)
 	if start < 0 {

@@ -31,6 +31,10 @@ func (s *Server) editDraft(w http.ResponseWriter, r *http.Request, action, messa
 		target = "/installations?message=" + strings.ReplaceAll(message, " ", "+")
 	} else if action == "menu.draft.local_timer" {
 		target += "&item=local"
+	} else if action == "menu.draft.diagnostics" {
+		target += "&item=diagnostics"
+	} else if action == "menu.draft.settings" {
+		target += "&item=ubuntu"
 	} else if key := r.PathValue("key"); menuItemKey.MatchString(key) && action != "menu.draft.remove" {
 		// Keep the edited item selected on the menu page.
 		target += "&item=" + key
@@ -91,7 +95,10 @@ func (s *Server) menuItemRename(w http.ResponseWriter, r *http.Request) {
 		if title != "" && (!safeMenuText(title, 80) || !isASCII(title)) {
 			return draftError("Название в меню — только латиница, цифры и простые знаки, до 80 символов")
 		}
-		if validateMenuFolder(folder) != nil || (!strings.HasPrefix(d.Items[i].Key, "winiso_") && !isASCII(folder)) {
+		if !isASCII(folder) {
+			return draftError("Каталог в меню — только латиница, цифры и простые знаки")
+		}
+		if validateMenuFolder(folder) != nil {
 			return draftError("Недопустимый каталог в меню")
 		}
 		d.Items[i].Title, d.Items[i].Folder = title, folder
@@ -100,17 +107,32 @@ func (s *Server) menuItemRename(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) menuSettings(w http.ResponseWriter, r *http.Request) {
-	s.editDraft(w, r, "menu.draft.settings", "Настройки меню сохранены", func(d *MenuDraft) error {
+	s.editDraft(w, r, "menu.draft.settings", "Пункт Ubuntu сохранён", func(d *MenuDraft) error {
 		// The menu title is the product name; a "title" field is ignored.
-		label, message := r.FormValue("label"), r.FormValue("message")
-		if !safeMenuText(label, 80) || !safeMenuText(message, 120) {
-			return draftError("Недопустимый текст меню")
-		}
 		folder := r.FormValue("folder_ubuntu")
+		if !isASCII(folder) {
+			return draftError("Каталог в меню — только латиница, цифры и простые знаки")
+		}
 		if validateMenuFolder(folder) != nil {
 			return draftError("Недопустимый каталог в меню")
 		}
-		d.Title, d.Label, d.Message, d.Ubuntu, d.UbuntuFolder = productMenuTitle, label, message, r.FormValue("ubuntu") == "on", folder
+		d.Title, d.Ubuntu, d.UbuntuFolder = productMenuTitle, r.FormValue("ubuntu") == "on", folder
+		return nil
+	})
+}
+
+// menuDiagnostics edits the built-in diagnostics item's label and message.
+func (s *Server) menuDiagnostics(w http.ResponseWriter, r *http.Request) {
+	s.editDraft(w, r, "menu.draft.diagnostics", "Диагностический пункт сохранён", func(d *MenuDraft) error {
+		label, message := r.FormValue("label"), r.FormValue("message")
+		if !isASCII(label) || !isASCII(message) {
+			return draftError("Текст меню — только латиница, цифры и простые знаки")
+		}
+		if !safeMenuText(label, 80) || !safeMenuText(message, 120) {
+			return draftError("Недопустимый текст меню")
+		}
+		d.Label, d.Message = label, message
+		d.NoDiagnostics = r.FormValue("diagnostics_on") != "on"
 		return nil
 	})
 }

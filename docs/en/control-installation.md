@@ -418,3 +418,19 @@ The draft bar has **Discard changes** next to **Publish menu**. It opens a confi
 ## The “Boot local disk” timer, 29.10.2026
 
 Select **Boot local disk** on the screen or in the structure; the right column sets whether the main screen boots the local disk by itself: the checkbox **Boot from the local disk if nothing is chosen** and **After how many seconds** (1–3600, default 10). Unchecked, the menu waits for a choice; “Boot local disk” is only preselected (`choose --default local` without `--timeout`) and the countdown next to it disappears, in the preview as well; the item turns grey in the structure on the left. Like the other settings, the change goes into the draft and reaches machines only when published; the value is also read from published versions, so a rollback restores it. The rollout needs a [migration](../../deploy/sql/2026-10-29-menu-local-timer.sql): two columns, `menu_draft.local_timeout` and `menu_draft.local_timer`; the existing draft gets 10 seconds.
+
+## Diagnostics item
+
+To edit the diagnostics item's label and message, select **Diagnostics** on the screen or in the structure. These changes also remain in the draft until published.
+
+The **Show Diagnostics item** checkbox there removes it from the machine's screen when unchecked. The editor keeps a grey item in its structure so it can be turned back on. The change reaches machines only after publication and is restored by rolling back a menu version. Before updating Control, apply the [migration](../../deploy/sql/2026-10-29-menu-diagnostics-toggle.sql), which adds `menu_draft.diagnostics_on` with `true` for the existing draft.
+
+## Ubuntu Desktop item
+
+Select Ubuntu Desktop on the screen or in the menu structure to set its visibility and folder in the item properties. The old general **Menu settings** block is gone. When turned off, Ubuntu remains grey in the editor structure so it can be enabled again; it disappears from the machine's screen after publication.
+
+Text and folder names shown in the PXE menu must use Latin letters: the iPXE console cannot display Cyrillic. The server also enforces this for direct form submissions; previously published versions are not rewritten.
+
+Rollout 29.10.2026, 17:29: replaced only `pxe-control` (SHA-256 `adb754ef…`); the previous binary is `/usr/local/bin/pxe-control.bak-20261029142908`. No migration was needed. An early HTTPS check triggered an automatic rollback on the first attempt; the second attempt waited for the service to respond. Control, Boot, Agent and dnsmasq are active, and HTTPS redirects guests to sign-in. The published menu remains version 38 with SHA-256 `d7148e0aa070ebd232e9bf9bbc432540485021661db6bbdee0cf5d9e692aeb3d`.
+
+Rollout 29.10.2026, 17:40: Control now rejects Cyrillic in new boot menu text (SHA-256 `a74ede91…`); the previous binary is `/usr/local/bin/pxe-control.bak-20261029144047`. No migration was needed. All four services are active and HTTPS responds; clients see menu version 40 with the same SHA-256 `d7148e0aa070ebd232e9bf9bbc432540485021661db6bbdee0cf5d9e692aeb3d`. Version 39, whose Diagnostics label contains Cyrillic, remains in history but is inactive.

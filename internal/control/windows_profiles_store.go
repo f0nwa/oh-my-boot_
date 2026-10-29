@@ -8,13 +8,27 @@ import (
 
 func (s Store) CreateWindowsProfile(ctx context.Context, source WindowsProfileSource) (WindowsProfile, error) {
 	profile := WindowsProfile{WindowsProfileSource: source}
-	err := s.Pool.QueryRow(ctx,
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return WindowsProfile{}, err
+	}
+	defer tx.Rollback(ctx)
+	err = tx.QueryRow(ctx,
 		`INSERT INTO windows_profiles (storage_id,path,storage_root,size_bytes,modified_at,title,folder,state)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')
 		 RETURNING id,state`,
 		source.StorageID, source.Path, source.StorageRoot, source.Size, source.Modified, source.Title, source.Folder,
 	).Scan(&profile.ID, &profile.State)
-	return profile, err
+	if err != nil {
+		return WindowsProfile{}, err
+	}
+	if err := createWindowsBootProfile(ctx, tx, profile); err != nil {
+		return WindowsProfile{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return WindowsProfile{}, err
+	}
+	return profile, nil
 }
 
 func (s Store) WindowsProfiles(ctx context.Context) ([]WindowsProfile, error) {

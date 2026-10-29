@@ -65,7 +65,7 @@ func main() {
 		defer cancel()
 		_ = httpServer.Shutdown(timeout)
 	}()
-	log.Printf("PXE Control HTTPS listening on %s", *listen)
+	log.Printf("Oh My Boot: Control HTTPS listening on %s", *listen)
 	if err := httpServer.ListenAndServeTLS(*cert, *key); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}

@@ -93,7 +93,7 @@ func main() {
 			log.Printf("Boot control API failed: %v", err)
 		}
 	}()
-	log.Printf("PXE Boot listening on %s", *listen)
+	log.Printf("Oh My Boot: Boot listening on %s", *listen)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Printf("HTTP server failed: %v", err)
 	}

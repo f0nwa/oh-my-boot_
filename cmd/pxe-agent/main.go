@@ -70,7 +70,7 @@ func main() {
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
 	}()
-	log.Printf("PXE Network Agent listening on %s", *socket)
+	log.Printf("Oh My Boot: Agent listening on %s", *socket)
 	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}

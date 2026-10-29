@@ -171,7 +171,6 @@ var englishMessages = map[string]string{
 	"Время": "Time",
 	"Все действия, включая сеть, пользователей и роли": "All actions, including network, users and roles",
 	"Вход в Oh My Boot": "Sign in to Oh My Boot",
-	"Сетевая загрузка, установка и обслуживание компьютеров": "Network boot, OS deployment, and machine maintenance",
 	"Выберите SMB-хранилище и существующую папку. Файл появится в каталоге после проверки. Публикация в PXE-меню выполняется отдельно.": "Choose an SMB storage and an existing folder. The file appears in the catalog after it is checked. Publishing to the PXE menu is a separate step.",
 	"Выберите XML-файл":     "Choose an XML file",
 	"Выйти":                 "Sign out",

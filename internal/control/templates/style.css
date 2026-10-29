@@ -32,9 +32,6 @@ a{color:var(--text)}a:hover{color:var(--text-2)}
 .theme-form button{width:32px;height:32px;min-height:32px;padding:0;margin:0;border-color:var(--line);color:var(--text-2)}
 .theme-form button:hover{color:var(--text)}
 .theme-form svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.theme-form .theme-to-light,:root[data-theme=dark] .theme-form .theme-to-dark{display:none}
-:root[data-theme=dark] .theme-form .theme-to-light{display:inline-flex}
-@media (prefers-color-scheme:dark){:root[data-theme=system] .theme-form .theme-to-dark{display:none}:root[data-theme=system] .theme-form .theme-to-light{display:inline-flex}}
 .nav-check,.nav-toggle-label{display:none}
 
 /* ⌘K search */

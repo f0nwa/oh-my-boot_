@@ -20,11 +20,17 @@ func (s *themeStore) SetUserTheme(_ context.Context, _ int64, theme string) erro
 }
 
 func TestPagesCarryUserTheme(t *testing.T) {
-	for _, tc := range []struct{ theme, want string }{{"dark", "dark"}, {"light", "light"}, {"system", "system"}, {"", "system"}, {"blue", "system"}} {
+	for _, tc := range []struct{ theme, current, next, label string }{
+		{"dark", "dark", "system", "Сейчас тёмная тема. Включить как в системе"},
+		{"light", "light", "dark", "Сейчас светлая тема. Включить тёмную"},
+		{"system", "system", "light", "Сейчас как в системе. Включить светлую"},
+		{"", "system", "light", "Сейчас как в системе. Включить светлую"},
+		{"blue", "system", "light", "Сейчас как в системе. Включить светлую"},
+	} {
 		res := httptest.NewRecorder()
 		render(res, "account", pageData{Info: requestContext{User: User{ID: 1, Username: "admin", Role: "admin", Theme: tc.theme}, CSRF: "x", Path: "/account"}})
 		body := res.Body.String()
-		for _, want := range []string{`data-theme="` + tc.want + `"`, `action="/settings/theme"`, `name="theme" value="dark"`, `name="theme" value="light"`} {
+		for _, want := range []string{`data-theme="` + tc.current + `"`, `action="/settings/theme"`, `name="theme" value="` + tc.next + `"`, `aria-label="` + tc.label + `"`} {
 			if !strings.Contains(body, want) {
 				t.Errorf("theme %q: page lacks %q", tc.theme, want)
 			}
@@ -32,7 +38,7 @@ func TestPagesCarryUserTheme(t *testing.T) {
 	}
 }
 
-func TestThemeButtonsInHeaderBesideAccount(t *testing.T) {
+func TestThemeButtonInHeaderBesideAccount(t *testing.T) {
 	for _, page := range []string{"account", "installations"} {
 		res := httptest.NewRecorder()
 		render(res, page, pageData{Info: requestContext{User: User{ID: 1, Username: "admin", Role: "admin", Theme: "dark"}, CSRF: "token", Path: "/installations"}})
@@ -41,15 +47,15 @@ func TestThemeButtonsInHeaderBesideAccount(t *testing.T) {
 		account := strings.Index(body, `class="account"`)
 		logout := strings.Index(body, `action="/logout"`)
 		if selector < 0 || account < selector || logout < account {
-			t.Errorf("%s: theme buttons must precede account and logout in the header", page)
+			t.Errorf("%s: theme button must precede account and logout in the header", page)
 		}
-		for _, want := range []string{`name="theme" value="dark"`, `name="theme" value="light"`, `aria-label="Включить тёмную тему"`, `aria-label="Включить светлую тему"`, `name="return" value="/installations"`, `class="theme-moon"`} {
+		for _, want := range []string{`name="theme" value="system"`, `aria-label="Сейчас тёмная тема. Включить как в системе"`, `name="return" value="/installations"`, `class="theme-moon"`} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: header lacks %q", page, want)
 			}
 		}
-		if strings.Contains(body, `<select name="theme"`) || strings.Contains(body, `src="/assets/theme.js"`) {
-			t.Errorf("%s: former theme dropdown or script remains", page)
+		if strings.Count(body, `class="theme-cycle"`) != 1 || strings.Contains(body, `<select name="theme"`) {
+			t.Errorf("%s: expected one theme button and no dropdown", page)
 		}
 		if page == "account" && strings.Contains(body, `<h2>Оформление</h2>`) {
 			t.Error("account page still has the former theme section")
@@ -66,11 +72,15 @@ func TestLoginPageFollowsSystemTheme(t *testing.T) {
 }
 
 func TestThemeChoiceIsTranslated(t *testing.T) {
-	res := httptest.NewRecorder()
-	render(res, "account", pageData{Info: requestContext{User: User{ID: 1, Role: "admin", Language: langEN}, CSRF: "x"}})
-	for _, want := range []string{"Switch to dark theme", "Switch to light theme"} {
-		if !strings.Contains(res.Body.String(), want) {
-			t.Errorf("English header lacks %q", want)
+	for _, tc := range []struct{ theme, want string }{
+		{"system", "Using system theme. Switch to light theme"},
+		{"light", "Using light theme. Switch to dark theme"},
+		{"dark", "Using dark theme. Follow system theme"},
+	} {
+		res := httptest.NewRecorder()
+		render(res, "account", pageData{Info: requestContext{User: User{ID: 1, Role: "admin", Theme: tc.theme, Language: langEN}, CSRF: "x"}})
+		if !strings.Contains(res.Body.String(), tc.want) {
+			t.Errorf("English header for theme %q lacks %q", tc.theme, tc.want)
 		}
 	}
 }

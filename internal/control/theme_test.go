@@ -24,7 +24,7 @@ func TestPagesCarryUserTheme(t *testing.T) {
 		res := httptest.NewRecorder()
 		render(res, "account", pageData{Info: requestContext{User: User{ID: 1, Username: "admin", Role: "admin", Theme: tc.theme}, CSRF: "x", Path: "/account"}})
 		body := res.Body.String()
-		for _, want := range []string{`data-theme="` + tc.want + `"`, `action="/settings/theme"`, `<option value="` + tc.want + `" selected>`} {
+		for _, want := range []string{`data-theme="` + tc.want + `"`, `action="/settings/theme"`, `name="theme" value="dark"`, `name="theme" value="light"`} {
 			if !strings.Contains(body, want) {
 				t.Errorf("theme %q: page lacks %q", tc.theme, want)
 			}
@@ -32,7 +32,7 @@ func TestPagesCarryUserTheme(t *testing.T) {
 	}
 }
 
-func TestThemeSelectorMovesToHeaderBesideAccount(t *testing.T) {
+func TestThemeButtonsInHeaderBesideAccount(t *testing.T) {
 	for _, page := range []string{"account", "installations"} {
 		res := httptest.NewRecorder()
 		render(res, page, pageData{Info: requestContext{User: User{ID: 1, Username: "admin", Role: "admin", Theme: "dark"}, CSRF: "token", Path: "/installations"}})
@@ -41,12 +41,15 @@ func TestThemeSelectorMovesToHeaderBesideAccount(t *testing.T) {
 		account := strings.Index(body, `class="account"`)
 		logout := strings.Index(body, `action="/logout"`)
 		if selector < 0 || account < selector || logout < account {
-			t.Errorf("%s: theme selector must precede account and logout in the header", page)
+			t.Errorf("%s: theme buttons must precede account and logout in the header", page)
 		}
-		for _, want := range []string{`name="theme"`, `<option value="dark" selected>`, `name="return" value="/installations"`, `src="/assets/theme.js"`} {
+		for _, want := range []string{`name="theme" value="dark"`, `name="theme" value="light"`, `aria-label="Включить тёмную тему"`, `aria-label="Включить светлую тему"`, `name="return" value="/installations"`, `class="theme-moon"`} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: header lacks %q", page, want)
 			}
+		}
+		if strings.Contains(body, `<select name="theme"`) || strings.Contains(body, `src="/assets/theme.js"`) {
+			t.Errorf("%s: former theme dropdown or script remains", page)
 		}
 		if page == "account" && strings.Contains(body, `<h2>Оформление</h2>`) {
 			t.Error("account page still has the former theme section")
@@ -65,7 +68,7 @@ func TestLoginPageFollowsSystemTheme(t *testing.T) {
 func TestThemeChoiceIsTranslated(t *testing.T) {
 	res := httptest.NewRecorder()
 	render(res, "account", pageData{Info: requestContext{User: User{ID: 1, Role: "admin", Language: langEN}, CSRF: "x"}})
-	for _, want := range []string{"Theme", "Same as system", "Light", "Dark"} {
+	for _, want := range []string{"Switch to dark theme", "Switch to light theme"} {
 		if !strings.Contains(res.Body.String(), want) {
 			t.Errorf("English header lacks %q", want)
 		}

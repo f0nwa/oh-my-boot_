@@ -28,10 +28,13 @@ a{color:var(--text)}a:hover{color:var(--text-2)}
 .topbar-end{margin-left:auto;display:flex;align-items:center;gap:8px}
 .account{text-decoration:none;font-weight:500}.account small{font-weight:400;color:var(--muted);margin-left:4px}
 .topbar-end form{margin:0}
-.theme-form{display:flex;align-items:center;gap:4px}
-.theme-form select{width:auto;max-width:125px;min-height:30px;padding:3px 6px;font-size:12px;background:var(--panel)}
-.theme-form button{min-height:30px;padding:0 7px;margin:0;font-size:12px}
-.theme-form.theme-ready button{display:none}
+.theme-form{display:flex;align-items:center}
+.theme-form button{width:32px;height:32px;min-height:32px;padding:0;margin:0;border-color:var(--line);color:var(--text-2)}
+.theme-form button:hover{color:var(--text)}
+.theme-form svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.theme-form .theme-to-light,:root[data-theme=dark] .theme-form .theme-to-dark{display:none}
+:root[data-theme=dark] .theme-form .theme-to-light{display:inline-flex}
+@media (prefers-color-scheme:dark){:root[data-theme=system] .theme-form .theme-to-dark{display:none}:root[data-theme=system] .theme-form .theme-to-light{display:inline-flex}}
 .nav-check,.nav-toggle-label{display:none}
 
 /* ⌘K search */

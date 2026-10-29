@@ -517,6 +517,8 @@ var englishMessages = map[string]string{
 	"Как в системе":                                "Same as system",
 	"Светлая":                                      "Light",
 	"Тёмная":                                       "Dark",
+	"Включить тёмную тему":                         "Switch to dark theme",
+	"Включить светлую тему":                        "Switch to light theme",
 	"выберите ZIP-файл":                            "choose a ZIP file",
 	"выберите одну папку или один ZIP":             "choose one folder or one ZIP",
 	"ещё не выполнялась":                           "not run yet",

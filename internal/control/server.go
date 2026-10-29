@@ -156,7 +156,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /logout", s.protect("view", s.logout))
 	mux.HandleFunc("POST /settings/language", s.protect("view", s.setLanguage))
 	mux.HandleFunc("POST /settings/theme", s.protect("view", s.setTheme))
-	mux.HandleFunc("GET /assets/theme.js", themeScript)
 	mux.HandleFunc("GET /account", s.protect("view", s.accountPage))
 	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)

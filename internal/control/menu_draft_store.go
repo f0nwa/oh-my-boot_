@@ -9,7 +9,7 @@ import (
 // MenuDraft returns the stored draft; ok is false when none was saved yet.
 func (s Store) MenuDraft(ctx context.Context) (MenuDraft, bool, error) {
 	var d MenuDraft
-	err := s.Pool.QueryRow(ctx, `SELECT title,label,message,ubuntu,ubuntu_folder FROM menu_draft WHERE id=1`).Scan(&d.Title, &d.Label, &d.Message, &d.Ubuntu, &d.UbuntuFolder)
+	err := s.Pool.QueryRow(ctx, `SELECT title,label,message,ubuntu,ubuntu_folder,local_timeout,NOT local_timer FROM menu_draft WHERE id=1`).Scan(&d.Title, &d.Label, &d.Message, &d.Ubuntu, &d.UbuntuFolder, &d.LocalTimeout, &d.NoLocalTimer)
 	if err == pgx.ErrNoRows {
 		return MenuDraft{}, false, nil
 	}
@@ -38,9 +38,9 @@ func (s Store) SaveMenuDraft(ctx context.Context, d MenuDraft) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `INSERT INTO menu_draft (id,title,label,message,ubuntu,ubuntu_folder,updated_at) VALUES (1,$1,$2,$3,$4,$5,now())
-		ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title,label=EXCLUDED.label,message=EXCLUDED.message,ubuntu=EXCLUDED.ubuntu,ubuntu_folder=EXCLUDED.ubuntu_folder,updated_at=now()`,
-		d.Title, d.Label, d.Message, d.Ubuntu, d.UbuntuFolder); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO menu_draft (id,title,label,message,ubuntu,ubuntu_folder,local_timeout,local_timer,updated_at) VALUES (1,$1,$2,$3,$4,$5,$6,$7,now())
+		ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title,label=EXCLUDED.label,message=EXCLUDED.message,ubuntu=EXCLUDED.ubuntu,ubuntu_folder=EXCLUDED.ubuntu_folder,local_timeout=EXCLUDED.local_timeout,local_timer=EXCLUDED.local_timer,updated_at=now()`,
+		d.Title, d.Label, d.Message, d.Ubuntu, d.UbuntuFolder, d.LocalTimeoutSeconds(), d.LocalTimerOn()); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM menu_draft_items`); err != nil {

@@ -414,3 +414,7 @@ Rollout 29.10.2026, 16:01–16:28: replaced `pxe-control`, `pxe-agent`, `pxe-age
 ## Discarding draft changes, 29.10.2026
 
 The draft bar has **Discard changes** next to **Publish menu**. It opens a confirmation, **Discard all changes**: the draft becomes the published version again and machines see no change, since nothing is published. Operators and administrators can do this (`POST /menu/discard` with `confirm=yes`); it is audited as `menu.draft.discard`.
+
+## The “Boot local disk” timer, 29.10.2026
+
+**Menu settings** control whether the main screen boots the local disk by itself: the checkbox **Boot from the local disk if nothing is chosen** and **After how many seconds** (1–3600, default 10). Unchecked, the menu waits for a choice; “Boot local disk” is only preselected (`choose --default local` without `--timeout`) and the countdown next to it disappears, in the preview as well. Like the other settings, the change goes into the draft and reaches machines only when published; the value is also read from published versions, so a rollback restores it. The rollout needs a [migration](../../deploy/sql/2026-10-29-menu-local-timer.sql): two columns, `menu_draft.local_timeout` and `menu_draft.local_timer`; the existing draft gets 10 seconds.

@@ -250,7 +250,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 		case item.Back:
 			row.Href = "/menu?screen=" + item.Target
 		case item.Target == "local" && screen.Label == screens[0].Label:
-			row.Hint = "(10)"
+			row.Hint = localDiskHint(string(script))
 		case !item.Fixed:
 			row.Danger = item.Hint == "!! WIPES DISK"
 		}

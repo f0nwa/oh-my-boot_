@@ -118,10 +118,6 @@ var menuFooter = "ip ${netX/ip}" + menuPad(4) + "Enter: boot" + menuPad(4) + "Es
 // menuScreenRows is how many list rows iPXE shows on an 80x25 screen.
 const menuScreenRows = 20
 
-// menuTimeoutMS is how long the main screen waits before booting the local
-// disk.
-const menuTimeoutMS = "10000"
-
 // menuItemWidth is how wide a menu line may be on the narrowest screen the
 // menu meets. iPXE's framebuffer console draws 9-pixel character cells, so
 // 640x480 gives 71 columns, and a menu line holds the width less two columns
@@ -202,6 +198,12 @@ func menuFolderPaths(script string) map[string]string {
 }
 
 func buildMenuTree(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string) ([]byte, error) {
+	return buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase, folders, defaultLocalTimeout)
+}
+
+// buildMenuTreeTimed is buildMenuTree with the wait before the main screen
+// boots the local disk, in seconds; 0 waits for a choice.
+func buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string, localTimer int) ([]byte, error) {
 	if !safeMenuText(title, 80) || !safeMenuText(diagnosticLabel, 80) || !safeMenuText(diagnosticMessage, 120) {
 		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
 	}
@@ -209,10 +211,17 @@ func buildMenuTree(title, diagnosticLabel, diagnosticMessage, ubuntuBase string,
 	if ubuntuBase != "" {
 		profiles = append(profiles, menuProfile{id: "ubuntu", title: "Ubuntu Desktop 26.04.1", base: ubuntuBase})
 	}
-	return buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage, profiles, folders)
+	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, localTimer)
 }
 
 func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string) ([]byte, error) {
+	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, defaultLocalTimeout)
+}
+
+func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string, localTimer int) ([]byte, error) {
+	if localTimer < 0 || localTimer > maxLocalTimeout {
+		return nil, fmt.Errorf("invalid wait before booting the local disk")
+	}
 	if !safeMenuText(title, 80) || !safeMenuText(diagnosticLabel, 80) || !safeMenuText(diagnosticMessage, 120) {
 		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
 	}
@@ -283,7 +292,7 @@ func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string,
 		out.WriteString(menuDriverMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
 	}
 	out.WriteString(menuTheme)
-	writeMenuNode(&out, root, title, diagnosticLabel)
+	writeMenuNode(&out, root, title, diagnosticLabel, localTimer)
 	out.WriteString(":diagnostics\n" + "echo " + diagnosticMessage + "\n" + "sleep 3\n" + "goto local\n")
 	for _, profile := range profiles {
 		writeProfileBoot(&out, profile)
@@ -292,7 +301,7 @@ func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string,
 	return []byte(out.String()), nil
 }
 
-func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLabel string) {
+func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLabel string, localTimer int) {
 	out.WriteString(":" + node.label + "\n")
 	menuTitle := title
 	if node.path != "" {
@@ -339,13 +348,17 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 	if node.parent == nil {
 		// Untouched, the machine goes on to its own disk: after Windows
 		// Setup reboots it must not wait in the menu.
-		out.WriteString("choose --default local --timeout " + menuTimeoutMS + " target || goto local\n")
+		if localTimer > 0 {
+			out.WriteString("choose --default local --timeout " + strconv.Itoa(localTimer*1000) + " target || goto local\n")
+		} else {
+			out.WriteString("choose --default local target || goto local\n")
+		}
 	} else {
 		out.WriteString("choose target || goto " + parentLabel + "\n")
 	}
 	out.WriteString("goto ${target} || goto " + parentLabel + "\n")
 	for _, child := range node.children {
-		writeMenuNode(out, child, title, diagnosticLabel)
+		writeMenuNode(out, child, title, diagnosticLabel, localTimer)
 	}
 }
 
@@ -393,4 +406,32 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	case "ubuntu":
 		out.WriteString(ubuntuBootScript(base))
 	}
+}
+
+var menuLocalChoose = regexp.MustCompile(`(?m)^choose --default local(?: --timeout ([0-9]+))? target `)
+
+// menuLocalTimer reads the wait before the main screen boots the local disk
+// from a menu script, in seconds; 0 means it waits for a choice. A script
+// without the main screen's choose line gets the default.
+func menuLocalTimer(script string) int {
+	m := menuLocalChoose.FindStringSubmatch(script)
+	if m == nil {
+		return defaultLocalTimeout
+	}
+	if m[1] == "" {
+		return 0
+	}
+	ms, err := strconv.Atoi(m[1])
+	if err != nil || ms < 1000 {
+		return defaultLocalTimeout
+	}
+	return ms / 1000
+}
+
+// localDiskHint is the countdown the preview shows next to "Boot local disk".
+func localDiskHint(script string) string {
+	if seconds := menuLocalTimer(script); seconds > 0 {
+		return "(" + strconv.Itoa(seconds) + ")"
+	}
+	return ""
 }

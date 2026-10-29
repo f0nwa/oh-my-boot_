@@ -22,10 +22,42 @@ type MenuDraft struct {
 	Title, Label, Message string
 	Ubuntu                bool
 	UbuntuFolder          string
-	Items                 []MenuDraftItem
+	// LocalTimeout is how many seconds the main screen waits before booting
+	// the local disk; 0 means the default. NoLocalTimer makes the menu wait
+	// for a choice instead.
+	LocalTimeout int
+	NoLocalTimer bool
+	Items        []MenuDraftItem
 	// look names the menu design a published version was built with ("" for
 	// versions before the «Пульт» look); a draft always gets the current one.
 	look string
+}
+
+// defaultLocalTimeout is the wait before booting the local disk, in seconds,
+// for drafts and versions that do not set one.
+const defaultLocalTimeout = 10
+
+// maxLocalTimeout is the longest wait the settings accept, in seconds.
+const maxLocalTimeout = 3600
+
+// LocalTimerOn reports whether the main screen boots the local disk by itself.
+func (d MenuDraft) LocalTimerOn() bool { return !d.NoLocalTimer }
+
+// LocalTimeoutSeconds is the wait before booting the local disk; with the
+// timer off it is the value the settings form offers when it is turned on.
+func (d MenuDraft) LocalTimeoutSeconds() int {
+	if d.LocalTimeout <= 0 {
+		return defaultLocalTimeout
+	}
+	return d.LocalTimeout
+}
+
+// localTimer is the wait the menu script gets: 0 means no timer.
+func (d MenuDraft) localTimer() int {
+	if d.NoLocalTimer {
+		return 0
+	}
+	return d.LocalTimeoutSeconds()
 }
 
 // menuLook is the design buildMenuTreeWithProfiles draws; the script names
@@ -149,7 +181,7 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 			}
 			ubuntuBase, folders["ubuntu"] = base, d.UbuntuFolder
 		}
-		return buildMenuTree(productMenuTitle, d.Label, d.Message, ubuntuBase, folders)
+		return buildMenuTreeTimed(productMenuTitle, d.Label, d.Message, ubuntuBase, folders, d.localTimer())
 	}
 	base, err := validatedBootURL(baseURL)
 	if err != nil {
@@ -193,7 +225,7 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 			return nil, err
 		}
 	}
-	return buildMenuTreeWithProfiles(productMenuTitle, d.Label, d.Message, entries, folders)
+	return buildMenuTreeWithProfilesTimed(productMenuTitle, d.Label, d.Message, entries, folders, d.localTimer())
 }
 
 var menuItemKey = regexp.MustCompile(`^win(iso|answer|driver)_[0-9]+$`)
@@ -202,6 +234,11 @@ var menuItemKey = regexp.MustCompile(`^win(iso|answer|driver)_[0-9]+$`)
 // Ubuntu entry, and the Windows items in the order they appear.
 func draftFromVersion(v MenuVersion) MenuDraft {
 	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, look: scriptLook(v.Script)}
+	if seconds := menuLocalTimer(v.Script); seconds == 0 {
+		d.NoLocalTimer = true
+	} else {
+		d.LocalTimeout = seconds
+	}
 	folders := menuFolderPaths(v.Script)
 	for _, line := range strings.Split(v.Script, "\n") {
 		fields := strings.SplitN(line, " ", 3)
@@ -237,7 +274,7 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 	if active.look != draft.look {
 		changes = append(changes, MenuChange{Kind: "look"})
 	}
-	if active.Title != draft.Title || active.Label != draft.Label || active.Message != draft.Message || active.Ubuntu != draft.Ubuntu || active.UbuntuFolder != draft.UbuntuFolder {
+	if active.Title != draft.Title || active.Label != draft.Label || active.Message != draft.Message || active.Ubuntu != draft.Ubuntu || active.UbuntuFolder != draft.UbuntuFolder || active.localTimer() != draft.localTimer() {
 		changes = append(changes, MenuChange{Kind: "settings"})
 	}
 	activeByKey := map[string]MenuDraftItem{}

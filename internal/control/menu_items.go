@@ -3,6 +3,7 @@ package control
 import (
 	_ "embed"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -107,6 +108,15 @@ func (s *Server) menuSettings(w http.ResponseWriter, r *http.Request) {
 		if validateMenuFolder(folder) != nil {
 			return draftError("Недопустимый каталог в меню")
 		}
+		timerOn := r.FormValue("local_timer") == "on"
+		seconds, err := strconv.Atoi(strings.TrimSpace(r.FormValue("local_timeout")))
+		if timerOn && (err != nil || seconds < 1 || seconds > maxLocalTimeout) {
+			return draftError("Время до загрузки с диска — от 1 до 3600 секунд")
+		}
+		if err == nil && seconds >= 1 && seconds <= maxLocalTimeout {
+			d.LocalTimeout = seconds
+		}
+		d.NoLocalTimer = !timerOn
 		d.Title, d.Label, d.Message, d.Ubuntu, d.UbuntuFolder = productMenuTitle, label, message, r.FormValue("ubuntu") == "on", folder
 		return nil
 	})

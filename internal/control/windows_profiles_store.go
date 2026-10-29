@@ -71,13 +71,24 @@ func (s Store) SetWindowsProfileResult(ctx context.Context, id int64, state, ins
 	return nil
 }
 
+// DeleteWindowsProfile removes the ISO and its common profile together. The
+// common profile's foreign keys reject deletion while installations use it;
+// library references to the ISO likewise roll the whole transaction back.
 func (s Store) DeleteWindowsProfile(ctx context.Context, id int64) error {
-	tag, err := s.Pool.Exec(ctx, `DELETE FROM windows_profiles WHERE id=$1`, id)
+	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+	defer tx.Rollback(ctx)
+	var profileID int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM windows_profiles WHERE id=$1 FOR UPDATE`, id).Scan(&profileID); err != nil {
+		return err
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `DELETE FROM boot_profiles b USING windows_boot_profiles w WHERE b.id=w.boot_profile_id AND w.windows_profile_id=$1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM windows_profiles WHERE id=$1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

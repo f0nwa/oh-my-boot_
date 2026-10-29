@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -280,4 +282,78 @@ func TestInstallationModelWindowsCreationAtomic(t *testing.T) {
 	if err := store.Pool.QueryRow(ctx, `SELECT count(*) FROM boot_profiles`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("partial common profile persisted: count=%d err=%v", count, err)
 	}
+}
+
+// Deletion must release an unused profile's mandatory common link without
+// weakening installation/library references or leaving partial deletes.
+func TestInstallationModelWindowsDeletion(t *testing.T) {
+	ctx := context.Background()
+	store := installationTestStore(t)
+	create := func(t *testing.T, title string) (WindowsProfile, int64) {
+		t.Helper()
+		profile, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 1, Path: title + ".iso", StorageRoot: "/iso", Size: 100, Modified: time.Now(), Title: title})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var bootID int64
+		if err := store.Pool.QueryRow(ctx, `SELECT boot_profile_id FROM windows_boot_profiles WHERE windows_profile_id=$1`, profile.ID).Scan(&bootID); err != nil {
+			t.Fatal(err)
+		}
+		return profile, bootID
+	}
+	assertRows := func(t *testing.T, profileID, bootID int64, want int) {
+		t.Helper()
+		for _, query := range []string{
+			`SELECT count(*) FROM windows_profiles WHERE id=$1`,
+			`SELECT count(*) FROM windows_boot_profiles WHERE windows_profile_id=$1`,
+		} {
+			var count int
+			if err := store.Pool.QueryRow(ctx, query, profileID).Scan(&count); err != nil || count != want {
+				t.Fatalf("profile rows=%d want=%d err=%v query=%s", count, want, err, query)
+			}
+		}
+		var count int
+		if err := store.Pool.QueryRow(ctx, `SELECT count(*) FROM boot_profiles WHERE id=$1`, bootID).Scan(&count); err != nil || count != want {
+			t.Fatalf("common profile rows=%d want=%d err=%v", count, want, err)
+		}
+	}
+	t.Run("unused profile removes all profile rows", func(t *testing.T) {
+		profile, bootID := create(t, "Unused")
+		if err := store.DeleteWindowsProfile(ctx, profile.ID); err != nil {
+			t.Fatalf("delete unused Windows profile: %v", err)
+		}
+		assertRows(t, profile.ID, bootID, 0)
+		if err := store.DeleteWindowsProfile(ctx, profile.ID); !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatalf("delete missing profile = %v, want ErrNoRows", err)
+		}
+	})
+	t.Run("installation prevents profile deletion", func(t *testing.T) {
+		profile, bootID := create(t, "InUse")
+		installation, err := store.CreateInstallation(ctx, Installation{BootProfileID: bootID, Title: "Manual"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.DeleteWindowsProfile(ctx, profile.ID); err == nil {
+			t.Fatal("deleted a profile referenced by an installation")
+		}
+		assertRows(t, profile.ID, bootID, 1)
+		var count int
+		if err := store.Pool.QueryRow(ctx, `SELECT count(*) FROM installations WHERE id=$1 AND boot_profile_id=$2`, installation.ID, bootID).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("installation lost: count=%d err=%v", count, err)
+		}
+	})
+	t.Run("library reference rolls back common profile deletion", func(t *testing.T) {
+		profile, bootID := create(t, "WithXML")
+		answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: profile.ID, Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.DeleteWindowsProfile(ctx, profile.ID); err == nil {
+			t.Fatal("deleted a profile referenced by a library answer")
+		}
+		assertRows(t, profile.ID, bootID, 1)
+		if _, err := store.WindowsAnswer(ctx, answer.ID); err != nil {
+			t.Fatalf("library answer lost: %v", err)
+		}
+	})
 }

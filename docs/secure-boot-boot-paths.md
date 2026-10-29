@@ -2,13 +2,13 @@
 
 Для проверки альтернативной цепочки Debian shim → сетевой GRUB → Debian Installer см. [инструкцию для тестовой среды](grub-secure-boot-test.md). В сетевых настройках переключение действует сразу для всех UEFI x64 клиентов; это отдельное тестовое меню.
 
-Зафиксировано 28 октября 2026 года. Эта заметка сопоставляет **реализованные цепочки** PXE Platform и стенда из переписки с **вариантами, которые пока требуют проверки**. Схемы показывают порядок запуска, а не обещают совместимость с любым ноутбуком. Кто проверяет подпись на каждом этапе, каким сертификатом и что означает отказ, объясняет [схема доверия Secure Boot](secure-boot.md#кто-принимает-решение-о-запуске).
+Зафиксировано 28 октября 2026 года. Эта заметка сопоставляет **реализованные цепочки** Oh My Boot и стенда из переписки с **вариантами, которые пока требуют проверки**. Схемы показывают порядок запуска, а не обещают совместимость с любым ноутбуком. Кто проверяет подпись на каждом этапе, каким сертификатом и что означает отказ, объясняет [схема доверия Secure Boot](secure-boot.md#кто-принимает-решение-о-запуске).
 
 ## Термины и первая проверка
 
 **PXE** здесь означает начало сетевой загрузки через прошивку и получение имени первого загрузочного файла. **TFTP** и **HTTP** передают файлы; **iPXE** и **GRUB** исполняют меню. Фраза «без PXE» в переписке описывает отсутствие программы *iPXE*: получение первого EFI-файла по сети всё равно остаётся PXE-загрузкой. Прошивка может получить этот файл по TFTP, но Secure Boot решает, разрешено ли **его выполнить**, по базе доверенных подписей `db`. [Microsoft: ключи Secure Boot](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-secure-boot-key-creation-and-management-guidance?view=windows-11), [Microsoft: процесс PXE-загрузки](https://learn.microsoft.com/en-us/troubleshoot/mem/configmgr/os-deployment/understand-pxe-boot).
 
-Схемы ниже относятся к UEFI x64 с включённым Secure Boot. Если Secure Boot выключен, прошивка не проверяет эти подписи, но сеть и загрузочные файлы всё равно должны работать. В Legacy BIOS Secure Boot нет; PXE Platform отдаёт ему `undionly.kpxe`. [Конфигурация PXE Platform](../internal/network/dnsmasq.go).
+Схемы ниже относятся к UEFI x64 с включённым Secure Boot. Если Secure Boot выключен, прошивка не проверяет эти подписи, но сеть и загрузочные файлы всё равно должны работать. В Legacy BIOS Secure Boot нет; Oh My Boot отдаёт ему `undionly.kpxe`. [Конфигурация Oh My Boot](../internal/network/dnsmasq.go).
 
 ```mermaid
 flowchart TD
@@ -21,7 +21,7 @@ flowchart TD
 
 Ключ **Microsoft Corporation UEFI CA 2011** и его преемник **Microsoft UEFI CA 2023** предназначены для сторонних UEFI-программ; ключи **Microsoft Windows Production PCA 2011** и **Windows UEFI CA 2023** — для загрузки Windows. Microsoft описывает конфигурацию прошивки, допускающую только Windows, без сторонних CA. Если конкретный ноутбук не доверяет ни одному CA, которым подписаны доступные shim, замена iPXE на Debian GRUB ничего не меняет: отказ произойдёт **раньше запуска GRUB**. Проверять надо фактический набор ключей конкретной модели и подпись конкретного EFI-файла. [Microsoft: содержимое `db` и варианты для Windows-only устройств](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-secure-boot-key-creation-and-management-guidance?view=windows-11).
 
-## 1. Текущий путь PXE Platform
+## 1. Текущий путь Oh My Boot
 
 Для UEFI [конфигурация DHCP/PXE](../internal/network/dnsmasq.go) выдаёт `ipxeboot/x86_64-sb/ipxe-shim.efi`. Этот подписанный shim загружает парный `ipxe.efi`; затем iPXE получает меню и файлы по HTTP. Такую последовательность описывает сам проект iPXE. Пункт Windows в [генераторе меню](../internal/control/menu_tree.go) загружает `wimboot`, `boot.wim` и стартовые файлы WinPE. Пункт Ubuntu в [генераторе меню](../internal/control/menu.go) загружает ядро и `initrd`, затем командой iPXE `shim` подключает подписанный Ubuntu shim для проверки загрузки. **GRUB не показывает текущее меню Ubuntu.** [iPXE: Secure Boot](https://ipxe.org/secboot), [iPXE: команда `shim`](https://ipxe.org/cmd/shim), [iPXE: `wimboot`](https://ipxe.org/wimboot).
 
@@ -31,7 +31,7 @@ flowchart TD
 flowchart TD
     U[UEFI прошивка] -->|TFTP| S[iPXE shim]
     S --> I[iPXE]
-    I -->|HTTP| M[Меню PXE Platform]
+    I -->|HTTP| M[Меню Oh My Boot]
     M -->|Windows| W[wimboot + boot.wim<br/>и стартовые файлы WinPE]
     W --> P[WinPE]
     P -->|SMB| WS[Файлы установки Windows]
@@ -63,7 +63,7 @@ flowchart TD
 
 Команда GRUB `chainloader` умеет передать управление EFI-программе. Это **не подтверждает**, что Windows Boot Manager, запущенный из сетевого GRUB, найдёт нужные BCD, `boot.sdi` и `boot.wim` или сохранит рабочий сетевой контекст. Для такого пункта потребуется отдельный прототип на конкретной подписанной сборке GRUB и проверка Secure Boot, загрузки WinPE и доступа к SMB. Нынешний пункт `wimboot` нельзя перенести в `grub.cfg` как текст. [GNU GRUB: `chainloader`](https://www.gnu.org/software/grub/manual/grub/html_node/chainloader.html), [Microsoft: загрузочные файлы WinPE](https://learn.microsoft.com/en-us/troubleshoot/mem/configmgr/os-deployment/understand-pxe-boot), [iPXE: `wimboot`](https://ipxe.org/wimboot).
 
-Для прошивки, доверяющей только ключам Windows, отдельная гипотеза — отдавать первым файлом подписанную **сетевую** EFI-программу Windows (`wdsmgfw.efi` в схеме WDS/Configuration Manager), затем штатные загрузочные файлы и подготовленный WinPE. В документации Microsoft этот сетевой путь существует, но **PXE Platform его пока не реализует**; нельзя считать, что достаточно подменить `ipxe-shim.efi` на произвольный `bootmgfw.efi`. После WinPE установщик может читать файлы с SMB, как в текущем проекте. [Microsoft: UEFI network boot programs и WinPE](https://learn.microsoft.com/en-us/troubleshoot/mem/configmgr/os-deployment/understand-pxe-boot), [Microsoft: Windows Setup с сетевого ресурса](https://learn.microsoft.com/en-us/windows/deployment/wds-boot-support).
+Для прошивки, доверяющей только ключам Windows, отдельная гипотеза — отдавать первым файлом подписанную **сетевую** EFI-программу Windows (`wdsmgfw.efi` в схеме WDS/Configuration Manager), затем штатные загрузочные файлы и подготовленный WinPE. В документации Microsoft этот сетевой путь существует, но **Oh My Boot его пока не реализует**; нельзя считать, что достаточно подменить `ipxe-shim.efi` на произвольный `bootmgfw.efi`. После WinPE установщик может читать файлы с SMB, как в текущем проекте. [Microsoft: UEFI network boot programs и WinPE](https://learn.microsoft.com/en-us/troubleshoot/mem/configmgr/os-deployment/understand-pxe-boot), [Microsoft: Windows Setup с сетевого ресурса](https://learn.microsoft.com/en-us/windows/deployment/wds-boot-support).
 
 ```mermaid
 flowchart TD
@@ -76,15 +76,15 @@ flowchart TD
     X -.-> B
 ```
 
-Пунктирные стрелки означают **ещё не проверенный в PXE Platform сценарий**. Для Windows 11 Microsoft отдельно ограничивает запуск Windows Setup в режиме WDS из обычного `boot.wim` установочного ISO; подготовленный WinPE и запуск Setup с сетевого ресурса остаются поддерживаемым направлением. Это ограничение нельзя автоматически переносить на текущий сценарий проекта с `wimboot` и собственными стартовыми файлами. [Microsoft: поддержка WDS `boot.wim`](https://learn.microsoft.com/en-us/windows/deployment/wds-boot-support).
+Пунктирные стрелки означают **ещё не проверенный в Oh My Boot сценарий**. Для Windows 11 Microsoft отдельно ограничивает запуск Windows Setup в режиме WDS из обычного `boot.wim` установочного ISO; подготовленный WinPE и запуск Setup с сетевого ресурса остаются поддерживаемым направлением. Это ограничение нельзя автоматически переносить на текущий сценарий проекта с `wimboot` и собственными стартовыми файлами. [Microsoft: поддержка WDS `boot.wim`](https://learn.microsoft.com/en-us/windows/deployment/wds-boot-support).
 
 ## Что выбрать для проверки
 
 | Сценарий | Что подтверждено | Что ещё нужно проверить |
 |---|---|---|
-| iPXE → Windows/Ubuntu | Реализован; тестовые ВМ в PXE Platform | Физические ноутбуки и их сетевые адаптеры |
+| iPXE → Windows/Ubuntu | Реализован; тестовые ВМ в Oh My Boot | Физические ноутбуки и их сетевые адаптеры |
 | Debian shim → GRUB → Debian Live | Debian Live и GRUB на одном Dell с Secure Boot; состав бинарных файлов следует из переписки | Нужные модели Lenovo; состав их ключей Secure Boot; подписи файлов стенда |
 | Debian shim → GRUB → Windows | Возможность `chainloader` как механизма | Весь сетевой путь до WinPE и SMB; в переписке результата нет |
-| Загрузчик Windows → WinPE напрямую | Описан Microsoft для сетевого развёртывания | Реализация в PXE Platform и тест на Windows-only прошивке |
+| Загрузчик Windows → WinPE напрямую | Описан Microsoft для сетевого развёртывания | Реализация в Oh My Boot и тест на Windows-only прошивке |
 
 Если **первый EFI-файл отвергнут прошивкой**, менять программу меню бесполезно: надо установить причину по `db`/`dbx` и подписи файла. Если shim прошёл, но iPXE теряет сеть, GRUB может быть полезным альтернативным маршрутом; это отдельная аппаратная проверка, а не гарантия. [Microsoft: Secure Boot `db`/`dbx`](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-secure-boot-key-creation-and-management-guidance?view=windows-11), [iPXE: варианты сетевых драйверов](https://ipxe.org/secboot).

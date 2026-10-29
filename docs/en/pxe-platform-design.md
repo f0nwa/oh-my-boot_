@@ -1,5 +1,7 @@
 # PXE Platform: overall design
 
+> Written before 29 October 2026, when the product was called PXE Platform; it is now **Oh My Boot**. The text is kept as written at the time.
+
 [Русская версия](../superpowers/specs/2026-10-15-pxe-platform-design.md)
 
 Date: 15 October 2026.

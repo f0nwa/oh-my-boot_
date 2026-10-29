@@ -239,7 +239,7 @@ Rollout 23.10.2026, 13:16: replaced `pxe-agent` (SHA-256 `acc66103…`), `pxe-co
 The menu a machine sees is now drawn in the admin interface's style (variant 2 of the canvas mockups):
 
 - colours: grey text on black; the chosen line bright white on amber (brown in text mode); separators and the key line amber. They are set by `cpair` commands at the top of the script; a loader without that command keeps its own colours and boots as before;
-- every screen title reads `PXE Platform  |  <MAC>  |  UEFI/BIOS`; iPXE fills in the MAC and firmware on the machine itself;
+- every screen title reads `oh my boot_  |  <MAC>  |  UEFI/BIOS` (until 29.10.2026 it was `PXE Platform` and could be edited in the menu settings); iPXE fills in the MAC and firmware on the machine itself;
 - a hint at the right edge of an item: `!! WIPES DISK` for an answer file that wipes the disk, `auto install` for other answer files, the driver list for WinPE builds, and `>` for folders;
 - on the main screen “Boot local disk” is the default and boots by itself after 10 seconds (the row shows the countdown), so a network-first machine no longer waits in the menu after Windows Setup reboots;
 - the last row of every screen is `ip <machine IP>    Enter: boot    Esc: back`.
@@ -400,3 +400,11 @@ Fixes after review, 26.10.2026 21:05 (`pxe-agent` only, SHA-256 `c72af814…`): 
 File dates in the archive, 27.10.2026 00:24: files from the ISO keep their date, `boot.wim` and `README.txt` get the build time (all were 1980 before). `pxe-agent` only, `a9f8f632…`, previous file `pxe-agent.bak-202610270024`; the archive cache was cleared and rebuilds on download.
 
 Audit of a cancelled download, 27.10.2026: the `uefica-usb.download|error` row is written even when the browser cancels the download (the cancelled request context used to lose it). `pxe-control` only.
+
+## The Oh My Boot name, 29.10.2026
+
+The product is called **Oh My Boot**. The browser tab shows “Oh My Boot” and an icon; the header shows the “o_” mark and the `oh my boot_` wordmark; the sign-in page reads “Sign in to Oh My Boot” with a one-line description.
+
+The boot menu title is no longer configurable: it is always `oh my boot_`, and `oh my boot_ / <folder>` on nested screens. The “Title” field is gone from the menu settings, and a `title` field sent directly to the server is ignored. After Control is updated, the draft gets the new name at once and the draft bar shows a settings change; machines keep the previous menu until it is published. Published versions and rollback keep their original titles. The default diagnostic message is now `Oh My Boot network boot is ready`; a custom message is left as it is.
+
+WinPE messages start with `Oh My Boot:`. Windows profiles prepared earlier keep the old messages until the profile is prepared again or rebuilt with drivers. Program, service and directory names (`pxe-control`, `/etc/pxe-platform` and so on) are unchanged. Details (in Russian): [stage 4 summary](../brand/2026-10-29-stage-4-visible-name.md).

@@ -1,12 +1,35 @@
-# PXE Platform
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo/omb-logo-dark.svg">
+    <img src="docs/brand/logo/omb-logo-light.svg" alt="Oh My Boot" width="420">
+  </picture>
+</p>
 
-PXE Platform serves a network boot menu for BIOS and UEFI clients from an isolated Linux server. It supports full DHCP and proxy-DHCP, signed iPXE boot files for UEFI Secure Boot, boot events, and an HTTPS administration page with users and roles.
+# Oh My Boot
 
-The Images service catalogs ISO files on multiple storage locations. Administrators can connect SMB shares, upload ISO files into an existing folder, prepare supported Windows x64 profiles, and publish selected profiles in a folder-based PXE menu. One Windows ISO can have several independent `autounattend.xml` scenarios alongside its manual installer entry. Ubuntu Desktop has a separate live-boot profile. Source ISOs remain on their storage; Windows clients receive WinPE startup files over HTTP and installation media over a read-only SMB share.
+**Network boot, OS deployment, and machine maintenance.**
 
-The test VMs have reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 ISO profile also reached its installer and visible disk in SeaBIOS. A Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements prevented installation on that test VM. A Windows 11 installation using a user-supplied answer file completed and booted from disk. A newly uploaded Windows 11 26H2 ISO also reached its installer and disk selection screen. A physical PXE client remains to be checked. Strelec support depends on examining a supplied ISO. Administrators can import WinPE driver packages from a folder or ZIP and build separate Windows menu entries with selected INF files; a Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI. For laptops outside the domain whose BIOS distrusts third-party loaders, the admin page (**Library → USB media**) builds a WinPE USB stick that turns on the Microsoft UEFI CA key in the BIOS of Lenovo, Dell and HP machines after confirmation ([Secure Boot guide](docs/en/secure-boot.md#usb-stick-for-machines-outside-the-domain)). Unused Windows profiles, answer scenarios and driver configurations can be deleted from the admin page while the source ISO stays on its storage. The same driver entry also reached WinPE with network, both disks and the mounted installer in SeaBIOS, where Windows 11 Setup then rejected the VM on its own hardware requirements. Driver entries have not yet been checked on real laptop hardware. The admin interface is available in Russian and English; each user chooses the language and a light, dark or system theme, and changes their own password in **My account**.
+Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an isolated Linux server and manages what that menu offers: Windows and Linux installers, answer files, WinPE drivers, and a log of every machine that booted. It works with full DHCP or alongside an existing DHCP server (proxy-DHCP), boots with UEFI Secure Boot on through signed iPXE files, and is administered from an HTTPS page with users and roles.
 
-Start with the [server installation guide](docs/installation.md) and the [first VM test report](docs/vm-test-2026-10-15.md), both in English. The other guides are available in English and Russian:
+<p align="center"><img src="docs/brand/stage-3/1-text-title.png" alt="The Oh My Boot boot menu in iPXE on a test VM" width="560"></p>
+
+## What works
+
+- **Boot menu** for BIOS and UEFI clients, with folders, a draft that clients do not see until it is published, version history and rollback.
+- **Images:** an ISO catalog across local folders and SMB shares, upload from the browser, prepared Windows x64 profiles. Source ISOs stay on their storage; Windows clients receive WinPE startup files over HTTP and installation media over a read-only SMB share.
+- **Windows installs:** several independent `autounattend.xml` scenarios per ISO next to the manual installer, an answer file editor in the admin page, and WinPE driver packages imported from a folder or ZIP and built into separate menu entries.
+- **Ubuntu Desktop** live boot.
+- **Machines:** every machine that reached the menu, with its model and maker, editable names, CSV import and export, and MAC-prefix rules.
+- **Secure Boot:** a signed iPXE chain, a hint when firmware rejects the loader, an SCCM script and a WinPE USB stick (**Library → USB media**) that turn on the Microsoft UEFI CA key on Lenovo, Dell and HP laptops ([Secure Boot guide](docs/en/secure-boot.md)).
+- **Admin page** in Russian and English, with a light, dark or system theme chosen by each user.
+
+## Tested so far
+
+Test VMs reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and the Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 profile also reached its installer and disk in SeaBIOS; a Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements stopped installation on that VM. A Windows 11 installation with a user-supplied answer file completed and booted from disk, and a newly uploaded Windows 11 26H2 ISO reached disk selection. A Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI and, in SeaBIOS, WinPE with network, both disks and the mounted installer. Physical PXE clients and driver entries on real laptops remain to be checked. Strelec support depends on examining a supplied ISO.
+
+## Guides
+
+Start with the [server installation guide](docs/installation.md) ([offline installation](docs/en/offline-installation.md)) and the [first VM test report](docs/vm-test-2026-10-15.md). The other guides are available in English and Russian:
 
 | Guide | English | Русский |
 | --- | --- | --- |
@@ -21,8 +44,11 @@ Start with the [server installation guide](docs/installation.md) and the [first 
 | Windows 11 WinPE | [EN](docs/en/windows11-winpe-pxe.md) | [RU](docs/windows11-winpe-pxe.md) |
 | WinPE driver test report | [EN](docs/en/winpe-driver-test-2026-10-19.md) | [RU](docs/winpe-driver-test-2026-10-19.md) |
 | Architecture and acceptance plan | [EN](docs/en/pxe-platform-design.md) | [RU](docs/superpowers/specs/2026-10-15-pxe-platform-design.md) |
+| Brand: mark, files and usage rules | — | [RU](docs/brand/README.md) |
 
 Implementation plans and stage specifications in `docs/superpowers` are kept in Russian.
+
+## Development
 
 For local verification:
 
@@ -31,3 +57,11 @@ go test ./...
 go vet ./...
 scripts/fetch-ipxe_test.sh
 ```
+
+## Names
+
+The product was called PXE Platform until 29 October 2026. Component, service and path names (`pxe-control`, `pxe-agent`, `/etc/pxe-platform`, …) still use the `pxe-` prefix; whether to rename them is an open question in the [branding roadmap](docs/roadmaps/2026-10-28-oh-my-boot-branding.md). Historical plans and test reports keep the old name.
+
+## License
+
+The code is released under the [MIT License](LICENSE). The Oh My Boot mark and its files are described in [docs/brand](docs/brand/README.md).

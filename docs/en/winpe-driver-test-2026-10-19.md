@@ -1,5 +1,7 @@
 # WinPE driver catalog check — 19.10.2026
 
+> Written before 29 October 2026, when the product was called PXE Platform; it is now **Oh My Boot**. The text is kept as written at the time.
+
 [Русская версия](../winpe-driver-test-2026-10-19.md)
 
 ## Done

@@ -134,7 +134,15 @@ func (m *DriverManager) CheckConfig(ctx context.Context, req DriverBuildRequest,
 	}
 	scriptSum := sha256.Sum256(script)
 	if hex.EncodeToString(scriptSum[:]) != result.ScriptSHA256 {
-		return fmt.Errorf("WinPE startup script differs")
+		legacy, err := m.legacyDriverScript(req)
+		if err != nil {
+			return err
+		}
+		legacySum := sha256.Sum256(legacy)
+		if hex.EncodeToString(legacySum[:]) != result.ScriptSHA256 {
+			return fmt.Errorf("WinPE startup script differs")
+		}
+		script = legacy
 	}
 	final := filepath.Join(m.ConfigRoot, strconv.FormatInt(req.ConfigID, 10))
 	stored, err := os.ReadFile(filepath.Join(final, "build.json"))
@@ -189,6 +197,16 @@ func (m *DriverManager) validateBuildRequest(req DriverBuildRequest) error {
 }
 
 func (m *DriverManager) driverScript(req DriverBuildRequest) ([]byte, error) {
+	return m.renderDriverScript(req, winpe.RenderDriverStartup)
+}
+
+// legacyDriverScript is the script of configurations built before the
+// rename from PXE Platform; only its messages differ.
+func (m *DriverManager) legacyDriverScript(req DriverBuildRequest) ([]byte, error) {
+	return m.renderDriverScript(req, winpe.RenderDriverStartupLegacy)
+}
+
+func (m *DriverManager) renderDriverScript(req DriverBuildRequest, render func([]byte, []string) ([]byte, error)) ([]byte, error) {
 	root := filepath.Join(m.ProfileRoot, strconv.FormatInt(req.ProfileID, 10))
 	if req.AnswerID > 0 {
 		root = filepath.Join(m.AnswerRoot, strconv.FormatInt(req.AnswerID, 10))
@@ -204,7 +222,7 @@ func (m *DriverManager) driverScript(req DriverBuildRequest) ([]byte, error) {
 	for _, selected := range req.PackageINFs {
 		paths = append(paths, path.Join("pxe-drivers", selected.PackageSHA256, selected.INFPath))
 	}
-	return winpe.RenderDriverStartup(base, paths)
+	return render(base, paths)
 }
 
 func driverWIMKey(sourceHash string, selected []SelectedINF) string {

@@ -196,6 +196,28 @@ func (s *Server) menuRollback(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// menuDiscard throws away the unpublished draft: the draft becomes the
+// active version again. Machines are not affected. The form must confirm.
+func (s *Server) menuDiscard(w http.ResponseWriter, r *http.Request) {
+	if r.FormValue("confirm") != "yes" {
+		http.Error(w, "Подтвердите отмену изменений", http.StatusBadRequest)
+		return
+	}
+	s.draftMu.Lock()
+	defer s.draftMu.Unlock()
+	_, active, err := s.currentDraft(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать черновик меню", http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.Store.SaveMenuDraft(r.Context(), active); err != nil {
+		http.Error(w, "Не удалось сохранить черновик меню", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.discard", "ok", "")
+	http.Redirect(w, r, "/menu?message="+strings.ReplaceAll("Изменения черновика отменены", " ", "+"), http.StatusSeeOther)
+}
+
 func (s *Server) saveDraftAfterPublish(r *http.Request, m MenuVersion) {
 	if err := s.Store.SaveMenuDraft(r.Context(), draftFromVersion(m)); err != nil {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.save", "error", err.Error())

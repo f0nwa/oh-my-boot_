@@ -69,7 +69,7 @@ func TestPublishBuildsFromDraftAndKeepsIt(t *testing.T) {
 	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17"}}}
 	s, published := draftServer(t, store)
 	res := menuPost(t, s, "/menu/publish", url.Values{})
-	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/menu?message=") || len(*published) != 1 || !strings.Contains((*published)[0], "item winiso_17 Windows 11") || len(store.saved) == 0 {
+	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/menu?message=") || len(*published) != 1 || !strings.Contains((*published)[0], "item winiso_17 Windows 11") || len(store.saved) == 0 || len(store.versions) != 1 {
 		t.Fatalf("status=%d location=%q published=%d saved=%d body=%s", res.Code, res.Header().Get("Location"), len(*published), len(store.saved), res.Body.String())
 	}
 }

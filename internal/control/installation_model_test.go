@@ -209,7 +209,7 @@ func installationTestStore(t *testing.T) Store {
 func TestInstallationModelMigration(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
-	if _, err := store.Pool.Exec(ctx, `DROP TABLE windows_installation_options,installations,windows_boot_profiles,boot_profiles`); err != nil {
+	if _, err := store.Pool.Exec(ctx, `DROP TABLE menu_version_items,menu_draft_items,windows_installation_options,installations,windows_boot_profiles,boot_profiles; ALTER TABLE menu_versions DROP COLUMN diagnostics_on,DROP COLUMN local_timeout,DROP COLUMN local_timer,DROP COLUMN look; CREATE TABLE menu_draft_items(position INT PRIMARY KEY,key TEXT NOT NULL UNIQUE,folder TEXT NOT NULL DEFAULT '',title TEXT NOT NULL DEFAULT '')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Pool.Exec(ctx, `
@@ -218,6 +218,7 @@ func TestInstallationModelMigration(t *testing.T) {
  INSERT INTO windows_answer_variants(profile_id,title,folder,sha256,size_bytes) SELECT id,'Automated','Auto',repeat('a',64),10 FROM windows_profiles WHERE path='one.iso';
  INSERT INTO winpe_driver_configs(profile_id,answer_id,title,folder,selected_infs) SELECT profile_id,id,'VirtIO','Drivers','[{}]' FROM windows_answer_variants;
  INSERT INTO menu_versions(title,diagnostic_label,diagnostic_message,script,sha256) VALUES('Saved','Diagnostics','Test','#!ipxe','saved');
+ INSERT INTO menu_draft(id,title,label,message,ubuntu) VALUES(1,'Old','Diagnostics','Old',true);
  INSERT INTO menu_draft_items(position,key,folder,title) VALUES(0,'winiso_1','Windows','Draft');`); err != nil {
 		t.Fatal(err)
 	}
@@ -257,12 +258,32 @@ func TestInstallationModelMigration(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(items, repeated) {
 		t.Fatalf("migration rerun changed installations: %+v, err=%v", repeated, err)
 	}
-	for table, want := range map[string]int{"windows_profiles": 2, "windows_answer_variants": 1, "winpe_driver_configs": 1, "menu_versions": 1, "menu_draft_items": 1, "windows_installation_options": 4} {
+	for table, want := range map[string]int{"windows_profiles": 2, "windows_answer_variants": 1, "winpe_driver_configs": 1, "menu_versions": 0, "menu_draft": 0, "menu_draft_items": 0, "menu_version_items": 0, "windows_installation_options": 4} {
 		var count int
 		if err := store.Pool.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil || count != want {
 			t.Fatalf("%s count=%d want=%d err=%v", table, count, want, err)
 		}
 	}
+	// The guard must preserve menus created after the one-time reset.
+	newDraft := MenuDraft{Title: "New", Items: []MenuDraftItem{{InstallationID: items[0].ID, Title: "New placement"}}}
+	if err := store.SaveMenuDraft(ctx, newDraft); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveActiveMenu(ctx, 0, MenuVersion{Title: "New", Script: "#!ipxe", SHA256: "new", Items: []MenuVersionItem{{InstallationID: items[0].ID, Position: 0, Title: "New placement"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
+		t.Fatal(err)
+	}
+	newVersions, err := store.MenuVersions(ctx)
+	if err != nil || len(newVersions) != 1 || len(newVersions[0].Items) != 1 {
+		t.Fatalf("rerun reset new versions: %+v err=%v", newVersions, err)
+	}
+	newSaved, ok, err := store.MenuDraft(ctx)
+	if err != nil || !ok || !reflect.DeepEqual(newSaved.Items, newDraft.Items) {
+		t.Fatalf("rerun reset new draft: %+v ok=%v err=%v", newSaved, ok, err)
+	}
+
 }
 
 func TestInstallationModelWindowsCreationAtomic(t *testing.T) {

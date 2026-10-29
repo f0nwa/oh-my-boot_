@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -176,4 +177,69 @@ func (s *draftStore) SaveActiveMenu(_ context.Context, _ int64, m MenuVersion) e
 	m.ID, m.Active = int64(len(s.versions)+100), true
 	s.versions = append(s.versions, m)
 	return nil
+}
+
+func TestStructuredDraftFromVersionIgnoresScript(t *testing.T) {
+	v := MenuVersion{Title: productMenuTitle, Label: "Tools", Message: "Ready", Script: "#!ipxe\nitem ubuntu Old Ubuntu\nitem winiso_9 Old Windows\n", NoDiagnostics: true, LocalTimeout: 31, NoLocalTimer: true, Look: menuLook, Items: []MenuVersionItem{{InstallationID: 8, Position: 1, Title: "Windows", Folder: "Win"}, {InstallationID: 7, Position: 0, Title: "Ubuntu", Folder: "Linux"}}}
+	want := MenuDraft{Title: productMenuTitle, Label: "Tools", Message: "Ready", NoDiagnostics: true, LocalTimeout: 31, NoLocalTimer: true, look: menuLook, Items: []MenuDraftItem{{InstallationID: 7, Title: "Ubuntu", Folder: "Linux"}, {InstallationID: 8, Title: "Windows", Folder: "Win"}}}
+	if got := draftFromVersion(v); !reflect.DeepEqual(got, want) {
+		t.Fatalf("draft=%+v want=%+v", got, want)
+	}
+	v.Items = []MenuVersionItem{}
+	if got := draftFromVersion(v); len(got.Items) != 0 || got.Ubuntu {
+		t.Fatalf("empty structured version parsed legacy items: %+v", got)
+	}
+}
+
+func TestStructuredDraftOperationsAndChanges(t *testing.T) {
+	d := MenuDraft{}
+	if err := d.AddInstallation(Installation{ID: 7, Title: "Ubuntu", Folder: "Linux"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AddInstallation(Installation{ID: 8, Title: "Windows", Folder: "Win"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AddInstallation(Installation{ID: 7, Title: "Duplicate"}); err == nil {
+		t.Fatal("duplicate installation accepted")
+	}
+	if err := d.AddInstallation(Installation{Title: "No ID"}); err == nil {
+		t.Fatal("missing installation ID accepted")
+	}
+	active := d
+	active.Items = append([]MenuDraftItem(nil), d.Items...)
+	if err := d.UpdateInstallation(7, "Lab Ubuntu", "Lab"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.MoveInstallation(8, -1); err != nil {
+		t.Fatal(err)
+	}
+	changes := diffMenuDraft(active, d)
+	var kinds []string
+	for _, change := range changes {
+		kinds = append(kinds, change.Kind)
+	}
+	if !reflect.DeepEqual(kinds, []string{"change", "change", "order"}) {
+		t.Fatalf("changes=%+v", changes)
+	}
+	if err := d.ReorderInstallations([]int64{7, 7}); err == nil || d.Items[0].InstallationID != 8 {
+		t.Fatalf("invalid reorder mutated draft: %+v", d)
+	}
+	if err := d.ReorderInstallations([]int64{7, 8}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.RemoveInstallation(8); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Items) != 1 || d.Items[0] != (MenuDraftItem{InstallationID: 7, Title: "Lab Ubuntu", Folder: "Lab"}) {
+		t.Fatalf("items=%+v", d.Items)
+	}
+	if err := d.RemoveInstallation(8); err == nil {
+		t.Fatal("removed missing installation")
+	}
+	if err := d.UpdateInstallation(99, "Missing", ""); err == nil {
+		t.Fatal("updated missing installation")
+	}
+	if err := d.MoveInstallation(99, 1); err == nil {
+		t.Fatal("moved missing installation")
+	}
 }

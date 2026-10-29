@@ -189,3 +189,91 @@ func menuOrderScript(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(menuOrderJS)
 }
+
+// InstallationIndex returns the placement of id, or -1 when absent.
+func (d MenuDraft) InstallationIndex(id int64) int {
+	for i, item := range d.Items {
+		if item.InstallationID == id && id > 0 {
+			return i
+		}
+	}
+	return -1
+}
+
+// AddInstallation copies the installation's base title and folder into the draft.
+func (d *MenuDraft) AddInstallation(item Installation) error {
+	if item.ID <= 0 {
+		return draftError("installation ID must be positive")
+	}
+	if d.InstallationIndex(item.ID) >= 0 {
+		return draftError("installation is already in menu")
+	}
+	d.Items = append(d.Items, MenuDraftItem{InstallationID: item.ID, Title: item.Title, Folder: item.Folder})
+	return nil
+}
+
+func (d *MenuDraft) RemoveInstallation(id int64) error {
+	i := d.InstallationIndex(id)
+	if i < 0 {
+		return errItemNotInMenu
+	}
+	d.Items = append(d.Items[:i], d.Items[i+1:]...)
+	return nil
+}
+
+// MoveInstallation moves a placement by offset; moves beyond the ends do nothing.
+func (d *MenuDraft) MoveInstallation(id int64, offset int) error {
+	i := d.InstallationIndex(id)
+	if i < 0 {
+		return errItemNotInMenu
+	}
+	if offset < -i || offset >= len(d.Items)-i {
+		return nil
+	}
+	j := i + offset
+	item := d.Items[i]
+	if j < i {
+		copy(d.Items[j+1:i+1], d.Items[j:i])
+	} else {
+		copy(d.Items[i:j], d.Items[i+1:j+1])
+	}
+	d.Items[j] = item
+	return nil
+}
+
+func (d *MenuDraft) UpdateInstallation(id int64, title, folder string) error {
+	i := d.InstallationIndex(id)
+	if i < 0 {
+		return errItemNotInMenu
+	}
+	if title != "" && (!safeMenuText(title, 80) || !isASCII(title)) {
+		return draftError("invalid menu title")
+	}
+	if !isASCII(folder) || validateMenuFolder(folder) != nil {
+		return draftError("invalid menu folder")
+	}
+	d.Items[i].Title, d.Items[i].Folder = title, folder
+	return nil
+}
+
+// ReorderInstallations requires every current installation exactly once.
+func (d *MenuDraft) ReorderInstallations(ids []int64) error {
+	if len(ids) != len(d.Items) {
+		return draftError("order must contain every installation")
+	}
+	byID := make(map[int64]MenuDraftItem, len(d.Items))
+	for _, item := range d.Items {
+		byID[item.InstallationID] = item
+	}
+	ordered := make([]MenuDraftItem, 0, len(ids))
+	for _, id := range ids {
+		item, ok := byID[id]
+		if id <= 0 || !ok {
+			return draftError("order must contain every installation")
+		}
+		delete(byID, id)
+		ordered = append(ordered, item)
+	}
+	d.Items = ordered
+	return nil
+}

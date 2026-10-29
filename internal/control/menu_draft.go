@@ -4,17 +4,18 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
 
-// MenuDraftItem is one installation placed in the boot menu. Key names the
-// underlying object: winiso_N (profile), winanswer_N (profile + answer file)
-// or windriver_N (driver configuration). An empty Title uses the object's.
+// MenuDraftItem places an installation in the menu with its own title/folder.
+// Key is a temporary bridge for callers converted by the following tasks.
 type MenuDraftItem struct {
-	Key    string
-	Folder string
-	Title  string
+	InstallationID int64
+	Key            string
+	Folder         string
+	Title          string
 }
 
 // MenuDraft is the boot menu being prepared; Items are in menu order.
@@ -235,9 +236,20 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 
 var menuItemKey = regexp.MustCompile(`^win(iso|answer|driver)_[0-9]+$`)
 
-// draftFromVersion reads a published version back into a draft: its texts,
-// Ubuntu entry, and the Windows items in the order they appear.
+// draftFromVersion restores saved placements/settings without parsing the script.
+// The nil-Items parser is a temporary bridge for unconverted callers.
 func draftFromVersion(v MenuVersion) MenuDraft {
+	if v.Items != nil {
+		d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, NoDiagnostics: v.NoDiagnostics, LocalTimeout: v.LocalTimeout, NoLocalTimer: v.NoLocalTimer, look: v.Look}
+		items := append([]MenuVersionItem(nil), v.Items...)
+		sort.SliceStable(items, func(i, j int) bool { return items[i].Position < items[j].Position })
+		d.Items = make([]MenuDraftItem, 0, len(items))
+		for _, item := range items {
+			d.Items = append(d.Items, MenuDraftItem{InstallationID: item.InstallationID, Title: item.Title, Folder: item.Folder})
+		}
+		return d
+	}
+	// Temporary bridge for renderer/HTTP callers that do not yet supply Items.
 	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, NoDiagnostics: v.Script != "", look: scriptLook(v.Script)}
 	if seconds := menuLocalTimer(v.Script); seconds == 0 {
 		d.NoLocalTimer = true
@@ -306,37 +318,37 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 	}
 	activeByKey := map[string]MenuDraftItem{}
 	for _, item := range active.Items {
-		activeByKey[item.Key] = item
+		activeByKey[menuDraftItemKey(item)] = item
 	}
 	draftByKey := map[string]MenuDraftItem{}
 	for _, item := range draft.Items {
-		draftByKey[item.Key] = item
-		if _, ok := activeByKey[item.Key]; !ok {
-			changes = append(changes, MenuChange{Kind: "add", Key: item.Key, Title: item.Title})
+		draftByKey[menuDraftItemKey(item)] = item
+		if _, ok := activeByKey[menuDraftItemKey(item)]; !ok {
+			changes = append(changes, MenuChange{Kind: "add", Key: menuDraftItemKey(item), Title: item.Title})
 		}
 	}
 	for _, item := range active.Items {
-		if _, ok := draftByKey[item.Key]; !ok {
-			changes = append(changes, MenuChange{Kind: "remove", Key: item.Key, Title: item.Title})
+		if _, ok := draftByKey[menuDraftItemKey(item)]; !ok {
+			changes = append(changes, MenuChange{Kind: "remove", Key: menuDraftItemKey(item), Title: item.Title})
 		}
 	}
 	var activeOrder, draftOrder []string
 	for _, item := range draft.Items {
-		old, ok := activeByKey[item.Key]
+		old, ok := activeByKey[menuDraftItemKey(item)]
 		if !ok {
 			continue
 		}
-		draftOrder = append(draftOrder, item.Key)
+		draftOrder = append(draftOrder, menuDraftItemKey(item))
 		if old.Title != item.Title {
-			changes = append(changes, MenuChange{Kind: "change", Key: item.Key, Title: menuItemName(item), Label: "Название пункта", Before: menuTitleName(old.Title), After: menuTitleName(item.Title)})
+			changes = append(changes, MenuChange{Kind: "change", Key: menuDraftItemKey(item), Title: menuItemName(item), Label: "Название пункта", Before: menuTitleName(old.Title), After: menuTitleName(item.Title)})
 		}
 		if old.Folder != item.Folder {
-			changes = append(changes, MenuChange{Kind: "change", Key: item.Key, Title: menuItemName(item), Label: "Каталог пункта", Before: menuFolderName(old.Folder), After: menuFolderName(item.Folder)})
+			changes = append(changes, MenuChange{Kind: "change", Key: menuDraftItemKey(item), Title: menuItemName(item), Label: "Каталог пункта", Before: menuFolderName(old.Folder), After: menuFolderName(item.Folder)})
 		}
 	}
 	for _, item := range active.Items {
-		if _, ok := draftByKey[item.Key]; ok {
-			activeOrder = append(activeOrder, item.Key)
+		if _, ok := draftByKey[menuDraftItemKey(item)]; ok {
+			activeOrder = append(activeOrder, menuDraftItemKey(item))
 		}
 	}
 	if strings.Join(activeOrder, ",") != strings.Join(draftOrder, ",") {
@@ -376,11 +388,19 @@ func menuFolderName(folder string) string {
 	return folder
 }
 
+// menuDraftItemKey keeps identity separate from editable titles and folders.
+func menuDraftItemKey(item MenuDraftItem) string {
+	if item.InstallationID > 0 {
+		return "install_" + strconv.FormatInt(item.InstallationID, 10)
+	}
+	return item.Key
+}
+
 func menuItemName(item MenuDraftItem) string {
 	if item.Title != "" {
 		return item.Title
 	}
-	return item.Key
+	return menuDraftItemKey(item)
 }
 
 func menuOrderNames(keys []string, items map[string]MenuDraftItem) string {

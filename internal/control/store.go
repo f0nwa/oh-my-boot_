@@ -27,15 +27,30 @@ type AuditEvent struct {
 	Detail string
 }
 type MenuVersion struct {
-	ID      int64
-	At      time.Time
-	Author  string
-	Title   string
-	Label   string
-	Message string
-	Script  string
-	SHA256  string
-	Active  bool
+	ID            int64
+	At            time.Time
+	Author        string
+	Title         string
+	Label         string
+	Message       string
+	Script        string
+	SHA256        string
+	Active        bool
+	NoDiagnostics bool
+	LocalTimeout  int
+	NoLocalTimer  bool
+	Look          string
+	// Items is non-nil for structural versions, including empty menus.
+	Items []MenuVersionItem
+}
+
+// MenuVersionItem is a saved menu placement, independent of the script.
+type MenuVersionItem struct {
+	VersionID      int64
+	InstallationID int64
+	Position       int
+	Title          string
+	Folder         string
 }
 type Store struct{ Pool *pgxpool.Pool }
 
@@ -223,29 +238,61 @@ func (s Store) AuditSystem(ctx context.Context, action, result, detail string) e
 	return err
 }
 
+// menuVersionSelect reads metadata and placements in a single snapshot.
+const menuVersionSelect = `SELECT m.id,m.created_at,coalesce(u.username,'system'),m.title,m.diagnostic_label,m.diagnostic_message,m.script,m.sha256,m.active,
+ NOT m.diagnostics_on,m.local_timeout,NOT m.local_timer,m.look,
+ i.installation_id,i.position,i.title,i.folder FROM `
+
 func (s Store) MenuVersions(ctx context.Context) ([]MenuVersion, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT m.id,m.created_at,coalesce(u.username,'system'),m.title,m.diagnostic_label,m.diagnostic_message,m.script,m.sha256,m.active FROM menu_versions m LEFT JOIN users u ON u.id=m.author_id ORDER BY m.id DESC LIMIT 50")
+	rows, err := s.Pool.Query(ctx, menuVersionSelect+`(SELECT * FROM menu_versions ORDER BY id DESC LIMIT 50) m
+ LEFT JOIN users u ON u.id=m.author_id LEFT JOIN menu_version_items i ON i.version_id=m.id ORDER BY m.id DESC,i.position`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []MenuVersion{}
-	for rows.Next() {
-		var m MenuVersion
-		if err := rows.Scan(&m.ID, &m.At, &m.Author, &m.Title, &m.Label, &m.Message, &m.Script, &m.SHA256, &m.Active); err != nil {
-			return nil, err
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
+	return readMenuVersions(rows)
 }
 
 func (s Store) MenuByID(ctx context.Context, id int64) (MenuVersion, error) {
-	var m MenuVersion
-	err := s.Pool.QueryRow(ctx, "SELECT id,created_at,title,diagnostic_label,diagnostic_message,script,sha256,active FROM menu_versions WHERE id=$1", id).Scan(&m.ID, &m.At, &m.Title, &m.Label, &m.Message, &m.Script, &m.SHA256, &m.Active)
-	return m, err
+	rows, err := s.Pool.Query(ctx, menuVersionSelect+`menu_versions m LEFT JOIN users u ON u.id=m.author_id
+ LEFT JOIN menu_version_items i ON i.version_id=m.id WHERE m.id=$1 ORDER BY i.position`, id)
+	if err != nil {
+		return MenuVersion{}, err
+	}
+	versions, err := readMenuVersions(rows)
+	if err != nil {
+		return MenuVersion{}, err
+	}
+	if len(versions) == 0 {
+		return MenuVersion{}, pgx.ErrNoRows
+	}
+	return versions[0], nil
 }
 
+func readMenuVersions(rows pgx.Rows) ([]MenuVersion, error) {
+	defer rows.Close()
+	versions := []MenuVersion{}
+	for rows.Next() {
+		var m MenuVersion
+		var installationID *int64
+		var position *int
+		var title, folder *string
+		if err := rows.Scan(&m.ID, &m.At, &m.Author, &m.Title, &m.Label, &m.Message, &m.Script, &m.SHA256, &m.Active,
+			&m.NoDiagnostics, &m.LocalTimeout, &m.NoLocalTimer, &m.Look, &installationID, &position, &title, &folder); err != nil {
+			return nil, err
+		}
+		if len(versions) == 0 || versions[len(versions)-1].ID != m.ID {
+			m.Items = make([]MenuVersionItem, 0)
+			versions = append(versions, m)
+		}
+		if installationID != nil {
+			last := &versions[len(versions)-1]
+			last.Items = append(last.Items, MenuVersionItem{VersionID: m.ID, InstallationID: *installationID, Position: *position, Title: *title, Folder: *folder})
+		}
+	}
+	return versions, rows.Err()
+}
+
+// SaveActiveMenu commits the new version, its settings and all placements together.
 func (s Store) SaveActiveMenu(ctx context.Context, authorID int64, m MenuVersion) error {
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -255,8 +302,19 @@ func (s Store) SaveActiveMenu(ctx context.Context, authorID int64, m MenuVersion
 	if _, err := tx.Exec(ctx, "UPDATE menu_versions SET active=FALSE WHERE active"); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, "INSERT INTO menu_versions (author_id,title,diagnostic_label,diagnostic_message,script,sha256,active) VALUES (NULLIF($1,0),$2,$3,$4,$5,$6,TRUE)", authorID, m.Title, m.Label, m.Message, m.Script, m.SHA256); err != nil {
+	timeout := m.LocalTimeout
+	if timeout <= 0 {
+		timeout = defaultLocalTimeout
+	}
+	var versionID int64
+	if err := tx.QueryRow(ctx, `INSERT INTO menu_versions (author_id,title,diagnostic_label,diagnostic_message,script,sha256,active,diagnostics_on,local_timeout,local_timer,look)
+ VALUES (NULLIF($1,0),$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10) RETURNING id`, authorID, m.Title, m.Label, m.Message, m.Script, m.SHA256, !m.NoDiagnostics, timeout, !m.NoLocalTimer, m.Look).Scan(&versionID); err != nil {
 		return err
+	}
+	for _, item := range m.Items {
+		if _, err := tx.Exec(ctx, `INSERT INTO menu_version_items (version_id,installation_id,position,title,folder) VALUES ($1,$2,$3,$4,$5)`, versionID, item.InstallationID, item.Position, item.Title, item.Folder); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

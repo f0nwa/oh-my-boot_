@@ -16,14 +16,14 @@ func (s Store) MenuDraft(ctx context.Context) (MenuDraft, bool, error) {
 	if err != nil {
 		return MenuDraft{}, false, err
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT key,folder,title FROM menu_draft_items ORDER BY position`)
+	rows, err := s.Pool.Query(ctx, `SELECT coalesce(installation_id,0),coalesce(key,''),folder,title FROM menu_draft_items ORDER BY position`)
 	if err != nil {
 		return MenuDraft{}, false, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item MenuDraftItem
-		if err := rows.Scan(&item.Key, &item.Folder, &item.Title); err != nil {
+		if err := rows.Scan(&item.InstallationID, &item.Key, &item.Folder, &item.Title); err != nil {
 			return MenuDraft{}, false, err
 		}
 		d.Items = append(d.Items, item)
@@ -47,7 +47,7 @@ func (s Store) SaveMenuDraft(ctx context.Context, d MenuDraft) error {
 		return err
 	}
 	for i, item := range d.Items {
-		if _, err := tx.Exec(ctx, `INSERT INTO menu_draft_items (position,key,folder,title) VALUES ($1,$2,$3,$4)`, i, item.Key, item.Folder, item.Title); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO menu_draft_items (position,installation_id,key,folder,title) VALUES ($1,NULLIF($2,0),NULLIF($3,''),$4,$5)`, i, item.InstallationID, item.Key, item.Folder, item.Title); err != nil {
 			return err
 		}
 	}

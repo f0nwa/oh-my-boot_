@@ -34,7 +34,11 @@ CREATE TABLE IF NOT EXISTS menu_versions (
  diagnostic_message TEXT NOT NULL,
  script TEXT NOT NULL,
  sha256 TEXT NOT NULL,
- active BOOLEAN NOT NULL DEFAULT FALSE
+ active BOOLEAN NOT NULL DEFAULT FALSE,
+ diagnostics_on BOOLEAN NOT NULL DEFAULT true,
+ local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600),
+ local_timer BOOLEAN NOT NULL DEFAULT true,
+ look TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS menu_versions_one_active_idx ON menu_versions (active) WHERE active;
 
@@ -72,7 +76,6 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system' 
 
 ALTER TABLE windows_answer_variants ADD COLUMN IF NOT EXISTS wipes_disk BOOLEAN;
 CREATE TABLE IF NOT EXISTS menu_draft (id SMALLINT PRIMARY KEY CHECK (id = 1), title TEXT NOT NULL, label TEXT NOT NULL, message TEXT NOT NULL, ubuntu BOOLEAN NOT NULL, ubuntu_folder TEXT NOT NULL DEFAULT '', local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600), local_timer BOOLEAN NOT NULL DEFAULT true, diagnostics_on BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
-CREATE TABLE IF NOT EXISTS menu_draft_items (position INT PRIMARY KEY, key TEXT NOT NULL UNIQUE CHECK (key ~ '^win(iso|answer|driver)_[0-9]+$'), folder TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '');
 
 CREATE TABLE IF NOT EXISTS machines (
     mac TEXT PRIMARY KEY CHECK (mac ~ '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$'),
@@ -148,4 +151,24 @@ CREATE TABLE IF NOT EXISTS windows_installation_options (
  answer_id BIGINT REFERENCES windows_answer_variants(id) ON DELETE RESTRICT,
  driver_config_id BIGINT REFERENCES winpe_driver_configs(id) ON DELETE RESTRICT,
  CHECK (answer_id IS NULL OR driver_config_id IS NULL)
+);
+
+-- key is a temporary bridge removed when the editor uses installation IDs.
+CREATE TABLE IF NOT EXISTS menu_draft_items (
+ position INT PRIMARY KEY CHECK (position >= 0),
+ installation_id BIGINT UNIQUE REFERENCES installations(id) ON DELETE RESTRICT,
+ key TEXT UNIQUE CHECK (key ~ '^win(iso|answer|driver)_[0-9]+$'),
+ folder TEXT NOT NULL DEFAULT '',
+ title TEXT NOT NULL DEFAULT '',
+ CHECK ((installation_id IS NULL) <> (key IS NULL))
+);
+
+CREATE TABLE IF NOT EXISTS menu_version_items (
+ version_id BIGINT NOT NULL REFERENCES menu_versions(id) ON DELETE CASCADE,
+ installation_id BIGINT NOT NULL REFERENCES installations(id) ON DELETE RESTRICT,
+ position INT NOT NULL CHECK (position >= 0),
+ title TEXT NOT NULL DEFAULT '',
+ folder TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY (version_id,position),
+ UNIQUE (version_id,installation_id)
 );

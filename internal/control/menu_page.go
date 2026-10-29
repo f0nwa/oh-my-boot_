@@ -242,19 +242,6 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 		http.Error(w, "Не удалось получить текущее меню", 503)
 		return false
 	}
-	versions, err := s.Store.MenuVersions(r.Context())
-	if err != nil {
-		http.Error(w, "Не удалось прочитать версии меню", 503)
-		return false
-	}
-	if len(versions) == 0 {
-		oldSum := sha256.Sum256(previous)
-		initial := MenuVersion{Title: productMenuTitle, Label: "Diagnostics", Message: defaultMenuMessage, Script: string(previous), SHA256: hex.EncodeToString(oldSum[:])}
-		if err := s.Store.SaveActiveMenu(r.Context(), 0, initial); err != nil {
-			http.Error(w, "Не удалось сохранить начальное меню", 503)
-			return false
-		}
-	}
 	sum := sha256.Sum256([]byte(m.Script))
 	m.SHA256 = hex.EncodeToString(sum[:])
 	hash, err := s.Boot.Publish(r.Context(), []byte(m.Script))

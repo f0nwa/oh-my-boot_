@@ -32,6 +32,28 @@ func TestPagesCarryUserTheme(t *testing.T) {
 	}
 }
 
+func TestThemeSelectorMovesToHeaderBesideAccount(t *testing.T) {
+	for _, page := range []string{"account", "installations"} {
+		res := httptest.NewRecorder()
+		render(res, page, pageData{Info: requestContext{User: User{ID: 1, Username: "admin", Role: "admin", Theme: "dark"}, CSRF: "token", Path: "/installations"}})
+		body := res.Body.String()
+		selector := strings.Index(body, `class="theme-form"`)
+		account := strings.Index(body, `class="account"`)
+		logout := strings.Index(body, `action="/logout"`)
+		if selector < 0 || account < selector || logout < account {
+			t.Errorf("%s: theme selector must precede account and logout in the header", page)
+		}
+		for _, want := range []string{`name="theme"`, `<option value="dark" selected>`, `name="return" value="/installations"`, `src="/assets/theme.js"`} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s: header lacks %q", page, want)
+			}
+		}
+		if page == "account" && strings.Contains(body, `<h2>Оформление</h2>`) {
+			t.Error("account page still has the former theme section")
+		}
+	}
+}
+
 func TestLoginPageFollowsSystemTheme(t *testing.T) {
 	res := httptest.NewRecorder()
 	(&Server{}).Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/login", nil))
@@ -43,9 +65,9 @@ func TestLoginPageFollowsSystemTheme(t *testing.T) {
 func TestThemeChoiceIsTranslated(t *testing.T) {
 	res := httptest.NewRecorder()
 	render(res, "account", pageData{Info: requestContext{User: User{ID: 1, Role: "admin", Language: langEN}, CSRF: "x"}})
-	for _, want := range []string{"Appearance", "Theme", "Same as system", "Light", "Dark"} {
+	for _, want := range []string{"Theme", "Same as system", "Light", "Dark"} {
 		if !strings.Contains(res.Body.String(), want) {
-			t.Errorf("English account page lacks %q", want)
+			t.Errorf("English header lacks %q", want)
 		}
 	}
 }
@@ -62,6 +84,9 @@ func TestSetThemeStoresChoiceAndReturnsSafely(t *testing.T) {
 	for _, tc := range []struct{ theme, ret, location string }{
 		{"dark", "/account", "/account"},
 		{"light", "/menu", "/menu"},
+		{"dark", "/installations/new", "/installations/new"},
+		{"light", "/events/machines/AA-BB-CC-DD-EE-FF", "/events/machines/AA-BB-CC-DD-EE-FF"},
+		{"dark", "/answers/17/edit", "/answers/17/edit"},
 		{"system", "//evil.example/", "/"},
 	} {
 		store := &themeStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}

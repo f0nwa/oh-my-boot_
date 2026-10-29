@@ -49,12 +49,26 @@ func (s *Server) setLanguage(w http.ResponseWriter, r *http.Request) {
 
 // safeReturnPath accepts only local admin paths, never another host.
 func safeReturnPath(path string) string {
-	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.ContainsAny(path, "\\\r\n?#") || strings.Contains(path, "://") {
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.ContainsAny(path, "\\\r\n?#%") || strings.Contains(path, "..") || strings.Contains(path, "://") {
 		return "/"
 	}
-	for _, allowed := range []string{"/", "/account", "/events", "/network", "/menu", "/users", "/audit", "/images", "/drivers", "/answers", "/storages"} {
+	for _, allowed := range []string{"/", "/account", "/events", "/network", "/menu", "/users", "/audit", "/images", "/drivers", "/answers", "/storages", "/installations", "/installations/new", "/answers/editor", "/usb", "/system", "/machines", "/search"} {
 		if path == allowed {
 			return path
+		}
+	}
+	for _, prefix := range []string{"/events/machines/", "/answers/"} {
+		if strings.HasPrefix(path, prefix) {
+			rest := strings.TrimPrefix(path, prefix)
+			if prefix == "/answers/" {
+				rest = strings.TrimSuffix(rest, "/edit")
+				if !strings.HasSuffix(path, "/edit") {
+					break
+				}
+			}
+			if rest != "" && !strings.Contains(rest, "/") {
+				return path
+			}
 		}
 	}
 	return "/"

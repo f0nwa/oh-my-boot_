@@ -28,6 +28,10 @@ a{color:var(--text)}a:hover{color:var(--text-2)}
 .topbar-end{margin-left:auto;display:flex;align-items:center;gap:8px}
 .account{text-decoration:none;font-weight:500}.account small{font-weight:400;color:var(--muted);margin-left:4px}
 .topbar-end form{margin:0}
+.theme-form{display:flex;align-items:center;gap:4px}
+.theme-form select{width:auto;max-width:125px;min-height:30px;padding:3px 6px;font-size:12px;background:var(--panel)}
+.theme-form button{min-height:30px;padding:0 7px;margin:0;font-size:12px}
+.theme-form.theme-ready button{display:none}
 .nav-check,.nav-toggle-label{display:none}
 
 /* ⌘K search */
@@ -335,7 +339,7 @@ button[disabled]{opacity:.45;cursor:default}
 .search-open span{display:none}
 .nav-check:checked~.topnav,.nav-check:checked~.topbar-end{display:flex}
 .topnav{flex-direction:column;padding-bottom:8px}
-.topbar-end{margin-left:0;padding-bottom:8px}
+.topbar-end{margin-left:0;padding-bottom:8px;flex-wrap:wrap}
 .draftbar{padding-left:16px;padding-right:16px}.subnav{padding-left:4px;padding-right:4px}
 .content{padding:18px 16px 32px}
 .service-strip{margin:-18px -16px 18px}

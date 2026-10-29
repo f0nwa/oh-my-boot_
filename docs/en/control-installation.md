@@ -403,7 +403,7 @@ Audit of a cancelled download, 27.10.2026: the `uefica-usb.download|error` row i
 
 ## The Oh My Boot name, 29.10.2026
 
-The product is called **Oh My Boot**. The browser tab shows “Oh My Boot” and an icon; the header shows the “o_” mark and the `oh my boot_` wordmark; the sign-in page shows the mark and wordmark above the form (the “Sign in to Oh My Boot” heading is for screen readers only).
+The product is called **Oh My Boot**. The browser tab shows “Oh My Boot” and an icon; the header shows the `oh my boot_` wordmark; the sign-in page shows the wordmark above the form (the “Sign in to Oh My Boot” heading is for screen readers only).
 
 The boot menu title is no longer configurable: it is always `oh my boot_`, and `oh my boot_ / <folder>` on nested screens. The “Title” field is gone from the menu settings, and a `title` field sent directly to the server is ignored. After Control is updated, the draft gets the new name at once and the draft bar shows a settings change; machines keep the previous menu until it is published. Published versions and rollback keep their original titles. The default diagnostic message is now `Oh My Boot network boot is ready`; a custom message is left as it is.
 

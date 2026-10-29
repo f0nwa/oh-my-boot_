@@ -1,4 +1,4 @@
-PXE Platform: USB stick to enable the Microsoft UEFI CA key
+Oh My Boot: USB stick to enable the Microsoft UEFI CA key
 ============================================================
 
 What it does

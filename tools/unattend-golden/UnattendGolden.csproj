@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Runs the original C# generator on our JSON settings to make golden
-       files for the Go port. Not part of the PXE Platform build. -->
+       files for the Go port. Not part of the Oh My Boot build. -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <OutputType>Exe</OutputType>

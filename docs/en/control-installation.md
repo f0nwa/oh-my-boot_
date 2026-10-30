@@ -427,7 +427,7 @@ The **Show Diagnostics item** checkbox there removes it from the machine's scree
 
 ## Ubuntu Desktop item
 
-Select Ubuntu Desktop on the screen or in the menu structure to set its visibility and folder in the item properties. The old general **Menu settings** block is gone. When turned off, Ubuntu remains grey in the editor structure so it can be enabled again; it disappears from the machine's screen after publication.
+On **Installations**, select **New installation** and choose the system Ubuntu boot profile. The new installation is added to the draft; edit its name and folder in the menu item properties. Select **Remove from menu** to remove Ubuntu from the draft; use **Add to menu** on **Installations** to add it again. Publish the menu to apply the changes to boot clients.
 
 Text and folder names shown in the PXE menu must use Latin letters: the iPXE console cannot display Cyrillic. The server also enforces this for direct form submissions; previously published versions are not rewritten.
 

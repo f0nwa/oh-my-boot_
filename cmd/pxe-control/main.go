@@ -53,9 +53,13 @@ func main() {
 	if len(allowlist) == 0 {
 		log.Fatal("no allowed PXE interfaces")
 	}
+	store := control.Store{Pool: pool}
+	if err := store.EnsureBootProfiles(pingCtx); err != nil {
+		log.Fatal(err)
+	}
 	agentClient := control.NewAgentClient(*agentSocket)
 	bootClient := control.NewBootClient(*bootSocket)
-	server := &control.Server{Store: control.Store{Pool: pool}, Boot: bootClient, DeletionMenu: bootClient, Agent: agentClient, SMB: agentClient, WindowsISO: agentClient, WindowsAnswers: agentClient, DriverPackages: agentClient, DriverConfigs: agentClient, Cleanup: agentClient, StorageRecovery: agentClient, UEFICAUSB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist, BootBaseURL: os.Getenv("PXE_CONTROL_BOOT_BASE_URL")}
+	server := &control.Server{Store: store, Boot: bootClient, DeletionMenu: bootClient, Agent: agentClient, SMB: agentClient, WindowsISO: agentClient, WindowsAnswers: agentClient, DriverPackages: agentClient, DriverConfigs: agentClient, Cleanup: agentClient, StorageRecovery: agentClient, UEFICAUSB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist, BootBaseURL: os.Getenv("PXE_CONTROL_BOOT_BASE_URL")}
 	httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 6 * time.Minute, IdleTimeout: 60 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()

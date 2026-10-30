@@ -121,6 +121,7 @@ type Server struct {
 	Images            ImagesAPI
 	SMB               SMBMountAPI
 	WindowsISO        WindowsISOAPI
+	UbuntuReadiness   UbuntuReadiness
 	WindowsAnswers    WindowsAnswerAPI
 	DriverPackages    DriverPackageAPI
 	DriverConfigs     DriverConfigAPI

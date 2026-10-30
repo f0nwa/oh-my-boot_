@@ -1,14 +1,14 @@
 package control
 
 import (
-	"time"
-
+	"context"
 	"fmt"
 	"net/http"
 	"path"
 	"pxe-platform/internal/boot"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // installationRow shows an installation, its shared source and its menu placement.
@@ -301,6 +301,26 @@ func legacyInstallationRows(profiles []WindowsProfile, answers []WindowsAnswerVa
 	return out
 }
 
+// installationRows attaches live Ubuntu readiness to its persisted choices.
+func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, draft, active MenuDraft, sources InstallationMenuSources) []installationRow {
+	rows := installationRows(profiles, answers, configs, draft, active, sources)
+	checked := false
+	var problem error
+	for i := range rows {
+		if rows[i].Kind != BootProfileUbuntuBuiltin {
+			continue
+		}
+		if !checked {
+			problem = s.checkUbuntuReadiness(ctx)
+			checked = true
+		}
+		if problem != nil {
+			rows[i].Status, rows[i].Error = "unavailable", problem.Error()
+		}
+	}
+	return rows
+}
+
 func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
 	profiles, answers, configs, err := s.menuSources(r.Context())
@@ -333,7 +353,7 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.InstallCounts = map[string]int{}
-	for _, row := range installationRows(profiles, answers, configs, draft, active, sources) {
+	for _, row := range s.installationRows(r.Context(), profiles, answers, configs, draft, active, sources) {
 		haystack := strings.ToLower(row.Title + " " + row.Key + " " + row.Image + " " + row.Answer + " " + row.Drivers)
 		if data.Query != "" && !strings.Contains(haystack, strings.ToLower(data.Query)) {
 			continue

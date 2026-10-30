@@ -52,6 +52,7 @@ func newInstallServer(t *testing.T) (*Server, *newInstallStore) {
 	s, _ := draftServer(t, store.draftStore)
 	store.bootProfiles = []BootProfile{{ID: 50, Kind: BootProfileWindowsISO, WindowsProfileID: 1, Title: "Windows 10 x64"}, {ID: 51, Kind: BootProfileWindowsISO, WindowsProfileID: 17, Title: "Windows 11"}, {ID: 52, Kind: BootProfileUbuntuBuiltin, Title: "Ubuntu Desktop"}}
 	s.Store = store
+	s.UbuntuReadiness = HTTPUbuntuReadiness{BaseURL: ubuntuBootResources(t, "")}
 	return s, store
 }
 

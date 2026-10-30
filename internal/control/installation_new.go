@@ -61,13 +61,23 @@ type bootProfileChoice struct {
 	State, Error, Path string
 }
 
-func bootProfileChoices(shared []BootProfile, windows []WindowsProfile) []bootProfileChoice {
+// bootProfileChoices checks the shared Ubuntu resources once per request.
+func (s *Server) bootProfileChoices(ctx context.Context, shared []BootProfile, windows []WindowsProfile) []bootProfileChoice {
+	var ubuntuProblem error
+	ubuntuChecked := false
 	choices := make([]bootProfileChoice, 0, len(shared))
 	for _, profile := range shared {
 		choice := bootProfileChoice{BootProfile: profile, State: "unavailable", Error: "Профиль загрузки недоступен"}
 		switch profile.Kind {
 		case BootProfileUbuntuBuiltin:
 			choice.State, choice.Error, choice.Path = "ready", "", "Системный источник Ubuntu"
+			if !ubuntuChecked {
+				ubuntuProblem = s.checkUbuntuReadiness(ctx)
+				ubuntuChecked = true
+			}
+			if ubuntuProblem != nil {
+				choice.State, choice.Error = "unavailable", ubuntuProblem.Error()
+			}
 		case BootProfileWindowsISO:
 			for _, source := range windows {
 				if source.ID == profile.WindowsProfileID {
@@ -103,7 +113,7 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Каталог драйверов недоступен", http.StatusInternalServerError)
 		return
 	}
-	data.BootProfileChoices = bootProfileChoices(sources.BootProfiles, profiles)
+	data.BootProfileChoices = s.bootProfileChoices(r.Context(), sources.BootProfiles, profiles)
 	data.WindowsAnswerVariants, data.PackageChoices = answers, packageChoices(packages)
 	data.Form = pageForm(r)
 	if data.Form == nil {
@@ -152,7 +162,11 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	profileID, err := strconv.ParseInt(r.FormValue("boot_profile_id"), 10, 64)
 	var shared BootProfile
-	for _, choice := range bootProfileChoices(sources.BootProfiles, profiles) {
+	for _, choice := range s.bootProfileChoices(r.Context(), sources.BootProfiles, profiles) {
+		if choice.ID == profileID && choice.Kind == BootProfileUbuntuBuiltin && choice.State != "ready" {
+			http.Error(w, "Установка не готова: "+choice.Error, http.StatusConflict)
+			return
+		}
 		if choice.ID == profileID && choice.State == "ready" {
 			shared = choice.BootProfile
 		}

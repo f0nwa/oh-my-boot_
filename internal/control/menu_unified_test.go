@@ -33,6 +33,7 @@ func unifiedMenuFixture(t *testing.T) (*Server, *unifiedMenuStore, *[]string) {
 	store := &unifiedMenuStore{draftStore: base, bootProfiles: []BootProfile{{ID: 1, Kind: BootProfileUbuntuBuiltin, Title: "Ubuntu"}, {ID: 2, Kind: BootProfileWindowsISO, WindowsProfileID: 17, Title: "Windows"}}, installations: []Installation{{ID: 71, BootProfileID: 1, Title: "Ubuntu"}, {ID: 72, BootProfileID: 2, Title: "Windows"}, {ID: 73, BootProfileID: 1, Title: "Ubuntu"}}}
 	s, published := draftServer(t, base)
 	s.Store = store
+	s.UbuntuReadiness = HTTPUbuntuReadiness{BaseURL: ubuntuBootResources(t, "")}
 	return s, store, published
 }
 

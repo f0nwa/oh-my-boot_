@@ -213,10 +213,17 @@ func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) err
 		return err
 	}
 	entries := make([]menuProfile, 0, len(draft.Items))
+	ubuntuChecked := false
 	for _, item := range draft.Items {
 		entry, _, err := resolveDraftItem(item, "", []InstallationMenuSources{sources}, profiles, answers, configs)
 		if err != nil {
 			return err
+		}
+		if entry.kind == BootProfileUbuntuBuiltin && !ubuntuChecked {
+			if err := s.checkUbuntuReadiness(ctx); err != nil {
+				return err
+			}
+			ubuntuChecked = true
 		}
 		entries = append(entries, entry)
 	}
@@ -324,7 +331,7 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 	s.menuMu.Lock()
 	defer s.menuMu.Unlock()
 	if err := s.verifyMenuVersion(r.Context(), m); err != nil {
-		http.Error(w, "Профиль Windows ISO недоступен: "+err.Error(), http.StatusConflict)
+		http.Error(w, "Установка недоступна: "+err.Error(), http.StatusConflict)
 		return false
 	}
 	info := requestInfo(r)

@@ -986,6 +986,8 @@ var englishMessages = map[string]string{
 	"Выберите профиль загрузки, название и папку установки.":          "Choose a boot profile, installation title and folder.",
 	"Профилей загрузки пока нет.":                                     "No boot profiles yet.",
 	"Профиль загрузки недоступен":                                     "Boot profile is unavailable",
+	"Ресурс Ubuntu %s недоступен: %s":                                 "Ubuntu resource %s is unavailable: %s",
+	"Установка недоступна: %s":                                        "Installation is unavailable: %s",
 	"Системный источник Ubuntu":                                       "System Ubuntu source",
 	"Не удалось создать установку":                                    "Could not create installation",
 	"Выберите подготовленный профиль загрузки":                        "Choose a prepared boot profile",

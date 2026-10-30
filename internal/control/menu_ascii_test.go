@@ -16,12 +16,11 @@ func TestMenuFormsRejectCyrillicText(t *testing.T) {
 	}{
 		{"diagnostics label", "/menu/diagnostics", url.Values{"label": {"Диагностика"}, "message": {"Ready"}}},
 		{"diagnostics message", "/menu/diagnostics", url.Values{"label": {"Diagnostics"}, "message": {"Готово"}}},
-		{"Ubuntu folder", "/menu/settings", url.Values{"ubuntu": {"on"}, "folder_ubuntu": {"Линукс"}}},
-		{"Windows folder", "/menu/items/winiso_17/title", url.Values{"title": {"Windows 11"}, "folder": {"Windows/Установщики"}}},
+		{"Windows folder", "/menu/items/install_1017/title", url.Values{"title": {"Windows 11"}, "folder": {"Windows/Установщики"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-			store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", UbuntuFolder: "Linux", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11", Folder: "Windows"}}}
+			store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
+			store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}}}
 			before := *store.draft
 			s, _ := draftServer(t, store)
 			res := menuPost(t, s, tc.path, tc.form)

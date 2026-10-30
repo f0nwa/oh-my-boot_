@@ -24,17 +24,6 @@ type menuDraftRow struct {
 
 func (row menuDraftRow) Key() string { return menuDraftItemKey(row.Item) }
 
-func menuItemKind(key string) string {
-	switch {
-	case strings.HasPrefix(key, "winanswer_"):
-		return "Образ и файл ответов"
-	case strings.HasPrefix(key, "windriver_"):
-		return "Образ с драйверами"
-	default:
-		return "Образ"
-	}
-}
-
 var menuScreenLabel = regexp.MustCompile(`^(menu_root|folder_[0-9]+)$`)
 
 func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +61,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	data.Info.Draft = summarizeChanges(data.Changes)
 	data.Info.Draft.Active = data.ActiveVersion
 	key, screen := r.URL.Query().Get("item"), r.URL.Query().Get("screen")
-	if !menuItemKey.MatchString(key) && key != "ubuntu" && key != "diagnostics" && key != "local" {
+	if !menuItemKey.MatchString(key) && key != "diagnostics" && key != "local" {
 		key = ""
 	}
 	if !menuScreenLabel.MatchString(screen) {
@@ -82,10 +71,10 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	render(w, "menu", data)
 }
 
-func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, sources ...InstallationMenuSources) []menuDraftRow {
+func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, sources InstallationMenuSources) []menuDraftRow {
 	var rows []menuDraftRow
 	for _, item := range draft.Items {
-		row := menuDraftRow{Item: item, Title: item.Title, Kind: menuItemKind(item.Key), Available: true, Folder: item.Folder}
+		row := menuDraftRow{Item: item, Title: item.Title, Kind: "Образ", Available: true, Folder: item.Folder}
 		entry, folder, err := resolveDraftItem(item, "", sources, profiles, answers, configs)
 		if item.InstallationID > 0 {
 			switch {
@@ -116,19 +105,11 @@ func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []Windows
 
 // installationMenuSources reads shared identities for rendering and restoration.
 func (s *Server) installationMenuSources(ctx context.Context) (InstallationMenuSources, error) {
-	store, ok := s.Store.(interface {
-		Installations(context.Context) ([]Installation, error)
-		BootProfiles(context.Context) ([]BootProfile, error)
-	})
-	if !ok {
-		// Temporary legacy caller bridge.
-		return InstallationMenuSources{}, nil
-	}
-	items, err := store.Installations(ctx)
+	items, err := s.Store.Installations(ctx)
 	if err != nil {
 		return InstallationMenuSources{}, err
 	}
-	profiles, err := store.BootProfiles(ctx)
+	profiles, err := s.Store.BootProfiles(ctx)
 	if err != nil {
 		return InstallationMenuSources{}, err
 	}
@@ -152,43 +133,9 @@ func (s *Server) menuSources(ctx context.Context) ([]WindowsProfile, []WindowsAn
 	return profiles, answers, configs, nil
 }
 
-func menuSnapshotRestorable(script string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) bool {
-	profileIDs, answerIDs, configIDs := map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
-	for _, item := range profiles {
-		profileIDs[item.ID] = true
-	}
-	for _, item := range answers {
-		answerIDs[item.ID] = true
-	}
-	for _, item := range configs {
-		configIDs[item.ID] = true
-	}
-	for _, line := range strings.Split(script, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 || fields[0] != "item" {
-			continue
-		}
-		for _, choice := range []struct {
-			prefix  string
-			present map[int64]bool
-		}{
-			{"winiso_", profileIDs}, {"winanswer_", answerIDs}, {"windriver_", configIDs},
-		} {
-			if !strings.HasPrefix(fields[1], choice.prefix) {
-				continue
-			}
-			id, err := strconv.ParseInt(strings.TrimPrefix(fields[1], choice.prefix), 10, 64)
-			if err != nil || !choice.present[id] {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 func menuVersionRestorable(version MenuVersion, sources InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) bool {
 	if version.Items == nil {
-		return menuSnapshotRestorable(version.Script, profiles, answers, configs)
+		return false
 	}
 	_, err := BuildMenuFromDraft(draftFromVersion(version), previewBaseURL, profiles, answers, configs, sources)
 	return err == nil
@@ -198,7 +145,7 @@ func menuVersionRestorable(version MenuVersion, sources InstallationMenuSources,
 // immutable Windows component hashes and the prepared files behind them.
 func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) error {
 	if version.Items == nil {
-		return s.verifyMenuWindowsProfiles(ctx, version.Script)
+		return fmt.Errorf("menu version has no structural items")
 	}
 	sources, err := s.installationMenuSources(ctx)
 	if err != nil {
@@ -215,7 +162,7 @@ func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) err
 	entries := make([]menuProfile, 0, len(draft.Items))
 	ubuntuChecked := false
 	for _, item := range draft.Items {
-		entry, _, err := resolveDraftItem(item, "", []InstallationMenuSources{sources}, profiles, answers, configs)
+		entry, _, err := resolveDraftItem(item, "", sources, profiles, answers, configs)
 		if err != nil {
 			return err
 		}
@@ -255,12 +202,7 @@ func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 	}
 	published := MenuVersion{Title: productMenuTitle, Label: draft.Label, Message: draft.Message, Script: string(script), NoDiagnostics: draft.NoDiagnostics, LocalTimeout: draft.LocalTimeout, NoLocalTimer: draft.NoLocalTimer, Look: menuLook, Items: make([]MenuVersionItem, 0, len(draft.Items))}
 	for position, item := range draft.Items {
-		if item.InstallationID == 0 {
-			// Development bridge until form/list conversion.
-			published.Items = nil
-			break
-		}
-		entry, folder, _ := resolveDraftItem(item, "", []InstallationMenuSources{sources}, profiles, answers, configs)
+		entry, folder, _ := resolveDraftItem(item, "", sources, profiles, answers, configs)
 		if item.Title != "" {
 			entry.title = item.Title
 		}
@@ -391,31 +333,6 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		if entry.driverConfigID > 0 {
 			driverItems[entry.driverConfigID] = true
 		}
-	}
-	for _, line := range strings.Split(script, "\n") {
-		if strings.HasPrefix(line, "item windriver_") {
-			fields := strings.Fields(line)
-			if len(fields) < 3 {
-				return fmt.Errorf("пункт конфигурации драйверов повреждён")
-			}
-			id, err := strconv.ParseInt(strings.TrimPrefix(fields[1], "windriver_"), 10, 64)
-			if err != nil || id <= 0 || driverItems[id] {
-				return fmt.Errorf("пункт конфигурации драйверов повреждён")
-			}
-			driverItems[id] = true
-		}
-		if !strings.HasPrefix(line, "item winanswer_") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			return fmt.Errorf("пункт сценария повреждён")
-		}
-		id, err := strconv.ParseInt(strings.TrimPrefix(fields[1], "winanswer_"), 10, 64)
-		if err != nil || id <= 0 || answerItems[id] {
-			return fmt.Errorf("пункт сценария повреждён")
-		}
-		answerItems[id] = true
 	}
 	if len(answerItems) != len(answerRefs) {
 		return fmt.Errorf("ссылки на сценарии повреждены")

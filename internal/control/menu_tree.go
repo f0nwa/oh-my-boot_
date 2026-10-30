@@ -198,23 +198,6 @@ func menuFolderPaths(script string) map[string]string {
 	return folders
 }
 
-func buildMenuTree(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string) ([]byte, error) {
-	return buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase, folders, defaultLocalTimeout, true)
-}
-
-// buildMenuTreeTimed is buildMenuTree with the wait before the main screen
-// boots the local disk, in seconds; 0 waits for a choice.
-func buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string, localTimer int, diagnosticsOn bool) ([]byte, error) {
-	if !safeMenuText(title, 80) || !safeMenuText(diagnosticLabel, 80) || !safeMenuText(diagnosticMessage, 120) {
-		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
-	}
-	profiles := []menuProfile{}
-	if ubuntuBase != "" {
-		profiles = append(profiles, menuProfile{id: "ubuntu", title: "Ubuntu Desktop 26.04.1", base: ubuntuBase})
-	}
-	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, localTimer, diagnosticsOn)
-}
-
 func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string) ([]byte, error) {
 	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, defaultLocalTimeout, true)
 }
@@ -412,7 +395,7 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
 		return
 	}
-	if profile.kind == BootProfileUbuntuBuiltin || profile.id == "ubuntu" {
+	if profile.kind == BootProfileUbuntuBuiltin {
 		out.WriteString(strings.Replace(ubuntuBootScript(base, profile.id), ":"+profile.id+"\n", ":"+profile.id+"\n"+choiceReport, 1))
 	}
 }

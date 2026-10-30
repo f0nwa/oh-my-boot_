@@ -9,9 +9,9 @@ import (
 )
 
 func TestAddThenPublishLeavesNoPendingChanges(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
-	if res := menuPost(t, s, "/installations/winanswer_31/add", url.Values{}); res.Code != http.StatusSeeOther {
+	if res := menuPost(t, s, "/installations/install_2031/add", url.Values{}); res.Code != http.StatusSeeOther {
 		t.Fatalf("add: %d %s", res.Code, res.Body.String())
 	}
 	if res := menuPost(t, s, "/menu/publish", url.Values{}); res.Code != http.StatusSeeOther {
@@ -24,10 +24,10 @@ func TestAddThenPublishLeavesNoPendingChanges(t *testing.T) {
 }
 
 func TestReaddingRemovedItemRestoresItsTitleAndFolder(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Custom", Folder: "Lab"}})
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Custom", Folder: "Lab"}})
 	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready"}
 	s, _ := draftServer(t, store)
-	menuPost(t, s, "/installations/winiso_17/add", url.Values{})
+	menuPost(t, s, "/installations/install_1017/add", url.Values{})
 	draft, active, _ := s.currentDraft(context.Background())
 	if changes := diffMenuDraft(active, draft); len(changes) != 0 {
 		t.Fatalf("re-add left changes %+v draft=%+v", changes, draft)
@@ -64,22 +64,22 @@ func TestAnswerWipesDiskUnknownWhenUnparsed(t *testing.T) {
 }
 
 func TestInstallationsSearchFiltersByTitle(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/installations?q=lab")
-	if !strings.Contains(body, "winanswer_31") || strings.Contains(body, "winiso_17") || !strings.Contains(body, `name="q" value="lab"`) {
+	if !strings.Contains(body, "install_2031") || strings.Contains(body, "install_1017") || !strings.Contains(body, `name="q" value="lab"`) {
 		t.Fatalf("search page: %s", body)
 	}
 }
 
 func TestPendingAddCanBeDroppedFromChanges(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "winanswer_31", Title: "Lab"}}}
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}, {InstallationID: 2031, Title: "Lab"}}}
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/menu")
 	i := strings.Index(body, `class="menu-changes"`)
 	j := i + strings.Index(body[max(i, 0):], "</details>")
-	if i < 0 || j < i || !strings.Contains(body[i:j], `action="/menu/items/winanswer_31/remove"`) {
+	if i < 0 || j < i || !strings.Contains(body[i:j], `action="/menu/items/install_2031/remove"`) {
 		t.Fatalf("pending block lacks per-row remove: %s", body)
 	}
 }

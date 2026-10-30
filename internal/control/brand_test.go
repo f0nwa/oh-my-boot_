@@ -13,7 +13,7 @@ func TestMenuSettingsIgnoreTitleField(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready"}
 	s, _ := draftServer(t, store)
-	res := menuPost(t, s, "/menu/settings", url.Values{"title": {"Other name"}, "label": {"Diagnostics"}, "message": {"Ready"}})
+	res := menuPost(t, s, "/menu/diagnostics", url.Values{"title": {"Other name"}, "label": {"Diagnostics"}, "message": {"Ready"}})
 	if res.Code != http.StatusSeeOther || store.draft.Title != productMenuTitle {
 		t.Fatalf("status=%d title=%q body=%s", res.Code, store.draft.Title, res.Body.String())
 	}
@@ -23,9 +23,9 @@ func TestMenuSettingsIgnoreTitleField(t *testing.T) {
 // someone publishes; the draft already carries the product name and the new
 // default message, so the rename shows as a pending change.
 func TestOldMenuNameIsReplacedOnlyByPublishing(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	store.versions[0].Title, store.versions[0].Message = "PXE Platform", legacyMenuMessage
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: legacyMenuMessage, Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}}}
+	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: legacyMenuMessage, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}}}
 	s, published := draftServer(t, store)
 	draft, active, err := s.currentDraft(context.Background())
 	if err != nil || draft.Title != productMenuTitle || draft.Message != defaultMenuMessage || active.Title != "PXE Platform" || len(diffMenuDraft(active, draft)) == 0 {
@@ -43,11 +43,11 @@ func TestOldMenuNameIsReplacedOnlyByPublishing(t *testing.T) {
 func TestMenuPageHasNoTitleField(t *testing.T) {
 	res := httptest.NewRecorder()
 	data := samplePageData(langRU)
-	data.Preview.Key, data.Preview.Builtin = "ubuntu", "Ubuntu Desktop"
+	data.Preview.Key, data.Preview.Builtin = "diagnostics", "Diagnostics"
 	data.Preview.Item = nil
 	render(res, "menu", data)
 	body := res.Body.String()
-	start := strings.Index(body, `action="/menu/settings"`)
+	start := strings.Index(body, `action="/menu/diagnostics"`)
 	if start < 0 {
 		t.Fatal("no menu settings form")
 	}

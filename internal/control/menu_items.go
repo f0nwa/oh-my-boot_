@@ -33,8 +33,6 @@ func (s *Server) editDraft(w http.ResponseWriter, r *http.Request, action, messa
 		target += "&item=local"
 	} else if action == "menu.draft.diagnostics" {
 		target += "&item=diagnostics"
-	} else if action == "menu.draft.settings" {
-		target += "&item=ubuntu"
 	} else if key := r.PathValue("key"); menuItemKey.MatchString(key) && action != "menu.draft.remove" {
 		// Keep the edited item selected on the menu page.
 		target += "&item=" + key
@@ -102,21 +100,6 @@ func (s *Server) menuItemRename(w http.ResponseWriter, r *http.Request) {
 			return draftError("Недопустимый каталог в меню")
 		}
 		d.Items[i].Title, d.Items[i].Folder = title, folder
-		return nil
-	})
-}
-
-func (s *Server) menuSettings(w http.ResponseWriter, r *http.Request) {
-	s.editDraft(w, r, "menu.draft.settings", "Пункт Ubuntu сохранён", func(d *MenuDraft) error {
-		// The menu title is the product name; a "title" field is ignored.
-		folder := r.FormValue("folder_ubuntu")
-		if !isASCII(folder) {
-			return draftError("Каталог в меню — только латиница, цифры и простые знаки")
-		}
-		if validateMenuFolder(folder) != nil {
-			return draftError("Недопустимый каталог в меню")
-		}
-		d.Title, d.Ubuntu, d.UbuntuFolder = productMenuTitle, r.FormValue("ubuntu") == "on", folder
 		return nil
 	})
 }

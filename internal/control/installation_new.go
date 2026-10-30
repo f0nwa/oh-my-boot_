@@ -153,13 +153,6 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	creator, ok := s.Store.(interface {
-		CreateInstallation(context.Context, Installation) (Installation, error)
-	})
-	if !ok {
-		http.Error(w, "Не удалось создать установку", http.StatusServiceUnavailable)
-		return
-	}
 	profileID, err := strconv.ParseInt(r.FormValue("boot_profile_id"), 10, 64)
 	var shared BootProfile
 	for _, choice := range s.bootProfileChoices(r.Context(), sources.BootProfiles, profiles) {
@@ -274,7 +267,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		for _, other := range existing {
 			if sameDriverSelection(other, config) && (other.State == "pending" || other.State == "preparing" || other.State == "ready") {
 				if other.State == "ready" {
-					if _, _, err := menuProfileForKey(fmt.Sprintf("windriver_%d", other.ID), "", profiles, answers, existing); err != nil {
+					if _, _, err := windowsMenuProfile(Installation{DriverConfigID: other.ID}, other.ProfileID, "", profiles, answers, existing); err != nil {
 						continue
 					}
 				}
@@ -291,7 +284,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		item.AnswerID, item.DriverConfigID = 0, config.ID
 	}
-	item, err = creator.CreateInstallation(r.Context(), item)
+	item, err = s.Store.CreateInstallation(r.Context(), item)
 	if err != nil {
 		http.Error(w, "Не удалось создать установку", http.StatusServiceUnavailable)
 		return

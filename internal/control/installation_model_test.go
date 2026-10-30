@@ -209,7 +209,7 @@ func installationTestStore(t *testing.T) Store {
 func TestInstallationModelMigration(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
-	if _, err := store.Pool.Exec(ctx, `DROP TABLE menu_version_items,menu_draft_items,windows_installation_options,installations,windows_boot_profiles,boot_profiles; ALTER TABLE menu_versions DROP COLUMN diagnostics_on,DROP COLUMN local_timeout,DROP COLUMN local_timer,DROP COLUMN look; CREATE TABLE menu_draft_items(position INT PRIMARY KEY,key TEXT NOT NULL UNIQUE,folder TEXT NOT NULL DEFAULT '',title TEXT NOT NULL DEFAULT '')`); err != nil {
+	if _, err := store.Pool.Exec(ctx, `DROP TABLE menu_version_items,menu_draft_items,windows_installation_options,installations,windows_boot_profiles,boot_profiles; ALTER TABLE menu_versions DROP COLUMN diagnostics_on,DROP COLUMN local_timeout,DROP COLUMN local_timer,DROP COLUMN look; ALTER TABLE menu_draft ADD COLUMN ubuntu BOOLEAN NOT NULL DEFAULT false,ADD COLUMN ubuntu_folder TEXT NOT NULL DEFAULT ''; CREATE TABLE menu_draft_items(position INT PRIMARY KEY,key TEXT NOT NULL UNIQUE,folder TEXT NOT NULL DEFAULT '',title TEXT NOT NULL DEFAULT '')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Pool.Exec(ctx, `
@@ -222,12 +222,26 @@ func TestInstallationModelMigration(t *testing.T) {
  INSERT INTO menu_draft_items(position,key,folder,title) VALUES(0,'winiso_1','Windows','Draft');`); err != nil {
 		t.Fatal(err)
 	}
+	libraryBefore := map[string]string{}
+	for _, table := range []string{"windows_profiles", "windows_answer_variants", "winpe_driver_configs"} {
+		var snapshot string
+		if err := store.Pool.QueryRow(ctx, "SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM "+table+" t").Scan(&snapshot); err != nil {
+			t.Fatal(err)
+		}
+		libraryBefore[table] = snapshot
+	}
 	migration, err := os.ReadFile("../../deploy/sql/2026-10-30-unified-installations.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
 		t.Fatal(err)
+	}
+	for table, before := range libraryBefore {
+		var after string
+		if err := store.Pool.QueryRow(ctx, "SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM "+table+" t").Scan(&after); err != nil || after != before {
+			t.Fatalf("%s changed: before=%s after=%s err=%v", table, before, after, err)
+		}
 	}
 	profiles, err := store.BootProfiles(ctx)
 	if err != nil || len(profiles) != 3 {

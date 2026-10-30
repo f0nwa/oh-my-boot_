@@ -9,25 +9,25 @@ import (
 
 func TestMenuOrderSavesNewOrder(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "A"}, {Key: "winanswer_31", Title: "B"}, {Key: "windriver_1", Title: "C", Folder: "Lab"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "A"}, {InstallationID: 2031, Title: "B"}, {InstallationID: 3001, Title: "C", Folder: "Lab"}}}
 	s, published := draftServer(t, store)
-	res := menuPost(t, s, "/menu/order", url.Values{"key": {"windriver_1", "winiso_17", "winanswer_31"}})
+	res := menuPost(t, s, "/menu/order", url.Values{"key": {"install_3001", "install_1017", "install_2031"}})
 	got := []string{}
 	for _, item := range store.draft.Items {
-		got = append(got, item.Key+"|"+item.Title+"|"+item.Folder)
+		got = append(got, menuDraftItemKey(item)+"|"+item.Title+"|"+item.Folder)
 	}
-	if res.Code != http.StatusSeeOther || strings.Join(got, ",") != "windriver_1|C|Lab,winiso_17|A|,winanswer_31|B|" || len(*published) != 0 {
+	if res.Code != http.StatusSeeOther || strings.Join(got, ",") != "install_3001|C|Lab,install_1017|A|,install_2031|B|" || len(*published) != 0 {
 		t.Fatalf("status=%d order=%v body=%s", res.Code, got, res.Body.String())
 	}
 }
 
 func TestMenuOrderRejectsDifferentItems(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17"}, {Key: "winanswer_31"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017}, {InstallationID: 2031}}}
 	s, _ := draftServer(t, store)
-	for _, keys := range [][]string{{"winiso_17"}, {"winiso_17", "winiso_17"}, {"winiso_17", "windriver_1"}} {
+	for _, keys := range [][]string{{"install_1017"}, {"install_1017", "install_1017"}, {"install_1017", "install_3001"}} {
 		res := menuPost(t, s, "/menu/order", url.Values{"key": keys})
-		if res.Code < 400 || store.draft.Items[0].Key != "winiso_17" {
+		if res.Code < 400 || menuDraftItemKey(store.draft.Items[0]) != "install_1017" {
 			t.Fatalf("%v accepted: %d", keys, res.Code)
 		}
 	}
@@ -35,7 +35,7 @@ func TestMenuOrderRejectsDifferentItems(t *testing.T) {
 
 func TestMenuStructureIsDraggableAndInspectorEdits(t *testing.T) {
 	body := renderPage("menu", samplePageData(langRU))
-	for _, want := range []string{`id="menu-items"`, `data-key="winiso_2" data-parent="folder_1"`, `class="drag-handle"`, `/assets/menu-order.js`, `action="/menu/items/winiso_2/title"`, `name="title" value="Windows 11"`, `name="folder"`, `action="/menu/items/winiso_2/move"`, `class="screen-row selected"`, "!! WIPES DISK", `<small class="mono">winanswer_3</small>`} {
+	for _, want := range []string{`id="menu-items"`, `data-key="install_1002" data-parent="folder_1"`, `class="drag-handle"`, `/assets/menu-order.js`, `action="/menu/items/install_1002/title"`, `name="title" value="Windows 11"`, `name="folder"`, `action="/menu/items/install_1002/move"`, `class="screen-row selected"`, "!! WIPES DISK", `<small class="mono">install_2003</small>`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("menu lacks %q: %s", want, body)
 		}
@@ -55,14 +55,14 @@ func TestObserverMenuRowsAreReadOnly(t *testing.T) {
 }
 
 func TestRestoreFromMenuPageStaysOnMenu(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready"}
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/menu")
-	if !strings.Contains(body, `action="/menu/items/winiso_17/restore"`) {
+	if !strings.Contains(body, `action="/menu/items/install_1017/restore"`) {
 		t.Fatalf("restore form missing: %s", body)
 	}
-	res := menuPost(t, s, "/menu/items/winiso_17/restore", url.Values{})
+	res := menuPost(t, s, "/menu/items/install_1017/restore", url.Values{})
 	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/menu?") || len(store.draft.Items) != 1 {
 		t.Fatalf("status=%d location=%q draft=%+v", res.Code, res.Header().Get("Location"), store.draft)
 	}

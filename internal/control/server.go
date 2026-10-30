@@ -38,6 +38,9 @@ type Storage interface {
 	SaveActiveMenu(context.Context, int64, MenuVersion) error
 	MenuDraft(context.Context) (MenuDraft, bool, error)
 	SaveMenuDraft(context.Context, MenuDraft) error
+	BootProfiles(context.Context) ([]BootProfile, error)
+	Installations(context.Context) ([]Installation, error)
+	CreateInstallation(context.Context, Installation) (Installation, error)
 	CreateWindowsProfile(context.Context, WindowsProfileSource) (WindowsProfile, error)
 	WindowsProfile(context.Context, int64) (WindowsProfile, error)
 	WindowsProfiles(context.Context) ([]WindowsProfile, error)
@@ -200,7 +203,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /menu/local-timer", s.protect("menu", withPageErrors(s.menuPage, s.menuLocalTimer)))
 	mux.HandleFunc("POST /menu/diagnostics", s.protect("menu", withPageErrors(s.menuPage, s.menuDiagnostics)))
 	mux.HandleFunc("POST /menu/discard", s.protect("menu", withPageErrors(s.menuPage, s.menuDiscard)))
-	mux.HandleFunc("POST /menu/settings", s.protect("menu", withPageErrors(s.menuPage, s.menuSettings)))
 	mux.HandleFunc("POST /menu/items/{key}/restore", s.protect("menu", withPageErrors(s.menuPage, s.installationAdd)))
 	mux.HandleFunc("POST /menu/order", s.protect("menu", withPageErrors(s.menuPage, s.menuOrder)))
 	mux.HandleFunc("GET /assets/menu-order.js", menuOrderScript)
@@ -542,7 +544,9 @@ func (s *Server) libraryData(r *http.Request) pageData {
 	s.loadStorageRecovery(r.Context(), &data)
 	if configs, err := s.Store.DriverConfigs(r.Context()); err == nil {
 		if _, active, err := s.currentDraft(r.Context()); err == nil {
-			data.ProfileUse, data.AnswerUse = menuUsage(active, data.WindowsAnswerVariants, configs)
+			if sources, err := s.installationMenuSources(r.Context()); err == nil {
+				data.ProfileUse, data.AnswerUse = menuUsage(active, configs, sources)
+			}
 		}
 	}
 	return data

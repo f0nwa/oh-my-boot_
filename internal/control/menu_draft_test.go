@@ -17,13 +17,13 @@ func draftFixture() ([]WindowsProfile, []WindowsAnswerVariant, []DriverConfig) {
 
 func TestBuildMenuFromDraftKeepsOrderAndTitles(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "windriver_2", Title: "Win11 key"}, {Key: "winiso_17"}}}
-	script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs)
+	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 3002, Title: "Win11 key"}, {InstallationID: 1017}}}
+	script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs, testInstallationSources(profiles, answers, configs))
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(script)
-	first, second := strings.Index(text, "item windriver_2 Win11 key${sp"), strings.Index(text, "item winiso_17 Windows 11\n")
+	first, second := strings.Index(text, "item install_3002 Win11 key${sp"), strings.Index(text, "item install_1017 Windows 11\n")
 	if first < 0 || second < 0 || first > second {
 		t.Fatalf("order or titles wrong:\n%s", text)
 	}
@@ -31,57 +31,35 @@ func TestBuildMenuFromDraftKeepsOrderAndTitles(t *testing.T) {
 
 func TestBuildMenuFromDraftRejectsCyrillicTitle(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Ключ"}}}
-	if _, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs); err == nil {
+	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Ключ"}}}
+	if _, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs, testInstallationSources(profiles, answers, configs)); err == nil {
 		t.Fatal("Cyrillic title accepted")
 	}
 }
 
 func TestBuildMenuFromDraftRejectsMissingObject(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_99"}}}
-	_, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs)
-	if err == nil || !strings.Contains(err.Error(), "winanswer_99") {
+	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 2099}}}
+	_, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs, testInstallationSources(profiles, answers, configs))
+	if err == nil || !strings.Contains(err.Error(), "install_2099") {
 		t.Fatalf("err=%v", err)
 	}
 }
 
 func TestBuildMenuFromDraftUsesItemFolder(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Ubuntu: true, Items: []MenuDraftItem{{Key: "winanswer_31", Folder: "Windows/Tests"}}}
-	script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs)
+	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 2031, Folder: "Windows/Tests"}}}
+	script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs, testInstallationSources(profiles, answers, configs))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if menuFolderPaths(string(script))["winanswer_31"] != "Windows/Tests" || !strings.Contains(string(script), "item ubuntu ") {
+	if menuFolderPaths(string(script))["install_2031"] != "Windows/Tests" || !strings.Contains(string(script), "item install_2031 ") {
 		t.Fatalf("folder or ubuntu missing:\n%s", script)
 	}
 }
 
-func TestDraftFromVersionRoundTrip(t *testing.T) {
-	profiles, answers, configs := draftFixture()
-	want := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Ubuntu: true, UbuntuFolder: "Linux", Items: []MenuDraftItem{
-		{Key: "winiso_17", Folder: "", Title: "Windows 11"},
-		{Key: "windriver_1", Folder: "Windows/Laptops", Title: "Laptop A"},
-		{Key: "winanswer_31", Folder: "Windows/Tests", Title: "Lab"},
-	}}
-	script, err := BuildMenuFromDraft(want, testBootURL, profiles, answers, configs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := draftFromVersion(MenuVersion{Title: want.Title, Label: want.Label, Message: want.Message, Script: string(script)})
-	if got.Title != want.Title || got.Label != want.Label || got.Message != want.Message || got.Ubuntu != want.Ubuntu || got.UbuntuFolder != want.UbuntuFolder || len(got.Items) != len(want.Items) {
-		t.Fatalf("got %+v", got)
-	}
-	for i := range want.Items {
-		if got.Items[i] != want.Items[i] {
-			t.Fatalf("item %d: got %+v want %+v", i, got.Items[i], want.Items[i])
-		}
-	}
-}
-
 func TestDiffMenuDraft(t *testing.T) {
-	base := MenuDraft{Title: "PXE", Label: "D", Message: "M", Items: []MenuDraftItem{{Key: "winiso_1", Title: "A"}, {Key: "winiso_2", Title: "B"}}}
+	base := MenuDraft{Title: "PXE", Label: "D", Message: "M", Items: []MenuDraftItem{{InstallationID: 1001, Title: "A"}, {InstallationID: 1002, Title: "B"}}}
 	clone := func(edit func(*MenuDraft)) MenuDraft {
 		d := base
 		d.Items = append([]MenuDraftItem(nil), base.Items...)
@@ -93,11 +71,11 @@ func TestDiffMenuDraft(t *testing.T) {
 		kinds []string
 	}{
 		"same":     {clone(func(*MenuDraft) {}), nil},
-		"add":      {clone(func(d *MenuDraft) { d.Items = append(d.Items, MenuDraftItem{Key: "winanswer_3", Title: "C"}) }), []string{"add"}},
+		"add":      {clone(func(d *MenuDraft) { d.Items = append(d.Items, MenuDraftItem{InstallationID: 2003, Title: "C"}) }), []string{"add"}},
 		"remove":   {clone(func(d *MenuDraft) { d.Items = d.Items[:1] }), []string{"remove"}},
 		"rename":   {clone(func(d *MenuDraft) { d.Items[0].Title = "A2" }), []string{"change"}},
 		"reorder":  {clone(func(d *MenuDraft) { d.Items[0], d.Items[1] = d.Items[1], d.Items[0] }), []string{"order"}},
-		"settings": {clone(func(d *MenuDraft) { d.Ubuntu = true }), []string{"settings"}},
+		"settings": {clone(func(d *MenuDraft) { d.NoDiagnostics = true }), []string{"settings"}},
 	} {
 		changes := diffMenuDraft(base, tc.draft)
 		var kinds []string
@@ -144,17 +122,17 @@ func newDraftStore(t *testing.T, role string, active []MenuDraftItem) *draftStor
 	store := &draftStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: role, Enabled: true}}}, profiles: profiles, answers: answers, configs: configs}
 	if active != nil {
 		d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: active}
-		script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs)
+		script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs, testInstallationSources(profiles, answers, configs))
 		if err != nil {
 			t.Fatal(err)
 		}
-		store.versions = []MenuVersion{{ID: 32, Active: true, Title: d.Title, Label: d.Label, Message: d.Message, Script: string(script)}}
+		store.versions = []MenuVersion{{ID: 32, Active: true, Title: d.Title, Label: d.Label, Message: d.Message, Script: string(script), Look: menuLook, Items: versionItems(d)}}
 	}
 	return store
 }
 
 func TestCurrentDraftWithoutStoredDraftEqualsActive(t *testing.T) {
-	store := newDraftStore(t, "admin", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "windriver_1", Folder: "Windows/Laptops", Title: "Laptop A"}})
+	store := newDraftStore(t, "admin", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}, {InstallationID: 3001, Folder: "Windows/Laptops", Title: "Laptop A"}})
 	draft, active, err := (&Server{Store: store}).currentDraft(context.Background())
 	if err != nil || len(draft.Items) != 2 || len(diffMenuDraft(active, draft)) != 0 {
 		t.Fatalf("err=%v draft=%+v changes=%v", err, draft, diffMenuDraft(active, draft))
@@ -180,13 +158,13 @@ func (s *draftStore) SaveActiveMenu(_ context.Context, _ int64, m MenuVersion) e
 }
 
 func TestStructuredDraftFromVersionIgnoresScript(t *testing.T) {
-	v := MenuVersion{Title: productMenuTitle, Label: "Tools", Message: "Ready", Script: "#!ipxe\nitem ubuntu Old Ubuntu\nitem winiso_9 Old Windows\n", NoDiagnostics: true, LocalTimeout: 31, NoLocalTimer: true, Look: menuLook, Items: []MenuVersionItem{{InstallationID: 8, Position: 1, Title: "Windows", Folder: "Win"}, {InstallationID: 7, Position: 0, Title: "Ubuntu", Folder: "Linux"}}}
+	v := MenuVersion{Title: productMenuTitle, Label: "Tools", Message: "Ready", Script: "#!ipxe\nitem ubuntu Old Ubuntu\nitem install_1009 Old Windows\n", NoDiagnostics: true, LocalTimeout: 31, NoLocalTimer: true, Look: menuLook, Items: []MenuVersionItem{{InstallationID: 8, Position: 1, Title: "Windows", Folder: "Win"}, {InstallationID: 7, Position: 0, Title: "Ubuntu", Folder: "Linux"}}}
 	want := MenuDraft{Title: productMenuTitle, Label: "Tools", Message: "Ready", NoDiagnostics: true, LocalTimeout: 31, NoLocalTimer: true, look: menuLook, Items: []MenuDraftItem{{InstallationID: 7, Title: "Ubuntu", Folder: "Linux"}, {InstallationID: 8, Title: "Windows", Folder: "Win"}}}
 	if got := draftFromVersion(v); !reflect.DeepEqual(got, want) {
 		t.Fatalf("draft=%+v want=%+v", got, want)
 	}
 	v.Items = []MenuVersionItem{}
-	if got := draftFromVersion(v); len(got.Items) != 0 || got.Ubuntu {
+	if got := draftFromVersion(v); len(got.Items) != 0 {
 		t.Fatalf("empty structured version parsed legacy items: %+v", got)
 	}
 }
@@ -242,4 +220,11 @@ func TestStructuredDraftOperationsAndChanges(t *testing.T) {
 	if err := d.MoveInstallation(99, 1); err == nil {
 		t.Fatal("moved missing installation")
 	}
+}
+
+func (s *draftStore) Installations(context.Context) ([]Installation, error) {
+	return testInstallationSources(s.profiles, s.answers, s.configs).Installations, nil
+}
+func (s *draftStore) BootProfiles(context.Context) ([]BootProfile, error) {
+	return testInstallationSources(s.profiles, s.answers, s.configs).BootProfiles, nil
 }

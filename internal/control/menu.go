@@ -43,74 +43,12 @@ func safeMenuText(value string, max int) bool {
 	return true
 }
 
-func BuildMenu(title, label, message string) ([]byte, error) {
-	return buildMenu(title, label, message, "")
-}
-
-// BuildUbuntuMenu adds the prepared Ubuntu Desktop boot profile to a menu.
-func BuildUbuntuMenu(title, label, message, baseURL string) ([]byte, error) {
-	base, err := validatedBootURL(baseURL)
-	if err != nil {
-		return nil, err
-	}
-	return buildMenu(title, label, message, base)
-}
-
 func validatedBootURL(baseURL string) (string, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || strings.ContainsAny(baseURL, " \t\r\n") {
 		return "", fmt.Errorf("invalid boot URL")
 	}
 	return strings.TrimRight(u.String(), "/"), nil
-}
-
-func BuildMenuFromForm(form url.Values, baseURL string) ([]byte, error) {
-	ubuntuBase := ""
-	folders := map[string]string{}
-	if form.Get("ubuntu") == "on" {
-		base, err := validatedBootURL(baseURL)
-		if err != nil {
-			return nil, err
-		}
-		ubuntuBase = base
-		folders["ubuntu"] = form.Get("folder_ubuntu")
-	}
-	for _, folder := range folders {
-		if err := validateMenuFolder(folder); err != nil {
-			return nil, err
-		}
-	}
-	for _, folder := range folders {
-		if folder != "" {
-			return buildMenuTree(productMenuTitle, form.Get("label"), form.Get("message"), ubuntuBase, folders)
-		}
-	}
-	return buildMenu(form.Get("title"), form.Get("label"), form.Get("message"), ubuntuBase)
-}
-
-func buildMenu(title, label, message, ubuntuBase string) ([]byte, error) {
-	if !safeMenuText(title, 80) || !safeMenuText(label, 80) || !safeMenuText(message, 120) {
-		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
-	}
-	script := "#!ipxe\n" +
-		"menu " + title + "\n" +
-		"item diagnostics " + label + "\n"
-	if ubuntuBase != "" {
-		script += "item ubuntu Ubuntu Desktop 26.04.1\n"
-	}
-	script += "item local Boot local disk\n" +
-		"choose target || goto local\n" +
-		"goto ${target}\n" +
-		":diagnostics\n" +
-		"echo " + message + "\n" +
-		"sleep 3\n" +
-		"goto local\n"
-	if ubuntuBase != "" {
-		script += ubuntuBootScript(ubuntuBase, "ubuntu")
-	}
-	script += ":local\n" +
-		"exit\n"
-	return []byte(script), nil
 }
 
 func ubuntuBootScript(base, label string) string {

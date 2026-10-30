@@ -1,9 +1,6 @@
 package control
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
 // menuScreen is one screen of the iPXE menu: the root or a folder.
 type menuScreen struct {
@@ -173,7 +170,7 @@ const previewBaseURL = "http://preview.invalid"
 // buildMenuPreview renders the draft the way iPXE will show it: the screen
 // that holds the selected item (or the one asked for), the whole structure,
 // and the selected item's details.
-func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow, installs []installationRow, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, key, screenLabel string, sources ...InstallationMenuSources) *menuPreview {
+func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow, installs []installationRow, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, key, screenLabel string, sources InstallationMenuSources) *menuPreview {
 	preview := &menuPreview{Key: key, Count: len(draft.Items)}
 	for i := range rows {
 		if menuDraftItemKey(rows[i].Item) == key {
@@ -187,41 +184,8 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	if install, ok := installByKey[key]; ok {
 		preview.Install = &install
 	}
-	if preview.Item != nil && preview.Item.Item.InstallationID > 0 && preview.Install == nil {
-		entry, _, err := resolveDraftItem(preview.Item.Item, "", sources, profiles, answers, configs)
-		if err == nil {
-			detail := installationRow{Key: key, Title: preview.Item.Title}
-			if entry.kind == BootProfileUbuntuBuiltin {
-				for _, source := range sources {
-					for _, installation := range source.Installations {
-						if installation.ID != preview.Item.Item.InstallationID {
-							continue
-						}
-						for _, profile := range source.BootProfiles {
-							if profile.ID == installation.BootProfileID {
-								detail.Image = profile.Title
-							}
-						}
-					}
-				}
-			} else {
-				sourceKey := fmt.Sprintf("winiso_%d", entry.windowsISOID)
-				if entry.answerID > 0 {
-					sourceKey = fmt.Sprintf("winanswer_%d", entry.answerID)
-				}
-				if entry.driverConfigID > 0 {
-					sourceKey = fmt.Sprintf("windriver_%d", entry.driverConfigID)
-				}
-				detail = installByKey[sourceKey]
-				detail.Key, detail.Title = key, preview.Item.Title
-			}
-			preview.Install = &detail
-		}
-	}
 
 	switch key {
-	case "ubuntu":
-		preview.Builtin = "Ubuntu Desktop — встроенный пункт. Здесь можно включить его и выбрать каталог в меню."
 	case "diagnostics":
 		preview.Builtin = "Диагностический пункт показывает сообщение и загружает машину с локального диска. Здесь можно изменить его подпись и сообщение."
 	case "local":
@@ -240,7 +204,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 			preview.Removed = append(preview.Removed, title)
 		}
 	}
-	script, err := BuildMenuFromDraft(draft, previewBaseURL, profiles, answers, configs, sources...)
+	script, err := BuildMenuFromDraft(draft, previewBaseURL, profiles, answers, configs, sources)
 	var screens []menuScreen
 	if err == nil {
 		screens = parseMenuScreens(string(script))
@@ -298,10 +262,6 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 		preview.Rows = preview.Rows[:len(preview.Rows)-1]
 	}
 	treeLines := menuTreeLines(screens)
-	if (len(sources) == 0 || len(sources[0].BootProfiles) == 0) && !draft.Ubuntu {
-		// Keep the hidden client item selectable in the editor for re-enabling.
-		treeLines = append(treeLines, menuTreeLine{Text: "Ubuntu Desktop 26.04.1", Key: "ubuntu", Parent: screens[0].Label, Fixed: true})
-	}
 	if !draft.DiagnosticsOn() {
 		// Keep the hidden client item selectable in the editor for re-enabling.
 		treeLines = append(treeLines, menuTreeLine{Text: draft.Label, Key: "diagnostics", Parent: screens[0].Label, Fixed: true})
@@ -317,7 +277,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	for _, line := range treeLines {
 		out := previewLine{Text: line.Text, Key: line.Key, Parent: line.Parent, Pad: strings.Repeat("  ", line.Depth), Folder: line.Folder, Fixed: line.Fixed, Added: added[line.Key], Broken: broken[line.Key], Selected: key != "" && line.Key == key, ShowKey: !line.Folder && titles[line.Text] > 1}
 		out.Movable = menuItemKey.MatchString(line.Key)
-		out.Off = line.Key == "local" && !draft.LocalTimerOn() || line.Key == "diagnostics" && !draft.DiagnosticsOn() || line.Key == "ubuntu" && !draft.Ubuntu
+		out.Off = line.Key == "local" && !draft.LocalTimerOn() || line.Key == "diagnostics" && !draft.DiagnosticsOn()
 		if line.Folder {
 			out.Href, out.Mark = "/menu?screen="+line.Label, "▾"
 		} else {

@@ -27,21 +27,21 @@ func TestDiscardDraftReturnsToPublishedMenu(t *testing.T) {
 }
 
 func TestDiscardDraftNeedsConfirmation(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_31"}}}
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 2031}}}
 	s, _ := draftServer(t, store)
 	res := menuPost(t, s, "/menu/discard", url.Values{})
-	if res.Code == http.StatusSeeOther || len(store.draft.Items) != 1 || store.draft.Items[0].Key != "winanswer_31" {
+	if res.Code == http.StatusSeeOther || len(store.draft.Items) != 1 || menuDraftItemKey(store.draft.Items[0]) != "install_2031" {
 		t.Fatalf("status=%d draft=%+v", res.Code, store.draft)
 	}
 }
 
 func TestObserverCannotDiscardDraft(t *testing.T) {
-	store := newDraftStore(t, "observer", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_31"}}}
+	store := newDraftStore(t, "observer", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 2031}}}
 	s, _ := draftServer(t, store)
 	res := menuPost(t, s, "/menu/discard", url.Values{"confirm": {"yes"}})
-	if res.Code == http.StatusSeeOther || store.draft.Items[0].Key != "winanswer_31" {
+	if res.Code == http.StatusSeeOther || menuDraftItemKey(store.draft.Items[0]) != "install_2031" {
 		t.Fatalf("observer discarded the draft: status=%d", res.Code)
 	}
 }

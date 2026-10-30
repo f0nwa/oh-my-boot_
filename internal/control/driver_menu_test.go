@@ -65,25 +65,25 @@ func TestMenuDistinguishesDuplicateDriverConfigTitles(t *testing.T) {
 	profile, answer, configs := driverMenuFixture()
 	configs[0].Title = "Windows 11 VirtIO Net SCSI test"
 	configs[1].Title = configs[0].Title
-	script, err := BuildMenuFromDraft(MenuDraft{Title: "PXE", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "windriver_1"}, {Key: "windriver_2"}}}, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
+	script, err := buildTestMenuFromDraft(MenuDraft{Title: "PXE", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 3001}, {InstallationID: 3002}}}, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	store := driverMenuStore{windowsMenuPageStore: windowsMenuPageStore{
-		menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Title: "PXE", Label: "Diagnostics", Message: "Ready", Script: string(script)}}},
+		menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Title: "PXE", Label: "Diagnostics", Message: "Ready", Script: string(script), Items: []MenuVersionItem{{InstallationID: 3001, Title: configs[0].Title}, {InstallationID: 3002, Position: 1, Title: configs[1].Title}}}}},
 		profiles:      []WindowsProfile{profile}, answers: []WindowsAnswerVariant{answer},
 	}, configs: configs}
 	s := &Server{Store: store}
 	// Equal titles in the structure carry their keys; the selected item
 	// names what it loads.
-	req := httptest.NewRequest(http.MethodGet, "/menu?item=windriver_1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/menu?item=install_3001", nil)
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
-	for _, want := range []string{`<small class="mono">windriver_1</small>`, `<small class="mono">windriver_2</small>`, "Образ с драйверами"} {
+	for _, want := range []string{`<small class="mono">install_3001</small>`, `<small class="mono">install_3002</small>`, "Образ с драйверами"} {
 		if !strings.Contains(res.Body.String(), want) {
 			t.Errorf("missing %q", want)
 		}
@@ -92,15 +92,15 @@ func TestMenuDistinguishesDuplicateDriverConfigTitles(t *testing.T) {
 
 func TestDriverMenuRendersSeparateEntriesAndFolders(t *testing.T) {
 	profile, answer, configs := driverMenuFixture()
-	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "windriver_1": {"on"}, "windriver_2": {"on"}}
-	script, err := BuildMenuFromFormWithDriverConfigs(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
+	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_1017": {"on"}, "install_3001": {"on"}, "install_3002": {"on"}}
+	script, err := buildTestMenuWithDrivers(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(script)
 	for _, want := range []string{
-		"item windriver_1 Windows 11 Laptop A${sp",
-		"item windriver_2 Windows 11 Laptop B${sp",
+		"item install_3001 Windows 11 Laptop A${sp",
+		"item install_3002 Windows 11 Laptop B${sp",
 		"item menu_root .. Back\n",
 		"initrd http://10.30.0.10:8080/assets/windows-driver-wims/" + configs[0].Build.WIMKey + "/boot.wim boot.wim\n",
 		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-driver-configs/2/pxe-setup.cmd\n",
@@ -111,15 +111,15 @@ func TestDriverMenuRendersSeparateEntriesAndFolders(t *testing.T) {
 		}
 	}
 	refs := menuDriverConfigRefs(text)
-	if len(refs) != 2 || refs[2].AnswerSHA256 != answer.SHA256 || menuFolderPaths(text)["windriver_1"] != "Windows/Laptops" {
+	if len(refs) != 2 || refs[2].AnswerSHA256 != answer.SHA256 || menuFolderPaths(text)["install_3001"] != "Windows/Laptops" {
 		t.Fatalf("bad marker: %+v", refs)
 	}
 }
 
 func TestDriverMenuVerifierRejectsMissingOrChangedAssets(t *testing.T) {
 	profile, answer, configs := driverMenuFixture()
-	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "windriver_1": {"on"}}
-	script, err := BuildMenuFromFormWithDriverConfigs(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
+	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_3001": {"on"}}
+	script, err := buildTestMenuWithDrivers(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,39 +128,46 @@ func TestDriverMenuVerifierRejectsMissingOrChangedAssets(t *testing.T) {
 	check := &recordingDriverCheck{}
 	pkg := &recordingPackageCheck{}
 	s := &Server{Store: store, Images: iso, WindowsISO: &recordingWindowsISOAPI{}, DriverConfigs: check, DriverPackages: pkg}
-	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script)); err != nil || len(check.calls) != 1 || len(pkg.hashes) != 1 {
+	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script), menuProfile{windowsISOID: 17, driverConfigID: 1}); err != nil || len(check.calls) != 1 || len(pkg.hashes) != 1 {
 		t.Fatalf("valid entry rejected: %v %+v %+v", err, check.calls, pkg.hashes)
 	}
 	forged := strings.Replace(string(script), menuDriverMarker, "# removed-marker ", 1)
-	if err := s.verifyMenuWindowsProfiles(context.Background(), forged); err == nil {
+	if err := s.verifyMenuWindowsProfiles(context.Background(), forged, menuProfile{windowsISOID: 17, driverConfigID: 1}); err == nil {
 		t.Fatal("accepted missing driver marker")
 	}
 	check.fail = true
-	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script)); err == nil {
+	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script), menuProfile{windowsISOID: 17, driverConfigID: 1}); err == nil {
 		t.Fatal("accepted missing derived WIM")
 	}
 	check.fail = false
 	store.configs[0].Build.WIMSHA256 = strings.Repeat("9", 64)
-	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script)); err == nil {
+	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script), menuProfile{windowsISOID: 17, driverConfigID: 1}); err == nil {
 		t.Fatal("accepted changed derived WIM hash")
 	}
 }
 
 func TestDriverMenuVerifierChecksAnswerVariant(t *testing.T) {
 	profile, answer, configs := driverMenuFixture()
-	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "windriver_2": {"on"}}
-	script, err := BuildMenuFromFormWithDriverConfigs(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
+	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_3002": {"on"}}
+	script, err := buildTestMenuWithDrivers(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, []WindowsAnswerVariant{answer}, configs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	store := driverMenuStore{windowsMenuPageStore: windowsMenuPageStore{profiles: []WindowsProfile{profile}, answers: []WindowsAnswerVariant{answer}}, configs: configs}
 	iso := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Root: profile.StorageRoot, State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: profile.Path, Size: profile.Size, Modified: profile.Modified, Present: true}}}}
 	s := &Server{Store: store, Images: iso, WindowsISO: &recordingWindowsISOAPI{}, WindowsAnswers: &answerAgent{}, DriverConfigs: &recordingDriverCheck{}, DriverPackages: &recordingPackageCheck{}}
-	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script)); err != nil {
+	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script), menuProfile{windowsISOID: 17, driverConfigID: 2}); err != nil {
 		t.Fatal(err)
 	}
 	store.answers[0].SHA256 = strings.Repeat("8", 64)
-	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script)); err == nil {
+	if err := s.verifyMenuWindowsProfiles(context.Background(), string(script), menuProfile{windowsISOID: 17, driverConfigID: 2}); err == nil {
 		t.Fatal("accepted changed answer XML")
 	}
+}
+
+func (s driverMenuStore) Installations(context.Context) ([]Installation, error) {
+	return testInstallationSources(s.profiles, s.answers, s.configs).Installations, nil
+}
+func (s driverMenuStore) BootProfiles(context.Context) ([]BootProfile, error) {
+	return testInstallationSources(s.profiles, s.answers, s.configs).BootProfiles, nil
 }

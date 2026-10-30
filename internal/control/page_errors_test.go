@@ -61,7 +61,7 @@ func TestMenuFormNoLongerOffersStaticWindowsItems(t *testing.T) {
 			t.Errorf("menu form still offers %s", gone)
 		}
 	}
-	if !strings.Contains(body, `name="ubuntu"`) || !strings.Contains(body, `name="folder_ubuntu"`) {
-		t.Fatal("Ubuntu item disappeared from the menu form")
+	if strings.Contains(body, `name="ubuntu"`) || strings.Contains(body, `name="folder_ubuntu"`) {
+		t.Fatal("old Ubuntu settings remain")
 	}
 }

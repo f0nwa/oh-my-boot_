@@ -22,20 +22,20 @@ func rowByKey(rows []installationRow, key string) (installationRow, int) {
 func TestInstallationRowsOrderAndStatus(t *testing.T) {
 	profiles, answers, configs := draftFixture()
 	profiles = append(profiles, WindowsProfile{ID: 18, WindowsProfileSource: WindowsProfileSource{Title: "Windows 10"}, State: "ready", InstallFile: "install.wim"})
-	draft := MenuDraft{Items: []MenuDraftItem{{Key: "windriver_1"}}}
-	active := MenuDraft{Items: []MenuDraftItem{{Key: "winiso_17"}}}
-	rows := installationRows(profiles, answers, configs, draft, active)
-	first, i := rowByKey(rows, "windriver_1")
+	draft := MenuDraft{Items: []MenuDraftItem{{InstallationID: 3001}}}
+	active := MenuDraft{Items: []MenuDraftItem{{InstallationID: 1017}}}
+	rows := installationRows(profiles, answers, configs, draft, active, testInstallationSources(profiles, answers, configs))
+	first, i := rowByKey(rows, "install_3001")
 	if i != 0 || first.Status != "pending_add" || first.Image != "Windows 11" || first.Drivers != "net" {
 		t.Fatalf("first row %+v at %d", first, i)
 	}
-	if row, _ := rowByKey(rows, "winiso_17"); row.Status != "pending_remove" {
+	if row, _ := rowByKey(rows, "install_1017"); row.Status != "pending_remove" {
 		t.Fatalf("removed row %+v", row)
 	}
-	if row, _ := rowByKey(rows, "winiso_18"); row.Status != "not_in_menu" {
+	if row, _ := rowByKey(rows, "install_1018"); row.Status != "not_in_menu" {
 		t.Fatalf("other row %+v", row)
 	}
-	if row, _ := rowByKey(rows, "winanswer_31"); row.Answer != "Lab" || row.Image != "Windows 11" {
+	if row, _ := rowByKey(rows, "install_2031"); row.Answer != "Lab" || row.Image != "Windows 11" {
 		t.Fatalf("answer row %+v", row)
 	}
 }
@@ -43,19 +43,19 @@ func TestInstallationRowsOrderAndStatus(t *testing.T) {
 func TestInstallationRowNeedsBuild(t *testing.T) {
 	profiles, answers, configs := draftFixture()
 	configs[0].State = "pending"
-	rows := installationRows(profiles, answers, configs, MenuDraft{}, MenuDraft{})
-	if row, _ := rowByKey(rows, "windriver_1"); row.Status != "needs_build" || row.ConfigID != 1 {
+	rows := installationRows(profiles, answers, configs, MenuDraft{}, MenuDraft{}, testInstallationSources(profiles, answers, configs))
+	if row, _ := rowByKey(rows, "install_3001"); row.Status != "needs_build" || row.ConfigID != 1 {
 		t.Fatalf("row %+v", row)
 	}
 }
 
 func TestInstallationsPageShowsPendingNotice(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
 	if body := libraryGet(t, s, "/installations"); strings.Contains(body, `class="draftbar"`) || !strings.Contains(body, "Windows 11") {
 		t.Fatalf("clean page: %s", body)
 	}
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "winanswer_31"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}, {InstallationID: 2031}}}
 	body := libraryGet(t, s, "/installations")
 	if !strings.Contains(body, `class="draftbar"`) || !strings.Contains(body, `<span class="change-add">+1</span>`) || !strings.Contains(body, `action="/menu/publish"`) {
 		t.Fatalf("pending page: %s", body)
@@ -68,14 +68,14 @@ func TestInstallationsPageShowsPendingNotice(t *testing.T) {
 func TestAddInstallationToDraft(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
 	s, _ := draftServer(t, store)
-	res := menuPost(t, s, "/installations/winanswer_31/add", url.Values{})
-	if res.Code != http.StatusSeeOther || store.draft == nil || len(store.draft.Items) != 1 || store.draft.Items[0].Key != "winanswer_31" {
+	res := menuPost(t, s, "/installations/install_2031/add", url.Values{})
+	if res.Code != http.StatusSeeOther || store.draft == nil || len(store.draft.Items) != 1 || menuDraftItemKey(store.draft.Items[0]) != "install_2031" {
 		t.Fatalf("status=%d draft=%+v body=%s", res.Code, store.draft, res.Body.String())
 	}
 }
 
 func TestObserverSeesNoInstallationButtons(t *testing.T) {
-	store := newDraftStore(t, "observer", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store := newDraftStore(t, "observer", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/installations")
 	if strings.Contains(body, "Новая установка") || strings.Contains(body, `action="/installations/`) || strings.Contains(body, `action="/drivers/configs/`) {
@@ -103,16 +103,16 @@ func TestInstallationUsageCountsChoicesPerItem(t *testing.T) {
 }
 
 func TestInstallationsFilterAndRemoveReturns(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/installations?show=off")
-	if strings.Contains(body, "winiso_17") || !strings.Contains(body, `href="/installations?show=off" class="active"`) {
+	if strings.Contains(body, "install_1017") || !strings.Contains(body, `href="/installations?show=off" class="active"`) {
 		t.Fatalf("off filter: %s", body)
 	}
-	if body := libraryGet(t, s, "/installations?show=menu"); !strings.Contains(body, "winiso_17") || !strings.Contains(body, `name="return" value="/installations"`) {
+	if body := libraryGet(t, s, "/installations?show=menu"); !strings.Contains(body, "install_1017") || !strings.Contains(body, `name="return" value="/installations"`) {
 		t.Fatalf("menu filter: %s", body)
 	}
-	res := menuPost(t, s, "/menu/items/winiso_17/remove", url.Values{"return": {"/installations"}})
+	res := menuPost(t, s, "/menu/items/install_1017/remove", url.Values{"return": {"/installations"}})
 	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/installations?message=") {
 		t.Fatalf("status=%d location=%q", res.Code, res.Header().Get("Location"))
 	}

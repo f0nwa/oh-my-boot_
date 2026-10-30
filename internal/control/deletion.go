@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -22,7 +21,7 @@ func deletionID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-func (s *Server) activeMenuContains(r *http.Request, key string) (bool, error) {
+func (s *Server) activeMenuContains(r *http.Request, component installationComponent) (bool, error) {
 	reader := s.DeletionMenu
 	if reader == nil {
 		reader = s.Boot
@@ -47,10 +46,15 @@ func (s *Server) activeMenuContains(r *http.Request, key string) (bool, error) {
 			if hex.EncodeToString(sum[:]) != version.SHA256 || string(live) != version.Script {
 				return false, fmt.Errorf("boot menu differs from active database version")
 			}
-			for _, line := range strings.Split(version.Script, "\n") {
-				fields := strings.Fields(line)
-				if len(fields) >= 2 && fields[0] == "item" && fields[1] == key {
-					return true, nil
+			source, err := s.installationMenuSources(r.Context())
+			if err != nil {
+				return false, err
+			}
+			for _, placement := range version.Items {
+				for _, item := range source.Installations {
+					if item.ID == placement.InstallationID && component.matches(item, source.BootProfiles) {
+						return true, nil
+					}
 				}
 			}
 			return false, nil
@@ -81,7 +85,7 @@ func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать конфигурацию", http.StatusServiceUnavailable)
 		return
 	}
-	active, err := s.activeMenuContains(r, fmt.Sprintf("windriver_%d", id))
+	active, err := s.activeMenuContains(r, installationComponent{driverConfigID: id})
 	if err != nil {
 		http.Error(w, "Не удалось проверить меню", http.StatusServiceUnavailable)
 		return
@@ -89,6 +93,17 @@ func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
 	if active {
 		s.rejectDeletion(w, r, "driver-config.delete", id, "published", "Сначала снимите пункт с публикации меню")
 		return
+	}
+	source, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить установки", http.StatusServiceUnavailable)
+		return
+	}
+	for _, item := range source.Installations {
+		if (installationComponent{driverConfigID: id}).matches(item, source.BootProfiles) {
+			s.rejectDeletion(w, r, "driver-config.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется установкой № %d", item.ID))
+			return
+		}
 	}
 	configs, err := s.Store.DriverConfigs(r.Context())
 	if err != nil {
@@ -146,7 +161,7 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать сценарий", http.StatusServiceUnavailable)
 		return
 	}
-	active, err := s.activeMenuContains(r, fmt.Sprintf("winanswer_%d", id))
+	active, err := s.activeMenuContains(r, installationComponent{answerID: id})
 	if err != nil {
 		http.Error(w, "Не удалось проверить меню", http.StatusServiceUnavailable)
 		return
@@ -154,6 +169,17 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 	if active {
 		s.rejectDeletion(w, r, "windows-answer.delete", id, "published", "Сначала снимите пункт с публикации меню")
 		return
+	}
+	source, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить установки", http.StatusServiceUnavailable)
+		return
+	}
+	for _, item := range source.Installations {
+		if (installationComponent{answerID: id}).matches(item, source.BootProfiles) {
+			s.rejectDeletion(w, r, "windows-answer.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется установкой № %d", item.ID))
+			return
+		}
 	}
 	configs, err := s.Store.DriverConfigs(r.Context())
 	if err != nil {
@@ -202,7 +228,7 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать профиль", http.StatusServiceUnavailable)
 		return
 	}
-	active, err := s.activeMenuContains(r, fmt.Sprintf("winiso_%d", id))
+	active, err := s.activeMenuContains(r, installationComponent{profileID: id})
 	if err != nil {
 		http.Error(w, "Не удалось проверить меню", http.StatusServiceUnavailable)
 		return
@@ -210,6 +236,17 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 	if active {
 		s.rejectDeletion(w, r, "windows-profile.delete", id, "published", "Сначала снимите пункт с публикации меню")
 		return
+	}
+	source, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить установки", http.StatusServiceUnavailable)
+		return
+	}
+	for _, item := range source.Installations {
+		if (installationComponent{profileID: id}).matches(item, source.BootProfiles) {
+			s.rejectDeletion(w, r, "windows-profile.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется установкой № %d", item.ID))
+			return
+		}
 	}
 	answers, err := s.Store.WindowsAnswers(r.Context())
 	if err != nil {
@@ -252,4 +289,22 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 func (s *Server) rejectDeletion(w http.ResponseWriter, r *http.Request, action string, id int64, reason, message string) {
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, action, "rejected", fmt.Sprintf("id=%d %s", id, reason))
 	http.Error(w, message, http.StatusConflict)
+}
+
+// Library components remain referenced even when their installations leave the menu.
+type installationComponent struct{ profileID, answerID, driverConfigID int64 }
+
+func (c installationComponent) matches(item Installation, profiles []BootProfile) bool {
+	if c.answerID > 0 {
+		return item.AnswerID == c.answerID
+	}
+	if c.driverConfigID > 0 {
+		return item.DriverConfigID == c.driverConfigID
+	}
+	for _, p := range profiles {
+		if p.ID == item.BootProfileID && p.WindowsProfileID == c.profileID && p.Kind == BootProfileWindowsISO {
+			return true
+		}
+	}
+	return false
 }

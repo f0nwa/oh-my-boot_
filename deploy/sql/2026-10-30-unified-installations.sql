@@ -63,19 +63,17 @@ CREATE TABLE IF NOT EXISTS windows_installation_options (
  -- approved draft/history; Boot keeps its current script until publication.
  DROP TABLE menu_draft_items;
  DELETE FROM menu_draft;
+ ALTER TABLE menu_draft DROP COLUMN ubuntu, DROP COLUMN ubuntu_folder;
  DELETE FROM menu_versions;
  ALTER TABLE menu_versions ADD COLUMN IF NOT EXISTS diagnostics_on BOOLEAN NOT NULL DEFAULT true;
  ALTER TABLE menu_versions ADD COLUMN IF NOT EXISTS local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600);
  ALTER TABLE menu_versions ADD COLUMN IF NOT EXISTS local_timer BOOLEAN NOT NULL DEFAULT true;
  ALTER TABLE menu_versions ADD COLUMN IF NOT EXISTS look TEXT NOT NULL DEFAULT '';
--- key is a temporary bridge removed when the editor uses installation IDs.
 CREATE TABLE IF NOT EXISTS menu_draft_items (
  position INT PRIMARY KEY CHECK (position >= 0),
- installation_id BIGINT UNIQUE REFERENCES installations(id) ON DELETE RESTRICT,
- key TEXT UNIQUE CHECK (key ~ '^win(iso|answer|driver)_[0-9]+$'),
+ installation_id BIGINT NOT NULL UNIQUE REFERENCES installations(id) ON DELETE RESTRICT,
  folder TEXT NOT NULL DEFAULT '',
- title TEXT NOT NULL DEFAULT '',
- CHECK ((installation_id IS NULL) <> (key IS NULL))
+ title TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS menu_version_items (

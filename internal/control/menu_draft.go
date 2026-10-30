@@ -10,10 +10,8 @@ import (
 )
 
 // MenuDraftItem places an installation in the menu with its own title/folder.
-// Key is a temporary bridge for callers converted by the following tasks.
 type MenuDraftItem struct {
 	InstallationID int64
-	Key            string
 	Folder         string
 	Title          string
 }
@@ -21,8 +19,6 @@ type MenuDraftItem struct {
 // MenuDraft is the boot menu being prepared; Items are in menu order.
 type MenuDraft struct {
 	Title, Label, Message string
-	Ubuntu                bool
-	UbuntuFolder          string
 	// NoDiagnostics omits the built-in diagnostics item from the client menu.
 	NoDiagnostics bool
 	// LocalTimeout is how many seconds the main screen waits before booting
@@ -73,23 +69,6 @@ const menuLook = "pult-4"
 
 const menuLookMarker = "# pxe-platform:look "
 
-// scriptLook tells which design a published script has. Versions from before
-// the marker are told apart by their commands.
-func scriptLook(script string) string {
-	for _, line := range strings.Split(script, "\n") {
-		if look, ok := strings.CutPrefix(line, menuLookMarker); ok {
-			return look
-		}
-	}
-	switch {
-	case strings.Contains(script, "console --x 640 --y 480"):
-		return "pult-2"
-	case strings.Contains(script, "cpair --foreground 7 --background 3 2"):
-		return "pult-1"
-	}
-	return ""
-}
-
 // defaultMenuFolder marks an item whose folder should come from its object.
 const defaultMenuFolder = "\x00default"
 
@@ -101,20 +80,22 @@ func profileBootable(p WindowsProfile) bool {
 	return p.State == "ready" && (p.InstallFile == "install.wim" || p.InstallFile == "install.esd")
 }
 
-// menuProfileForKey checks that the object behind key can boot and returns its
-// menu entry and default folder.
-func menuProfileForKey(key, base string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
-	prefix, rawID, ok := strings.Cut(key, "_")
-	id, err := strconv.ParseInt(rawID, 10, 64)
-	if !ok || err != nil || id <= 0 {
-		return menuProfile{}, "", unknownMenuItemError(key)
+func windowsMenuProfile(installation Installation, profileID int64, base string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
+	key := menuDraftItemKey(MenuDraftItem{InstallationID: installation.ID})
+	id := profileID
+	kind := "manual"
+	if installation.AnswerID > 0 {
+		id, kind = installation.AnswerID, "answer"
+	}
+	if installation.DriverConfigID > 0 {
+		id, kind = installation.DriverConfigID, "driver"
 	}
 	byID := map[int64]WindowsProfile{}
 	for _, p := range profiles {
 		byID[p.ID] = p
 	}
-	switch prefix {
-	case "winiso":
+	switch kind {
+	case "manual":
 		p, ok := byID[id]
 		if !ok {
 			return menuProfile{}, "", unknownMenuItemError(key)
@@ -123,7 +104,7 @@ func menuProfileForKey(key, base string, profiles []WindowsProfile, answers []Wi
 			return menuProfile{}, "", fmt.Errorf("Windows profile %d is not ready for PXE", p.ID)
 		}
 		return menuProfile{id: key, title: p.Title, base: base, windowsISOID: p.ID}, p.Folder, nil
-	case "winanswer":
+	case "answer":
 		for _, answer := range answers {
 			if answer.ID != id {
 				continue
@@ -138,7 +119,7 @@ func menuProfileForKey(key, base string, profiles []WindowsProfile, answers []Wi
 			}
 			return menuProfile{id: key, title: answer.Title, hint: hint, base: base, windowsISOID: answer.ProfileID, answerID: answer.ID, answerSHA256: answer.SHA256}, answer.Folder, nil
 		}
-	case "windriver":
+	case "driver":
 		for _, config := range configs {
 			if config.ID != id {
 				continue
@@ -171,7 +152,6 @@ func menuProfileForKey(key, base string, profiles []WindowsProfile, answers []Wi
 }
 
 // InstallationMenuSources supplies the shared profiles and installation identities.
-// The optional renderer argument is a development bridge for legacy callers.
 type InstallationMenuSources struct {
 	Installations []Installation
 	BootProfiles  []BootProfile
@@ -195,15 +175,8 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 			case BootProfileUbuntuBuiltin:
 				entry = menuProfile{id: key, kind: profile.Kind, base: base}
 			case BootProfileWindowsISO:
-				sourceKey := fmt.Sprintf("winiso_%d", profile.WindowsProfileID)
-				if installation.AnswerID > 0 {
-					sourceKey = fmt.Sprintf("winanswer_%d", installation.AnswerID)
-				}
-				if installation.DriverConfigID > 0 {
-					sourceKey = fmt.Sprintf("windriver_%d", installation.DriverConfigID)
-				}
 				var err error
-				entry, _, err = menuProfileForKey(sourceKey, base, profiles, answers, configs)
+				entry, _, err = windowsMenuProfile(installation, profile.WindowsProfileID, base, profiles, answers, configs)
 				if err != nil {
 					return menuProfile{}, "", err
 				}
@@ -219,34 +192,16 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 	return menuProfile{}, "", unknownMenuItemError(key)
 }
 
-func resolveDraftItem(item MenuDraftItem, base string, sources []InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
-	if item.InstallationID > 0 {
-		var source InstallationMenuSources
-		if len(sources) > 0 {
-			source = sources[0]
-		}
-		return menuProfileForInstallation(item.InstallationID, base, source, profiles, answers, configs)
-	}
-	return menuProfileForKey(item.Key, base, profiles, answers, configs)
+func resolveDraftItem(item MenuDraftItem, base string, sources InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
+	return menuProfileForInstallation(item.InstallationID, base, sources, profiles, answers, configs)
 }
 
 // BuildMenuFromDraft renders installations in draft order with their placements.
-func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, sources ...InstallationMenuSources) ([]byte, error) {
+func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, sources InstallationMenuSources) ([]byte, error) {
 	if len(d.Items) == 0 {
 		// Even an empty menu is drawn with today's look, so that publishing it
 		// clears the "new look" change.
-		ubuntuBase, folders := "", map[string]string{}
-		if d.Ubuntu {
-			base, err := validatedBootURL(baseURL)
-			if err != nil {
-				return nil, err
-			}
-			if err := validateMenuFolder(d.UbuntuFolder); err != nil {
-				return nil, err
-			}
-			ubuntuBase, folders["ubuntu"] = base, d.UbuntuFolder
-		}
-		return buildMenuTreeTimed(productMenuTitle, d.Label, d.Message, ubuntuBase, folders, d.localTimer(), d.DiagnosticsOn())
+		return buildMenuTreeWithProfilesTimed(productMenuTitle, d.Label, d.Message, nil, nil, d.localTimer(), d.DiagnosticsOn())
 	}
 	base, err := validatedBootURL(baseURL)
 	if err != nil {
@@ -254,10 +209,6 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 	}
 	var entries []menuProfile
 	folders := map[string]string{}
-	if d.Ubuntu {
-		entries = append(entries, menuProfile{id: "ubuntu", title: "Ubuntu Desktop 26.04.1", base: base})
-		folders["ubuntu"] = d.UbuntuFolder
-	}
 	seen := map[string]bool{}
 	for _, item := range d.Items {
 		key := menuDraftItemKey(item)
@@ -278,9 +229,7 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 		if item.Folder != defaultMenuFolder {
 			folder = item.Folder
 		}
-		// Profile folders historically allowed any safe text; answer and driver
-		// folders must be ASCII.
-		if !strings.HasPrefix(item.Key, "winiso_") && !isASCII(folder) {
+		if !isASCII(folder) {
 			return nil, fmt.Errorf("menu folder for %s must be ASCII", key)
 		}
 		entries = append(entries, entry)
@@ -294,50 +243,16 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 	return buildMenuTreeWithProfilesTimed(productMenuTitle, d.Label, d.Message, entries, folders, d.localTimer(), d.DiagnosticsOn())
 }
 
-var menuItemKey = regexp.MustCompile(`^(install|winiso|winanswer|windriver)_[0-9]+$`)
+var menuItemKey = regexp.MustCompile(`^install_[1-9][0-9]*$`)
 
 // draftFromVersion restores saved placements/settings without parsing the script.
-// The nil-Items parser is a temporary bridge for unconverted callers.
 func draftFromVersion(v MenuVersion) MenuDraft {
-	if v.Items != nil {
-		d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, NoDiagnostics: v.NoDiagnostics, LocalTimeout: v.LocalTimeout, NoLocalTimer: v.NoLocalTimer, look: v.Look}
-		items := append([]MenuVersionItem(nil), v.Items...)
-		sort.SliceStable(items, func(i, j int) bool { return items[i].Position < items[j].Position })
-		d.Items = make([]MenuDraftItem, 0, len(items))
-		for _, item := range items {
-			d.Items = append(d.Items, MenuDraftItem{InstallationID: item.InstallationID, Title: item.Title, Folder: item.Folder})
-		}
-		return d
-	}
-	// Temporary bridge for renderer/HTTP callers that do not yet supply Items.
-	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, NoDiagnostics: v.Script != "", look: scriptLook(v.Script)}
-	if seconds := menuLocalTimer(v.Script); seconds == 0 {
-		d.NoLocalTimer = true
-	} else {
-		d.LocalTimeout = seconds
-	}
-	folders := menuFolderPaths(v.Script)
-	for _, line := range strings.Split(v.Script, "\n") {
-		fields := strings.SplitN(line, " ", 3)
-		if len(fields) < 2 || fields[0] != "item" {
-			continue
-		}
-		if fields[1] == "ubuntu" {
-			d.Ubuntu, d.UbuntuFolder = true, folders["ubuntu"]
-			continue
-		}
-		if fields[1] == "diagnostics" {
-			d.NoDiagnostics = false
-			continue
-		}
-		if !menuItemKey.MatchString(fields[1]) {
-			continue
-		}
-		title := ""
-		if len(fields) == 3 {
-			title, _ = splitMenuItemText(fields[2])
-		}
-		d.Items = append(d.Items, MenuDraftItem{Key: fields[1], Folder: folders[fields[1]], Title: title})
+	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, NoDiagnostics: v.NoDiagnostics, LocalTimeout: v.LocalTimeout, NoLocalTimer: v.NoLocalTimer, look: v.Look}
+	items := append([]MenuVersionItem(nil), v.Items...)
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Position < items[j].Position })
+	d.Items = make([]MenuDraftItem, 0, len(items))
+	for _, item := range items {
+		d.Items = append(d.Items, MenuDraftItem{InstallationID: item.InstallationID, Title: item.Title, Folder: item.Folder})
 	}
 	return d
 }
@@ -366,12 +281,6 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 	}
 	if active.Message != draft.Message {
 		changes = append(changes, MenuChange{Kind: "settings", Label: "Сообщение Diagnostics", Before: active.Message, After: draft.Message})
-	}
-	if active.Ubuntu != draft.Ubuntu {
-		changes = append(changes, MenuChange{Kind: "settings", Label: "Пункт Ubuntu Desktop", Before: menuVisibility(active.Ubuntu), After: menuVisibility(draft.Ubuntu)})
-	}
-	if active.UbuntuFolder != draft.UbuntuFolder {
-		changes = append(changes, MenuChange{Kind: "settings", Label: "Каталог Ubuntu Desktop", Before: menuFolderName(active.UbuntuFolder), After: menuFolderName(draft.UbuntuFolder)})
 	}
 	if active.localTimer() != draft.localTimer() {
 		changes = append(changes, MenuChange{Kind: "settings", Label: "Автозагрузка с диска", Before: menuTimerName(active.localTimer()), After: menuTimerName(draft.localTimer())})
@@ -450,10 +359,7 @@ func menuFolderName(folder string) string {
 
 // menuDraftItemKey keeps identity separate from editable titles and folders.
 func menuDraftItemKey(item MenuDraftItem) string {
-	if item.InstallationID > 0 {
-		return "install_" + strconv.FormatInt(item.InstallationID, 10)
-	}
-	return item.Key
+	return "install_" + strconv.FormatInt(item.InstallationID, 10)
 }
 
 func menuItemName(item MenuDraftItem) string {

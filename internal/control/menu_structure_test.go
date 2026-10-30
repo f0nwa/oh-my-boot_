@@ -119,7 +119,7 @@ func TestStructuredMenuStoreRoundTrip(t *testing.T) {
 	if err != nil || len(versions) != 2 || !versions[0].Active || versions[0].Items == nil || len(versions[0].Items) != 0 || versions[1].Active || len(versions[1].Items) != 3 {
 		t.Fatalf("versions after empty publication=%+v err=%v", versions, err)
 	}
-	if got := draftFromVersion(versions[0]); len(got.Items) != 0 || got.Ubuntu {
+	if got := draftFromVersion(versions[0]); len(got.Items) != 0 {
 		t.Fatalf("empty publication restored legacy items: %+v", got)
 	}
 	// Restoring a version stores a fresh version and keeps its structural items.

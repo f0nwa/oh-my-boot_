@@ -59,6 +59,8 @@ type pageData struct {
 	Changes               []MenuChange
 	Installations         []installationRow
 	PackageChoices        []packageChoice
+	BootProfileChoices    []bootProfileChoice
+	SelectedBootKind      string
 	Form                  url.Values
 	Query                 string
 	Tab                   string

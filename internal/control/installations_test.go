@@ -117,3 +117,59 @@ func TestInstallationsFilterAndRemoveReturns(t *testing.T) {
 		t.Fatalf("status=%d location=%q", res.Code, res.Header().Get("Location"))
 	}
 }
+
+func TestUnifiedInstallationsPageShowsOnlyPersistentChoices(t *testing.T) {
+	s, store := newInstallServer(t)
+	store.installations = []Installation{{ID: 100, BootProfileID: 52, Title: "Ubuntu Lab", Folder: "Linux"}, {ID: 101, BootProfileID: 52, Title: "Ubuntu Rescue", Folder: "Recovery"}, {ID: 102, BootProfileID: 51, Title: "Windows XML", AnswerID: 31}}
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 100, Title: "Ubuntu Lab", Folder: "Linux"}}}
+	body := libraryGet(t, s, "/installations")
+	for _, want := range []string{"Ubuntu Lab", "Ubuntu Rescue", "Системный источник Ubuntu", `action="/installations/101/add"`, `action="/menu/items/install_100/remove"`, "Windows XML", "не выбирали"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %s", want)
+		}
+	}
+	if strings.Contains(body, "winiso_") || strings.Contains(body, "winanswer_") {
+		t.Fatal("page invents source-derived installations")
+	}
+}
+
+func TestUnifiedInstallationReAddRestoresPublishedPlacement(t *testing.T) {
+	s, store := newInstallServer(t)
+	boot, published := fakeBoot(t)
+	s.Boot = boot
+	store.installations = []Installation{{ID: 100, BootProfileID: 52, Title: "Ubuntu", Folder: "Linux"}, {ID: 101, BootProfileID: 52, Title: "Recovery"}}
+	store.versions = []MenuVersion{{ID: 9, Active: true, Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuVersionItem{{InstallationID: 100, Position: 0, Title: "Published Ubuntu", Folder: "Lab"}, {InstallationID: 101, Position: 1, Title: "Recovery"}}}}
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 101, Title: "Recovery"}}}
+	for i := 0; i < 2; i++ {
+		res := menuPost(t, s, "/installations/100/add", url.Values{})
+		if res.Code != http.StatusSeeOther {
+			t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+		}
+	}
+	if len(store.draft.Items) != 2 || store.draft.Items[0].InstallationID != 100 || store.draft.Items[0].Title != "Published Ubuntu" || store.draft.Items[0].Folder != "Lab" || len(*published) != 0 {
+		t.Fatalf("draft=%+v published=%v", store.draft, *published)
+	}
+}
+
+func TestUnifiedUbuntuInspectorShowsSourceWithoutWindowsComponents(t *testing.T) {
+	s, store := newInstallServer(t)
+	store.installations = []Installation{{ID: 100, BootProfileID: 52, Title: "Ubuntu Lab", Folder: "Linux"}}
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 100, Title: "Ubuntu Lab", Folder: "Linux"}}}
+	body := libraryGet(t, s, "/menu?item=install_100")
+	if !strings.Contains(body, "Системный источник Ubuntu") || strings.Contains(body, "<dt>Файл ответов</dt>") || strings.Contains(body, "<dt>Драйверы</dt>") {
+		t.Fatal("Ubuntu inspector shows Windows components")
+	}
+}
+
+func TestUnifiedInstallationPagesTranslateUbuntuSource(t *testing.T) {
+	s, store := newInstallServer(t)
+	store.user.Language = langEN
+	store.installations = []Installation{{ID: 100, BootProfileID: 52, Title: "Ubuntu Lab", Folder: "Linux"}}
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 100, Title: "Ubuntu Lab", Folder: "Linux"}}}
+	for _, path := range []string{"/installations", "/installations/new?boot_profile_id=52", "/menu?item=install_100"} {
+		body := libraryGet(t, s, path)
+		if !strings.Contains(body, "System Ubuntu source") || strings.Contains(body, "Системный источник Ubuntu") {
+			t.Errorf("%s has untranslated Ubuntu source", path)
+		}
+	}
+}

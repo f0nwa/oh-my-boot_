@@ -51,15 +51,15 @@ func TestPublishButtonHasNoGuessedVersionNumber(t *testing.T) {
 	}
 }
 
-func TestNewInstallationWithSameDriversIsRejected(t *testing.T) {
+func TestNewInstallationWithSameDriversCreatesIndependentChoice(t *testing.T) {
 	s, store := newInstallServer(t)
-	form := url.Values{"profile_id": {"17"}, "package": {strings.Repeat("a", 64)}, "title": {"Win11 VirtIO"}}
+	form := url.Values{"boot_profile_id": {"51"}, "package": {strings.Repeat("a", 64)}, "title": {"Win11 VirtIO"}}
 	if res := menuPost(t, s, "/installations", form); res.Code != http.StatusSeeOther {
 		t.Fatalf("first: %d %s", res.Code, res.Body.String())
 	}
 	store.configs = append(store.configs, store.created[0])
 	res := menuPost(t, s, "/installations", form)
-	if res.Code < 400 || !strings.Contains(res.Body.String(), "уже есть") || len(store.created) != 1 {
+	if res.Code != http.StatusSeeOther || len(store.created) != 1 || len(store.installations) != 2 {
 		t.Fatalf("second: %d created=%d body=%s", res.Code, len(store.created), res.Body.String())
 	}
 }

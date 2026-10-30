@@ -78,7 +78,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	if !menuScreenLabel.MatchString(screen) {
 		screen = ""
 	}
-	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installationRows(profiles, answers, configs, draft, active), profiles, answers, configs, key, screen, sources)
+	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installationRows(profiles, answers, configs, draft, active, sources), profiles, answers, configs, key, screen, sources)
 	render(w, "menu", data)
 }
 

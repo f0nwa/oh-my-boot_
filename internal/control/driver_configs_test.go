@@ -15,9 +15,26 @@ import (
 
 type driverConfigStore struct {
 	driverPageStore
-	profiles []WindowsProfile
-	answers  []WindowsAnswerVariant
-	configs  []DriverConfig
+	profiles      []WindowsProfile
+	answers       []WindowsAnswerVariant
+	configs       []DriverConfig
+	installations []Installation
+}
+
+func (s *driverConfigStore) BootProfiles(context.Context) ([]BootProfile, error) {
+	var profiles []BootProfile
+	for _, p := range s.profiles {
+		profiles = append(profiles, BootProfile{ID: p.ID, Kind: BootProfileWindowsISO, Title: p.Title, WindowsProfileID: p.ID})
+	}
+	return profiles, nil
+}
+func (s *driverConfigStore) Installations(context.Context) ([]Installation, error) {
+	return s.installations, nil
+}
+func (s *driverConfigStore) CreateInstallation(_ context.Context, item Installation) (Installation, error) {
+	item.ID = int64(len(s.installations) + 1)
+	s.installations = append(s.installations, item)
+	return item, nil
 }
 
 func (s *driverConfigStore) WindowsProfiles(context.Context) ([]WindowsProfile, error) {
@@ -100,7 +117,7 @@ func TestDriverConfigCreateAndPrepare(t *testing.T) {
 	store := configFixture()
 	builder := &fakeDriverBuilder{}
 	s := &Server{Store: store, DriverConfigs: builder}
-	form := url.Values{"csrf": {CSRFToken("test-token")}, "profile_id": {"17"}, "answer_id": {"4"}, "title": {"Laptop A"}, "folder": {"Windows"}, "inf": {strings.Repeat("a", 64) + ":net.inf"}}
+	form := url.Values{"csrf": {CSRFToken("test-token")}, "boot_profile_id": {"17"}, "answer_id": {"4"}, "title": {"Laptop A"}, "folder": {"Windows"}, "inf": {strings.Repeat("a", 64) + ":net.inf"}}
 	req := httptest.NewRequest(http.MethodPost, "/installations", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})

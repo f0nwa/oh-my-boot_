@@ -187,7 +187,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	if install, ok := installByKey[key]; ok {
 		preview.Install = &install
 	}
-	if preview.Item != nil && preview.Item.Item.InstallationID > 0 {
+	if preview.Item != nil && preview.Item.Item.InstallationID > 0 && preview.Install == nil {
 		entry, _, err := resolveDraftItem(preview.Item.Item, "", sources, profiles, answers, configs)
 		if err == nil {
 			detail := installationRow{Key: key, Title: preview.Item.Title}

@@ -36,7 +36,7 @@ func TestReaddingRemovedItemRestoresItsTitleAndFolder(t *testing.T) {
 
 func TestNewInstallationWithAnswerDefaultsToAnswerTitle(t *testing.T) {
 	s, store := newInstallServer(t)
-	res := menuPost(t, s, "/installations", url.Values{"profile_id": {"17"}, "answer_id": {"31"}})
+	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "answer_id": {"31"}})
 	if res.Code != http.StatusSeeOther || store.draft.Items[0].Title != "Lab" {
 		t.Fatalf("status=%d draft=%+v", res.Code, store.draft)
 	}
@@ -44,7 +44,7 @@ func TestNewInstallationWithAnswerDefaultsToAnswerTitle(t *testing.T) {
 
 func TestFailedNewInstallationKeepsChoices(t *testing.T) {
 	s, _ := newInstallServer(t)
-	res := menuPost(t, s, "/installations", url.Values{"profile_id": {"17"}, "answer_id": {"31"}, "package": {strings.Repeat("a", 64)}, "title": {"Ключ"}})
+	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "answer_id": {"31"}, "package": {strings.Repeat("a", 64)}, "title": {"Ключ"}})
 	body := res.Body.String()
 	if res.Code < 400 || !strings.Contains(body, `value="31" data-profile="17"`) || !strings.Contains(body, `value="`+strings.Repeat("a", 64)+`" checked`) || !strings.Contains(body, `value="Ключ"`) {
 		t.Fatalf("status=%d body=%s", res.Code, body)

@@ -75,3 +75,7 @@ func (a authOnlyStore) MenuVersions(context.Context) ([]MenuVersion, error) { re
 
 func (a authOnlyStore) BootProfiles(context.Context) ([]BootProfile, error)   { return nil, nil }
 func (a authOnlyStore) Installations(context.Context) ([]Installation, error) { return nil, nil }
+
+func (a authOnlyStore) UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstallSummary, error) {
+	return nil, nil
+}

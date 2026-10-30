@@ -47,7 +47,7 @@ func TestInstallationModelOptions(t *testing.T) {
 		{"unknown kind", BootProfile{ID: 3, Kind: "unknown"}, Installation{BootProfileID: 3, Title: "Unknown"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateInstallation(tc.item, tc.profile, answers, configs)
+			err := ValidateInstallation(tc.item, tc.profile, answers, configs, nil)
 			if (err == nil) != tc.valid {
 				t.Fatalf("ValidateInstallation error = %v, valid = %v", err, tc.valid)
 			}
@@ -235,6 +235,13 @@ func TestInstallationModelMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
+		t.Fatal(err)
+	}
+	newMigration, err := os.ReadFile("../../deploy/sql/2026-10-30-ubuntu-autoinstall.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Pool.Exec(ctx, string(newMigration)); err != nil {
 		t.Fatal(err)
 	}
 	for table, before := range libraryBefore {

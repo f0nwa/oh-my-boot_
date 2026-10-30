@@ -113,7 +113,11 @@ func (s *Server) installationMenuSources(ctx context.Context) (InstallationMenuS
 	if err != nil {
 		return InstallationMenuSources{}, err
 	}
-	return InstallationMenuSources{Installations: items, BootProfiles: profiles}, nil
+	files, err := s.Store.UbuntuAutoinstalls(ctx)
+	if err != nil {
+		return InstallationMenuSources{}, err
+	}
+	return InstallationMenuSources{Installations: items, BootProfiles: profiles, Autoinstalls: files}, nil
 }
 
 // menuSources reads the objects menu items can point to.

@@ -31,7 +31,7 @@ func (s Store) BootProfiles(ctx context.Context) ([]BootProfile, error) {
 }
 
 func (s Store) Installations(ctx context.Context) ([]Installation, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT i.id,i.boot_profile_id,i.title,i.folder,COALESCE(w.answer_id,0),COALESCE(w.driver_config_id,0) FROM installations i LEFT JOIN windows_installation_options w ON w.installation_id=i.id ORDER BY i.id`)
+	rows, err := s.Pool.Query(ctx, `SELECT i.id,i.boot_profile_id,i.title,i.folder,COALESCE(w.answer_id,0),COALESCE(w.driver_config_id,0),COALESCE(i.autoinstall_id,0) FROM installations i LEFT JOIN windows_installation_options w ON w.installation_id=i.id ORDER BY i.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (s Store) Installations(ctx context.Context) ([]Installation, error) {
 	result := []Installation{}
 	for rows.Next() {
 		var item Installation
-		if err := rows.Scan(&item.ID, &item.BootProfileID, &item.Title, &item.Folder, &item.AnswerID, &item.DriverConfigID); err != nil {
+		if err := rows.Scan(&item.ID, &item.BootProfileID, &item.Title, &item.Folder, &item.AnswerID, &item.DriverConfigID, &item.AutoinstallID); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -80,10 +80,18 @@ func (s Store) CreateInstallation(ctx context.Context, item Installation) (Insta
 		}
 		answers = append(answers, answer)
 	}
-	if err := ValidateInstallation(item, profile, answers, configs); err != nil {
+	var files []UbuntuAutoinstallSummary
+	if item.AutoinstallID > 0 {
+		var file UbuntuAutoinstallSummary
+		if err := tx.QueryRow(ctx, `SELECT id,state FROM ubuntu_autoinstall_files WHERE id=$1 FOR SHARE`, item.AutoinstallID).Scan(&file.ID, &file.State); err != nil {
+			return Installation{}, err
+		}
+		files = append(files, file)
+	}
+	if err := ValidateInstallation(item, profile, answers, configs, files); err != nil {
 		return Installation{}, err
 	}
-	if err := tx.QueryRow(ctx, `INSERT INTO installations(boot_profile_id,title,folder) VALUES($1,$2,$3) RETURNING id`, item.BootProfileID, item.Title, item.Folder).Scan(&item.ID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO installations(boot_profile_id,title,folder,autoinstall_id) VALUES($1,$2,$3,NULLIF($4,0)) RETURNING id`, item.BootProfileID, item.Title, item.Folder, item.AutoinstallID).Scan(&item.ID); err != nil {
 		return Installation{}, err
 	}
 	if profile.Kind == BootProfileWindowsISO {

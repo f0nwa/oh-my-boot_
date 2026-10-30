@@ -155,6 +155,7 @@ func windowsMenuProfile(installation Installation, profileID int64, base string,
 type InstallationMenuSources struct {
 	Installations []Installation
 	BootProfiles  []BootProfile
+	Autoinstalls  []UbuntuAutoinstallSummary
 }
 
 func menuProfileForInstallation(id int64, base string, sources InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
@@ -167,7 +168,7 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 			if profile.ID != installation.BootProfileID {
 				continue
 			}
-			if err := ValidateInstallation(installation, profile, answers, configs); err != nil {
+			if err := ValidateInstallation(installation, profile, answers, configs, sources.Autoinstalls); err != nil {
 				return menuProfile{}, "", err
 			}
 			var entry menuProfile

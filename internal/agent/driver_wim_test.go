@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -169,44 +170,48 @@ func TestDriverWIMCheckRejectsCorruptedOutput(t *testing.T) {
 	}
 }
 
-// A configuration built before the Oh My Boot rename has the old messages in
-// its WinPE script; publishing must still accept it until it is rebuilt.
+// Configurations built before the WinPE messages became "OMB:" carry
+// "PXE Platform:" or "Oh My Boot:"; publishing must still accept them until
+// they are rebuilt, and a fresh build uses "OMB:".
 func TestDriverWIMCheckAcceptsScriptBuiltBeforeRename(t *testing.T) {
-	m, hash := setupDriverBuild(t)
-	req := DriverBuildRequest{ConfigID: 9, ProfileID: 17, PackageINFs: []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}}}
-	result, err := m.PrepareConfig(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	final := filepath.Join(m.ConfigRoot, "9")
-	current, err := os.ReadFile(filepath.Join(final, "pxe-setup.cmd"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacy := bytes.ReplaceAll(current, []byte("echo Oh My Boot: "), []byte("echo PXE Platform: "))
-	if bytes.Equal(legacy, current) {
-		t.Fatal("the script has no product messages")
-	}
-	sum := sha256.Sum256(legacy)
-	result.ScriptSHA256 = hex.EncodeToString(sum[:])
-	manifest, err := json.Marshal(driverConfigManifest{Request: req, Result: result})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(final, "build.json"), manifest, 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(final, "pxe-setup.cmd"), legacy, 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.CheckConfig(context.Background(), req, result); err != nil {
-		t.Fatalf("configuration built before the rename was rejected: %v", err)
-	}
-	// Any other change to the script is still caught.
-	if err := os.WriteFile(filepath.Join(final, "pxe-setup.cmd"), append(legacy, []byte("rem\r\n")...), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.CheckConfig(context.Background(), req, result); err == nil {
-		t.Fatal("accepted a changed WinPE script")
+	for i, old := range []string{"PXE Platform", "Oh My Boot"} {
+		m, hash := setupDriverBuild(t)
+		id := int64(20 + i)
+		req := DriverBuildRequest{ConfigID: id, ProfileID: 17, PackageINFs: []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}}}
+		result, err := m.PrepareConfig(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		final := filepath.Join(m.ConfigRoot, strconv.FormatInt(id, 10))
+		current, err := os.ReadFile(filepath.Join(final, "pxe-setup.cmd"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(current, []byte("echo OMB: loading WinPE drivers...")) {
+			t.Fatalf("a fresh build does not use OMB: %q", current)
+		}
+		legacy := bytes.ReplaceAll(current, []byte("echo OMB: "), []byte("echo "+old+": "))
+		sum := sha256.Sum256(legacy)
+		result.ScriptSHA256 = hex.EncodeToString(sum[:])
+		manifest, err := json.Marshal(driverConfigManifest{Request: req, Result: result})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(final, "build.json"), manifest, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(final, "pxe-setup.cmd"), legacy, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.CheckConfig(context.Background(), req, result); err != nil {
+			t.Fatalf("%s: configuration built before the rename was rejected: %v", old, err)
+		}
+		// Any other change to the script is still caught.
+		if err := os.WriteFile(filepath.Join(final, "pxe-setup.cmd"), append(legacy, []byte("rem\r\n")...), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.CheckConfig(context.Background(), req, result); err == nil {
+			t.Fatalf("%s: accepted a changed WinPE script", old)
+		}
 	}
 }

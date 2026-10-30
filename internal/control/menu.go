@@ -51,9 +51,17 @@ func validatedBootURL(baseURL string) (string, error) {
 	return strings.TrimRight(u.String(), "/"), nil
 }
 
-func ubuntuBootScript(base, label string) string {
+func ubuntuBootScript(base, label, seed string) string {
+	args := ""
+	if seed != "" {
+		// iPXE splits whitespace and treats only a standalone ";" as a command
+		// terminator. Keep this one literal token; quotes/backslashes would be
+		// passed to the kernel. See src/core/exec.c split_command and
+		// command_terminator: https://github.com/ipxe/ipxe/blob/v2.0.0/src/core/exec.c#L115-L198
+		args = " autoinstall ds=nocloud-net;s=" + seed
+	}
 	return ":" + label + "\n" +
-		"kernel " + base + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + base + "/images/ubuntu-desktop.iso ---\n" +
+		"kernel " + base + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + base + "/images/ubuntu-desktop.iso" + args + " ---\n" +
 		"initrd " + base + "/assets/ubuntu/initrd\n" +
 		"iseq ${platform} efi && goto " + label + "_efi || goto " + label + "_boot\n" +
 		":" + label + "_efi\n" +

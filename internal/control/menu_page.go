@@ -1,16 +1,20 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"pxe-platform/internal/agent"
+	"pxe-platform/internal/autoinstall"
+	"pxe-platform/internal/boot"
 )
 
 type menuDraftRow struct {
@@ -146,7 +150,8 @@ func menuVersionRestorable(version MenuVersion, sources InstallationMenuSources,
 }
 
 // verifyMenuVersion resolves structural references before checking the snapshot's
-// immutable Windows component hashes and the prepared files behind them.
+// immutable components and the prepared files behind them. All preflight work
+// finishes before the active Boot script or saved menu/draft can change.
 func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) error {
 	if version.Items == nil {
 		return fmt.Errorf("menu version has no structural items")
@@ -178,7 +183,87 @@ func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) err
 		}
 		entries = append(entries, entry)
 	}
-	return s.verifyMenuWindowsProfiles(ctx, version.Script, entries...)
+	if err := s.verifyMenuWindowsProfiles(ctx, version.Script, entries...); err != nil {
+		return err
+	}
+	if err := verifyMenuAutoinstallReferences(version.Script, entries); err != nil {
+		return err
+	}
+	return s.stageMenuAutoinstalls(ctx, entries)
+}
+
+// Match saved kernel arguments to the current immutable library references.
+// As with Windows component hashes, a changed digest must block restoration
+// rather than stage a different seed while publishing the old snapshot URL.
+func verifyMenuAutoinstallReferences(script string, entries []menuProfile) error {
+	expected := map[string]bool{}
+	for _, entry := range entries {
+		if entry.autoinstallID > 0 {
+			expected[ubuntuAutoinstallSeedPath(entry.id, entry.autoinstallSHA256)] = true
+		}
+	}
+	for line := range strings.SplitSeq(script, "\n") {
+		args := strings.Fields(line)
+		if len(args) == 0 || args[0] != "kernel" {
+			continue
+		}
+		for _, arg := range args[1:] {
+			seed, ok := strings.CutPrefix(arg, "ds=nocloud-net;s=")
+			if !ok {
+				continue
+			}
+			u, err := url.Parse(seed)
+			if err != nil {
+				return fmt.Errorf("Ubuntu Autoinstall snapshot references are invalid")
+			}
+			base, err := validatedBootURL(u.Scheme + "://" + u.Host)
+			if err != nil || seed != base+u.Path || !expected[u.Path] {
+				return fmt.Errorf("Ubuntu Autoinstall snapshot references are invalid or changed")
+			}
+			delete(expected, u.Path)
+		}
+	}
+	if len(expected) != 0 {
+		return fmt.Errorf("Ubuntu Autoinstall snapshot references are missing")
+	}
+	return nil
+}
+
+// stageMenuAutoinstalls fetches bodies only for selected automated entries.
+// Repeating this on restoration reuses (or repairs a missing) immutable pair;
+// a corrupt existing pair is rejected by Boot rather than overwritten.
+func (s *Server) stageMenuAutoinstalls(ctx context.Context, entries []menuProfile) error {
+	for _, entry := range entries {
+		if entry.autoinstallID == 0 {
+			continue
+		}
+		if s.Boot == nil {
+			return fmt.Errorf("Boot unavailable for Ubuntu Autoinstall")
+		}
+		file, err := s.Store.UbuntuAutoinstall(ctx, entry.autoinstallID)
+		if err != nil {
+			return fmt.Errorf("Ubuntu Autoinstall file %d is unavailable", entry.autoinstallID)
+		}
+		rendered, err := autoinstall.Render(file.Values)
+		if err != nil || file.ID != entry.autoinstallID || file.State != "validated" || file.SHA256 != entry.autoinstallSHA256 || len(file.UserData) == 0 || len(file.UserData) > boot.MaxAutoinstallUserDataSize || !bytes.Equal(rendered, file.UserData) || fmt.Sprintf("%x", sha256.Sum256(file.UserData)) != entry.autoinstallSHA256 {
+			return fmt.Errorf("Ubuntu Autoinstall file %d is invalid or changed", entry.autoinstallID)
+		}
+		id, err := strconv.ParseInt(strings.TrimPrefix(entry.id, "install_"), 10, 64)
+		if err != nil || id <= 0 {
+			return fmt.Errorf("invalid Ubuntu Autoinstall installation identity")
+		}
+		meta := fmt.Sprintf("instance-id: pxe-installation-%d-%s\n", id, file.SHA256)
+		expected := boot.AssetInfo{UserDataSHA256: file.SHA256, MetaDataSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(meta)))}
+		staged, err := s.Boot.StageAutoinstall(ctx, id, file.SHA256, file.UserData)
+		if err != nil || staged != expected {
+			return fmt.Errorf("Ubuntu Autoinstall assets for %s could not be staged", entry.id)
+		}
+		checked, err := s.Boot.CheckAutoinstall(ctx, id, file.SHA256)
+		if err != nil || checked != expected {
+			return fmt.Errorf("Ubuntu Autoinstall assets for %s could not be verified", entry.id)
+		}
+	}
+	return nil
 }
 
 func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {

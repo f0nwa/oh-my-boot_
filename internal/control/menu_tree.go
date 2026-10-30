@@ -21,6 +21,8 @@ type menuProfile struct {
 	title              string
 	hint               string // shown at the right edge of the item
 	base               string
+	autoinstallID      int64
+	autoinstallSHA256  string
 	windowsISOID       int64
 	answerID           int64
 	answerSHA256       string
@@ -396,8 +398,16 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 		return
 	}
 	if profile.kind == BootProfileUbuntuBuiltin {
-		out.WriteString(strings.Replace(ubuntuBootScript(base, profile.id), ":"+profile.id+"\n", ":"+profile.id+"\n"+choiceReport, 1))
+		seed := ""
+		if profile.autoinstallID > 0 {
+			seed = base + ubuntuAutoinstallSeedPath(profile.id, profile.autoinstallSHA256)
+		}
+		out.WriteString(strings.Replace(ubuntuBootScript(base, profile.id, seed), ":"+profile.id+"\n", ":"+profile.id+"\n"+choiceReport, 1))
 	}
+}
+
+func ubuntuAutoinstallSeedPath(installationKey, digest string) string {
+	return "/assets/ubuntu-autoinstall/" + strings.TrimPrefix(installationKey, "install_") + "/" + digest + "/"
 }
 
 var menuLocalChoose = regexp.MustCompile(`(?m)^choose --default local(?: --timeout ([0-9]+))? target `)

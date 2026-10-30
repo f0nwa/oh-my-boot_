@@ -175,6 +175,17 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 			switch profile.Kind {
 			case BootProfileUbuntuBuiltin:
 				entry = menuProfile{id: key, kind: profile.Kind, base: base}
+				if installation.AutoinstallID > 0 {
+					for _, file := range sources.Autoinstalls {
+						if file.ID != installation.AutoinstallID {
+							continue
+						}
+						if !validAnswerHash(file.SHA256) {
+							return menuProfile{}, "", fmt.Errorf("Ubuntu Autoinstall file %d has an invalid digest", file.ID)
+						}
+						entry.autoinstallID, entry.autoinstallSHA256 = file.ID, file.SHA256
+					}
+				}
 			case BootProfileWindowsISO:
 				var err error
 				entry, _, err = windowsMenuProfile(installation, profile.WindowsProfileID, base, profiles, answers, configs)

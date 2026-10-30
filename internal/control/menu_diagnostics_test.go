@@ -30,14 +30,12 @@ func TestDiagnosticsSettingsBelongToDiagnosticsItem(t *testing.T) {
 	if res := menuPost(t, s, "/menu/diagnostics", url.Values{"label": {""}, "message": {"All clear"}}); res.Code != http.StatusBadRequest || store.draft.Label != "Health check" {
 		t.Fatalf("invalid diagnostics accepted: status=%d draft=%+v", res.Code, store.draft)
 	}
-	if res := menuPost(t, s, "/menu/settings", url.Values{"ubuntu": {"on"}, "folder_ubuntu": {"Linux"}}); res.Code != http.StatusSeeOther || store.draft.Label != "Health check" || store.draft.Message != "All clear" || !store.draft.Ubuntu {
-		t.Fatalf("general settings changed diagnostics: status=%d draft=%+v", res.Code, store.draft)
-	}
+
 }
 
 func TestDiagnosticsCanBeDisabledInDraftAndPublishedScript(t *testing.T) {
 	base := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", look: menuLook}
-	onScript, err := BuildMenuFromDraft(base, testBootURL, nil, nil, nil)
+	onScript, err := buildTestMenuFromDraft(base, testBootURL, nil, nil, nil)
 	if err != nil || !strings.Contains(string(onScript), "item diagnostics Diagnostics\n") {
 		t.Fatalf("enabled diagnostics missing: err=%v script=%s", err, onScript)
 	}
@@ -51,15 +49,15 @@ func TestDiagnosticsCanBeDisabledInDraftAndPublishedScript(t *testing.T) {
 	if res := menuPost(t, s, "/menu/diagnostics", url.Values{"label": {"Diagnostics"}, "message": {"Ready"}}); res.Code != http.StatusSeeOther {
 		t.Fatalf("status=%d", res.Code)
 	}
-	offScript, err := BuildMenuFromDraft(*store.draft, testBootURL, nil, nil, nil)
+	offScript, err := buildTestMenuFromDraft(*store.draft, testBootURL, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(offScript), "item diagnostics ") || strings.Contains(string(offScript), ":diagnostics\n") || !strings.Contains(string(offScript), "item local Boot local disk\n") {
 		t.Fatalf("disabled diagnostics remains in client menu: %s", offScript)
 	}
-	back := draftFromVersion(MenuVersion{Title: base.Title, Label: base.Label, Message: base.Message, Script: string(offScript)})
-	backScript, err := BuildMenuFromDraft(back, testBootURL, nil, nil, nil)
+	back := draftFromVersion(MenuVersion{Title: base.Title, Label: base.Label, Message: base.Message, Script: string(offScript), NoDiagnostics: true, Items: []MenuVersionItem{}})
+	backScript, err := buildTestMenuFromDraft(back, testBootURL, nil, nil, nil)
 	if err != nil || strings.Contains(string(backScript), "item diagnostics ") {
 		t.Fatalf("disabled version restored diagnostics: err=%v script=%s", err, backScript)
 	}
@@ -68,9 +66,9 @@ func TestDiagnosticsCanBeDisabledInDraftAndPublishedScript(t *testing.T) {
 	}
 	profiles, answers, configs := draftFixture()
 	withItems := *store.draft
-	withItems.Items = []MenuDraftItem{{Key: "winiso_17"}}
-	withItemsScript, err := BuildMenuFromDraft(withItems, testBootURL, profiles, answers, configs)
-	if err != nil || strings.Contains(string(withItemsScript), "item diagnostics ") || !strings.Contains(string(withItemsScript), "item winiso_17 ") {
+	withItems.Items = []MenuDraftItem{{InstallationID: 1017}}
+	withItemsScript, err := buildTestMenuFromDraft(withItems, testBootURL, profiles, answers, configs)
+	if err != nil || strings.Contains(string(withItemsScript), "item diagnostics ") || !strings.Contains(string(withItemsScript), "item install_1017 ") {
 		t.Fatalf("disabled diagnostics remains in populated menu: err=%v script=%s", err, withItemsScript)
 	}
 }
@@ -99,7 +97,7 @@ func TestDiagnosticsToggleStaysAvailableWhenOff(t *testing.T) {
 	if res := menuPost(t, s, "/menu/diagnostics", form); res.Code != http.StatusSeeOther {
 		t.Fatalf("diagnostics not re-enabled: status=%d draft=%+v", res.Code, store.draft)
 	}
-	enabledScript, err := BuildMenuFromDraft(*store.draft, testBootURL, nil, nil, nil)
+	enabledScript, err := buildTestMenuFromDraft(*store.draft, testBootURL, nil, nil, nil)
 	if err != nil || !strings.Contains(string(enabledScript), "item diagnostics Diagnostics\n") {
 		t.Fatalf("diagnostics not restored on machine screen: err=%v script=%s", err, enabledScript)
 	}

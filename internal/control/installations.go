@@ -1,21 +1,21 @@
 package control
 
 import (
-	"sort"
-	"time"
-
+	"context"
 	"fmt"
 	"net/http"
 	"path"
 	"pxe-platform/internal/boot"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// installationRow is one installation: a profile, a profile with an answer
-// file, or a driver configuration, with its place relative to the menu.
+// installationRow shows an installation, its shared source and its menu placement.
 type installationRow struct {
 	Key, Title, Image, Drivers, Answer string
+	ID                                 int64
+	Kind                               string
 	AnswerWipesDisk                    *bool
 	// Status is in_menu, pending_add, pending_remove, not_in_menu,
 	// needs_build, building, error or unavailable.
@@ -24,18 +24,17 @@ type installationRow struct {
 	Error    string
 	// Folder is where the item shows in the menu; empty is the main screen.
 	Folder string
-	// Used counts boots that took this installation's files; LastUsed is
-	// the latest of them.
+	// Used counts explicit choices of this installation; LastUsed is the latest.
 	Used     int
 	LastUsed time.Time
 }
 
-// UsedLabel says how often and how recently machines took this installation.
+// UsedLabel says how often and how recently machines chose this installation.
 func (r installationRow) UsedLabel() string {
 	if r.Used == 0 {
 		return "не выбирали"
 	}
-	return fmt.Sprintf("загрузок: %d · %s", r.Used, ago(time.Now(), r.LastUsed))
+	return fmt.Sprintf("выборов: %d · %s", r.Used, ago(time.Now(), r.LastUsed))
 }
 
 // Group puts the status in one of the filters on the installations page.
@@ -63,32 +62,17 @@ func installationFilters() []installationFilter {
 	}
 }
 
-// usageWindow groups the files one machine fetched for one boot.
-const usageWindow = 10 * time.Minute
-
-// installationUsage counts, per menu item key, the boots that fetched its
-// files: one per client address and item within usageWindow. Requests from
-// the addresses in skip (the server itself checking its menu) do not count.
+// installationUsage counts explicit menu choices by installation ID. Each
+// choice counts once; file requests and server probes do not count.
 func installationUsage(events []boot.Event, skip map[string]bool) map[string]installationUse {
-	type bootKey struct {
-		ip, key string
-	}
-	last := map[bootKey]time.Time{}
 	use := map[string]installationUse{}
-	sorted := append([]boot.Event(nil), events...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].At.Before(sorted[j].At) })
-	for _, e := range sorted {
-		key, rank := choiceKey(e)
-		ip := eventIP(e.RemoteAddr)
-		if rank == 0 || skip[ip] {
+	for _, e := range events {
+		key := choiceKey(e)
+		if key == "" || skip[eventIP(e.RemoteAddr)] {
 			continue
 		}
-		k := bootKey{ip, key}
 		u := use[key]
-		if prev, ok := last[k]; !ok || e.At.Sub(prev) > usageWindow {
-			u.Count++
-		}
-		last[k] = e.At
+		u.Count++
 		if e.At.After(u.Last) {
 			u.Last = e.At
 		}
@@ -110,96 +94,115 @@ func driverSummary(config DriverConfig) string {
 	return strings.Join(names, ", ")
 }
 
-func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, draft, active MenuDraft) []installationRow {
-	profileByID := map[int64]WindowsProfile{}
-	for _, p := range profiles {
-		profileByID[p.ID] = p
-	}
-	answerByID := map[int64]WindowsAnswerVariant{}
-	for _, a := range answers {
-		answerByID[a.ID] = a
-	}
+// installationRows shows persisted choices; library components never invent rows.
+func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, draft, active MenuDraft, sources InstallationMenuSources) []installationRow {
+	source := sources
 	rows := map[string]installationRow{}
-	var keys []string
-	for _, p := range profiles {
-		key := fmt.Sprintf("winiso_%d", p.ID)
-		keys = append(keys, key)
-		rows[key] = installationRow{Key: key, Title: p.Title, Image: p.Title}
-	}
-	for _, a := range answers {
-		key := fmt.Sprintf("winanswer_%d", a.ID)
-		keys = append(keys, key)
-		rows[key] = installationRow{Key: key, Title: a.Title, Image: profileByID[a.ProfileID].Title, Answer: a.Title, AnswerWipesDisk: a.WipesDisk}
-	}
-	for _, c := range configs {
-		key := fmt.Sprintf("windriver_%d", c.ID)
-		keys = append(keys, key)
-		row := installationRow{Key: key, Title: c.Title, Image: profileByID[c.ProfileID].Title, Drivers: driverSummary(c), ConfigID: c.ID, Error: c.Error}
-		if a, ok := answerByID[c.AnswerID]; ok && c.AnswerID > 0 {
-			row.Answer, row.AnswerWipesDisk = a.Title, a.WipesDisk
+	keys := []string{}
+	for _, installation := range source.Installations {
+		key := fmt.Sprintf("install_%d", installation.ID)
+		row := installationRow{ID: installation.ID, Key: key, Title: installation.Title, Folder: installation.Folder}
+		for _, profile := range source.BootProfiles {
+			if profile.ID == installation.BootProfileID {
+				row.Kind = profile.Kind
+				row.Image = profile.Title
+				for _, windows := range profiles {
+					if profile.Kind == BootProfileWindowsISO && windows.ID == profile.WindowsProfileID {
+						row.Image = windows.Title
+					}
+				}
+				if profile.Kind == BootProfileUbuntuBuiltin {
+					row.Image = "Системный источник Ubuntu"
+				}
+			}
 		}
-		switch c.State {
-		case "pending":
-			row.Status = "needs_build"
-		case "preparing":
-			row.Status = "building"
-		case "error":
-			row.Status = "error"
+		answerID := installation.AnswerID
+		for _, config := range configs {
+			if config.ID == installation.DriverConfigID {
+				row.ConfigID, row.Drivers, row.Error = config.ID, driverSummary(config), config.Error
+				answerID = config.AnswerID
+				switch config.State {
+				case "pending":
+					row.Status = "needs_build"
+				case "preparing":
+					row.Status = "building"
+				case "error":
+					row.Status = "error"
+				}
+			}
+		}
+		for _, answer := range answers {
+			if answer.ID == answerID {
+				row.Answer, row.AnswerWipesDisk = answer.Title, answer.WipesDisk
+			}
+		}
+		for _, file := range source.Autoinstalls {
+			if file.ID == installation.AutoinstallID {
+				wipes := file.DiskMode == "serial"
+				row.Answer, row.AnswerWipesDisk = file.Title, &wipes
+			}
+		}
+		if row.Status == "" {
+			if _, _, err := menuProfileForInstallation(installation.ID, "", source, profiles, answers, configs); err != nil {
+				row.Status, row.Error = "unavailable", err.Error()
+			}
 		}
 		rows[key] = row
+		keys = append(keys, key)
 	}
-	inDraft, inActive := map[string]MenuDraftItem{}, map[string]bool{}
+	inDraft, inActive := map[string]MenuDraftItem{}, map[string]MenuDraftItem{}
 	for _, item := range draft.Items {
-		inDraft[item.Key] = item
+		inDraft[menuDraftItemKey(item)] = item
 	}
 	for _, item := range active.Items {
-		inActive[item.Key] = true
+		inActive[menuDraftItemKey(item)] = item
 	}
-	var ordered []string
+	ordered := []string{}
 	seen := map[string]bool{}
-	for _, list := range [][]MenuDraftItem{draft.Items, active.Items} {
-		for _, item := range list {
-			if _, ok := rows[item.Key]; !ok {
-				// The object was deleted from the library but the menu still names it.
-				rows[item.Key] = installationRow{Key: item.Key, Title: item.Title, Status: "unavailable", Error: "Объект удалён из библиотеки"}
+	for _, items := range [][]MenuDraftItem{draft.Items, active.Items} {
+		for _, item := range items {
+			key := menuDraftItemKey(item)
+			if _, ok := rows[key]; !ok {
+				rows[key] = installationRow{ID: item.InstallationID, Key: key, Title: item.Title, Status: "unavailable", Error: "Объект удалён из библиотеки"}
 			}
-			if !seen[item.Key] {
-				ordered, seen[item.Key] = append(ordered, item.Key), true
+			if !seen[key] {
+				ordered = append(ordered, key)
+				seen[key] = true
 			}
 		}
 	}
 	for _, key := range keys {
 		if !seen[key] {
-			ordered, seen[key] = append(ordered, key), true
+			ordered = append(ordered, key)
+			seen[key] = true
 		}
 	}
-	var out []installationRow
+	out := make([]installationRow, 0, len(ordered))
 	for _, key := range ordered {
 		row := rows[key]
-		if item, ok := inDraft[key]; ok && item.Title != "" {
-			row.Title = item.Title
+		item, draftHas := inDraft[key]
+		published, activeHas := inActive[key]
+		if !draftHas && activeHas {
+			item = published
 		}
-		if _, folder, err := menuProfileForKey(key, "", profiles, answers, configs); err == nil {
-			row.Folder = folder
+		if draftHas || activeHas {
+			if item.Title != "" {
+				row.Title = item.Title
+			}
+			if item.Folder != defaultMenuFolder {
+				row.Folder = item.Folder
+			}
 		}
-		if item, ok := inDraft[key]; ok && item.Folder != defaultMenuFolder {
-			row.Folder = item.Folder
-		}
-		if row.Status == "" && row.Error == "" {
-			if _, _, err := menuProfileForKey(key, "", profiles, answers, configs); err != nil {
-				row.Status, row.Error = "unavailable", err.Error()
-			} else {
-				_, draftHas := inDraft[key]
-				switch {
-				case draftHas && inActive[key]:
-					row.Status = "in_menu"
-				case draftHas:
-					row.Status = "pending_add"
-				case inActive[key]:
-					row.Status = "pending_remove"
-				default:
-					row.Status = "not_in_menu"
-				}
+		if row.Status == "" {
+			switch {
+			case draftHas && activeHas:
+				row.Status = "in_menu"
+			case draftHas:
+				row.Status = "pending_add"
+			case activeHas:
+				row.Status = "pending_remove"
+			default:
+				row.Status = "not_in_menu"
 			}
 		}
 		out = append(out, row)
@@ -207,9 +210,34 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 	return out
 }
 
+// installationRows attaches live Ubuntu readiness to its persisted choices.
+func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, draft, active MenuDraft, sources InstallationMenuSources) []installationRow {
+	rows := installationRows(profiles, answers, configs, draft, active, sources)
+	checked := false
+	var problem error
+	for i := range rows {
+		if rows[i].Kind != BootProfileUbuntuBuiltin {
+			continue
+		}
+		if !checked {
+			problem = s.checkUbuntuReadiness(ctx)
+			checked = true
+		}
+		if problem != nil {
+			rows[i].Status, rows[i].Error = "unavailable", problem.Error()
+		}
+	}
+	return rows
+}
+
 func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
 	profiles, answers, configs, err := s.menuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sources, err := s.installationMenuSources(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -234,7 +262,7 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.InstallCounts = map[string]int{}
-	for _, row := range installationRows(profiles, answers, configs, draft, active) {
+	for _, row := range s.installationRows(r.Context(), profiles, answers, configs, draft, active, sources) {
 		haystack := strings.ToLower(row.Title + " " + row.Key + " " + row.Image + " " + row.Answer + " " + row.Drivers)
 		if data.Query != "" && !strings.Contains(haystack, strings.ToLower(data.Query)) {
 			continue
@@ -252,9 +280,20 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 
 // installationAdd puts an installation at the end of the menu draft.
 func (s *Server) installationAdd(w http.ResponseWriter, r *http.Request) {
-	key := r.PathValue("key")
-	if !menuItemKey.MatchString(key) {
-		http.Error(w, "Неверная установка", http.StatusBadRequest)
+	raw := r.PathValue("key")
+	if id, err := strconv.ParseInt(strings.TrimPrefix(raw, "install_"), 10, 64); err == nil && id > 0 {
+		s.installationAddByID(w, r, id)
+		return
+	}
+	http.Error(w, "Неверная установка", http.StatusBadRequest)
+}
+
+func (s *Server) installationAddByID(w http.ResponseWriter, r *http.Request, id int64) {
+	s.draftMu.Lock()
+	defer s.draftMu.Unlock()
+	sources, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	profiles, answers, configs, err := s.menuSources(r.Context())
@@ -262,31 +301,36 @@ func (s *Server) installationAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	_, folder, err := menuProfileForKey(key, "", profiles, answers, configs)
+	_, _, err = menuProfileForInstallation(id, "", sources, profiles, answers, configs)
 	if err != nil {
 		http.Error(w, "Установка не готова: "+err.Error(), http.StatusConflict)
 		return
 	}
-	s.draftMu.Lock()
-	defer s.draftMu.Unlock()
+	var installation Installation
+	for _, item := range sources.Installations {
+		if item.ID == id {
+			installation = item
+			break
+		}
+	}
 	draft, active, err := s.currentDraft(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось прочитать черновик меню", http.StatusServiceUnavailable)
 		return
 	}
-	if draftItemIndex(&draft, key) < 0 {
-		draft.Items = insertDraftItem(draft.Items, active.Items, MenuDraftItem{Key: key, Folder: folder})
+	if draft.InstallationIndex(id) < 0 {
+		draft.Items = insertDraftItem(draft.Items, active.Items, MenuDraftItem{InstallationID: id, Title: installation.Title, Folder: installation.Folder})
 		if err := s.Store.SaveMenuDraft(r.Context(), draft); err != nil {
 			http.Error(w, "Не удалось сохранить черновик меню", http.StatusServiceUnavailable)
 			return
 		}
 	}
-	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.add", "ok", key)
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.add", "ok", fmt.Sprintf("install_%d", id))
+	target := "/installations?message=Установка+добавлена+в+меню"
 	if strings.HasPrefix(r.URL.Path, "/menu/") {
-		http.Redirect(w, r, "/menu?message=Пункт+возвращён+в+меню", http.StatusSeeOther)
-		return
+		target = "/menu?message=Пункт+возвращён+в+меню"
 	}
-	http.Redirect(w, r, "/installations?message=Установка+добавлена+в+меню", http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 // insertDraftItem adds item to the draft. An item still in the published menu
@@ -295,13 +339,13 @@ func (s *Server) installationAdd(w http.ResponseWriter, r *http.Request) {
 func insertDraftItem(items, published []MenuDraftItem, item MenuDraftItem) []MenuDraftItem {
 	at := -1
 	for i, old := range published {
-		if old.Key != item.Key {
+		if menuDraftItemKey(old) != menuDraftItemKey(item) {
 			continue
 		}
 		item = old
 		for _, later := range published[i+1:] {
 			for j, current := range items {
-				if current.Key == later.Key && (at < 0 || j < at) {
+				if menuDraftItemKey(current) == menuDraftItemKey(later) && (at < 0 || j < at) {
 					at = j
 				}
 			}
@@ -321,34 +365,26 @@ func insertDraftItem(items, published []MenuDraftItem, item MenuDraftItem) []Men
 
 // menuUsage counts the published menu items that rely on each profile and
 // each answer file.
-func menuUsage(active MenuDraft, answers []WindowsAnswerVariant, configs []DriverConfig) (map[int64]int, map[int64]int) {
+func menuUsage(active MenuDraft, configs []DriverConfig, source InstallationMenuSources) (map[int64]int, map[int64]int) {
 	profileUse, answerUse := map[int64]int{}, map[int64]int{}
-	answerProfile := map[int64]int64{}
-	for _, a := range answers {
-		answerProfile[a.ID] = a.ProfileID
-	}
 	for _, item := range active.Items {
-		prefix, raw, _ := strings.Cut(item.Key, "_")
-		id, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			continue
-		}
-		switch prefix {
-		case "winiso":
-			profileUse[id]++
-		case "winanswer":
-			answerUse[id]++
-			if p, ok := answerProfile[id]; ok {
-				profileUse[p]++
+		for _, installation := range source.Installations {
+			if installation.ID != item.InstallationID {
+				continue
 			}
-		case "windriver":
-			for _, c := range configs {
-				if c.ID == id {
-					profileUse[c.ProfileID]++
-					if c.AnswerID > 0 {
-						answerUse[c.AnswerID]++
-					}
+			for _, profile := range source.BootProfiles {
+				if profile.ID == installation.BootProfileID && profile.Kind == BootProfileWindowsISO {
+					profileUse[profile.WindowsProfileID]++
 				}
+			}
+			answerID := installation.AnswerID
+			for _, config := range configs {
+				if config.ID == installation.DriverConfigID {
+					answerID = config.AnswerID
+				}
+			}
+			if answerID > 0 {
+				answerUse[answerID]++
 			}
 		}
 	}

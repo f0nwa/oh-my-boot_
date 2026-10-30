@@ -29,18 +29,18 @@ func (s windowsMenuPageStore) WindowsAnswers(context.Context) ([]WindowsAnswerVa
 
 func TestWindowsMenuPagePrefillsActiveProfile(t *testing.T) {
 	p := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 11 x64", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
-	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "folder_winiso_17": {"Windows/Installers"}}
-	script, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", []WindowsProfile{p})
+	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_1017": {"on"}, "folder_install_1017": {"Windows/Installers"}}
+	script, err := buildTestMenuWithProfiles(form, "http://10.30.0.10:8080", []WindowsProfile{p})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{Store: windowsMenuPageStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Script: string(script), Title: "PXE", Label: "Diagnostics", Message: "Ready"}}}, profiles: []WindowsProfile{p}}}
+	s := &Server{Store: windowsMenuPageStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Script: string(script), Title: "PXE", Label: "Diagnostics", Message: "Ready", Items: []MenuVersionItem{{InstallationID: 1017, Title: p.Title, Folder: "Windows/Installers"}}}}}, profiles: []WindowsProfile{p}}}
 	// The selected item shows its folder path in the properties column.
-	req := httptest.NewRequest(http.MethodGet, "/menu?item=winiso_17", nil)
+	req := httptest.NewRequest(http.MethodGet, "/menu?item=install_1017", nil)
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "winiso_17") || !strings.Contains(res.Body.String(), `value="Windows/Installers"`) {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "install_1017") || !strings.Contains(res.Body.String(), `value="Windows/Installers"`) {
 		t.Fatalf("profile selection missing: %d %s", res.Code, res.Body.String())
 	}
 }
@@ -50,15 +50,15 @@ func TestWindowsMenuPublishesSeparateProfilesAndFolders(t *testing.T) {
 		{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 10 x64", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"},
 		{ID: 18, WindowsProfileSource: WindowsProfileSource{Title: "Windows 11 x64", Folder: "Windows"}, State: "ready", InstallFile: "install.esd"},
 	}
-	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "winiso_18": {"on"}, "folder_winiso_17": {"Windows"}, "folder_winiso_18": {"Windows"}}
-	script, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", profiles)
+	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_1017": {"on"}, "install_1018": {"on"}, "folder_install_1017": {"Windows"}, "folder_install_1018": {"Windows"}}
+	script, err := buildTestMenuWithProfiles(form, "http://10.30.0.10:8080", profiles)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := string(script)
 	for _, want := range []string{
-		"menu oh my boot_ / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem winiso_17 Windows 10 x64\nitem winiso_18 Windows 11 x64\n",
-		":winiso_17\nkernel http://10.30.0.10:8080/assets/windows/wimboot\n",
+		"menu oh my boot_ / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem install_1017 Windows 10 x64\nitem install_1018 Windows 11 x64\n",
+		":install_1017\nimgfetch --name pxe-choice http://10.30.0.10:8080/boot/choice?id=1017 && imgfree pxe-choice || echo -n\nkernel http://10.30.0.10:8080/assets/windows/wimboot\n",
 		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/18/boot.wim boot.wim\n",
 	} {
@@ -67,29 +67,29 @@ func TestWindowsMenuPublishesSeparateProfilesAndFolders(t *testing.T) {
 		}
 	}
 	selected := menuWindowsProfileIDs(got)
-	if len(selected) != 2 || !selected[17] || !selected[18] || menuFolderPaths(got)["winiso_18"] != "Windows" {
+	if len(selected) != 2 || !selected[17] || !selected[18] || menuFolderPaths(got)["install_1018"] != "Windows" {
 		t.Fatalf("selection did not round trip: %#v", selected)
 	}
 }
 
 func TestWindowsProfileMenuUsesPlainInitrdNamesForBIOS(t *testing.T) {
 	profile := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 10 x64", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
-	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}}
-	script, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", []WindowsProfile{profile})
+	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_1017": {"on"}}
+	script, err := buildTestMenuWithProfiles(form, "http://10.30.0.10:8080", []WindowsProfile{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := string(script)
 	for _, want := range []string{
-		"iseq ${platform} efi && goto winiso_17_efi_initrd || goto winiso_17_bios_initrd\n",
-		":winiso_17_bios_initrd\n" +
+		"iseq ${platform} efi && goto install_1017_efi_initrd || goto install_1017_bios_initrd\n",
+		":install_1017_bios_initrd\n" +
 			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini winpeshl.ini\n" +
 			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd pxe-setup.cmd\n" +
-			"goto winiso_17_initrd_done\n",
-		":winiso_17_efi_initrd\n" +
+			"goto install_1017_initrd_done\n",
+		":install_1017_efi_initrd\n" +
 			"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini\n" +
 			"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd\n" +
-			":winiso_17_initrd_done\n" +
+			":install_1017_initrd_done\n" +
 			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim\n",
 	} {
 		if !strings.Contains(got, want) {
@@ -105,8 +105,8 @@ func TestWindowsMenuChecksCurrentSourceBeforePublication(t *testing.T) {
 	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Root: source.StorageRoot, State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: source.Path, Size: source.Size, Modified: modified, Present: true}}}}
 	check := &recordingWindowsISOAPI{}
 	s := &Server{Store: store, Images: api, WindowsISO: check}
-	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}}
-	script, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", []WindowsProfile{store.profile})
+	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_1017": {"on"}}
+	script, err := buildTestMenuWithProfiles(form, "http://10.30.0.10:8080", []WindowsProfile{store.profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,9 +120,9 @@ func TestWindowsMenuChecksCurrentSourceBeforePublication(t *testing.T) {
 }
 
 func TestWindowsMenuRejectsUnreadyOrUnknownProfile(t *testing.T) {
-	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}}
+	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_1017": {"on"}}
 	for _, profiles := range [][]WindowsProfile{nil, {{ID: 17, State: "error", InstallFile: "install.wim", WindowsProfileSource: WindowsProfileSource{Title: "Windows 10"}}}, {{ID: 17, State: "ready", WindowsProfileSource: WindowsProfileSource{Title: "Windows 10"}}}} {
-		if _, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", profiles); err == nil {
+		if _, err := buildTestMenuWithProfiles(form, "http://10.30.0.10:8080", profiles); err == nil {
 			t.Fatalf("accepted unready profile: %+v", profiles)
 		}
 	}
@@ -134,16 +134,16 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 		{ID: 31, ProfileID: 17, Title: "Windows 11 Lab A", Folder: "Windows/Lab", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"},
 		{ID: 32, ProfileID: 17, Title: "Windows 11 Lab B", Folder: "Windows/Lab", SHA256: strings.Repeat("b", 64), Size: 100, State: "ready"},
 	}
-	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_17": {"on"}, "winanswer_31": {"on"}, "winanswer_32": {"on"}, "folder_winanswer_32": {"Windows/Other"}}
-	script, err := BuildMenuFromFormWithProfilesAndAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, answers)
+	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_1017": {"on"}, "install_2031": {"on"}, "install_2032": {"on"}, "folder_install_2032": {"Windows/Other"}}
+	script, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, answers)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := string(script)
 	for _, want := range []string{
-		"item winiso_17 Windows 11 x64\n",
-		"item winanswer_31 Windows 11 Lab A${sp",
-		"item winanswer_32 Windows 11 Lab B${sp",
+		"item install_1017 Windows 11 x64\n",
+		"item install_2031 Windows 11 Lab A${sp",
+		"item install_2032 Windows 11 Lab B${sp",
 		"initrd -n pxe-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/pxe-answer.xml\n",
 		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-answers/32/pxe-setup.cmd\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim\n",
@@ -153,11 +153,11 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 		}
 	}
 	refs := menuWindowsAnswerRefs(got)
-	if len(refs) != 2 || refs[31].ProfileID != 17 || refs[31].SHA256 != strings.Repeat("a", 64) || menuFolderPaths(got)["winanswer_32"] != "Windows/Other" || !menuWindowsProfileIDs(got)[17] {
+	if len(refs) != 2 || refs[31].ProfileID != 17 || refs[31].SHA256 != strings.Repeat("a", 64) || menuFolderPaths(got)["install_2032"] != "Windows/Other" || !menuWindowsProfileIDs(got)[17] {
 		t.Fatalf("answer selection did not round trip: refs=%+v folders=%+v", refs, menuFolderPaths(got))
 	}
-	delete(form, "winiso_17")
-	onlyAnswers, err := BuildMenuFromFormWithProfilesAndAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, answers)
+	delete(form, "install_1017")
+	onlyAnswers, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, answers)
 	if err != nil || len(menuWindowsProfileIDs(string(onlyAnswers))) != 0 || len(menuWindowsAnswerRefs(string(onlyAnswers))) != 2 {
 		t.Fatalf("answer entries incorrectly selected manual ISO: %v %s", err, onlyAnswers)
 	}
@@ -165,17 +165,17 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 
 func TestWindowsMenuRejectsUnknownOrUnreadyAnswer(t *testing.T) {
 	p := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 11", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
-	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winanswer_31": {"on"}}
-	if _, err := BuildMenuFromFormWithProfilesAndAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, nil); err == nil {
+	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_2031": {"on"}}
+	if _, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, nil); err == nil {
 		t.Fatal("accepted unknown answer variant")
 	}
 	answer := WindowsAnswerVariant{ID: 31, ProfileID: 17, Title: "Lab", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "pending"}
-	if _, err := BuildMenuFromFormWithProfilesAndAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, []WindowsAnswerVariant{answer}); err == nil {
+	if _, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, []WindowsAnswerVariant{answer}); err == nil {
 		t.Fatal("accepted unready answer variant")
 	}
 	answer.State = "ready"
-	form.Set("folder_winanswer_31", "Windows/Тест")
-	if _, err := BuildMenuFromFormWithProfilesAndAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, []WindowsAnswerVariant{answer}); err == nil {
+	form.Set("folder_install_2031", "Windows/Тест")
+	if _, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, []WindowsAnswerVariant{answer}); err == nil {
 		t.Fatal("accepted answer folder that iPXE cannot display")
 	}
 }
@@ -183,18 +183,18 @@ func TestWindowsMenuRejectsUnknownOrUnreadyAnswer(t *testing.T) {
 func TestWindowsMenuPagePrefillsActiveAnswer(t *testing.T) {
 	p := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 11", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
 	a := WindowsAnswerVariant{ID: 31, ProfileID: 17, Title: "Lab", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"}
-	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winanswer_31": {"on"}, "folder_winanswer_31": {"Windows/Tests"}}
-	script, err := BuildMenuFromFormWithProfilesAndAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, []WindowsAnswerVariant{a})
+	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_2031": {"on"}, "folder_install_2031": {"Windows/Tests"}}
+	script, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, []WindowsAnswerVariant{a})
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := windowsMenuPageStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Script: string(script), Title: "PXE", Label: "Diagnostics", Message: "Ready"}}}, profiles: []WindowsProfile{p}, answers: []WindowsAnswerVariant{a}}
+	store := windowsMenuPageStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Script: string(script), Title: "PXE", Label: "Diagnostics", Message: "Ready", Items: []MenuVersionItem{{InstallationID: 2031, Title: a.Title, Folder: "Windows/Tests"}}}}}, profiles: []WindowsProfile{p}, answers: []WindowsAnswerVariant{a}}
 	s := &Server{Store: store}
-	req := httptest.NewRequest(http.MethodGet, "/menu?item=winanswer_31", nil)
+	req := httptest.NewRequest(http.MethodGet, "/menu?item=install_2031", nil)
 	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "winanswer_31") || !strings.Contains(res.Body.String(), `value="Windows/Tests"`) || strings.Contains(res.Body.String(), "winiso_17") {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "install_2031") || !strings.Contains(res.Body.String(), `value="Windows/Tests"`) || strings.Contains(res.Body.String(), "install_1017") {
 		t.Fatalf("answer selection not restored: %d %s", res.Code, res.Body.String())
 	}
 }
@@ -207,8 +207,8 @@ func TestWindowsMenuRejectsAnswerItemMissingFromSnapshotMetadata(t *testing.T) {
 		{ID: 31, ProfileID: 17, Title: "Lab A", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"},
 		{ID: 32, ProfileID: 17, Title: "Lab B", Folder: "Windows", SHA256: strings.Repeat("b", 64), Size: 100, State: "ready"},
 	}
-	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winanswer_31": {"on"}, "winanswer_32": {"on"}}
-	script, err := BuildMenuFromFormWithProfilesAndAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, answers)
+	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_2031": {"on"}, "install_2032": {"on"}}
+	script, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, answers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,4 +229,11 @@ func TestWindowsMenuRejectsAnswerItemMissingFromSnapshotMetadata(t *testing.T) {
 	if err := s.verifyMenuWindowsProfiles(context.Background(), forged); err == nil {
 		t.Fatal("accepted answer boot item without hash reference")
 	}
+}
+
+func (s windowsMenuPageStore) Installations(context.Context) ([]Installation, error) {
+	return testInstallationSources(s.profiles, s.answers, nil).Installations, nil
+}
+func (s windowsMenuPageStore) BootProfiles(context.Context) ([]BootProfile, error) {
+	return testInstallationSources(s.profiles, s.answers, nil).BootProfiles, nil
 }

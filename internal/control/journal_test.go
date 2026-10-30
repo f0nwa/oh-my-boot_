@@ -50,7 +50,7 @@ func journalBoot(t *testing.T, store *journalStore) *BootClient {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := &http.Server{Handler: boot.ControlHandlerWithJournal(p, nil, nil, j)}
+	server := &http.Server{Handler: boot.ControlHandlerWithJournal(p, nil, nil, j, nil)}
 	go server.Serve(listener)
 	t.Cleanup(func() { _ = server.Close() })
 	return NewBootClient(filepath.Join(dir, "b.sock"))

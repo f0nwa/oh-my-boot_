@@ -28,13 +28,13 @@ func TestMenuItemTextPutsHintsAtTheRightEdge(t *testing.T) {
 }
 
 func TestMenuThemeScreensKeepTheKeyLineAtTheBottom(t *testing.T) {
-	profiles := []menuProfile{{id: "winiso_1", title: "Win11"}, {id: "winanswer_2", title: "Win11 auto", hint: "!! WIPES DISK"}}
-	script, err := buildMenuTreeWithProfiles("oh my boot_", "Diagnostics", "Ready", profiles, map[string]string{"winanswer_2": "Windows"})
+	profiles := []menuProfile{{id: "install_1001", title: "Win11"}, {id: "install_2002", title: "Win11 auto", hint: "!! WIPES DISK"}}
+	script, err := buildMenuTreeWithProfiles("oh my boot_", "Diagnostics", "Ready", profiles, map[string]string{"install_2002": "Windows"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(script)
-	for _, want := range []string{menuTheme, "menu oh my boot_" + menuTitleSuffix + "\n", "item winanswer_2 " + menuItemText("Win11 auto", "!! WIPES DISK") + "\n"} {
+	for _, want := range []string{menuTheme, "menu oh my boot_" + menuTitleSuffix + "\n", "item install_2002 " + menuItemText("Win11 auto", "!! WIPES DISK") + "\n"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in\n%s", want, text)
 		}
@@ -48,28 +48,28 @@ func TestMenuThemeScreensKeepTheKeyLineAtTheBottom(t *testing.T) {
 
 func TestPublishedThemedMenuReadsBackWithoutChanges(t *testing.T) {
 	profiles, answers, configs := draftFixture()
-	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "windriver_2", Title: "Win11 key", Folder: ""}, {Key: "winiso_17", Title: "Windows 11", Folder: ""}}}
-	script, err := BuildMenuFromDraft(d, testBootURL, profiles, answers, configs)
+	d := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 3002, Title: "Win11 key", Folder: ""}, {InstallationID: 1017, Title: "Windows 11", Folder: ""}}}
+	script, err := buildTestMenuFromDraft(d, testBootURL, profiles, answers, configs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	d.look = menuLook
-	back := draftFromVersion(MenuVersion{Title: d.Title, Label: d.Label, Message: d.Message, Script: string(script)})
+	back := draftFromVersion(MenuVersion{Title: d.Title, Label: d.Label, Message: d.Message, Script: string(script), Look: menuLook, Items: versionItems(d)})
 	if changes := diffMenuDraft(back, d); len(changes) != 0 {
 		t.Fatalf("changes after a round trip: %+v (items %+v)", changes, back.Items)
 	}
-	// A version published before the new look has the look to publish.
-	old := draftFromVersion(MenuVersion{Title: d.Title, Label: d.Label, Message: d.Message, Script: "#!ipxe\nmenu oh my boot_\nitem windriver_2 Win11 key\nitem winiso_17 Windows 11\nitem diagnostics Diagnostics\nchoose target\n"})
+	old := d
+	old.look = "previous-look"
 	if changes := diffMenuDraft(old, d); len(changes) != 1 || changes[0].Kind != "look" {
-		t.Fatalf("old version: %+v", changes)
+		t.Fatalf("old look: %+v", changes)
 	}
 }
 
 // iPXE splits on whitespace and joins menu text with single spaces, so a
 // menu line may not rely on runs of spaces: they come from ${spN:string}.
 func TestMenuLinesNeverHoldRunsOfSpaces(t *testing.T) {
-	profiles := []menuProfile{{id: "winanswer_2", title: "Win11 auto", hint: "!! WIPES DISK"}}
-	script, err := buildMenuTreeWithProfiles("oh my boot_", "Diagnostics", "Ready", profiles, map[string]string{"winanswer_2": "Windows"})
+	profiles := []menuProfile{{id: "install_2002", title: "Win11 auto", hint: "!! WIPES DISK"}}
+	script, err := buildMenuTreeWithProfiles("oh my boot_", "Diagnostics", "Ready", profiles, map[string]string{"install_2002": "Windows"})
 	if err != nil {
 		t.Fatal(err)
 	}

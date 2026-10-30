@@ -79,7 +79,7 @@ func TestTransfersListFilesBeingSent(t *testing.T) {
 	}()
 	<-w.pause
 	res := httptest.NewRecorder()
-	ControlHandlerWithTransfers(p, nil, transfers).ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/transfers", nil))
+	ControlHandlerWithTransfers(p, nil, transfers, nil).ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/transfers", nil))
 	var list []Transfer
 	if err := json.Unmarshal(res.Body.Bytes(), &list); err != nil || len(list) != 1 || list[0].Path != "/assets/boot.wim" || list[0].Size != 1<<20 || list[0].Bytes <= 0 {
 		t.Fatalf("list=%+v err=%v", list, err)

@@ -66,36 +66,36 @@ func menuPost(t *testing.T, s *Server, path string, form url.Values) *httptest.R
 
 func TestPublishBuildsFromDraftAndKeepsIt(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017}}}
 	s, published := draftServer(t, store)
 	res := menuPost(t, s, "/menu/publish", url.Values{})
-	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/menu?message=") || len(*published) != 1 || !strings.Contains((*published)[0], "item winiso_17 Windows 11") || len(store.saved) == 0 {
+	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/menu?message=") || len(*published) != 1 || !strings.Contains((*published)[0], "item install_1017 Windows 11") || len(store.saved) == 0 || len(store.versions) != 1 {
 		t.Fatalf("status=%d location=%q published=%d saved=%d body=%s", res.Code, res.Header().Get("Location"), len(*published), len(store.saved), res.Body.String())
 	}
 }
 
 func TestMoveDownChangesOrderOnly(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17"}, {Key: "winanswer_31"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017}, {InstallationID: 2031}}}
 	s, published := draftServer(t, store)
-	res := menuPost(t, s, "/menu/items/winiso_17/move", url.Values{"dir": {"down"}})
-	if res.Code != http.StatusSeeOther || store.draft.Items[0].Key != "winanswer_31" || store.draft.Items[1].Key != "winiso_17" || len(*published) != 0 {
+	res := menuPost(t, s, "/menu/items/install_1017/move", url.Values{"dir": {"down"}})
+	if res.Code != http.StatusSeeOther || menuDraftItemKey(store.draft.Items[0]) != "install_2031" || menuDraftItemKey(store.draft.Items[1]) != "install_1017" || len(*published) != 0 {
 		t.Fatalf("status=%d draft=%+v body=%s", res.Code, store.draft, res.Body.String())
 	}
 }
 
 func TestRemoveItemFromDraft(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17"}, {Key: "winanswer_31"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017}, {InstallationID: 2031}}}
 	s, _ := draftServer(t, store)
-	res := menuPost(t, s, "/menu/items/winiso_17/remove", url.Values{})
-	if res.Code != http.StatusSeeOther || len(store.draft.Items) != 1 || store.draft.Items[0].Key != "winanswer_31" {
+	res := menuPost(t, s, "/menu/items/install_1017/remove", url.Values{})
+	if res.Code != http.StatusSeeOther || len(store.draft.Items) != 1 || menuDraftItemKey(store.draft.Items[0]) != "install_2031" {
 		t.Fatalf("status=%d draft=%+v", res.Code, store.draft)
 	}
 }
 
 func TestRollbackResetsDraft(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	old := store.versions[0]
 	old.ID, old.Active = 31, false
 	store.versions[0].Script = "#!ipxe\n"
@@ -103,13 +103,13 @@ func TestRollbackResetsDraft(t *testing.T) {
 	store.draft = &MenuDraft{Title: "Other", Label: "Diagnostics", Message: "Ready"}
 	s, published := draftServer(t, store)
 	res := menuPost(t, s, "/menu/rollback", url.Values{"id": {"31"}})
-	if res.Code != http.StatusSeeOther || len(*published) != 1 || store.draft.Title != "oh my boot_" || len(store.draft.Items) != 1 || store.draft.Items[0].Key != "winiso_17" {
+	if res.Code != http.StatusSeeOther || len(*published) != 1 || store.draft.Title != "oh my boot_" || len(store.draft.Items) != 1 || menuDraftItemKey(store.draft.Items[0]) != "install_1017" {
 		t.Fatalf("status=%d draft=%+v body=%s", res.Code, store.draft, res.Body.String())
 	}
 }
 
 func TestRollbackOfUnrestorableVersionKeepsDraft(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winanswer_31", Title: "Lab"}})
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 2031, Title: "Lab"}})
 	old := store.versions[0]
 	old.ID, old.Active = 31, false
 	store.versions = append(store.versions, old)
@@ -124,18 +124,18 @@ func TestRollbackOfUnrestorableVersionKeepsDraft(t *testing.T) {
 
 func TestPublishWithMissingObjectShowsError(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_99", Title: "Gone"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 2099, Title: "Gone"}}}
 	s, published := draftServer(t, store)
 	res := menuPost(t, s, "/menu/publish", url.Values{})
 	body := res.Body.String()
-	if res.Code < 400 || !strings.Contains(body, `role="alert"`) || !strings.Contains(body, "winanswer_99") || !strings.Contains(body, "Недоступно") || len(*published) != 0 {
+	if res.Code < 400 || !strings.Contains(body, `role="alert"`) || !strings.Contains(body, "install_2099") || !strings.Contains(body, "Недоступно") || len(*published) != 0 {
 		t.Fatalf("status=%d body=%s", res.Code, body)
 	}
 }
 
 func TestObserverSeesNoMenuButtons(t *testing.T) {
-	store := newDraftStore(t, "observer", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_31"}}}
+	store := newDraftStore(t, "observer", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 2031}}}
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/menu")
 	if strings.Contains(body, `action="/menu/`) || !strings.Contains(body, "Lab") {

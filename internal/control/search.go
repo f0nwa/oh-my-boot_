@@ -92,9 +92,10 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 		if draft, active, err := s.currentDraft(r.Context()); err == nil {
 			inDraft := map[string]bool{}
 			for _, item := range draft.Items {
-				inDraft[item.Key] = true
+				inDraft[menuDraftItemKey(item)] = true
 			}
-			for _, row := range installationRows(profiles, answers, configs, draft, active) {
+			sources, _ := s.installationMenuSources(r.Context())
+			for _, row := range installationRows(profiles, answers, configs, draft, active, sources) {
 				if searchMatch(query, row.Title, row.Key, row.Image, row.Answer, row.Drivers) {
 					href := "/installations?q=" + row.Key
 					if inDraft[row.Key] {
@@ -111,7 +112,7 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 		}
 		for _, answer := range answers {
 			if searchMatch(query, answer.Title) {
-				add(searchResult{Kind: "Файл ответов", Title: answer.Title, Sub: keyFor("winanswer", answer.ID), Href: "/answers"})
+				add(searchResult{Kind: "Файл ответов", Title: answer.Title, Sub: keyFor("answer", answer.ID), Href: "/answers"})
 			}
 		}
 	}

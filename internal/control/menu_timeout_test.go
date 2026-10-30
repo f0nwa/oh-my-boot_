@@ -10,8 +10,8 @@ import (
 )
 
 func TestLocalDiskTimerSecondsAndOff(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-	base := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}}}
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
+	base := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}}}
 	for _, c := range []struct {
 		draft MenuDraft
 		want  string
@@ -23,11 +23,11 @@ func TestLocalDiskTimerSecondsAndOff(t *testing.T) {
 		{func() MenuDraft { d := base; d.LocalTimeout = 45; return d }(), "choose --default local --timeout 45000 target || goto local\n", "(45)", 45, true},
 		{func() MenuDraft { d := base; d.LocalTimeout = 45; d.NoLocalTimer = true; return d }(), "choose --default local target || goto local\n", "", 45, false},
 	} {
-		script, err := BuildMenuFromDraft(c.draft, testBootURL, store.profiles, store.answers, store.configs)
+		script, err := buildTestMenuFromDraft(c.draft, testBootURL, store.profiles, store.answers, store.configs)
 		if err != nil || !strings.Contains(string(script), c.want) {
 			t.Fatalf("err=%v want %q in %s", err, c.want, script)
 		}
-		back := draftFromVersion(MenuVersion{Script: string(script)})
+		back := draftFromVersion(MenuVersion{Script: string(script), LocalTimeout: c.draft.LocalTimeout, NoLocalTimer: c.draft.NoLocalTimer, Items: versionItems(c.draft)})
 		if back.LocalTimerOn() != c.on || (c.on && back.LocalTimeoutSeconds() != c.secs) {
 			t.Fatalf("read back on=%v secs=%d, want %v %d", back.LocalTimerOn(), back.LocalTimeoutSeconds(), c.on, c.secs)
 		}
@@ -63,14 +63,14 @@ func TestLocalDiskTimerIsSetOnItsMenuItem(t *testing.T) {
 	}
 	// Saving the other menu settings leaves the timer as it is.
 	store.draft.NoLocalTimer, store.draft.LocalTimeout = true, 45
-	if res := menuPost(t, s, "/menu/settings", url.Values{"label": {"Diagnostics"}, "message": {"Ready"}}); res.Code != http.StatusSeeOther || store.draft.LocalTimerOn() || store.draft.LocalTimeout != 45 {
+	if res := menuPost(t, s, "/menu/diagnostics", url.Values{"label": {"Diagnostics"}, "message": {"Ready"}}); res.Code != http.StatusSeeOther || store.draft.LocalTimerOn() || store.draft.LocalTimeout != 45 {
 		t.Fatalf("menu settings changed the timer: status=%d draft=%+v", res.Code, store.draft)
 	}
 }
 
 func TestLocalDiskItemShowsTimerAndGreysOutWhenOff(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", LocalTimeout: 25, Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}}}
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", LocalTimeout: 25, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}}}
 	s, _ := draftServer(t, store)
 	get := func() string {
 		res := httptest.NewRecorder()
@@ -98,8 +98,8 @@ func TestLocalDiskItemShowsTimerAndGreysOutWhenOff(t *testing.T) {
 }
 
 func TestLocalDiskTimerChangeIsPending(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
-	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", NoLocalTimer: true, Items: []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}}}
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", NoLocalTimer: true, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}}}
 	s, _ := draftServer(t, store)
 	draft, active, err := s.currentDraft(t.Context())
 	if err != nil || len(diffMenuDraft(active, draft)) == 0 {

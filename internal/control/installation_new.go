@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"net/http"
@@ -55,9 +56,54 @@ func packageChoices(packages []DriverPackage) []packageChoice {
 	return out
 }
 
+type bootProfileChoice struct {
+	BootProfile
+	State, Error, Path string
+}
+
+// bootProfileChoices checks the shared Ubuntu resources once per request.
+func (s *Server) bootProfileChoices(ctx context.Context, shared []BootProfile, windows []WindowsProfile) []bootProfileChoice {
+	var ubuntuProblem error
+	ubuntuChecked := false
+	choices := make([]bootProfileChoice, 0, len(shared))
+	for _, profile := range shared {
+		choice := bootProfileChoice{BootProfile: profile, State: "unavailable", Error: "Профиль загрузки недоступен"}
+		switch profile.Kind {
+		case BootProfileUbuntuBuiltin:
+			choice.State, choice.Error, choice.Path = "ready", "", "Системный источник Ubuntu"
+			if !ubuntuChecked {
+				ubuntuProblem = s.checkUbuntuReadiness(ctx)
+				ubuntuChecked = true
+			}
+			if ubuntuProblem != nil {
+				choice.State, choice.Error = "unavailable", ubuntuProblem.Error()
+			}
+		case BootProfileWindowsISO:
+			for _, source := range windows {
+				if source.ID == profile.WindowsProfileID {
+					choice.State, choice.Error, choice.Path = source.State, source.Error, source.Path
+					if !profileBootable(source) && choice.State == "ready" {
+						choice.State = "unavailable"
+						if choice.Error == "" {
+							choice.Error = "Профиль загрузки недоступен"
+						}
+					}
+				}
+			}
+		}
+		choices = append(choices, choice)
+	}
+	return choices
+}
+
 func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Info: requestInfo(r), Error: pageError(r)}
 	profiles, answers, _, err := s.menuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sources, err := s.installationMenuSources(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -67,23 +113,34 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Каталог драйверов недоступен", http.StatusInternalServerError)
 		return
 	}
-	data.WindowsProfiles, data.WindowsAnswerVariants, data.PackageChoices = profiles, answers, packageChoices(packages)
-	if form := pageForm(r); form != nil {
-		data.Form = form
-	} else {
-		// Start from the first ready image so its answer files show at once.
-		for _, profile := range profiles {
-			if profile.State == "ready" {
-				data.Form = url.Values{"profile_id": {strconv.FormatInt(profile.ID, 10)}, "folder": {"Windows"}}
+	data.BootProfileChoices = s.bootProfileChoices(r.Context(), sources.BootProfiles, profiles)
+	data.WindowsAnswerVariants, data.PackageChoices = answers, packageChoices(packages)
+	data.UbuntuAutoinstalls = sources.Autoinstalls
+	data.Form = pageForm(r)
+	if data.Form == nil {
+		data.Form = url.Values{}
+		selected := r.URL.Query().Get("boot_profile_id")
+		for _, profile := range data.BootProfileChoices {
+			if (selected != "" && selected == strconv.FormatInt(profile.ID, 10)) || (selected == "" && profile.State == "ready") {
+				data.Form.Set("boot_profile_id", strconv.FormatInt(profile.ID, 10))
+				if profile.Kind == BootProfileWindowsISO {
+					data.Form.Set("folder", "Windows")
+				} else {
+					data.Form.Set("folder", "Linux")
+				}
 				break
 			}
+		}
+	}
+	for _, profile := range data.BootProfileChoices {
+		if data.Form.Get("boot_profile_id") == strconv.FormatInt(profile.ID, 10) {
+			data.SelectedBootKind = profile.Kind
 		}
 	}
 	render(w, "installation_new", data)
 }
 
-// installationCreate turns the form into a menu draft item: a bare profile, a
-// profile's answer file, or a new driver configuration that still needs a build.
+// installationCreate saves an independent installation and adds it to the draft.
 func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 	s.draftMu.Lock()
 	defer s.draftMu.Unlock()
@@ -92,16 +149,49 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	profileID, err := strconv.ParseInt(r.FormValue("profile_id"), 10, 64)
+	sources, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	profileID, err := strconv.ParseInt(r.FormValue("boot_profile_id"), 10, 64)
+	var shared BootProfile
+	for _, choice := range s.bootProfileChoices(r.Context(), sources.BootProfiles, profiles) {
+		if choice.ID == profileID && choice.Kind == BootProfileUbuntuBuiltin && choice.State != "ready" {
+			http.Error(w, "Установка не готова: "+choice.Error, http.StatusConflict)
+			return
+		}
+		if choice.ID == profileID && choice.State == "ready" {
+			shared = choice.BootProfile
+		}
+	}
+	if err != nil || shared.ID == 0 {
+		http.Error(w, "Выберите подготовленный профиль загрузки", http.StatusBadRequest)
+		return
+	}
 	var profile WindowsProfile
 	for _, p := range profiles {
-		if p.ID == profileID {
+		if p.ID == shared.WindowsProfileID {
 			profile = p
 		}
 	}
-	if err != nil || profile.ID == 0 || !profileBootable(profile) {
-		http.Error(w, "Выберите подготовленный образ", http.StatusBadRequest)
+	if shared.Kind == BootProfileUbuntuBuiltin && ((r.FormValue("answer_id") != "" && r.FormValue("answer_id") != "0") || len(r.Form["package"]) > 0 || len(r.Form["inf"]) > 0) {
+		http.Error(w, "Ubuntu не поддерживает компоненты Windows", http.StatusBadRequest)
 		return
+	}
+	autoinstallID := int64(0)
+	if raw := r.FormValue("autoinstall_id"); raw != "" && raw != "0" {
+		autoinstallID, err = strconv.ParseInt(raw, 10, 64)
+		found := false
+		for _, file := range sources.Autoinstalls {
+			if file.ID == autoinstallID && file.State == "validated" {
+				found = true
+			}
+		}
+		if err != nil || autoinstallID <= 0 || shared.Kind != BootProfileUbuntuBuiltin || !found {
+			http.Error(w, "Выберите проверенный файл Autoinstall только для Ubuntu", http.StatusBadRequest)
+			return
+		}
 	}
 	answerID, answerTitle := int64(0), ""
 	if raw := r.FormValue("answer_id"); raw != "" && raw != "0" {
@@ -123,7 +213,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	title, folder := strings.TrimSpace(r.FormValue("title")), strings.TrimSpace(r.FormValue("folder"))
 	if title == "" {
-		title = profile.Title
+		title = shared.Title
 		if answerTitle != "" {
 			title = answerTitle
 		}
@@ -164,17 +254,8 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	var key string
-	if len(infs) == 0 {
-		key = fmt.Sprintf("winiso_%d", profile.ID)
-		if answerID > 0 {
-			key = fmt.Sprintf("winanswer_%d", answerID)
-		}
-		if draftItemIndex(&draft, key) >= 0 {
-			http.Error(w, "Такая установка уже в меню", http.StatusConflict)
-			return
-		}
-	} else {
+	item := Installation{BootProfileID: shared.ID, Title: title, Folder: folder, AnswerID: answerID, AutoinstallID: autoinstallID}
+	if len(infs) > 0 {
 		unique := map[string]bool{}
 		values := url.Values{"profile_id": {strconv.FormatInt(profile.ID, 10)}, "answer_id": {strconv.FormatInt(answerID, 10)}, "title": {title}, "folder": {folder}}
 		for _, inf := range infs {
@@ -199,24 +280,39 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, other := range existing {
-			if sameDriverSelection(other, config) {
-				http.Error(w, fmt.Sprintf("Такая установка уже есть: «%s» (windriver_%d)", other.Title, other.ID), http.StatusConflict)
+			if sameDriverSelection(other, config) && (other.State == "pending" || other.State == "preparing" || other.State == "ready") {
+				if other.State == "ready" {
+					if _, _, err := windowsMenuProfile(Installation{DriverConfigID: other.ID}, other.ProfileID, "", profiles, answers, existing); err != nil {
+						continue
+					}
+				}
+				config = other
+				break
+			}
+		}
+		if config.ID == 0 {
+			config, err = s.Store.CreateDriverConfig(r.Context(), config)
+			if err != nil {
+				http.Error(w, "Не удалось создать конфигурацию", http.StatusServiceUnavailable)
 				return
 			}
 		}
-		config, err = s.Store.CreateDriverConfig(r.Context(), config)
-		if err != nil {
-			http.Error(w, "Не удалось создать конфигурацию", http.StatusServiceUnavailable)
-			return
-		}
-		key = fmt.Sprintf("windriver_%d", config.ID)
+		item.AnswerID, item.DriverConfigID = 0, config.ID
 	}
-	draft.Items = append(draft.Items, MenuDraftItem{Key: key, Folder: folder, Title: title})
+	item, err = s.Store.CreateInstallation(r.Context(), item)
+	if err != nil {
+		http.Error(w, "Не удалось создать установку", http.StatusServiceUnavailable)
+		return
+	}
+	if err := draft.AddInstallation(item); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
 	if err := s.Store.SaveMenuDraft(r.Context(), draft); err != nil {
 		http.Error(w, "Не удалось сохранить черновик меню", http.StatusServiceUnavailable)
 		return
 	}
-	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "installation.create", "ok", key)
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "installation.create", "ok", fmt.Sprintf("install_%d", item.ID))
 	http.Redirect(w, r, "/installations?message=Установка+создана", http.StatusSeeOther)
 }
 

@@ -1,16 +1,20 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"pxe-platform/internal/agent"
+	"pxe-platform/internal/autoinstall"
+	"pxe-platform/internal/boot"
 )
 
 type menuDraftRow struct {
@@ -22,16 +26,7 @@ type menuDraftRow struct {
 	Error     string
 }
 
-func menuItemKind(key string) string {
-	switch {
-	case strings.HasPrefix(key, "winanswer_"):
-		return "Образ и файл ответов"
-	case strings.HasPrefix(key, "windriver_"):
-		return "Образ с драйверами"
-	default:
-		return "Образ"
-	}
-}
+func (row menuDraftRow) Key() string { return menuDraftItemKey(row.Item) }
 
 var menuScreenLabel = regexp.MustCompile(`^(menu_root|folder_[0-9]+)$`)
 
@@ -47,8 +42,13 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	sources, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), 503)
+		return
+	}
 	for _, version := range versions {
-		data.Versions = append(data.Versions, menuVersionRow{MenuVersion: version, Restorable: menuSnapshotRestorable(version.Script, profiles, answers, configs)})
+		data.Versions = append(data.Versions, menuVersionRow{MenuVersion: version, Restorable: menuVersionRestorable(version, sources, profiles, answers, configs)})
 		if version.Active {
 			data.ActiveVersion = version.ID
 		}
@@ -59,27 +59,37 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Draft = draft
-	data.DraftRows = menuDraftRows(draft, profiles, answers, configs)
+	data.DraftRows = menuDraftRows(draft, profiles, answers, configs, sources)
 	data.Changes = diffMenuDraft(active, draft)
 	// The draft bar on this page follows the same read as the page itself.
 	data.Info.Draft = summarizeChanges(data.Changes)
 	data.Info.Draft.Active = data.ActiveVersion
 	key, screen := r.URL.Query().Get("item"), r.URL.Query().Get("screen")
-	if !menuItemKey.MatchString(key) && key != "ubuntu" && key != "diagnostics" && key != "local" {
+	if !menuItemKey.MatchString(key) && key != "diagnostics" && key != "local" {
 		key = ""
 	}
 	if !menuScreenLabel.MatchString(screen) {
 		screen = ""
 	}
-	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installationRows(profiles, answers, configs, draft, active), profiles, answers, configs, key, screen)
+	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installationRows(profiles, answers, configs, draft, active, sources), profiles, answers, configs, key, screen, sources)
 	render(w, "menu", data)
 }
 
-func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) []menuDraftRow {
+func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, sources InstallationMenuSources) []menuDraftRow {
 	var rows []menuDraftRow
 	for _, item := range draft.Items {
-		row := menuDraftRow{Item: item, Title: item.Title, Kind: menuItemKind(item.Key), Available: true, Folder: item.Folder}
-		entry, folder, err := menuProfileForKey(item.Key, "", profiles, answers, configs)
+		row := menuDraftRow{Item: item, Title: item.Title, Kind: "Образ", Available: true, Folder: item.Folder}
+		entry, folder, err := resolveDraftItem(item, "", sources, profiles, answers, configs)
+		if item.InstallationID > 0 {
+			switch {
+			case entry.kind == BootProfileUbuntuBuiltin:
+				row.Kind = "Ubuntu"
+			case entry.driverConfigID > 0:
+				row.Kind = "Образ с драйверами"
+			case entry.answerID > 0:
+				row.Kind = "Образ и файл ответов"
+			}
+		}
 		if item.Folder == defaultMenuFolder {
 			// The item follows its object's folder.
 			row.Folder = folder
@@ -90,11 +100,28 @@ func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []Windows
 			row.Title = entry.title
 		}
 		if row.Title == "" {
-			row.Title = item.Key
+			row.Title = menuDraftItemKey(item)
 		}
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// installationMenuSources reads shared identities for rendering and restoration.
+func (s *Server) installationMenuSources(ctx context.Context) (InstallationMenuSources, error) {
+	items, err := s.Store.Installations(ctx)
+	if err != nil {
+		return InstallationMenuSources{}, err
+	}
+	profiles, err := s.Store.BootProfiles(ctx)
+	if err != nil {
+		return InstallationMenuSources{}, err
+	}
+	files, err := s.Store.UbuntuAutoinstalls(ctx)
+	if err != nil {
+		return InstallationMenuSources{}, err
+	}
+	return InstallationMenuSources{Installations: items, BootProfiles: profiles, Autoinstalls: files}, nil
 }
 
 // menuSources reads the objects menu items can point to.
@@ -114,38 +141,129 @@ func (s *Server) menuSources(ctx context.Context) ([]WindowsProfile, []WindowsAn
 	return profiles, answers, configs, nil
 }
 
-func menuSnapshotRestorable(script string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) bool {
-	profileIDs, answerIDs, configIDs := map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
-	for _, item := range profiles {
-		profileIDs[item.ID] = true
+func menuVersionRestorable(version MenuVersion, sources InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) bool {
+	if version.Items == nil {
+		return false
 	}
-	for _, item := range answers {
-		answerIDs[item.ID] = true
+	_, err := BuildMenuFromDraft(draftFromVersion(version), previewBaseURL, profiles, answers, configs, sources)
+	return err == nil
+}
+
+// verifyMenuVersion resolves structural references before checking the snapshot's
+// immutable components and the prepared files behind them. All preflight work
+// finishes before the active Boot script or saved menu/draft can change.
+func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) error {
+	if version.Items == nil {
+		return fmt.Errorf("menu version has no structural items")
 	}
-	for _, item := range configs {
-		configIDs[item.ID] = true
+	sources, err := s.installationMenuSources(ctx)
+	if err != nil {
+		return err
 	}
-	for _, line := range strings.Split(script, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 || fields[0] != "item" {
+	profiles, answers, configs, err := s.menuSources(ctx)
+	if err != nil {
+		return err
+	}
+	draft := draftFromVersion(version)
+	if _, err := BuildMenuFromDraft(draft, previewBaseURL, profiles, answers, configs, sources); err != nil {
+		return err
+	}
+	entries := make([]menuProfile, 0, len(draft.Items))
+	ubuntuChecked := false
+	for _, item := range draft.Items {
+		entry, _, err := resolveDraftItem(item, "", sources, profiles, answers, configs)
+		if err != nil {
+			return err
+		}
+		if entry.kind == BootProfileUbuntuBuiltin && !ubuntuChecked {
+			if err := s.checkUbuntuReadiness(ctx); err != nil {
+				return err
+			}
+			ubuntuChecked = true
+		}
+		entries = append(entries, entry)
+	}
+	if err := s.verifyMenuWindowsProfiles(ctx, version.Script, entries...); err != nil {
+		return err
+	}
+	if err := verifyMenuAutoinstallReferences(version.Script, entries); err != nil {
+		return err
+	}
+	return s.stageMenuAutoinstalls(ctx, entries)
+}
+
+// Match saved kernel arguments to the current immutable library references.
+// As with Windows component hashes, a changed digest must block restoration
+// rather than stage a different seed while publishing the old snapshot URL.
+func verifyMenuAutoinstallReferences(script string, entries []menuProfile) error {
+	expected := map[string]bool{}
+	for _, entry := range entries {
+		if entry.autoinstallID > 0 {
+			expected[ubuntuAutoinstallSeedPath(entry.id, entry.autoinstallSHA256)] = true
+		}
+	}
+	for line := range strings.SplitSeq(script, "\n") {
+		args := strings.Fields(line)
+		if len(args) == 0 || args[0] != "kernel" {
 			continue
 		}
-		for _, choice := range []struct {
-			prefix  string
-			present map[int64]bool
-		}{
-			{"winiso_", profileIDs}, {"winanswer_", answerIDs}, {"windriver_", configIDs},
-		} {
-			if !strings.HasPrefix(fields[1], choice.prefix) {
+		for _, arg := range args[1:] {
+			seed, ok := strings.CutPrefix(arg, "ds=nocloud-net;s=")
+			if !ok {
 				continue
 			}
-			id, err := strconv.ParseInt(strings.TrimPrefix(fields[1], choice.prefix), 10, 64)
-			if err != nil || !choice.present[id] {
-				return false
+			u, err := url.Parse(seed)
+			if err != nil {
+				return fmt.Errorf("Ubuntu Autoinstall snapshot references are invalid")
 			}
+			base, err := validatedBootURL(u.Scheme + "://" + u.Host)
+			if err != nil || seed != base+u.Path || !expected[u.Path] {
+				return fmt.Errorf("Ubuntu Autoinstall snapshot references are invalid or changed")
+			}
+			delete(expected, u.Path)
 		}
 	}
-	return true
+	if len(expected) != 0 {
+		return fmt.Errorf("Ubuntu Autoinstall snapshot references are missing")
+	}
+	return nil
+}
+
+// stageMenuAutoinstalls fetches bodies only for selected automated entries.
+// Repeating this on restoration reuses (or repairs a missing) immutable pair;
+// a corrupt existing pair is rejected by Boot rather than overwritten.
+func (s *Server) stageMenuAutoinstalls(ctx context.Context, entries []menuProfile) error {
+	for _, entry := range entries {
+		if entry.autoinstallID == 0 {
+			continue
+		}
+		if s.Boot == nil {
+			return fmt.Errorf("Boot unavailable for Ubuntu Autoinstall")
+		}
+		file, err := s.Store.UbuntuAutoinstall(ctx, entry.autoinstallID)
+		if err != nil {
+			return fmt.Errorf("Ubuntu Autoinstall file %d is unavailable", entry.autoinstallID)
+		}
+		rendered, err := autoinstall.Render(file.Values)
+		if err != nil || file.ID != entry.autoinstallID || file.State != "validated" || file.SHA256 != entry.autoinstallSHA256 || len(file.UserData) == 0 || len(file.UserData) > boot.MaxAutoinstallUserDataSize || !bytes.Equal(rendered, file.UserData) || fmt.Sprintf("%x", sha256.Sum256(file.UserData)) != entry.autoinstallSHA256 {
+			return fmt.Errorf("Ubuntu Autoinstall file %d is invalid or changed", entry.autoinstallID)
+		}
+		id, err := strconv.ParseInt(strings.TrimPrefix(entry.id, "install_"), 10, 64)
+		if err != nil || id <= 0 {
+			return fmt.Errorf("invalid Ubuntu Autoinstall installation identity")
+		}
+		meta := fmt.Sprintf("instance-id: pxe-installation-%d-%s\n", id, file.SHA256)
+		expected := boot.AssetInfo{UserDataSHA256: file.SHA256, MetaDataSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(meta)))}
+		staged, err := s.Boot.StageAutoinstall(ctx, id, file.SHA256, file.UserData)
+		if err != nil || staged != expected {
+			return fmt.Errorf("Ubuntu Autoinstall assets for %s could not be staged", entry.id)
+		}
+		checked, err := s.Boot.CheckAutoinstall(ctx, id, file.SHA256)
+		if err != nil || checked != expected {
+			return fmt.Errorf("Ubuntu Autoinstall assets for %s could not be verified", entry.id)
+		}
+	}
+	return nil
 }
 
 func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
@@ -161,14 +279,29 @@ func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать черновик меню", 503)
 		return
 	}
-	script, err := BuildMenuFromDraft(draft, s.BootBaseURL, profiles, answers, configs)
+	sources, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), 503)
+		return
+	}
+	script, err := BuildMenuFromDraft(draft, s.BootBaseURL, profiles, answers, configs, sources)
 	if err != nil {
 		http.Error(w, "Меню не собрано: "+err.Error(), 400)
 		return
 	}
-	published := MenuVersion{Title: productMenuTitle, Label: draft.Label, Message: draft.Message, Script: string(script)}
+	published := MenuVersion{Title: productMenuTitle, Label: draft.Label, Message: draft.Message, Script: string(script), NoDiagnostics: draft.NoDiagnostics, LocalTimeout: draft.LocalTimeout, NoLocalTimer: draft.NoLocalTimer, Look: menuLook, Items: make([]MenuVersionItem, 0, len(draft.Items))}
+	for position, item := range draft.Items {
+		entry, folder, _ := resolveDraftItem(item, "", sources, profiles, answers, configs)
+		if item.Title != "" {
+			entry.title = item.Title
+		}
+		if item.Folder != defaultMenuFolder {
+			folder = item.Folder
+		}
+		published.Items = append(published.Items, MenuVersionItem{InstallationID: item.InstallationID, Position: position, Title: entry.title, Folder: folder})
+	}
 	if s.publishMenu(w, r, published, "menu.publish") {
-		// Store the draft as it reads back from the published script, so
+		// Store the resolved published placements, so
 		// object titles and folders it relied on no longer look like changes.
 		s.saveDraftAfterPublish(r, published)
 	}
@@ -228,8 +361,8 @@ func (s *Server) saveDraftAfterPublish(r *http.Request, m MenuVersion) {
 func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersion, action string) bool {
 	s.menuMu.Lock()
 	defer s.menuMu.Unlock()
-	if err := s.verifyMenuWindowsProfiles(r.Context(), m.Script); err != nil {
-		http.Error(w, "Профиль Windows ISO недоступен: "+err.Error(), http.StatusConflict)
+	if err := s.verifyMenuVersion(r.Context(), m); err != nil {
+		http.Error(w, "Установка недоступна: "+err.Error(), http.StatusConflict)
 		return false
 	}
 	info := requestInfo(r)
@@ -241,19 +374,6 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 	if err != nil {
 		http.Error(w, "Не удалось получить текущее меню", 503)
 		return false
-	}
-	versions, err := s.Store.MenuVersions(r.Context())
-	if err != nil {
-		http.Error(w, "Не удалось прочитать версии меню", 503)
-		return false
-	}
-	if len(versions) == 0 {
-		oldSum := sha256.Sum256(previous)
-		initial := MenuVersion{Title: productMenuTitle, Label: "Diagnostics", Message: defaultMenuMessage, Script: string(previous), SHA256: hex.EncodeToString(oldSum[:])}
-		if err := s.Store.SaveActiveMenu(r.Context(), 0, initial); err != nil {
-			http.Error(w, "Не удалось сохранить начальное меню", 503)
-			return false
-		}
 	}
 	sum := sha256.Sum256([]byte(m.Script))
 	m.SHA256 = hex.EncodeToString(sum[:])
@@ -286,36 +406,22 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 	return true
 }
 
-func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) error {
+func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, entries ...menuProfile) error {
 	selected := menuWindowsProfileIDs(script)
 	answerRefs := menuWindowsAnswerRefs(script)
 	driverRefs := menuDriverConfigRefs(script)
 	answerItems := map[int64]bool{}
 	driverItems := map[int64]bool{}
-	for _, line := range strings.Split(script, "\n") {
-		if strings.HasPrefix(line, "item windriver_") {
-			fields := strings.Fields(line)
-			if len(fields) < 3 {
-				return fmt.Errorf("пункт конфигурации драйверов повреждён")
-			}
-			id, err := strconv.ParseInt(strings.TrimPrefix(fields[1], "windriver_"), 10, 64)
-			if err != nil || id <= 0 || driverItems[id] {
-				return fmt.Errorf("пункт конфигурации драйверов повреждён")
-			}
-			driverItems[id] = true
+	for _, entry := range entries {
+		if entry.windowsISOID > 0 {
+			selected[entry.windowsISOID] = true
 		}
-		if !strings.HasPrefix(line, "item winanswer_") {
-			continue
+		if entry.answerID > 0 {
+			answerItems[entry.answerID] = true
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			return fmt.Errorf("пункт сценария повреждён")
+		if entry.driverConfigID > 0 {
+			driverItems[entry.driverConfigID] = true
 		}
-		id, err := strconv.ParseInt(strings.TrimPrefix(fields[1], "winanswer_"), 10, 64)
-		if err != nil || id <= 0 || answerItems[id] {
-			return fmt.Errorf("пункт сценария повреждён")
-		}
-		answerItems[id] = true
 	}
 	if len(answerItems) != len(answerRefs) {
 		return fmt.Errorf("ссылки на сценарии повреждены")

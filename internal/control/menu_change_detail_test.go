@@ -7,19 +7,17 @@ import (
 )
 
 func TestMenuChangesNameTheEditedSettingsAndValues(t *testing.T) {
-	active := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Ubuntu: true, UbuntuFolder: "Linux", LocalTimeout: 10, Items: []MenuDraftItem{{Key: "winiso_1", Title: "Windows 10", Folder: "Windows"}, {Key: "winiso_2", Title: "Windows 11"}}}
-	draft := MenuDraft{Title: productMenuTitle, Label: "Checks", Message: "Done", NoDiagnostics: true, UbuntuFolder: "Lab", NoLocalTimer: true, Items: []MenuDraftItem{{Key: "winiso_2", Title: "Windows 11"}, {Key: "winiso_1", Title: "Win 10", Folder: "Lab"}}}
+	active := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", LocalTimeout: 10, Items: []MenuDraftItem{{InstallationID: 1001, Title: "Windows 10", Folder: "Windows"}, {InstallationID: 1002, Title: "Windows 11"}}}
+	draft := MenuDraft{Title: productMenuTitle, Label: "Checks", Message: "Done", NoDiagnostics: true, NoLocalTimer: true, Items: []MenuDraftItem{{InstallationID: 1002, Title: "Windows 11"}, {InstallationID: 1001, Title: "Win 10", Folder: "Lab"}}}
 	changes := diffMenuDraft(active, draft)
 	want := map[string][2]string{
-		"Пункт Diagnostics":        {"Показан", "Скрыт"},
-		"Название Diagnostics":     {"Diagnostics", "Checks"},
-		"Сообщение Diagnostics":    {"Ready", "Done"},
-		"Пункт Ubuntu Desktop":     {"Показан", "Скрыт"},
-		"Каталог Ubuntu Desktop":   {"Linux", "Lab"},
-		"Автозагрузка с диска":     {"10 с", "Выключена"},
-		"Название пункта winiso_1": {"Windows 10", "Win 10"},
-		"Каталог пункта winiso_1":  {"Windows", "Lab"},
-		"Порядок пунктов":          {"Windows 10 → Windows 11", "Windows 11 → Win 10"},
+		"Пункт Diagnostics":            {"Показан", "Скрыт"},
+		"Название Diagnostics":         {"Diagnostics", "Checks"},
+		"Сообщение Diagnostics":        {"Ready", "Done"},
+		"Автозагрузка с диска":         {"10 с", "Выключена"},
+		"Название пункта install_1001": {"Windows 10", "Win 10"},
+		"Каталог пункта install_1001":  {"Windows", "Lab"},
+		"Порядок пунктов":              {"Windows 10 → Windows 11", "Windows 11 → Win 10"},
 	}
 	for _, change := range changes {
 		key := change.Label

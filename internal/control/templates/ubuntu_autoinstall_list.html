@@ -1,0 +1,7 @@
+{{define "ubuntu_autoinstall_files"}}
+<div class="page-head"><h2>{{t "Файлы Ubuntu Autoinstall"}}</h2>{{if ne .Info.User.Role "observer"}}<a class="btn" href="/ubuntu-autoinstall/new">{{t "Создать файл Ubuntu"}}</a>{{end}}</div>
+{{if .UbuntuAutoinstalls}}<div class="table-wrap"><table><tr><th>{{t "Название"}}</th><th>{{t "Создан"}}</th><th>{{t "Целевой диск"}}</th><th>{{t "Состояние"}}</th><th>SHA-256</th><th>{{t "Действия"}}</th></tr>
+{{range .UbuntuAutoinstalls}}<tr><td><a href="/ubuntu-autoinstall/{{.ID}}">{{.Title}}</a></td><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td><td>{{if eq .DiskMode "serial"}}<strong class="danger-text">{{t "стирает диск"}}: {{.DiskSerial}}</strong>{{else}}{{t "Выбор диска вручную"}}{{end}}</td><td>{{if eq .State "validated"}}{{t "Проверен"}}{{else}}{{t "Не проверен"}}{{end}}</td><td class="mono">{{.SHA256}}</td><td><a href="/ubuntu-autoinstall/{{.ID}}/download">{{t "Скачать user-data"}}</a>{{if ne $.Info.User.Role "observer"}} · <a href="/ubuntu-autoinstall/{{.ID}}/copy">{{t "Создать копию"}}</a>{{end}}</td></tr>{{end}}
+</table></div>{{else}}<p class="muted">{{t "Файлов Ubuntu Autoinstall пока нет."}}</p>{{end}}
+{{end}}
+{{define "ubuntu_autoinstall_list"}}{{template "top" .}}<h1>{{t "Библиотека автоматизации Ubuntu"}}</h1>{{template "ubuntu_autoinstall_files" .}}{{template "bottom" .}}{{end}}

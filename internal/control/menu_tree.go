@@ -16,10 +16,13 @@ const menuAnswerMarker = "# pxe-platform:winanswers-v1 "
 const menuDriverMarker = "# pxe-platform:windrivers-v1 "
 
 type menuProfile struct {
+	kind               string
 	id                 string
 	title              string
 	hint               string // shown at the right edge of the item
 	base               string
+	autoinstallID      int64
+	autoinstallSHA256  string
 	windowsISOID       int64
 	answerID           int64
 	answerSHA256       string
@@ -197,23 +200,6 @@ func menuFolderPaths(script string) map[string]string {
 	return folders
 }
 
-func buildMenuTree(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string) ([]byte, error) {
-	return buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase, folders, defaultLocalTimeout, true)
-}
-
-// buildMenuTreeTimed is buildMenuTree with the wait before the main screen
-// boots the local disk, in seconds; 0 waits for a choice.
-func buildMenuTreeTimed(title, diagnosticLabel, diagnosticMessage, ubuntuBase string, folders map[string]string, localTimer int, diagnosticsOn bool) ([]byte, error) {
-	if !safeMenuText(title, 80) || !safeMenuText(diagnosticLabel, 80) || !safeMenuText(diagnosticMessage, 120) {
-		return nil, fmt.Errorf("menu text contains unsupported characters or is too long")
-	}
-	profiles := []menuProfile{}
-	if ubuntuBase != "" {
-		profiles = append(profiles, menuProfile{id: "ubuntu", title: "Ubuntu Desktop 26.04.1", base: ubuntuBase})
-	}
-	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, localTimer, diagnosticsOn)
-}
-
 func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string) ([]byte, error) {
 	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, defaultLocalTimeout, true)
 }
@@ -368,6 +354,11 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 
 func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	base := profile.base
+	choiceReport := ""
+	if raw, ok := strings.CutPrefix(profile.id, "install_"); ok {
+		// A failed telemetry request must never prevent boot file downloads.
+		choiceReport = "imgfetch --name pxe-choice " + base + "/boot/choice?id=" + raw + " && imgfree pxe-choice || echo -n\n"
+	}
 	if profile.driverConfigID > 0 {
 		configID := fmt.Sprintf("%d", profile.driverConfigID)
 		profileID := fmt.Sprintf("%d", profile.windowsISOID)
@@ -378,7 +369,7 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 		if profile.driverAnswerID > 0 {
 			files = append(files, windowsInitrdFile{name: "pxe-answer.xml", url: base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.driverAnswerID) + "/pxe-answer.xml"})
 		}
-		out.WriteString(":" + profile.id + "\n" +
+		out.WriteString(":" + profile.id + "\n" + choiceReport +
 			"kernel " + base + "/assets/windows/wimboot\n" +
 			windowsInjectedFiles(profile.id, files...) +
 			"initrd " + base + "/assets/windows-driver-wims/" + profile.driverWIMKey + "/boot.wim boot.wim\n" +
@@ -398,7 +389,7 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 		} else {
 			files = append(files, windowsInitrdFile{name: "pxe-setup.cmd", url: startup})
 		}
-		out.WriteString(":" + profile.id + "\n" +
+		out.WriteString(":" + profile.id + "\n" + choiceReport +
 			"kernel " + base + "/assets/windows/wimboot\n" +
 			windowsInjectedFiles(profile.id, files...) +
 			"initrd " + prefix + "boot.wim boot.wim\n" +
@@ -406,10 +397,17 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
 		return
 	}
-	switch profile.id {
-	case "ubuntu":
-		out.WriteString(ubuntuBootScript(base))
+	if profile.kind == BootProfileUbuntuBuiltin {
+		seed := ""
+		if profile.autoinstallID > 0 {
+			seed = base + ubuntuAutoinstallSeedPath(profile.id, profile.autoinstallSHA256)
+		}
+		out.WriteString(strings.Replace(ubuntuBootScript(base, profile.id, seed), ":"+profile.id+"\n", ":"+profile.id+"\n"+choiceReport, 1))
 	}
+}
+
+func ubuntuAutoinstallSeedPath(installationKey, digest string) string {
+	return "/assets/ubuntu-autoinstall/" + strings.TrimPrefix(installationKey, "install_") + "/" + digest + "/"
 }
 
 var menuLocalChoose = regexp.MustCompile(`(?m)^choose --default local(?: --timeout ([0-9]+))? target `)

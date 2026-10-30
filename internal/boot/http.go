@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -94,6 +95,31 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			}
 		})
 	}
+	// Choice telemetry is public like the menu and grants no management access.
+	mux.HandleFunc("/boot/choice", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		query, err := url.ParseQuery(r.URL.RawQuery)
+		ids := query["id"]
+		if err != nil || len(ids) != 1 {
+			http.Error(w, "invalid installation ID", http.StatusBadRequest)
+			return
+		}
+		id, err := strconv.ParseInt(ids[0], 10, 64)
+		if err != nil || id <= 0 || strconv.FormatInt(id, 10) != ids[0] {
+			http.Error(w, "invalid installation ID", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte("#!ipxe\n"))
+		if record != nil {
+			record(Event{Kind: "choice", Path: "/boot/choice?id=" + strconv.FormatInt(id, 10), RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
+		}
+	})
 	mux.HandleFunc("/boot/menu.ipxe", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
@@ -146,7 +172,12 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			http.NotFound(w, r)
 			return
 		}
-		private := privateWinPEScript(name) || validWindowsAnswerAsset(name)
+		autoinstall := validUbuntuAutoinstallAsset(name)
+		if (name == "ubuntu-autoinstall" || strings.HasPrefix(name, "ubuntu-autoinstall/")) && !autoinstall {
+			notFound()
+			return
+		}
+		private := privateWinPEScript(name) || validWindowsAnswerAsset(name) || autoinstall
 		if private {
 			client, err := netip.ParseAddrPort(r.RemoteAddr)
 			if err != nil || !netip.MustParsePrefix("10.30.0.0/24").Contains(client.Addr()) {
@@ -166,7 +197,19 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			http.NotFound(w, r)
 			return
 		}
-		file, err := os.Open(resolved)
+		// Generic asset aliases must not bypass the NoCloud path validator or
+		// subnet policy by resolving into its private namespace.
+		resolvedName := filepath.ToSlash(rel)
+		if (resolvedName == "ubuntu-autoinstall" || strings.HasPrefix(resolvedName, "ubuntu-autoinstall/")) && (!autoinstall || resolvedName != name) {
+			notFound()
+			return
+		}
+		var file *os.File
+		if autoinstall {
+			file, err = openPublicAutoinstallAsset(root, name)
+		} else {
+			file, err = openResolvedAsset(root, rel)
+		}
 		if err != nil {
 			notFound()
 			return
@@ -189,7 +232,19 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			record(event)
 		}
 	})
-	return mux, nil
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ServeMux redirects dot segments and repeated slashes before routing.
+		// Reject malformed NoCloud paths here so they get an exact 404 instead.
+		name := strings.TrimPrefix(r.URL.Path, "/assets/")
+		cleanName := strings.TrimPrefix(path.Clean(r.URL.Path), "/assets/")
+		if name == "ubuntu-autoinstall" || strings.HasPrefix(name, "ubuntu-autoinstall/") || cleanName == "ubuntu-autoinstall" || strings.HasPrefix(cleanName, "ubuntu-autoinstall/") {
+			if !validUbuntuAutoinstallAsset(name) {
+				http.NotFound(w, r)
+				return
+			}
+		}
+		mux.ServeHTTP(w, r)
+	}), nil
 }
 
 func validWindowsAnswerAsset(name string) bool {
@@ -235,4 +290,20 @@ func helloPath(query url.Values) string {
 		}
 	}
 	return "/boot/hello?" + kept.Encode()
+}
+
+// Alias resolution happens before the namespace policy check. Open the resolved
+// path without following any subsequent symlink substitutions, retaining stable
+// aliases while preventing a concurrent update from redirecting this request.
+func openResolvedAsset(root, relative string) (*os.File, error) {
+	if !filepath.IsLocal(relative) {
+		return nil, fmt.Errorf("asset path is outside the root")
+	}
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	dir, err := openAutoinstallDirectory(root, parts[:len(parts)-1], false)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	return openAutoinstallFile(dir, parts[len(parts)-1])
 }

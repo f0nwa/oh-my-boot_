@@ -34,7 +34,11 @@ CREATE TABLE IF NOT EXISTS menu_versions (
  diagnostic_message TEXT NOT NULL,
  script TEXT NOT NULL,
  sha256 TEXT NOT NULL,
- active BOOLEAN NOT NULL DEFAULT FALSE
+ active BOOLEAN NOT NULL DEFAULT FALSE,
+ diagnostics_on BOOLEAN NOT NULL DEFAULT true,
+ local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600),
+ local_timer BOOLEAN NOT NULL DEFAULT true,
+ look TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS menu_versions_one_active_idx ON menu_versions (active) WHERE active;
 
@@ -71,8 +75,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'ru' C
 ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system' CHECK (theme IN ('system','light','dark'));
 
 ALTER TABLE windows_answer_variants ADD COLUMN IF NOT EXISTS wipes_disk BOOLEAN;
-CREATE TABLE IF NOT EXISTS menu_draft (id SMALLINT PRIMARY KEY CHECK (id = 1), title TEXT NOT NULL, label TEXT NOT NULL, message TEXT NOT NULL, ubuntu BOOLEAN NOT NULL, ubuntu_folder TEXT NOT NULL DEFAULT '', local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600), local_timer BOOLEAN NOT NULL DEFAULT true, diagnostics_on BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
-CREATE TABLE IF NOT EXISTS menu_draft_items (position INT PRIMARY KEY, key TEXT NOT NULL UNIQUE CHECK (key ~ '^win(iso|answer|driver)_[0-9]+$'), folder TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS menu_draft (id SMALLINT PRIMARY KEY CHECK (id = 1), title TEXT NOT NULL, label TEXT NOT NULL, message TEXT NOT NULL, local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600), local_timer BOOLEAN NOT NULL DEFAULT true, diagnostics_on BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
 
 CREATE TABLE IF NOT EXISTS machines (
     mac TEXT PRIMARY KEY CHECK (mac ~ '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$'),
@@ -100,3 +103,105 @@ CREATE TABLE IF NOT EXISTS mac_prefix_rules (
     note TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS winpe_driver_packages (
+ sha256 TEXT PRIMARY KEY CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+ inventory JSONB NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS winpe_driver_configs (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ profile_id BIGINT NOT NULL REFERENCES windows_profiles(id) ON DELETE RESTRICT,
+ answer_id BIGINT REFERENCES windows_answer_variants(id) ON DELETE RESTRICT,
+ title TEXT NOT NULL,
+ folder TEXT NOT NULL DEFAULT '',
+ selected_infs JSONB NOT NULL CHECK (jsonb_typeof(selected_infs) = 'array' AND jsonb_array_length(selected_infs) BETWEEN 1 AND 128),
+ state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','preparing','ready','error')),
+ wim_key TEXT NOT NULL DEFAULT '',
+ wim_sha256 TEXT NOT NULL DEFAULT '',
+ script_sha256 TEXT NOT NULL DEFAULT '',
+ last_error TEXT NOT NULL DEFAULT '',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS winpe_driver_configs_profile_idx ON winpe_driver_configs (profile_id);
+
+CREATE TABLE IF NOT EXISTS boot_profiles (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ kind TEXT NOT NULL CHECK (kind IN ('windows_iso','ubuntu_builtin')),
+ title TEXT NOT NULL CHECK (btrim(title) <> '')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS boot_profiles_one_ubuntu_idx ON boot_profiles (kind) WHERE kind='ubuntu_builtin';
+
+CREATE TABLE IF NOT EXISTS windows_boot_profiles (
+ boot_profile_id BIGINT PRIMARY KEY REFERENCES boot_profiles(id) ON DELETE CASCADE,
+ windows_profile_id BIGINT NOT NULL UNIQUE REFERENCES windows_profiles(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS ubuntu_autoinstall_files (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ title TEXT NOT NULL CHECK (btrim(title) <> ''),
+ "values" JSONB NOT NULL CHECK (jsonb_typeof("values") = 'object' AND NOT ("values" ? 'Password')),
+ user_data BYTEA NOT NULL CHECK (octet_length(user_data) > 0 AND octet_length(user_data) < 65536),
+ sha256 CHAR(64) NOT NULL UNIQUE CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+ state TEXT NOT NULL CHECK (state = 'validated'),
+ disk_mode TEXT NOT NULL CHECK (disk_mode IN ('interactive','serial')),
+ disk_serial TEXT NOT NULL DEFAULT '',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ CHECK ((disk_mode = 'interactive' AND disk_serial = '') OR (disk_mode = 'serial' AND octet_length(disk_serial) BETWEEN 1 AND 128)),
+ CHECK ("values"->>'DiskMode' = disk_mode AND "values"->>'DiskSerial' = disk_serial)
+);
+
+CREATE TABLE IF NOT EXISTS installations (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ boot_profile_id BIGINT NOT NULL REFERENCES boot_profiles(id) ON DELETE RESTRICT,
+ title TEXT NOT NULL CHECK (btrim(title) <> ''),
+ folder TEXT NOT NULL DEFAULT '',
+ autoinstall_id BIGINT REFERENCES ubuntu_autoinstall_files(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS installations_boot_profile_idx ON installations (boot_profile_id);
+
+CREATE TABLE IF NOT EXISTS windows_installation_options (
+ installation_id BIGINT PRIMARY KEY REFERENCES installations(id) ON DELETE CASCADE,
+ answer_id BIGINT REFERENCES windows_answer_variants(id) ON DELETE RESTRICT,
+ driver_config_id BIGINT REFERENCES winpe_driver_configs(id) ON DELETE RESTRICT,
+ CHECK (answer_id IS NULL OR driver_config_id IS NULL)
+);
+
+CREATE TABLE IF NOT EXISTS menu_draft_items (
+ position INT PRIMARY KEY CHECK (position >= 0),
+ installation_id BIGINT NOT NULL UNIQUE REFERENCES installations(id) ON DELETE RESTRICT,
+ folder TEXT NOT NULL DEFAULT '',
+ title TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS menu_version_items (
+ version_id BIGINT NOT NULL REFERENCES menu_versions(id) ON DELETE CASCADE,
+ installation_id BIGINT NOT NULL REFERENCES installations(id) ON DELETE RESTRICT,
+ position INT NOT NULL CHECK (position >= 0),
+ title TEXT NOT NULL DEFAULT '',
+ folder TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY (version_id,position),
+ UNIQUE (version_id,installation_id)
+);
+
+CREATE INDEX IF NOT EXISTS installations_autoinstall_idx ON installations (autoinstall_id) WHERE autoinstall_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION reject_ubuntu_autoinstall_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ RAISE EXCEPTION 'Ubuntu Autoinstall files are immutable';
+END;
+$$;
+DROP TRIGGER IF EXISTS ubuntu_autoinstall_immutable ON ubuntu_autoinstall_files;
+CREATE TRIGGER ubuntu_autoinstall_immutable BEFORE UPDATE ON ubuntu_autoinstall_files FOR EACH ROW EXECUTE FUNCTION reject_ubuntu_autoinstall_update();
+
+CREATE OR REPLACE FUNCTION reject_autoinstall_binding_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.autoinstall_id IS DISTINCT FROM OLD.autoinstall_id THEN
+  RAISE EXCEPTION 'Installation Autoinstall bindings are immutable';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS installation_autoinstall_immutable ON installations;
+CREATE TRIGGER installation_autoinstall_immutable BEFORE UPDATE OF autoinstall_id ON installations FOR EACH ROW EXECUTE FUNCTION reject_autoinstall_binding_update();

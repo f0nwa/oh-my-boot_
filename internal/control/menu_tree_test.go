@@ -28,12 +28,12 @@ func folderTestProfiles() []WindowsProfile {
 func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 	form := url.Values{
 		"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"},
-		"ubuntu": {"on"}, "winiso_1": {"on"}, "winiso_2": {"on"},
-		"folder_ubuntu":   {"Linux"},
-		"folder_winiso_1": {"Windows/Установщики"},
-		"folder_winiso_2": {"Windows/Установщики"},
+		"install_999": {"on"}, "install_1001": {"on"}, "install_1002": {"on"},
+		"folder_install_999":  {"Linux"},
+		"folder_install_1001": {"Windows/Installers"},
+		"folder_install_1002": {"Windows/Installers"},
 	}
-	script, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", folderTestProfiles())
+	script, err := buildTestMenuWithProfiles(form, "http://10.30.0.10:8080", folderTestProfiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,15 +42,15 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 		"menu oh my boot_" + menuTitleSuffix + "\n",
 		"menu oh my boot_ / Linux" + menuTitleSuffix + "\n",
 		"menu oh my boot_ / Windows" + menuTitleSuffix + "\n",
-		"menu oh my boot_ / Windows / Установщики" + menuTitleSuffix + "\n",
-		"item ubuntu Ubuntu Desktop 26.04.1\n",
-		"iseq ${platform} efi && goto ubuntu_efi || goto ubuntu_boot\n" +
-			":ubuntu_efi\n" +
-			"shim http://10.30.0.10:8080/assets/ubuntu/bootx64.efi || goto ubuntu_failed\n" +
-			":ubuntu_boot\n" +
-			"boot || goto ubuntu_failed\n",
-		"item winiso_1 Windows 10x64\n",
-		"item winiso_2 Windows 11 x64\n",
+		"menu oh my boot_ / Windows / Installers" + menuTitleSuffix + "\n",
+		"item install_999 Ubuntu Desktop 26.04.1\n",
+		"iseq ${platform} efi && goto install_999_efi || goto install_999_boot\n" +
+			":install_999_efi\n" +
+			"shim http://10.30.0.10:8080/assets/ubuntu/bootx64.efi || goto install_999_failed\n" +
+			":install_999_boot\n" +
+			"boot || goto install_999_failed\n",
+		"item install_1001 Windows 10x64\n",
+		"item install_1002 Windows 11 x64\n",
 		"kernel http://10.30.0.10:8080/assets/windows/wimboot\n",
 		"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows-profiles/2/winpeshl.ini\n",
 		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/2/pxe-setup.cmd\n",
@@ -61,10 +61,10 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 			t.Errorf("missing %q in generated menu", want)
 		}
 	}
-	if strings.Count(got, "menu oh my boot_ / Windows / Установщики"+menuTitleSuffix+"\n") != 1 {
+	if strings.Count(got, "menu oh my boot_ / Windows / Installers"+menuTitleSuffix+"\n") != 1 {
 		t.Fatal("shared folder was emitted more than once")
 	}
-	if strings.Index(got, "item winiso_1 ") > strings.Index(got, "item winiso_2 ") {
+	if strings.Index(got, "item install_1001 ") > strings.Index(got, "item install_1002 ") {
 		t.Fatal("profile order changed in shared folder")
 	}
 	if strings.Count(got, ".. Back\n") != 3 {
@@ -72,8 +72,8 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 	}
 	for _, want := range []string{
 		"item folder_1 " + menuItemText("Linux", ">") + "\nitem folder_2 " + menuItemText("Windows", ">") + "\nitem --gap\nitem local Boot local disk\nitem diagnostics Diagnostics\n",
-		":folder_2\nmenu oh my boot_ / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem folder_3 " + menuItemText("Установщики", ">") + "\n",
-		":folder_3\nmenu oh my boot_ / Windows / Установщики" + menuTitleSuffix + "\nitem folder_2 .. Back\nitem --gap\nitem winiso_1 Windows 10x64\nitem winiso_2 Windows 11 x64\n",
+		":folder_2\nmenu oh my boot_ / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem folder_3 " + menuItemText("Installers", ">") + "\n",
+		":folder_3\nmenu oh my boot_ / Windows / Installers" + menuTitleSuffix + "\nitem folder_2 .. Back\nitem --gap\nitem install_1001 Windows 10x64\nitem install_1002 Windows 11 x64\n",
 		"choose target || goto folder_2\n",
 		"choose --default local --timeout 10000 target || goto local\n",
 	} {
@@ -85,12 +85,12 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 
 func TestMenuFoldersRejectUnsafeOrMalformedPaths(t *testing.T) {
 	for _, folder := range []string{"Linux//Tools", "/Linux", "Linux/", "Linux\nitem evil", "Linux/${target}", "A/B/C/D/E/F"} {
-		form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "ubuntu": {"on"}, "folder_ubuntu": {folder}}
-		if _, err := BuildMenuFromForm(form, "http://10.30.0.10:8080"); err == nil {
+		form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_999": {"on"}, "folder_install_999": {folder}}
+		if _, err := buildTestMenuFromForm(form, "http://10.30.0.10:8080"); err == nil {
 			t.Errorf("accepted Ubuntu folder %q", folder)
 		}
-		form = url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "winiso_2": {"on"}, "folder_winiso_2": {folder}}
-		if _, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", folderTestProfiles()); err == nil {
+		form = url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_1002": {"on"}, "folder_install_1002": {folder}}
+		if _, err := buildTestMenuWithProfiles(form, "http://10.30.0.10:8080", folderTestProfiles()); err == nil {
 			t.Errorf("accepted profile folder %q", folder)
 		}
 	}
@@ -99,19 +99,19 @@ func TestMenuFoldersRejectUnsafeOrMalformedPaths(t *testing.T) {
 func TestMenuFoldersRoundTripAndIgnoreUnselectedProfile(t *testing.T) {
 	form := url.Values{
 		"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"},
-		"ubuntu": {"on"}, "folder_ubuntu": {"Linux/Live"},
-		"winiso_1": {"on"}, "folder_winiso_1": {"Windows"},
-		"folder_winiso_2": {"Windows/Unused"},
+		"install_999": {"on"}, "folder_install_999": {"Linux/Live"},
+		"install_1001": {"on"}, "folder_install_1001": {"Windows"},
+		"folder_install_1002": {"Windows/Unused"},
 	}
-	script, err := BuildMenuFromFormWithProfiles(form, "http://10.30.0.10:8080", folderTestProfiles())
+	script, err := buildTestMenuWithProfiles(form, "http://10.30.0.10:8080", folderTestProfiles())
 	if err != nil {
 		t.Fatal(err)
 	}
 	folders := menuFolderPaths(string(script))
-	if folders["ubuntu"] != "Linux/Live" || folders["winiso_1"] != "Windows" || folders["winiso_2"] != "" {
+	if folders["install_999"] != "Linux/Live" || folders["install_1001"] != "Windows" || folders["install_1002"] != "" {
 		t.Fatalf("wrong stored folder choices: %#v", folders)
 	}
-	if strings.Contains(string(script), "item winiso_2 ") {
+	if strings.Contains(string(script), "item install_1002 ") {
 		t.Fatal("unselected profile entered the menu")
 	}
 	if got := menuFolderPaths("#!ipxe\nmenu PXE\n"); len(got) != 0 {
@@ -120,23 +120,12 @@ func TestMenuFoldersRoundTripAndIgnoreUnselectedProfile(t *testing.T) {
 }
 
 func TestMenuFoldersPagePrefillsActiveFolder(t *testing.T) {
-	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "ubuntu": {"on"}, "folder_ubuntu": {"Linux/Live"}}
-	script, err := BuildMenuFromForm(form, "http://10.30.0.10:8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &Server{Store: menuPageStore{
-		authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}},
-		versions:      []MenuVersion{{Script: string(script), Active: true}},
-	}}
-	req := httptest.NewRequest(http.MethodGet, "/menu?item=ubuntu", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
-	res := httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusOK {
-		t.Fatalf("menu page returned %d: %s", res.Code, res.Body.String())
-	}
-	if !strings.Contains(res.Body.String(), `name="folder_ubuntu" value="Linux/Live"`) {
-		t.Fatalf("active folder not shown in form: %s", res.Body.String())
+	server, store, _ := unifiedMenuFixture(t)
+	store.versions = []MenuVersion{{Active: true, Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuVersionItem{{InstallationID: 71, Title: "Ubuntu Lab", Folder: "Linux/Live"}}}}
+	store.draft = nil
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, accountRequest(http.MethodGet, "/menu?item=install_71", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `name="folder" value="Linux/Live"`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

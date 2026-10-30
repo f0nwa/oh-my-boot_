@@ -1,5 +1,7 @@
 # First Ubuntu Desktop boot over PXE
 
+> This is the historical first-boot report. For current installation creation and automation, see “Automated installation” below.
+
 [Русская версия](../ubuntu-desktop-pxe.md)
 
 A profile was prepared for `ubuntu-26.04.1-desktop-amd64.iso` from the connected SMB folder. Boot serves only this ISO at `/images/ubuntu-desktop.iso`, and the `casper/vmlinuz` and `casper/initrd` files extracted from it at `/assets/ubuntu/`. In the Control menu the Ubuntu item is enabled in its properties; publishing keeps the previous version for rollback. The other ISO files in the SMB folder are not served over HTTP.
@@ -41,3 +43,7 @@ After VM 112 memory was increased to 16 GB, the user confirmed that the Ubuntu d
 The updated menu with the `shim` command was published. In the next attempt, VM 112 requested the signed Ubuntu shim, the kernel, initrd and ISO. This confirms that the boot passed the previous `Security Policy Violation` failure point and reached `casper`. The user confirmed that the desktop appeared with Secure Boot enabled. Both OVMF modes, with and without Secure Boot, were therefore checked for this ISO. Booting the ISO itself in BIOS was not yet checked.
 
 In the first Ubuntu check under SeaBIOS, the kernel and initrd loaded over HTTP, and then iPXE stopped at `shim: command not found`. The BIOS build of iPXE does not have this command. The menu generator now checks `${platform}` and calls `shim` only on UEFI; SeaBIOS goes straight to `boot`. Both menu generation paths were changed: the plain one and the one with folders. Regression tests reproduced the previous script and passed after the fix; `go test ./...` and `go vet ./...` also passed. The updated Control was installed on the test server on 19.10.2026, and Boot stayed active. The menu was published again, and HTTP serves the branch with the platform check. In the next attempt SeaBIOS downloaded the ISO, after which the user confirmed that the Ubuntu desktop appeared. SeaBIOS, OVMF with Secure Boot disabled and OVMF with Secure Boot enabled were therefore all checked for this ISO.
+
+## Automated installation
+
+In the current model, create an Ubuntu installation and optionally select an immutable Autoinstall file from the library. See the [Control guide](control-installation.md#ubuntu-autoinstall) for the constructor, disk selection, password-hash exposure on the PXE subnet, deployment and rollback. The boots above used older builds: NoCloud retrieval and both disk modes still need BIOS, UEFI and Secure Boot tests on this build. Test automatic erasure only on a disposable VM disk.

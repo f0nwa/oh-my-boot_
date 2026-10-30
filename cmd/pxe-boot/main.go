@@ -75,7 +75,11 @@ func main() {
 	if err := os.Chmod(*controlSocket, 0660); err != nil {
 		log.Fatal(err)
 	}
-	controlServer := &http.Server{Handler: boot.ControlHandlerWithJournal(publisher, reader, transfers, journal), ReadHeaderTimeout: 5 * time.Second}
+	autoinstallAssets, err := boot.NewAutoinstallAssets(*assets)
+	if err != nil {
+		log.Fatal(err)
+	}
+	controlServer := &http.Server{Handler: boot.ControlHandlerWithJournal(publisher, reader, transfers, journal, autoinstallAssets), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

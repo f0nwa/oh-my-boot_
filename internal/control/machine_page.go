@@ -22,7 +22,7 @@ const bootSessionGap = 10 * time.Minute
 // machineStep is one line of a machine's boot timeline.
 type machineStep struct {
 	At     time.Time
-	Stage  string // DHCP, TFTP, iPXE, Меню, Образ
+	Stage  string // DHCP, TFTP, iPXE, Меню, Выбор, Файлы
 	Text   string
 	Raw    string
 	Failed bool
@@ -40,7 +40,7 @@ type bootSession struct {
 	Start, End time.Time
 	Steps      []machineStep
 	Choice     string
-	Outcome    string // loader_failed, loader_rejected, dhcp_only, loader, menu, files, stuck, winpe, winpe_left, copy, copy_broken, copied
+	Outcome    string // loader_failed, loader_rejected, dhcp_only, loader, menu, choice, files, stuck, winpe, winpe_left, copy, copy_broken, copied
 	CopyRead   int64  // install image read by Setup
 	Problem    string // with files_failed: "missing:boot.wim" or "cut:boot.wim"
 	// Download is the boot file being sent now; only the latest boot has it.
@@ -61,6 +61,8 @@ func (b bootSession) OutcomeLabel() string {
 		return "Загрузчик получен, меню не запрошено"
 	case "menu":
 		return "Остановилась в меню"
+	case "choice":
+		return "Установка выбрана, загрузка файлов не началась"
 	case "stuck":
 		return "Застрял в WinPE: нет подключения к установщику"
 	case "winpe":
@@ -115,9 +117,8 @@ func machineSessions(mac string, httpEvents []boot.Event, dhcp []agent.DHCPEvent
 func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPEvent, install installLog, names map[string]string, now time.Time) []bootSession {
 	var steps []machineStep
 	type choice struct {
-		at   time.Time
-		key  string
-		rank int
+		at  time.Time
+		key string
 	}
 	var choices []choice
 	for _, e := range resolveDHCPMACs(dhcp, httpEvents) {
@@ -149,18 +150,21 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 			continue
 		}
 		problem := fileProblem(e)
-		step := machineStep{At: e.At, Stage: "iPXE", Text: "Файл загрузки", Raw: e.Path, bootWIM: isBootWIM(e) && problem == "", Size: e.Size, Bytes: e.Bytes}
+		step := machineStep{At: e.At, Stage: "Файлы", Text: "Файл загрузки", Raw: e.Path, bootWIM: isBootWIM(e) && problem == "", Size: e.Size, Bytes: e.Bytes}
 		switch problem {
 		case "missing":
 			step.Text, step.Failed, step.problem = "Файл не найден", true, "missing:"+fileName(e.Path)
 		case "cut":
 			step.Text, step.Failed, step.problem = "Передача прервалась", true, "cut:"+fileName(e.Path)
 		}
-		key, rank := choiceKey(e)
+		key := choiceKey(e)
+		if e.Kind == "choice" && key == "" {
+			continue
+		}
 		switch {
 		case e.Kind == "menu":
 			step.Stage, step.Text = "Меню", "Показано меню"
-		case rank > 0:
+		case key != "":
 			title := names[key]
 			if title == "" {
 				title = key
@@ -169,7 +173,7 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 			if problem == "" {
 				step.Text = title
 			}
-			choices = append(choices, choice{e.At, title, rank})
+			choices = append(choices, choice{e.At, title})
 		}
 		steps = append(steps, step)
 	}
@@ -218,7 +222,7 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 		problems := map[string]string{}
 		for i := range session.Steps {
 			step := &session.Steps[i]
-			if step.Stage == "Выбор" || step.Stage == "iPXE" && step.Raw != "" {
+			if step.Stage == "Файлы" {
 				// The last request for a file decides: a retry that worked
 				// clears the earlier failure.
 				problems[fileName(step.Raw)] = step.problem
@@ -242,6 +246,8 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 			case step.Stage == "Меню":
 				progress.add("menu")
 			case step.Stage == "Выбор":
+				progress.add("choice")
+			case step.Stage == "Файлы":
 				progress.add("files")
 			}
 		}
@@ -262,7 +268,7 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 		}
 		sort.Strings(failed)
 		progress.addInstall(installState[i])
-		session.Outcome = map[string]string{"files": "files", "menu": "menu", "ipxe": "loader", "loader": "loader", "loader_failed": "loader_failed", "pxe": "dhcp_only", "winpe": "winpe", "winpe_left": "winpe_left", "copy_broken": "copy_broken", "copy": "copy", "copied": "copied"}[progress.stage()]
+		session.Outcome = map[string]string{"choice": "choice", "files": "files", "menu": "menu", "ipxe": "loader", "loader": "loader", "loader_failed": "loader_failed", "pxe": "dhcp_only", "winpe": "winpe", "winpe_left": "winpe_left", "copy_broken": "copy_broken", "copy": "copy", "copied": "copied"}[progress.stage()]
 		if progress.shimOnly() && now.Sub(shimAt) > shimRejectAfter {
 			session.Outcome = "loader_rejected"
 		}
@@ -273,10 +279,11 @@ func machineSessionsWith(mac string, httpEvents []boot.Event, dhcp []agent.DHCPE
 		if session.Outcome == "files" && install.Known && i == len(sessions)-1 && !session.bootWIMAt.IsZero() && session.bootWIMAt.After(install.Since) && now.Sub(session.bootWIMAt) > stuckAfter {
 			session.Outcome = "stuck"
 		}
-		best := 0
+		var chosenAt time.Time
 		for _, c := range choices {
-			if !c.at.Before(session.Start) && !c.at.After(session.End) && c.rank > best {
-				session.Choice, best = c.key, c.rank
+			if !c.at.Before(session.Start) && !c.at.After(session.End) && !c.at.Before(chosenAt) {
+				chosenAt = c.at
+				session.Choice = c.key
 			}
 		}
 	}
@@ -297,6 +304,8 @@ func stepStage(step machineStep) string {
 	case step.Stage == "Меню":
 		return "menu"
 	case step.Stage == "Выбор":
+		return "choice"
+	case step.Stage == "Файлы":
 		return "files"
 	case step.Stage == "DHCP":
 		return "pxe"

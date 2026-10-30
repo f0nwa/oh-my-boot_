@@ -33,10 +33,10 @@ func samplePageData(lang string) pageData {
 	data := samplePageDataBase(lang)
 	data.Preview = &menuPreview{
 		Title: "oh my boot_ / Windows",
-		Rows:  []previewRow{{Text: ".. Back", Href: "/menu?screen=menu_root"}, {Text: "Windows 11", Href: "/menu?item=winiso_2", Selected: true}, {Text: "Ready", Href: "/menu?item=winanswer_5", Hint: "!! WIPES DISK", Danger: true}},
-		Lines: []previewLine{{Text: "Diagnostics", Key: "diagnostics", Href: "/menu?item=diagnostics", Mark: "·", Fixed: true}, {Text: "Windows", Href: "/menu?screen=folder_1", Mark: "▾", Folder: true}, {Text: "Windows 11", Key: "winiso_2", Parent: "folder_1", Href: "/menu?item=winiso_2", Pad: "  ", Mark: "·", Selected: true, Movable: true},
-			{Text: "Lab", Key: "winanswer_3", Parent: "folder_1", Href: "/menu?item=winanswer_3", Pad: "  ", Mark: "·", Added: true, Broken: true, ShowKey: true, Movable: true}},
-		Removed: []string{"VirtIO"}, Key: "winiso_2", Position: 1, Count: 2,
+		Rows:  []previewRow{{Text: ".. Back", Href: "/menu?screen=menu_root"}, {Text: "Windows 11", Href: "/menu?item=install_1002", Selected: true}, {Text: "Ready", Href: "/menu?item=install_2005", Hint: "!! WIPES DISK", Danger: true}},
+		Lines: []previewLine{{Text: "Diagnostics", Key: "diagnostics", Href: "/menu?item=diagnostics", Mark: "·", Fixed: true}, {Text: "Windows", Href: "/menu?screen=folder_1", Mark: "▾", Folder: true}, {Text: "Windows 11", Key: "install_1002", Parent: "folder_1", Href: "/menu?item=install_1002", Pad: "  ", Mark: "·", Selected: true, Movable: true},
+			{Text: "Lab", Key: "install_2003", Parent: "folder_1", Href: "/menu?item=install_2003", Pad: "  ", Mark: "·", Added: true, Broken: true, ShowKey: true, Movable: true}},
+		Removed: []string{"VirtIO"}, Key: "install_1002", Position: 1, Count: 2,
 	}
 	data.Preview.Item = &data.DraftRows[0]
 	data.Preview.Install = &data.Installations[1]
@@ -61,11 +61,11 @@ func samplePageDataBase(lang string) pageData {
 		Users:   []User{{ID: 1, Username: "admin", Role: "admin", Enabled: true}, {ID: 2, Username: "viewer", Role: "observer"}},
 		Network: cfg, OldNetwork: cfg, Confirmation: "confirm", HasNetwork: true,
 		Versions:      []menuVersionRow{{MenuVersion: MenuVersion{ID: 2, At: now, Title: "PXE", Active: true}, Restorable: true}, {MenuVersion: MenuVersion{ID: 1, At: now, Title: "Old"}, Restorable: false}, {MenuVersion: MenuVersion{ID: 0, At: now, Title: "Older"}, Restorable: true}},
-		Draft:         MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "ready", Ubuntu: true, Items: []MenuDraftItem{{Key: "winiso_2"}, {Key: "winanswer_3", Folder: "Windows/Tests"}}},
-		DraftRows:     []menuDraftRow{{Item: MenuDraftItem{Key: "winiso_2"}, Title: "Windows 11", Kind: "Образ", Available: true}, {Item: MenuDraftItem{Key: "winanswer_3"}, Title: "Lab", Kind: "Образ и файл ответов", Error: "Windows answer 3 is not ready for PXE"}},
-		Changes:       []MenuChange{{Kind: "add", Key: "winanswer_3", Title: "Lab"}, {Kind: "remove", Key: "windriver_4", Title: "VirtIO"}, {Kind: "change", Key: "winiso_2", Title: "Windows 11"}, {Kind: "order"}, {Kind: "settings"}},
+		Draft:         MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "ready", Items: []MenuDraftItem{{InstallationID: 1002}, {InstallationID: 2003, Folder: "Windows/Tests"}}},
+		DraftRows:     []menuDraftRow{{Item: MenuDraftItem{InstallationID: 1002}, Title: "Windows 11", Kind: "Образ", Available: true}, {Item: MenuDraftItem{InstallationID: 2003}, Title: "Lab", Kind: "Образ и файл ответов", Error: "Windows answer 3 is not ready for PXE"}},
+		Changes:       []MenuChange{{Kind: "add", Key: "install_2003", Title: "Lab"}, {Kind: "remove", Key: "install_3004", Title: "VirtIO"}, {Kind: "change", Key: "install_1002", Title: "Windows 11"}, {Kind: "order"}, {Kind: "settings"}},
 		ActiveVersion: 2,
-		Installations: []installationRow{{Key: "winiso_2", Title: "Windows 11", Image: "Windows 11", Status: "in_menu"}, {Key: "winanswer_5", Title: "Ready", Image: "Ready", Answer: "Ready", AnswerWipesDisk: &wipesTrue, Status: "pending_add"}, {Key: "winiso_3", Status: "pending_remove"}, {Key: "winiso_4", Status: "not_in_menu"}, {Key: "windriver_4", Drivers: "netkvm", Status: "needs_build", ConfigID: 4}, {Key: "windriver_5", Status: "building"}, {Key: "windriver_6", Status: "error", Error: "Не удалось подготовить WinPE"}, {Key: "winiso_9", Status: "unavailable"}},
+		Installations: []installationRow{{Key: "install_1002", Title: "Windows 11", Image: "Windows 11", Status: "in_menu"}, {Key: "install_2005", Title: "Ready", Image: "Ready", Answer: "Ready", AnswerWipesDisk: &wipesTrue, Status: "pending_add"}, {Key: "install_1003", Status: "pending_remove"}, {Key: "install_1004", Status: "not_in_menu"}, {Key: "install_3004", Drivers: "netkvm", Status: "needs_build", ConfigID: 4}, {Key: "install_3005", Status: "building"}, {Key: "install_3006", Status: "error", Error: "Не удалось подготовить WinPE"}, {Key: "install_1009", Status: "unavailable"}},
 		Storages: []images.Storage{
 			{ID: 6, Name: "DSM", Kind: "smb", Server: "nas", Share: "iso", State: "unavailable", Error: "Хранилище недоступно: не отвечает дольше 20s"},
 			{ID: 7, Name: "Upload", Kind: "smb", Server: "nas", Share: "iso", State: "ready"},

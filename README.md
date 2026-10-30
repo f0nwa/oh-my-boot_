@@ -18,14 +18,17 @@ Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an i
 - **Boot menu** for BIOS and UEFI clients, with folders, a draft that clients do not see until it is published, version history and rollback.
 - **Images:** an ISO catalog across local folders and SMB shares, upload from the browser, prepared Windows x64 profiles. Source ISOs stay on their storage; Windows clients receive WinPE startup files over HTTP and installation media over a read-only SMB share.
 - **Windows installs:** several independent `autounattend.xml` scenarios per ISO next to the manual installer, an answer file editor in the admin page, and WinPE driver packages imported from a folder or ZIP and built into separate menu entries.
-- **Ubuntu Desktop** live boot.
+- **Ubuntu Autoinstall:** immutable generated files with interactive storage or exact-serial disk erasure, selected per installation; see the [operations guide](docs/en/control-installation.md#ubuntu-autoinstall).
+- **Unified installations** for Windows and Ubuntu Desktop: multiple independent choices can share a boot profile, with their own names, menu folders and selection counts.
 - **Machines:** every machine that reached the menu, with its model and maker, editable names, CSV import and export, and MAC-prefix rules.
 - **Secure Boot:** a signed iPXE chain, a hint when firmware rejects the loader, an SCCM script and a WinPE USB stick (**Library → USB media**) that turn on the Microsoft UEFI CA key on Lenovo, Dell and HP laptops ([Secure Boot guide](docs/en/secure-boot.md)).
 - **Admin page** in Russian and English, with a light, dark or system theme chosen by each user.
 
 ## Tested so far
 
-Test VMs reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and the Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 profile also reached its installer and disk in SeaBIOS; a Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements stopped installation on that VM. A Windows 11 installation with a user-supplied answer file completed and booted from disk, and a newly uploaded Windows 11 26H2 ISO reached disk selection. A Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI and, in SeaBIOS, WinPE with network, both disks and the mounted installer. Physical PXE clients and driver entries on real laptops remain to be checked. Strelec support depends on examining a supplied ISO.
+Test VMs reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and the Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 profile also reached its installer and disk in SeaBIOS; a Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements stopped installation on that VM. A Windows 11 installation with a user-supplied answer file completed and booted from disk, and a newly uploaded Windows 11 26H2 ISO reached disk selection. A Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI and, in SeaBIOS, WinPE with network, both disks and the mounted installer. Physical PXE clients and driver entries on real laptops remain to be checked. These firmware results predate the unified-installations build; that build has local PostgreSQL and HTTP integration coverage, with fresh stand boots still required. Strelec support depends on examining a supplied ISO.
+
+For existing test stands, follow the backup, one-time import, fresh draft publication and rollback procedure in [Control installation](docs/en/control-installation.md#unified-windows-and-ubuntu-installations-transition-on-30102026). The import preserves Windows library objects and discards old menu drafts, versions and their choice counts. Empty databases use only the new schema.
 
 ## Guides
 
@@ -55,6 +58,7 @@ For local verification:
 ```sh
 go test ./...
 go vet ./...
+./scripts/validate-ubuntu-autoinstall.sh testdata/autoinstall/interactive-user-data testdata/autoinstall/serial-user-data
 scripts/fetch-ipxe_test.sh
 ```
 

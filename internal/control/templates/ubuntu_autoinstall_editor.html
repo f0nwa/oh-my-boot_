@@ -1,0 +1,39 @@
+{{define "ubuntu_autoinstall_editor"}}{{template "top" .}}
+<p class="crumbs"><a href="/ubuntu-autoinstall">← {{t "Файлы Ubuntu Autoinstall"}}</a></p>
+<h1>{{t "Конструктор Ubuntu Autoinstall"}}</h1>
+{{with .UbuntuEditor}}
+{{if .File}}
+<h2>{{.Title}}</h2><p>{{t "Сохранённый файл неизменяем. Для изменений создайте копию с новым паролем."}}</p>
+<p>{{.File.CreatedAt.Format "2006-01-02 15:04"}} · <span class="mono">{{.File.SHA256}}</span> · {{t "Проверен"}}</p>
+<div class="actions"><a class="btn" href="/ubuntu-autoinstall/{{.File.ID}}/download">{{t "Скачать user-data"}}</a>{{if ne $.Info.User.Role "observer"}} <a class="btn" href="/ubuntu-autoinstall/{{.File.ID}}/copy">{{t "Создать копию"}}</a>{{end}}</div>
+{{else}}
+<form method="post" action="/ubuntu-autoinstall/preview">
+<input type="hidden" name="csrf" value="{{$.Info.CSRF}}">
+{{if .Token}}<input type="hidden" name="preview_token" value="{{.Token}}">{{end}}
+<fieldset><legend>{{t "Файл в библиотеке"}}</legend><label for="ai-title">{{t "Название"}}</label><input id="ai-title" name="title" value="{{.Title}}" maxlength="80" required></fieldset>
+<fieldset><legend>{{t "Язык и время"}}</legend>
+<label for="ai-locale">{{t "Локаль"}}</label><input id="ai-locale" name="locale" value="{{.Values.Locale}}" maxlength="64" placeholder="en_US.UTF-8" required>
+<label for="ai-keyboard">{{t "Раскладка клавиатуры"}}</label><input id="ai-keyboard" name="keyboard" value="{{.Values.Keyboard}}" maxlength="32" placeholder="us" required>
+<label for="ai-timezone">{{t "Часовой пояс IANA"}}</label><input id="ai-timezone" name="timezone" value="{{.Values.TimeZone}}" maxlength="64" placeholder="Europe/Moscow" required></fieldset>
+<fieldset><legend>{{t "Учётная запись Ubuntu"}}</legend>
+<label for="ai-hostname">{{t "Имя компьютера"}}</label><input id="ai-hostname" name="hostname" value="{{.Values.Hostname}}" maxlength="63" required>
+<label for="ai-username">{{t "Имя пользователя"}}</label><input id="ai-username" name="username" value="{{.Values.Username}}" maxlength="32" autocomplete="off" required>
+<label for="ai-password">{{t "Пароль для установки"}}</label><input id="ai-password" name="password" type="password" maxlength="1024" autocomplete="new-password" required>
+<p class="hint">{{t "Пароль не сохраняется в форме. После предпросмотра введите тот же пароль ещё раз для сохранения."}}</p>
+<p class="hint">{{t "Хеш пароля доступен компьютерам PXE-сегмента. Используйте отдельный пароль и смените его после установки."}}</p></fieldset>
+<fieldset><legend>{{t "Целевой диск"}}</legend>
+<label><input type="radio" name="disk_mode" value="interactive"{{if eq .Values.DiskMode "interactive"}} checked{{end}}> {{t "Выбрать диск вручную в установщике"}}</label>
+<label><input type="radio" name="disk_mode" value="serial"{{if eq .Values.DiskMode "serial"}} checked{{end}}> {{t "Автоматическая разметка: стереть диск по точному серийному номеру"}}</label>
+<label for="ai-serial">{{t "Точный серийный номер диска"}}</label><input id="ai-serial" name="disk_serial" value="{{.Values.DiskSerial}}" maxlength="128">
+<p class="hint">{{t "Для ручного режима оставьте серийный номер пустым. Для автоматического режима укажите один номер без шаблонов."}}</p></fieldset>
+<div class="actions"><button class="btn" type="submit">{{t "Предпросмотр YAML"}}</button>{{if .Token}}<button class="btn btn-primary" type="submit" formaction="/ubuntu-autoinstall">{{t "Сохранить файл"}}</button>{{end}}</div>
+</form>
+{{end}}
+{{if .YAML}}
+<h2>{{t "Параметры установки"}}</h2>
+<dl><dt>{{t "Локаль"}}</dt><dd>{{.Values.Locale}}</dd><dt>{{t "Раскладка клавиатуры"}}</dt><dd>{{.Values.Keyboard}}</dd><dt>{{t "Часовой пояс IANA"}}</dt><dd>{{.Values.TimeZone}}</dd><dt>{{t "Имя компьютера"}}</dt><dd>{{.Values.Hostname}}</dd><dt>{{t "Имя пользователя"}}</dt><dd>{{.Values.Username}}</dd><dt>{{t "Целевой диск"}}</dt><dd>{{if eq .Values.DiskMode "serial"}}<strong class="danger-text">{{t "Автоматическая разметка стирает диск с серийным номером:"}} {{.Values.DiskSerial}}</strong>{{else}}{{t "Выбрать диск вручную в установщике"}}{{end}}</dd></dl>
+<p class="hint">{{t "Сохранение файла не меняет меню. Выберите файл при создании установки и опубликуйте черновик."}}</p>
+{{if .Token}}<form method="post" action="/ubuntu-autoinstall/preview/download"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="preview_token" value="{{.Token}}"><button class="btn">{{t "Скачать user-data"}}</button></form>{{end}}
+<h2>{{t "Точный YAML user-data"}}</h2><pre id="autoinstall-yaml">{{.YAML}}</pre>
+{{end}}
+{{end}}{{template "bottom" .}}{{end}}

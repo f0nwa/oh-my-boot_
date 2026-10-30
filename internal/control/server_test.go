@@ -72,3 +72,10 @@ func (a authOnlyStore) MenuDraft(context.Context) (MenuDraft, bool, error) {
 }
 func (a authOnlyStore) SaveMenuDraft(context.Context, MenuDraft) error      { return nil }
 func (a authOnlyStore) MenuVersions(context.Context) ([]MenuVersion, error) { return nil, nil }
+
+func (a authOnlyStore) BootProfiles(context.Context) ([]BootProfile, error)   { return nil, nil }
+func (a authOnlyStore) Installations(context.Context) ([]Installation, error) { return nil, nil }
+
+func (a authOnlyStore) UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstallSummary, error) {
+	return nil, nil
+}

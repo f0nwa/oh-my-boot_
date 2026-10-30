@@ -17,7 +17,8 @@ import (
 )
 
 type deletionStore struct {
-	audits []string
+	audits        []string
+	installations []Installation
 	authOnlyStore
 	versions []MenuVersion
 	profiles []WindowsProfile
@@ -179,13 +180,15 @@ func TestDeleteDriverConfigBlocksActiveThenCleans(t *testing.T) {
 	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, configs: []DriverConfig{{ID: 3, ProfileID: 17, State: "ready", Build: agent.DriverBuildResult{WIMKey: strings.Repeat("a", 64)}}}}
 	c := &deletionCleaner{}
 	server := deletionTestServer(s, c)
-	s.versions = []MenuVersion{{Active: true, Script: "item windriver_3 Windows test\n"}}
+	s.installations = []Installation{{ID: 3003, DriverConfigID: 3}}
+	s.versions = []MenuVersion{{Active: true, Script: "item install_3003 Windows test\n", Items: []MenuVersionItem{{InstallationID: 3003}}}}
 	if res := submitDeletion(t, server, "/drivers/configs/3/delete"); res.Code != http.StatusConflict || len(c.calls) != 0 {
 		t.Fatalf("active status=%d cleanup=%v", res.Code, c.calls)
 	} else if body := res.Body.String(); !strings.Contains(body, `role="alert"`) || !strings.Contains(body, "Сначала снимите пункт с публикации меню") || !strings.Contains(body, "<h1>Драйверы") {
 		t.Fatalf("conflict is not shown on the drivers page: %s", body)
 	}
-	s.versions = []MenuVersion{{Active: true, Script: "#!ipxe\n"}}
+	s.versions = []MenuVersion{{Active: true, Script: "#!ipxe\n", Items: []MenuVersionItem{}}}
+	s.installations = nil
 	if res := submitDeletion(t, server, "/drivers/configs/3/delete"); res.Code != http.StatusSeeOther || strings.Join(c.calls, ",") != "config" || strings.Join(s.deleted, ",") != "config" {
 		t.Fatalf("delete status=%d cleanup=%v db=%v", res.Code, c.calls, s.deleted)
 	}
@@ -215,7 +218,7 @@ func TestDeleteFailsClosedWhenBootMenuDiffersFromDatabase(t *testing.T) {
 	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, configs: []DriverConfig{{ID: 3}}, versions: []MenuVersion{{Active: true, Script: "#!ipxe\n"}}}
 	c := &deletionCleaner{}
 	server := deletionTestServer(s, c)
-	server.DeletionMenu = deletionMenuReader{store: s, override: []byte("#!ipxe\nitem windriver_3 Test\n")}
+	server.DeletionMenu = deletionMenuReader{store: s, override: []byte("#!ipxe\nitem install_3003 Test\n")}
 	if res := submitDeletion(t, server, "/drivers/configs/3/delete"); res.Code != http.StatusServiceUnavailable || len(c.calls) != 0 || len(s.deleted) != 0 {
 		t.Fatalf("mismatched menu status=%d cleanup=%v deleted=%v", res.Code, c.calls, s.deleted)
 	}
@@ -246,7 +249,7 @@ func TestDeleteProfileAndAnswerBlockDependencies(t *testing.T) {
 
 func TestMenuHistoryMarksDeletedRecordUnavailable(t *testing.T) {
 	store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, versions: []MenuVersion{
-		{ID: 7, Script: "#!ipxe\nitem windriver_99 Old test\n", Title: "Old"},
+		{ID: 7, Script: "#!ipxe\nitem install_3099 Old test\n", Title: "Old"},
 		{ID: 8, Active: true, Script: "#!ipxe\n", Title: "Current"},
 	}}
 	server := &Server{Store: store}
@@ -321,8 +324,10 @@ func TestRejectedDeletionsAreAudited(t *testing.T) {
 		profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4, ProfileID: 17}},
 		configs: []DriverConfig{{ID: 3, ProfileID: 17, AnswerID: 4}}}
 	server := deletionTestServer(s, &deletionCleaner{})
-	s.versions = []MenuVersion{{Active: true, Script: "item windriver_3 Windows test\n"}}
+	s.installations = []Installation{{ID: 3003, DriverConfigID: 3}}
+	s.versions = []MenuVersion{{Active: true, Script: "item install_3003 Windows test\n", Items: []MenuVersionItem{{InstallationID: 3003}}}}
 	submitDeletion(t, server, "/drivers/configs/3/delete")
+	s.installations = nil
 	s.versions = []MenuVersion{{Active: true, Script: "#!ipxe\n"}}
 	submitDeletion(t, server, "/images/windows-answers/4/delete")
 	submitDeletion(t, server, "/images/windows-profiles/17/delete")
@@ -335,3 +340,8 @@ func TestRejectedDeletionsAreAudited(t *testing.T) {
 		t.Fatalf("audits = %q, want %q", s.audits, want)
 	}
 }
+
+func (s *deletionStore) Installations(context.Context) ([]Installation, error) {
+	return s.installations, nil
+}
+func (s *deletionStore) BootProfiles(context.Context) ([]BootProfile, error) { return nil, nil }

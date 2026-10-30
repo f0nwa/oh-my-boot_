@@ -38,6 +38,12 @@ type Storage interface {
 	SaveActiveMenu(context.Context, int64, MenuVersion) error
 	MenuDraft(context.Context) (MenuDraft, bool, error)
 	SaveMenuDraft(context.Context, MenuDraft) error
+	BootProfiles(context.Context) ([]BootProfile, error)
+	Installations(context.Context) ([]Installation, error)
+	CreateInstallation(context.Context, Installation) (Installation, error)
+	CreateUbuntuAutoinstall(context.Context, UbuntuAutoinstallFile) (UbuntuAutoinstallFile, error)
+	UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstallSummary, error)
+	UbuntuAutoinstall(context.Context, int64) (UbuntuAutoinstallFile, error)
 	CreateWindowsProfile(context.Context, WindowsProfileSource) (WindowsProfile, error)
 	WindowsProfile(context.Context, int64) (WindowsProfile, error)
 	WindowsProfiles(context.Context) ([]WindowsProfile, error)
@@ -121,6 +127,7 @@ type Server struct {
 	Images            ImagesAPI
 	SMB               SMBMountAPI
 	WindowsISO        WindowsISOAPI
+	UbuntuReadiness   UbuntuReadiness
 	WindowsAnswers    WindowsAnswerAPI
 	DriverPackages    DriverPackageAPI
 	DriverConfigs     DriverConfigAPI
@@ -199,7 +206,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /menu/local-timer", s.protect("menu", withPageErrors(s.menuPage, s.menuLocalTimer)))
 	mux.HandleFunc("POST /menu/diagnostics", s.protect("menu", withPageErrors(s.menuPage, s.menuDiagnostics)))
 	mux.HandleFunc("POST /menu/discard", s.protect("menu", withPageErrors(s.menuPage, s.menuDiscard)))
-	mux.HandleFunc("POST /menu/settings", s.protect("menu", withPageErrors(s.menuPage, s.menuSettings)))
 	mux.HandleFunc("POST /menu/items/{key}/restore", s.protect("menu", withPageErrors(s.menuPage, s.installationAdd)))
 	mux.HandleFunc("POST /menu/order", s.protect("menu", withPageErrors(s.menuPage, s.menuOrder)))
 	mux.HandleFunc("GET /assets/menu-order.js", menuOrderScript)
@@ -215,6 +221,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /usb", s.protect("view", s.usbPage))
 	mux.HandleFunc("POST /usb/uefica", s.protect("view", withPageErrors(s.usbPage, s.ueficaUSBDownload)))
 	mux.HandleFunc("GET /assets/usb.js", usbScript)
+	mux.HandleFunc("GET /ubuntu-autoinstall", s.protect("view", s.ubuntuAutoinstallList))
+	mux.HandleFunc("GET /ubuntu-autoinstall/new", s.protect("images", s.ubuntuAutoinstallNew))
+	mux.HandleFunc("POST /ubuntu-autoinstall/preview", s.protect("images", s.ubuntuAutoinstallPreview))
+	mux.HandleFunc("POST /ubuntu-autoinstall/preview/download", s.protect("images", s.ubuntuAutoinstallPreviewDownload))
+	mux.HandleFunc("POST /ubuntu-autoinstall", s.protect("images", s.ubuntuAutoinstallSave))
+	mux.HandleFunc("GET /ubuntu-autoinstall/{id}", s.protect("view", s.ubuntuAutoinstallFile))
+	mux.HandleFunc("GET /ubuntu-autoinstall/{id}/download", s.protect("view", s.ubuntuAutoinstallFile))
+	mux.HandleFunc("GET /ubuntu-autoinstall/{id}/copy", s.protect("images", s.ubuntuAutoinstallFile))
 	mux.HandleFunc("GET /answers", s.protect("view", s.answersPage))
 	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
 	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))
@@ -498,6 +512,12 @@ func (s *Server) libraryData(r *http.Request) pageData {
 	} else {
 		data.WindowsAnswerVariants = answers
 	}
+	files, err := s.Store.UbuntuAutoinstalls(r.Context())
+	if err != nil {
+		data.ImageError = "Не удалось прочитать файлы Autoinstall"
+	} else {
+		data.UbuntuAutoinstalls = files
+	}
 	if s.Images == nil {
 		data.ImageError = "Сервис образов недоступен"
 	} else {
@@ -541,7 +561,9 @@ func (s *Server) libraryData(r *http.Request) pageData {
 	s.loadStorageRecovery(r.Context(), &data)
 	if configs, err := s.Store.DriverConfigs(r.Context()); err == nil {
 		if _, active, err := s.currentDraft(r.Context()); err == nil {
-			data.ProfileUse, data.AnswerUse = menuUsage(active, data.WindowsAnswerVariants, configs)
+			if sources, err := s.installationMenuSources(r.Context()); err == nil {
+				data.ProfileUse, data.AnswerUse = menuUsage(active, configs, sources)
+			}
 		}
 	}
 	return data

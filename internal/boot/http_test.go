@@ -1,6 +1,8 @@
 package boot
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -236,5 +238,123 @@ func TestUbuntuISOEndpointRejectsSymlink(t *testing.T) {
 	h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/images/ubuntu-desktop.iso", nil))
 	if res.Code != http.StatusNotFound || strings.Contains(res.Body.String(), "private") {
 		t.Fatalf("symlink exposed: %d %q", res.Code, res.Body.String())
+	}
+}
+
+func TestHandlerRecordsInstallationChoice(t *testing.T) {
+	var events []Event
+	h, err := NewHandler(t.TempDir(), []byte("#!ipxe\n"), func(e Event) { events = append(events, e) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{"", "0", "-1", "abc", "1.5", "+1", "01", "9223372036854775808", "1&id=2"} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/boot/choice?id="+raw, nil))
+		if res.Code != http.StatusBadRequest {
+			t.Errorf("id=%q: status=%d", raw, res.Code)
+		}
+	}
+	for _, method := range []string{http.MethodPost, http.MethodHead} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(method, "/boot/choice?id=73", nil))
+		if res.Code != http.StatusMethodNotAllowed || res.Header().Get("Allow") != "GET" {
+			t.Errorf("method=%s: status=%d allow=%q", method, res.Code, res.Header().Get("Allow"))
+		}
+	}
+	if len(events) != 0 {
+		t.Fatalf("invalid requests recorded: %+v", events)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/boot/choice?id=73&ignored=value", nil)
+	req.RemoteAddr = "10.30.0.19:1234"
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK || res.Body.String() != "#!ipxe\n" || res.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("response=%d %q headers=%v", res.Code, res.Body.String(), res.Header())
+	}
+	if len(events) != 1 || events[0].Kind != "choice" || events[0].Path != "/boot/choice?id=73" || events[0].RemoteAddr != req.RemoteAddr || events[0].At.IsZero() || events[0].Status != 0 || events[0].Size != 0 || events[0].Bytes != 0 {
+		t.Fatalf("events=%+v", events)
+	}
+}
+
+func TestGenericAssetStableAliasesRemainAvailable(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "public"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "public", "kernel"), []byte("public kernel"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("public/kernel", filepath.Join(root, "kernel-alias")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("public", filepath.Join(root, "directory-alias")); err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/assets/kernel-alias", "/assets/directory-alias/kernel"} {
+		req := httptest.NewRequest("GET", path, nil)
+		req.RemoteAddr = "192.168.10.7:1234"
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		if res.Code != 200 || res.Body.String() != "public kernel" {
+			t.Fatalf("stable alias %s: %d %q", path, res.Code, res.Body.String())
+		}
+	}
+}
+
+func TestGenericAssetOpenRejectsSubstitutionAfterResolution(t *testing.T) {
+	for _, directory := range []bool{false, true} {
+		t.Run(fmt.Sprintf("directory=%v", directory), func(t *testing.T) {
+			root := t.TempDir()
+			assets, err := NewAutoinstallAssets(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			digest := autoinstallDigest(autoinstallTestData)
+			if _, err := assets.Stage(7, digest, autoinstallTestData); err != nil {
+				t.Fatal(err)
+			}
+			public := filepath.Join(root, "public")
+			if err := os.Mkdir(public, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(public, "user-data"), []byte("public"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("public/user-data", filepath.Join(root, "alias")); err != nil {
+				t.Fatal(err)
+			}
+			// Resolve a safe stable alias, then substitute either resolved component
+			// before the exact open operation the HTTP handler uses.
+			resolved, err := filepath.EvalSymlinks(filepath.Join(root, "alias"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			relative, err := filepath.Rel(root, resolved)
+			if err != nil {
+				t.Fatal(err)
+			}
+			substituted := resolved
+			target := filepath.Join(root, "ubuntu-autoinstall", "7", digest, "user-data")
+			if directory {
+				substituted = public
+				target = filepath.Dir(target)
+			}
+			if err := os.Rename(substituted, substituted+"-old"); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, substituted); err != nil {
+				t.Fatal(err)
+			}
+			file, err := openResolvedAsset(root, relative)
+			if err == nil {
+				defer file.Close()
+				data, _ := io.ReadAll(file)
+				t.Fatalf("post-resolution substitution opened private data: %q", data)
+			}
+		})
 	}
 }

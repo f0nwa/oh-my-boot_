@@ -22,11 +22,12 @@ func TestMachineSessionsSplitBootsAndNameOutcome(t *testing.T) {
 		{At: t0.Add(5 * time.Second), Kind: "PXE", MAC: "bc:24:11:00:00:01"},
 	}
 	httpEvents := []boot.Event{
+		{At: t0.Add(10 * time.Second), Kind: "choice", Path: "/boot/choice?id=7", RemoteAddr: "10.30.0.19:1", MAC: mac},
 		{At: t0.Add(3 * time.Second), Kind: "menu", Path: "/boot/menu.ipxe", RemoteAddr: "10.30.0.19:1", MAC: mac},
 		{At: t0.Add(20 * time.Second), Kind: "asset", Path: "/assets/windows-profiles/3/boot.wim", RemoteAddr: "10.30.0.19:1", MAC: mac},
 		{At: t0.Add(21 * time.Second), Kind: "asset", Path: "/assets/windows-driver-configs/7/pxe-setup.cmd", RemoteAddr: "10.30.0.19:1", MAC: mac},
 	}
-	sessions := machineSessions(mac, httpEvents, dhcp, map[string]string{"windriver_7": "Win11 VirtIO"})
+	sessions := machineSessions(mac, httpEvents, dhcp, map[string]string{"install_7": "Win11 VirtIO"})
 	if len(sessions) != 2 {
 		t.Fatalf("sessions=%+v", sessions)
 	}
@@ -34,14 +35,14 @@ func TestMachineSessionsSplitBootsAndNameOutcome(t *testing.T) {
 	if latest.Outcome != "loader_failed" || !latest.Failed() || len(latest.Steps) != 2 || !latest.Steps[1].Failed || latest.Steps[1].Stage != "TFTP" {
 		t.Fatalf("latest=%+v", latest)
 	}
-	if first.Outcome != "files" || !first.OK() || first.Choice != "Win11 VirtIO" || len(first.Steps) != 5 {
+	if first.Outcome != "files" || !first.OK() || first.Choice != "Win11 VirtIO" || len(first.Steps) != 6 {
 		t.Fatalf("first=%+v", first)
 	}
 	stages := []string{}
 	for _, step := range first.Steps {
 		stages = append(stages, step.Stage)
 	}
-	if strings.Join(stages, ",") != "DHCP,TFTP,Меню,Выбор,Выбор" {
+	if strings.Join(stages, ",") != "DHCP,TFTP,Меню,Выбор,Файлы,Файлы" {
 		t.Fatalf("stages=%v", stages)
 	}
 }

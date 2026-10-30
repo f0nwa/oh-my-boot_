@@ -13,7 +13,7 @@ import (
 )
 
 func TestImagesPageIsOneTableWithUsage(t *testing.T) {
-	store := newDraftStore(t, "admin", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}, {Key: "winanswer_31", Title: "Lab"}})
+	store := newDraftStore(t, "admin", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}, {InstallationID: 2031, Title: "Lab"}})
 	s, _ := draftServer(t, store)
 	api := s.Images.(*fakeImagesAPI)
 	api.catalog.Images = append(api.catalog.Images, images.Image{StorageID: store.profiles[0].StorageID, Path: "new.iso", Present: true})
@@ -24,7 +24,7 @@ func TestImagesPageIsOneTableWithUsage(t *testing.T) {
 }
 
 func TestAnswersPageShowsUsage(t *testing.T) {
-	store := newDraftStore(t, "admin", []MenuDraftItem{{Key: "winanswer_31", Title: "Lab"}, {Key: "windriver_2"}})
+	store := newDraftStore(t, "admin", []MenuDraftItem{{InstallationID: 2031, Title: "Lab"}, {InstallationID: 3002}})
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/answers")
 	if !strings.Contains(body, "В меню: 2") {
@@ -34,10 +34,10 @@ func TestAnswersPageShowsUsage(t *testing.T) {
 
 func TestDeletedDraftObjectStaysVisibleOnInstallations(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
-	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{Key: "winanswer_99", Title: "Gone"}}}
+	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 2099, Title: "Gone"}}}
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/installations")
-	if !strings.Contains(body, "winanswer_99") || !strings.Contains(body, "Gone") {
+	if !strings.Contains(body, "install_2099") || !strings.Contains(body, "Gone") {
 		t.Fatalf("deleted object hidden: %s", body)
 	}
 }
@@ -51,15 +51,15 @@ func TestPublishButtonHasNoGuessedVersionNumber(t *testing.T) {
 	}
 }
 
-func TestNewInstallationWithSameDriversIsRejected(t *testing.T) {
+func TestNewInstallationWithSameDriversCreatesIndependentChoice(t *testing.T) {
 	s, store := newInstallServer(t)
-	form := url.Values{"profile_id": {"17"}, "package": {strings.Repeat("a", 64)}, "title": {"Win11 VirtIO"}}
+	form := url.Values{"boot_profile_id": {"51"}, "package": {strings.Repeat("a", 64)}, "title": {"Win11 VirtIO"}}
 	if res := menuPost(t, s, "/installations", form); res.Code != http.StatusSeeOther {
 		t.Fatalf("first: %d %s", res.Code, res.Body.String())
 	}
 	store.configs = append(store.configs, store.created[0])
 	res := menuPost(t, s, "/installations", form)
-	if res.Code < 400 || !strings.Contains(res.Body.String(), "уже есть") || len(store.created) != 1 {
+	if res.Code != http.StatusSeeOther || len(store.created) != 1 || len(store.installations) != 2 {
 		t.Fatalf("second: %d created=%d body=%s", res.Code, len(store.created), res.Body.String())
 	}
 }
@@ -100,9 +100,9 @@ func TestPrepareReturnsToDriversPage(t *testing.T) {
 }
 
 func TestObserverCannotPostToNewRoutes(t *testing.T) {
-	store := newDraftStore(t, "observer", []MenuDraftItem{{Key: "winiso_17", Title: "Windows 11"}})
+	store := newDraftStore(t, "observer", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
-	for _, path := range []string{"/menu/settings", "/menu/items/winiso_17/move", "/menu/items/winiso_17/remove", "/menu/items/winiso_17/title", "/installations", "/installations/winiso_17/add", "/answers/3/inspect", "/answers/upload"} {
+	for _, path := range []string{"/menu/items/install_1017/move", "/menu/items/install_1017/remove", "/menu/items/install_1017/title", "/installations", "/installations/install_1017/add", "/answers/3/inspect", "/answers/upload"} {
 		res := menuPost(t, s, path, url.Values{})
 		if res.Code != http.StatusForbidden {
 			t.Errorf("%s: status %d", path, res.Code)

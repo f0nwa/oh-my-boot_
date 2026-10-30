@@ -8,13 +8,27 @@ import (
 
 func (s Store) CreateWindowsProfile(ctx context.Context, source WindowsProfileSource) (WindowsProfile, error) {
 	profile := WindowsProfile{WindowsProfileSource: source}
-	err := s.Pool.QueryRow(ctx,
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return WindowsProfile{}, err
+	}
+	defer tx.Rollback(ctx)
+	err = tx.QueryRow(ctx,
 		`INSERT INTO windows_profiles (storage_id,path,storage_root,size_bytes,modified_at,title,folder,state)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')
 		 RETURNING id,state`,
 		source.StorageID, source.Path, source.StorageRoot, source.Size, source.Modified, source.Title, source.Folder,
 	).Scan(&profile.ID, &profile.State)
-	return profile, err
+	if err != nil {
+		return WindowsProfile{}, err
+	}
+	if err := createWindowsBootProfile(ctx, tx, profile); err != nil {
+		return WindowsProfile{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return WindowsProfile{}, err
+	}
+	return profile, nil
 }
 
 func (s Store) WindowsProfiles(ctx context.Context) ([]WindowsProfile, error) {
@@ -57,13 +71,24 @@ func (s Store) SetWindowsProfileResult(ctx context.Context, id int64, state, ins
 	return nil
 }
 
+// DeleteWindowsProfile removes the ISO and its common profile together. The
+// common profile's foreign keys reject deletion while installations use it;
+// library references to the ISO likewise roll the whole transaction back.
 func (s Store) DeleteWindowsProfile(ctx context.Context, id int64) error {
-	tag, err := s.Pool.Exec(ctx, `DELETE FROM windows_profiles WHERE id=$1`, id)
+	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+	defer tx.Rollback(ctx)
+	var profileID int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM windows_profiles WHERE id=$1 FOR UPDATE`, id).Scan(&profileID); err != nil {
+		return err
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `DELETE FROM boot_profiles b USING windows_boot_profiles w WHERE b.id=w.boot_profile_id AND w.windows_profile_id=$1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM windows_profiles WHERE id=$1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

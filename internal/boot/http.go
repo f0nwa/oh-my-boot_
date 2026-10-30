@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -171,7 +172,12 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			http.NotFound(w, r)
 			return
 		}
-		private := privateWinPEScript(name) || validWindowsAnswerAsset(name)
+		autoinstall := validUbuntuAutoinstallAsset(name)
+		if (name == "ubuntu-autoinstall" || strings.HasPrefix(name, "ubuntu-autoinstall/")) && !autoinstall {
+			notFound()
+			return
+		}
+		private := privateWinPEScript(name) || validWindowsAnswerAsset(name) || autoinstall
 		if private {
 			client, err := netip.ParseAddrPort(r.RemoteAddr)
 			if err != nil || !netip.MustParsePrefix("10.30.0.0/24").Contains(client.Addr()) {
@@ -191,7 +197,19 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			http.NotFound(w, r)
 			return
 		}
-		file, err := os.Open(resolved)
+		// Generic asset aliases must not bypass the NoCloud path validator or
+		// subnet policy by resolving into its private namespace.
+		resolvedName := filepath.ToSlash(rel)
+		if (resolvedName == "ubuntu-autoinstall" || strings.HasPrefix(resolvedName, "ubuntu-autoinstall/")) && (!autoinstall || resolvedName != name) {
+			notFound()
+			return
+		}
+		var file *os.File
+		if autoinstall {
+			file, err = openPublicAutoinstallAsset(root, name)
+		} else {
+			file, err = os.Open(resolved)
+		}
 		if err != nil {
 			notFound()
 			return
@@ -214,7 +232,19 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			record(event)
 		}
 	})
-	return mux, nil
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ServeMux redirects dot segments and repeated slashes before routing.
+		// Reject malformed NoCloud paths here so they get an exact 404 instead.
+		name := strings.TrimPrefix(r.URL.Path, "/assets/")
+		cleanName := strings.TrimPrefix(path.Clean(r.URL.Path), "/assets/")
+		if name == "ubuntu-autoinstall" || strings.HasPrefix(name, "ubuntu-autoinstall/") || cleanName == "ubuntu-autoinstall" || strings.HasPrefix(cleanName, "ubuntu-autoinstall/") {
+			if !validUbuntuAutoinstallAsset(name) {
+				http.NotFound(w, r)
+				return
+			}
+		}
+		mux.ServeHTTP(w, r)
+	}), nil
 }
 
 func validWindowsAnswerAsset(name string) bool {

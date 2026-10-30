@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 type EventReader interface {
@@ -12,25 +13,65 @@ type EventReader interface {
 }
 
 // ControlHandler is served only over a permission-restricted Unix socket.
-func ControlHandler(p *Publisher, events EventReader) http.Handler {
-	return ControlHandlerWithTransfers(p, events, nil)
+func ControlHandler(p *Publisher, events EventReader, assets *AutoinstallAssets) http.Handler {
+	return ControlHandlerWithTransfers(p, events, nil, assets)
 }
 
 // ControlHandlerWithJournal also manages the request log's cleanup.
-func ControlHandlerWithJournal(p *Publisher, events EventReader, transfers *Transfers, journal *Journal) http.Handler {
-	mux := controlMux(p, events, transfers)
+func ControlHandlerWithJournal(p *Publisher, events EventReader, transfers *Transfers, journal *Journal, assets *AutoinstallAssets) http.Handler {
+	mux := controlMux(p, events, transfers, assets)
 	handleJournal(mux, journal)
 	return mux
 }
 
 // ControlHandlerWithTransfers also answers GET /transfers: the files being
 // sent right now.
-func ControlHandlerWithTransfers(p *Publisher, events EventReader, transfers *Transfers) http.Handler {
-	return controlMux(p, events, transfers)
+func ControlHandlerWithTransfers(p *Publisher, events EventReader, transfers *Transfers, assets *AutoinstallAssets) http.Handler {
+	return controlMux(p, events, transfers, assets)
 }
 
-func controlMux(p *Publisher, events EventReader, transfers *Transfers) *http.ServeMux {
+func controlMux(p *Publisher, events EventReader, transfers *Transfers, assets *AutoinstallAssets) *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/autoinstall/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut && r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET, PUT")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if assets == nil {
+			http.Error(w, "autoinstall assets unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/autoinstall/"), "/")
+		if len(parts) != 2 || !canonicalPositiveID(parts[0]) || !validSHA256(parts[1]) {
+			http.Error(w, "invalid autoinstall path", http.StatusBadRequest)
+			return
+		}
+		id, _ := strconv.ParseInt(parts[0], 10, 64)
+		var info AssetInfo
+		var err error
+		if r.Method == http.MethodPut {
+			body, readErr := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxAutoinstallUserDataSize))
+			if readErr != nil {
+				http.Error(w, "autoinstall user-data too large or unreadable", http.StatusRequestEntityTooLarge)
+				return
+			}
+			info, err = assets.Stage(id, parts[1], body)
+		} else {
+			info, err = assets.Check(id, parts[1])
+		}
+		if err != nil {
+			status := http.StatusBadRequest
+			if r.Method == http.MethodGet {
+				status = http.StatusNotFound
+			}
+			http.Error(w, "autoinstall assets unavailable or invalid", status)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(info)
+	})
 	mux.HandleFunc("GET /transfers", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(transfers.List())

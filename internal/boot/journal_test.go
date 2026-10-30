@@ -73,7 +73,7 @@ func TestJournalControlAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := ControlHandlerWithJournal(p, nil, nil, j)
+	h := ControlHandlerWithJournal(p, nil, nil, j, nil)
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		res := httptest.NewRecorder()
 		h.ServeHTTP(res, httptest.NewRequest(method, path, strings.NewReader(body)))

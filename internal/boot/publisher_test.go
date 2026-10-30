@@ -89,7 +89,7 @@ func TestControlAPIStatusAndPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := ControlHandler(p, nil)
+	h := ControlHandler(p, nil, nil)
 	res := httptest.NewRecorder()
 	h.ServeHTTP(res, httptest.NewRequest("GET", "/status", nil))
 	var state struct {
@@ -120,7 +120,7 @@ func TestControlAPIClampsEventLimit(t *testing.T) {
 	}
 	events := &recordingEvents{}
 	res := httptest.NewRecorder()
-	ControlHandler(p, events).ServeHTTP(res, httptest.NewRequest("GET", "/events?limit=10000", nil))
+	ControlHandler(p, events, nil).ServeHTTP(res, httptest.NewRequest("GET", "/events?limit=10000", nil))
 	if res.Code != 200 || events.limit != 1000 {
 		t.Fatalf("status=%d limit=%d", res.Code, events.limit)
 	}
@@ -133,7 +133,7 @@ func TestControlAPIReturnsCurrentScriptForRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := httptest.NewRecorder()
-	ControlHandler(p, nil).ServeHTTP(res, httptest.NewRequest("GET", "/menu", nil))
+	ControlHandler(p, nil, nil).ServeHTTP(res, httptest.NewRequest("GET", "/menu", nil))
 	if res.Code != 200 || !bytes.Equal(res.Body.Bytes(), script) {
 		t.Fatalf("status=%d body=%q", res.Code, res.Body.String())
 	}

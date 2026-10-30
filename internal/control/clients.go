@@ -302,6 +302,25 @@ func localCall(ctx context.Context, client *http.Client, method, path string, bo
 	return json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(out)
 }
 
+// StageAutoinstall sends bounded user-data through Boot's private socket API.
+func (c *BootClient) StageAutoinstall(ctx context.Context, id int64, digest string, userData []byte) (boot.AssetInfo, error) {
+	var info boot.AssetInfo
+	if len(userData) > boot.MaxAutoinstallUserDataSize {
+		return info, fmt.Errorf("autoinstall user-data too large")
+	}
+	path := "/autoinstall/" + strconv.FormatInt(id, 10) + "/" + url.PathEscape(digest)
+	err := localCall(ctx, c.http, http.MethodPut, path, userData, &info)
+	return info, err
+}
+
+// CheckAutoinstall verifies both retained files without using the public route.
+func (c *BootClient) CheckAutoinstall(ctx context.Context, id int64, digest string) (boot.AssetInfo, error) {
+	var info boot.AssetInfo
+	path := "/autoinstall/" + strconv.FormatInt(id, 10) + "/" + url.PathEscape(digest)
+	err := localCall(ctx, c.http, http.MethodGet, path, nil, &info)
+	return info, err
+}
+
 func (c *BootClient) Status(ctx context.Context) (BootStatus, error) {
 	var v BootStatus
 	err := localCall(ctx, c.http, "GET", "/status", nil, &v)

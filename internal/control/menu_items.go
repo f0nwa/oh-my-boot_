@@ -50,7 +50,7 @@ const errItemNotInMenu = draftError("Пункт не найден в меню")
 
 func draftItemIndex(d *MenuDraft, key string) int {
 	for i, item := range d.Items {
-		if item.Key == key {
+		if menuDraftItemKey(item) == key {
 			return i
 		}
 	}
@@ -165,7 +165,7 @@ func (s *Server) menuOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		byKey := map[string]MenuDraftItem{}
 		for _, item := range d.Items {
-			byKey[item.Key] = item
+			byKey[menuDraftItemKey(item)] = item
 		}
 		ordered := make([]MenuDraftItem, 0, len(keys))
 		for _, key := range keys {

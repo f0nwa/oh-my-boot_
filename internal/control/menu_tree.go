@@ -16,6 +16,7 @@ const menuAnswerMarker = "# pxe-platform:winanswers-v1 "
 const menuDriverMarker = "# pxe-platform:windrivers-v1 "
 
 type menuProfile struct {
+	kind               string
 	id                 string
 	title              string
 	hint               string // shown at the right edge of the item
@@ -406,9 +407,8 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
 		return
 	}
-	switch profile.id {
-	case "ubuntu":
-		out.WriteString(ubuntuBootScript(base))
+	if profile.kind == BootProfileUbuntuBuiltin || profile.id == "ubuntu" {
+		out.WriteString(ubuntuBootScript(base, profile.id))
 	}
 }
 

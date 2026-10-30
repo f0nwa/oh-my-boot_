@@ -106,23 +106,23 @@ func buildMenu(title, label, message, ubuntuBase string) ([]byte, error) {
 		"sleep 3\n" +
 		"goto local\n"
 	if ubuntuBase != "" {
-		script += ubuntuBootScript(ubuntuBase)
+		script += ubuntuBootScript(ubuntuBase, "ubuntu")
 	}
 	script += ":local\n" +
 		"exit\n"
 	return []byte(script), nil
 }
 
-func ubuntuBootScript(base string) string {
-	return ":ubuntu\n" +
+func ubuntuBootScript(base, label string) string {
+	return ":" + label + "\n" +
 		"kernel " + base + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + base + "/images/ubuntu-desktop.iso ---\n" +
 		"initrd " + base + "/assets/ubuntu/initrd\n" +
-		"iseq ${platform} efi && goto ubuntu_efi || goto ubuntu_boot\n" +
-		":ubuntu_efi\n" +
-		"shim " + base + "/assets/ubuntu/bootx64.efi || goto ubuntu_failed\n" +
-		":ubuntu_boot\n" +
-		"boot || goto ubuntu_failed\n" +
-		":ubuntu_failed\n" +
+		"iseq ${platform} efi && goto " + label + "_efi || goto " + label + "_boot\n" +
+		":" + label + "_efi\n" +
+		"shim " + base + "/assets/ubuntu/bootx64.efi || goto " + label + "_failed\n" +
+		":" + label + "_boot\n" +
+		"boot || goto " + label + "_failed\n" +
+		":" + label + "_failed\n" +
 		"echo Ubuntu boot failed\n" +
 		"sleep 5\n" +
 		"goto local\n"

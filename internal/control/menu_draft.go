@@ -170,9 +170,68 @@ func menuProfileForKey(key, base string, profiles []WindowsProfile, answers []Wi
 	return menuProfile{}, "", unknownMenuItemError(key)
 }
 
-// BuildMenuFromDraft renders the iPXE script for a draft: Ubuntu first when
-// enabled, then the draft's items in order, with their titles and folders.
-func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) ([]byte, error) {
+// InstallationMenuSources supplies the shared profiles and installation identities.
+// The optional renderer argument is a development bridge for legacy callers.
+type InstallationMenuSources struct {
+	Installations []Installation
+	BootProfiles  []BootProfile
+}
+
+func menuProfileForInstallation(id int64, base string, sources InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
+	key := fmt.Sprintf("install_%d", id)
+	for _, installation := range sources.Installations {
+		if installation.ID != id || id <= 0 {
+			continue
+		}
+		for _, profile := range sources.BootProfiles {
+			if profile.ID != installation.BootProfileID {
+				continue
+			}
+			if err := ValidateInstallation(installation, profile, answers, configs); err != nil {
+				return menuProfile{}, "", err
+			}
+			var entry menuProfile
+			switch profile.Kind {
+			case BootProfileUbuntuBuiltin:
+				entry = menuProfile{id: key, kind: profile.Kind, base: base}
+			case BootProfileWindowsISO:
+				sourceKey := fmt.Sprintf("winiso_%d", profile.WindowsProfileID)
+				if installation.AnswerID > 0 {
+					sourceKey = fmt.Sprintf("winanswer_%d", installation.AnswerID)
+				}
+				if installation.DriverConfigID > 0 {
+					sourceKey = fmt.Sprintf("windriver_%d", installation.DriverConfigID)
+				}
+				var err error
+				entry, _, err = menuProfileForKey(sourceKey, base, profiles, answers, configs)
+				if err != nil {
+					return menuProfile{}, "", err
+				}
+				entry.id, entry.kind = key, profile.Kind
+			default:
+				return menuProfile{}, "", fmt.Errorf("unsupported boot profile kind %q", profile.Kind)
+			}
+			entry.title = installation.Title
+			return entry, installation.Folder, nil
+		}
+		return menuProfile{}, "", fmt.Errorf("boot profile for %s is unavailable", key)
+	}
+	return menuProfile{}, "", unknownMenuItemError(key)
+}
+
+func resolveDraftItem(item MenuDraftItem, base string, sources []InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
+	if item.InstallationID > 0 {
+		var source InstallationMenuSources
+		if len(sources) > 0 {
+			source = sources[0]
+		}
+		return menuProfileForInstallation(item.InstallationID, base, source, profiles, answers, configs)
+	}
+	return menuProfileForKey(item.Key, base, profiles, answers, configs)
+}
+
+// BuildMenuFromDraft renders installations in draft order with their placements.
+func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, sources ...InstallationMenuSources) ([]byte, error) {
 	if len(d.Items) == 0 {
 		// Even an empty menu is drawn with today's look, so that publishing it
 		// clears the "new look" change.
@@ -201,17 +260,18 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 	}
 	seen := map[string]bool{}
 	for _, item := range d.Items {
-		if seen[item.Key] {
-			return nil, fmt.Errorf("menu item %s is listed twice", item.Key)
+		key := menuDraftItemKey(item)
+		if seen[key] {
+			return nil, fmt.Errorf("menu item %s is listed twice", key)
 		}
-		seen[item.Key] = true
-		entry, folder, err := menuProfileForKey(item.Key, base, profiles, answers, configs)
+		seen[key] = true
+		entry, folder, err := resolveDraftItem(item, base, sources, profiles, answers, configs)
 		if err != nil {
 			return nil, err
 		}
 		if item.Title != "" {
 			if !safeMenuText(item.Title, 80) || !isASCII(item.Title) {
-				return nil, fmt.Errorf("menu title for %s must be ASCII", item.Key)
+				return nil, fmt.Errorf("menu title for %s must be ASCII", key)
 			}
 			entry.title = item.Title
 		}
@@ -221,10 +281,10 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 		// Profile folders historically allowed any safe text; answer and driver
 		// folders must be ASCII.
 		if !strings.HasPrefix(item.Key, "winiso_") && !isASCII(folder) {
-			return nil, fmt.Errorf("menu folder for %s must be ASCII", item.Key)
+			return nil, fmt.Errorf("menu folder for %s must be ASCII", key)
 		}
 		entries = append(entries, entry)
-		folders[item.Key] = folder
+		folders[key] = folder
 	}
 	for _, folder := range folders {
 		if err := validateMenuFolder(folder); err != nil {
@@ -234,7 +294,7 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 	return buildMenuTreeWithProfilesTimed(productMenuTitle, d.Label, d.Message, entries, folders, d.localTimer(), d.DiagnosticsOn())
 }
 
-var menuItemKey = regexp.MustCompile(`^win(iso|answer|driver)_[0-9]+$`)
+var menuItemKey = regexp.MustCompile(`^(install|winiso|winanswer|windriver)_[0-9]+$`)
 
 // draftFromVersion restores saved placements/settings without parsing the script.
 // The nil-Items parser is a temporary bridge for unconverted callers.

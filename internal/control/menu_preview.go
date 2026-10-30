@@ -1,6 +1,7 @@
 package control
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -172,10 +173,10 @@ const previewBaseURL = "http://preview.invalid"
 // buildMenuPreview renders the draft the way iPXE will show it: the screen
 // that holds the selected item (or the one asked for), the whole structure,
 // and the selected item's details.
-func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow, installs []installationRow, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, key, screenLabel string) *menuPreview {
+func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow, installs []installationRow, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, key, screenLabel string, sources ...InstallationMenuSources) *menuPreview {
 	preview := &menuPreview{Key: key, Count: len(draft.Items)}
 	for i := range rows {
-		if rows[i].Item.Key == key {
+		if menuDraftItemKey(rows[i].Item) == key {
 			preview.Item, preview.Position = &rows[i], i+1
 		}
 	}
@@ -186,6 +187,38 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	if install, ok := installByKey[key]; ok {
 		preview.Install = &install
 	}
+	if preview.Item != nil && preview.Item.Item.InstallationID > 0 {
+		entry, _, err := resolveDraftItem(preview.Item.Item, "", sources, profiles, answers, configs)
+		if err == nil {
+			detail := installationRow{Key: key, Title: preview.Item.Title}
+			if entry.kind == BootProfileUbuntuBuiltin {
+				for _, source := range sources {
+					for _, installation := range source.Installations {
+						if installation.ID != preview.Item.Item.InstallationID {
+							continue
+						}
+						for _, profile := range source.BootProfiles {
+							if profile.ID == installation.BootProfileID {
+								detail.Image = profile.Title
+							}
+						}
+					}
+				}
+			} else {
+				sourceKey := fmt.Sprintf("winiso_%d", entry.windowsISOID)
+				if entry.answerID > 0 {
+					sourceKey = fmt.Sprintf("winanswer_%d", entry.answerID)
+				}
+				if entry.driverConfigID > 0 {
+					sourceKey = fmt.Sprintf("windriver_%d", entry.driverConfigID)
+				}
+				detail = installByKey[sourceKey]
+				detail.Key, detail.Title = key, preview.Item.Title
+			}
+			preview.Install = &detail
+		}
+	}
+
 	switch key {
 	case "ubuntu":
 		preview.Builtin = "Ubuntu Desktop — встроенный пункт. Здесь можно включить его и выбрать каталог в меню."
@@ -207,7 +240,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 			preview.Removed = append(preview.Removed, title)
 		}
 	}
-	script, err := BuildMenuFromDraft(draft, previewBaseURL, profiles, answers, configs)
+	script, err := BuildMenuFromDraft(draft, previewBaseURL, profiles, answers, configs, sources...)
 	var screens []menuScreen
 	if err == nil {
 		screens = parseMenuScreens(string(script))
@@ -220,7 +253,8 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 			preview.Error = err.Error()
 		}
 		for _, row := range rows {
-			preview.Lines = append(preview.Lines, previewLine{Text: row.Title, Key: row.Item.Key, Href: "/menu?item=" + row.Item.Key, Mark: "·", Broken: !row.Available, Added: added[row.Item.Key], Selected: row.Item.Key == key, ShowKey: true})
+			rowKey := row.Key()
+			preview.Lines = append(preview.Lines, previewLine{Text: row.Title, Key: rowKey, Href: "/menu?item=" + rowKey, Mark: "·", Broken: !row.Available, Added: added[rowKey], Selected: rowKey == key, ShowKey: true})
 		}
 		return preview
 	}
@@ -264,7 +298,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 		preview.Rows = preview.Rows[:len(preview.Rows)-1]
 	}
 	treeLines := menuTreeLines(screens)
-	if !draft.Ubuntu {
+	if (len(sources) == 0 || len(sources[0].BootProfiles) == 0) && !draft.Ubuntu {
 		// Keep the hidden client item selectable in the editor for re-enabling.
 		treeLines = append(treeLines, menuTreeLine{Text: "Ubuntu Desktop 26.04.1", Key: "ubuntu", Parent: screens[0].Label, Fixed: true})
 	}
@@ -278,7 +312,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	}
 	broken := map[string]bool{}
 	for _, row := range rows {
-		broken[row.Item.Key] = !row.Available
+		broken[menuDraftItemKey(row.Item)] = !row.Available
 	}
 	for _, line := range treeLines {
 		out := previewLine{Text: line.Text, Key: line.Key, Parent: line.Parent, Pad: strings.Repeat("  ", line.Depth), Folder: line.Folder, Fixed: line.Fixed, Added: added[line.Key], Broken: broken[line.Key], Selected: key != "" && line.Key == key, ShowKey: !line.Folder && titles[line.Text] > 1}

@@ -22,6 +22,8 @@ type menuDraftRow struct {
 	Error     string
 }
 
+func (row menuDraftRow) Key() string { return menuDraftItemKey(row.Item) }
+
 func menuItemKind(key string) string {
 	switch {
 	case strings.HasPrefix(key, "winanswer_"):
@@ -47,8 +49,13 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	sources, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), 503)
+		return
+	}
 	for _, version := range versions {
-		data.Versions = append(data.Versions, menuVersionRow{MenuVersion: version, Restorable: menuSnapshotRestorable(version.Script, profiles, answers, configs)})
+		data.Versions = append(data.Versions, menuVersionRow{MenuVersion: version, Restorable: menuVersionRestorable(version, sources, profiles, answers, configs)})
 		if version.Active {
 			data.ActiveVersion = version.ID
 		}
@@ -59,7 +66,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Draft = draft
-	data.DraftRows = menuDraftRows(draft, profiles, answers, configs)
+	data.DraftRows = menuDraftRows(draft, profiles, answers, configs, sources)
 	data.Changes = diffMenuDraft(active, draft)
 	// The draft bar on this page follows the same read as the page itself.
 	data.Info.Draft = summarizeChanges(data.Changes)
@@ -71,15 +78,25 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	if !menuScreenLabel.MatchString(screen) {
 		screen = ""
 	}
-	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installationRows(profiles, answers, configs, draft, active), profiles, answers, configs, key, screen)
+	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installationRows(profiles, answers, configs, draft, active), profiles, answers, configs, key, screen, sources)
 	render(w, "menu", data)
 }
 
-func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) []menuDraftRow {
+func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, sources ...InstallationMenuSources) []menuDraftRow {
 	var rows []menuDraftRow
 	for _, item := range draft.Items {
 		row := menuDraftRow{Item: item, Title: item.Title, Kind: menuItemKind(item.Key), Available: true, Folder: item.Folder}
-		entry, folder, err := menuProfileForKey(item.Key, "", profiles, answers, configs)
+		entry, folder, err := resolveDraftItem(item, "", sources, profiles, answers, configs)
+		if item.InstallationID > 0 {
+			switch {
+			case entry.kind == BootProfileUbuntuBuiltin:
+				row.Kind = "Ubuntu"
+			case entry.driverConfigID > 0:
+				row.Kind = "Образ с драйверами"
+			case entry.answerID > 0:
+				row.Kind = "Образ и файл ответов"
+			}
+		}
 		if item.Folder == defaultMenuFolder {
 			// The item follows its object's folder.
 			row.Folder = folder
@@ -90,11 +107,32 @@ func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []Windows
 			row.Title = entry.title
 		}
 		if row.Title == "" {
-			row.Title = item.Key
+			row.Title = menuDraftItemKey(item)
 		}
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// installationMenuSources reads shared identities for rendering and restoration.
+func (s *Server) installationMenuSources(ctx context.Context) (InstallationMenuSources, error) {
+	store, ok := s.Store.(interface {
+		Installations(context.Context) ([]Installation, error)
+		BootProfiles(context.Context) ([]BootProfile, error)
+	})
+	if !ok {
+		// Temporary legacy caller bridge.
+		return InstallationMenuSources{}, nil
+	}
+	items, err := store.Installations(ctx)
+	if err != nil {
+		return InstallationMenuSources{}, err
+	}
+	profiles, err := store.BootProfiles(ctx)
+	if err != nil {
+		return InstallationMenuSources{}, err
+	}
+	return InstallationMenuSources{Installations: items, BootProfiles: profiles}, nil
 }
 
 // menuSources reads the objects menu items can point to.
@@ -148,6 +186,43 @@ func menuSnapshotRestorable(script string, profiles []WindowsProfile, answers []
 	return true
 }
 
+func menuVersionRestorable(version MenuVersion, sources InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) bool {
+	if version.Items == nil {
+		return menuSnapshotRestorable(version.Script, profiles, answers, configs)
+	}
+	_, err := BuildMenuFromDraft(draftFromVersion(version), previewBaseURL, profiles, answers, configs, sources)
+	return err == nil
+}
+
+// verifyMenuVersion resolves structural references before checking the snapshot's
+// immutable Windows component hashes and the prepared files behind them.
+func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) error {
+	if version.Items == nil {
+		return s.verifyMenuWindowsProfiles(ctx, version.Script)
+	}
+	sources, err := s.installationMenuSources(ctx)
+	if err != nil {
+		return err
+	}
+	profiles, answers, configs, err := s.menuSources(ctx)
+	if err != nil {
+		return err
+	}
+	draft := draftFromVersion(version)
+	if _, err := BuildMenuFromDraft(draft, previewBaseURL, profiles, answers, configs, sources); err != nil {
+		return err
+	}
+	entries := make([]menuProfile, 0, len(draft.Items))
+	for _, item := range draft.Items {
+		entry, _, err := resolveDraftItem(item, "", []InstallationMenuSources{sources}, profiles, answers, configs)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, entry)
+	}
+	return s.verifyMenuWindowsProfiles(ctx, version.Script, entries...)
+}
+
 func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 	s.draftMu.Lock()
 	defer s.draftMu.Unlock()
@@ -161,14 +236,34 @@ func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать черновик меню", 503)
 		return
 	}
-	script, err := BuildMenuFromDraft(draft, s.BootBaseURL, profiles, answers, configs)
+	sources, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), 503)
+		return
+	}
+	script, err := BuildMenuFromDraft(draft, s.BootBaseURL, profiles, answers, configs, sources)
 	if err != nil {
 		http.Error(w, "Меню не собрано: "+err.Error(), 400)
 		return
 	}
-	published := MenuVersion{Title: productMenuTitle, Label: draft.Label, Message: draft.Message, Script: string(script)}
+	published := MenuVersion{Title: productMenuTitle, Label: draft.Label, Message: draft.Message, Script: string(script), NoDiagnostics: draft.NoDiagnostics, LocalTimeout: draft.LocalTimeout, NoLocalTimer: draft.NoLocalTimer, Look: menuLook, Items: make([]MenuVersionItem, 0, len(draft.Items))}
+	for position, item := range draft.Items {
+		if item.InstallationID == 0 {
+			// Development bridge until form/list conversion.
+			published.Items = nil
+			break
+		}
+		entry, folder, _ := resolveDraftItem(item, "", []InstallationMenuSources{sources}, profiles, answers, configs)
+		if item.Title != "" {
+			entry.title = item.Title
+		}
+		if item.Folder != defaultMenuFolder {
+			folder = item.Folder
+		}
+		published.Items = append(published.Items, MenuVersionItem{InstallationID: item.InstallationID, Position: position, Title: entry.title, Folder: folder})
+	}
 	if s.publishMenu(w, r, published, "menu.publish") {
-		// Store the draft as it reads back from the published script, so
+		// Store the resolved published placements, so
 		// object titles and folders it relied on no longer look like changes.
 		s.saveDraftAfterPublish(r, published)
 	}
@@ -228,7 +323,7 @@ func (s *Server) saveDraftAfterPublish(r *http.Request, m MenuVersion) {
 func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersion, action string) bool {
 	s.menuMu.Lock()
 	defer s.menuMu.Unlock()
-	if err := s.verifyMenuWindowsProfiles(r.Context(), m.Script); err != nil {
+	if err := s.verifyMenuVersion(r.Context(), m); err != nil {
 		http.Error(w, "Профиль Windows ISO недоступен: "+err.Error(), http.StatusConflict)
 		return false
 	}
@@ -273,12 +368,23 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 	return true
 }
 
-func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string) error {
+func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, entries ...menuProfile) error {
 	selected := menuWindowsProfileIDs(script)
 	answerRefs := menuWindowsAnswerRefs(script)
 	driverRefs := menuDriverConfigRefs(script)
 	answerItems := map[int64]bool{}
 	driverItems := map[int64]bool{}
+	for _, entry := range entries {
+		if entry.windowsISOID > 0 {
+			selected[entry.windowsISOID] = true
+		}
+		if entry.answerID > 0 {
+			answerItems[entry.answerID] = true
+		}
+		if entry.driverConfigID > 0 {
+			driverItems[entry.driverConfigID] = true
+		}
+	}
 	for _, line := range strings.Split(script, "\n") {
 		if strings.HasPrefix(line, "item windriver_") {
 			fields := strings.Fields(line)

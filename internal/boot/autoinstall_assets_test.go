@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 var autoinstallTestData = []byte("#cloud-config\nautoinstall:\n  version: 1\n")
@@ -371,5 +373,142 @@ func TestAutoinstallPublicAssetsRejectSymlinkAliases(t *testing.T) {
 				t.Errorf("alias %s from %s: %d", path, remote, res.Code)
 			}
 		}
+	}
+}
+
+func TestAutoinstallStageRetrySyncsDirectoryChain(t *testing.T) {
+	for _, component := range []string{"version", "installation", "namespace", "root"} {
+		t.Run(component, func(t *testing.T) {
+			root := t.TempDir()
+			assets, err := NewAutoinstallAssets(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			digest := autoinstallDigest(autoinstallTestData)
+			if _, err := assets.Stage(7, digest, autoinstallTestData); err != nil {
+				t.Fatal(err)
+			}
+			target := map[string]string{"version": digest, "installation": "7", "namespace": "ubuntu-autoinstall", "root": assets.root}[component]
+			injected := errors.New("injected directory sync failure")
+			var synced []string
+			assets.syncDirectory = func(dir *os.File) error {
+				synced = append(synced, dir.Name())
+				if dir.Name() == target {
+					return injected
+				}
+				return dir.Sync()
+			}
+			if _, err := assets.Stage(7, digest, autoinstallTestData); !errors.Is(err, injected) {
+				t.Fatalf("retry skipped %s sync: err=%v synced=%v", component, err, synced)
+			}
+			assets.syncDirectory = (*os.File).Sync
+			if _, err := assets.Stage(7, digest, autoinstallTestData); err != nil {
+				t.Fatalf("recovered retry: %v", err)
+			}
+		})
+	}
+}
+
+func TestAutoinstallStageRetryAfterFailedPublicationSync(t *testing.T) {
+	root := t.TempDir()
+	assets, err := NewAutoinstallAssets(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := autoinstallDigest(autoinstallTestData)
+	injected := errors.New("injected publication sync failure")
+	assets.syncDirectory = func(dir *os.File) error {
+		if dir.Name() == "7" {
+			return injected
+		}
+		return dir.Sync()
+	}
+	for attempt := range 2 {
+		if _, err := assets.Stage(7, digest, autoinstallTestData); !errors.Is(err, injected) {
+			t.Fatalf("attempt %d bypassed failed sync: %v", attempt+1, err)
+		}
+	}
+	assets.syncDirectory = (*os.File).Sync
+	if _, err := assets.Stage(7, digest, autoinstallTestData); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAutoinstallConcurrentStagesDoNotInheritUnsyncedSuccess(t *testing.T) {
+	for _, losingRename := range []bool{false, true} {
+		t.Run(fmt.Sprintf("losing-rename=%v", losingRename), func(t *testing.T) {
+			root := t.TempDir()
+			winner, err := NewAutoinstallAssets(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			follower, err := NewAutoinstallAssets(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			digest := autoinstallDigest(autoinstallTestData)
+			renamed := make(chan struct{})
+			releaseWinner := make(chan struct{})
+			defer close(releaseWinner)
+			winner.syncDirectory = func(dir *os.File) error {
+				if dir.Name() == "7" {
+					close(renamed)
+					<-releaseWinner
+				}
+				return dir.Sync()
+			}
+			winnerResult := make(chan error, 1)
+			followerReady := make(chan struct{})
+			releaseFollower := make(chan struct{})
+			defer close(releaseFollower)
+			injected := errors.New("injected follower sync failure")
+			follower.syncDirectory = func(dir *os.File) error {
+				if strings.HasPrefix(dir.Name(), ".stage-") {
+					close(followerReady)
+					<-releaseFollower
+				}
+				if dir.Name() == "7" {
+					return injected
+				}
+				return dir.Sync()
+			}
+			followerResult := make(chan error, 1)
+			if losingRename {
+				go func() { _, err := follower.Stage(7, digest, autoinstallTestData); followerResult <- err }()
+				select {
+				case <-followerReady:
+				case <-time.After(5 * time.Second):
+					t.Fatal("follower did not reach pre-rename sync")
+				}
+			}
+			go func() { _, err := winner.Stage(7, digest, autoinstallTestData); winnerResult <- err }()
+			select {
+			case <-renamed:
+			case <-time.After(5 * time.Second):
+				t.Fatal("winner did not pause after rename")
+			}
+			if losingRename {
+				releaseFollower <- struct{}{}
+			} else {
+				go func() { _, err := follower.Stage(7, digest, autoinstallTestData); followerResult <- err }()
+			}
+			select {
+			case err := <-followerResult:
+				if !errors.Is(err, injected) {
+					t.Errorf("follower inherited unsynced success: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("follower did not finish")
+			}
+			releaseWinner <- struct{}{}
+			select {
+			case err := <-winnerResult:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("winner did not finish")
+			}
+		})
 	}
 }

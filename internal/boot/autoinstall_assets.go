@@ -26,7 +26,10 @@ type AssetInfo struct {
 
 // AutoinstallAssets persists versioned NoCloud pairs under the Boot asset root.
 // It has no in-memory inventory: checks also work after a process restart.
-type AutoinstallAssets struct{ root string }
+type AutoinstallAssets struct {
+	root          string
+	syncDirectory func(*os.File) error
+}
 
 func NewAutoinstallAssets(assetDir string) (*AutoinstallAssets, error) {
 	root, err := filepath.EvalSymlinks(assetDir)
@@ -42,7 +45,7 @@ func NewAutoinstallAssets(assetDir string) (*AutoinstallAssets, error) {
 		return nil, err
 	}
 	dir.Close()
-	return &AutoinstallAssets{root: root}, nil
+	return &AutoinstallAssets{root: root, syncDirectory: (*os.File).Sync}, nil
 }
 
 func canonicalPositiveID(raw string) bool {
@@ -80,7 +83,8 @@ func autoinstallMetaData(id int64, digest string) []byte {
 func assetDigest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 
 // Stage writes and syncs both files in an unreachable sibling directory before
-// atomically renaming it to its final digest. Existing versions are only checked.
+// atomically renaming it to its final digest. Every successful call checks the
+// complete pair and syncs its directory chain, including unchanged versions.
 func (a *AutoinstallAssets) Stage(id int64, digest string, userData []byte) (AssetInfo, error) {
 	parts, err := autoinstallParts(id, digest)
 	if err != nil {
@@ -100,7 +104,7 @@ func (a *AutoinstallAssets) Stage(id int64, digest string, userData []byte) (Ass
 	existing, err := openAutoinstallChildDirectory(parent, digest)
 	if err == nil {
 		defer existing.Close()
-		return checkAutoinstallPair(existing, id, digest)
+		return a.checkAndSync(id, digest)
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return AssetInfo{}, err
@@ -137,21 +141,54 @@ func (a *AutoinstallAssets) Stage(id int64, digest string, userData []byte) (Ass
 			return AssetInfo{}, err
 		}
 	}
-	if err := temp.Sync(); err != nil {
+	if err := a.syncDirectory(temp); err != nil {
 		return AssetInfo{}, err
 	}
 	if err := unix.Renameat(int(parent.Fd()), tempName, int(parent.Fd()), digest); err != nil {
 		// A concurrent identical stage may have published first. Never replace it.
-		if info, checkErr := a.Check(id, digest); checkErr == nil {
-			return info, nil
+		info, checkErr := a.checkAndSync(id, digest)
+		if checkErr != nil {
+			return AssetInfo{}, fmt.Errorf("publish autoinstall pair (%v): %w", err, checkErr)
 		}
-		return AssetInfo{}, fmt.Errorf("publish autoinstall pair: %w", err)
+		return info, nil
 	}
 	published = true
-	if err := parent.Sync(); err != nil {
+	return a.checkAndSync(id, digest)
+}
+
+// Every successful staging call establishes durability for itself. A complete
+// version may belong to a concurrent writer paused after rename, or to a prior
+// attempt whose directory sync failed; its presence alone is insufficient.
+func (a *AutoinstallAssets) checkAndSync(id int64, digest string) (AssetInfo, error) {
+	parts, err := autoinstallParts(id, digest)
+	if err != nil {
 		return AssetInfo{}, err
 	}
-	return a.Check(id, digest)
+	root, err := openAutoinstallDirectory(a.root, nil, false)
+	if err != nil {
+		return AssetInfo{}, err
+	}
+	defer root.Close()
+	chain := []*os.File{root}
+	for _, part := range parts {
+		next, err := openAutoinstallChildDirectory(chain[len(chain)-1], part)
+		if err != nil {
+			return AssetInfo{}, err
+		}
+		defer next.Close()
+		chain = append(chain, next)
+	}
+	info, err := checkAutoinstallPair(chain[len(chain)-1], id, digest)
+	if err != nil {
+		return AssetInfo{}, err
+	}
+	// Sync children before their parent entries, including the configured root.
+	for i := len(chain) - 1; i >= 0; i-- {
+		if err := a.syncDirectory(chain[i]); err != nil {
+			return AssetInfo{}, err
+		}
+	}
+	return info, nil
 }
 
 func (a *AutoinstallAssets) Check(id int64, digest string) (AssetInfo, error) {

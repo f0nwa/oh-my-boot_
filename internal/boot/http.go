@@ -208,7 +208,7 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 		if autoinstall {
 			file, err = openPublicAutoinstallAsset(root, name)
 		} else {
-			file, err = os.Open(resolved)
+			file, err = openResolvedAsset(root, rel)
 		}
 		if err != nil {
 			notFound()
@@ -290,4 +290,20 @@ func helloPath(query url.Values) string {
 		}
 	}
 	return "/boot/hello?" + kept.Encode()
+}
+
+// Alias resolution happens before the namespace policy check. Open the resolved
+// path without following any subsequent symlink substitutions, retaining stable
+// aliases while preventing a concurrent update from redirecting this request.
+func openResolvedAsset(root, relative string) (*os.File, error) {
+	if !filepath.IsLocal(relative) {
+		return nil, fmt.Errorf("asset path is outside the root")
+	}
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	dir, err := openAutoinstallDirectory(root, parts[:len(parts)-1], false)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	return openAutoinstallFile(dir, parts[len(parts)-1])
 }

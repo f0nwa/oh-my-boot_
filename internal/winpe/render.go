@@ -100,14 +100,18 @@ func renderAnswerStartup(base []byte, profileID int64, peImage bool) ([]byte, er
 // RenderDriverStartup adds selected INF loads before WinPE initializes the
 // network. The original SMB mapping and Setup command remain in the script.
 func RenderDriverStartup(base []byte, infPaths []string) ([]byte, error) {
-	return renderDriverStartup(base, infPaths, "Oh My Boot")
+	return renderDriverStartup(base, infPaths, "OMB")
 }
 
-// RenderDriverStartupLegacy is the script of driver configurations built
-// before the product was renamed from PXE Platform; they stay valid until
-// they are rebuilt.
-func RenderDriverStartupLegacy(base []byte, infPaths []string) ([]byte, error) {
-	return renderDriverStartup(base, infPaths, "PXE Platform")
+// LegacyMessagePrefixes are the prefixes of WinPE messages in scripts built
+// before they became "OMB:"; such driver configurations stay valid until they
+// are rebuilt.
+var LegacyMessagePrefixes = []string{"PXE Platform", "Oh My Boot"}
+
+// RenderDriverStartupLegacy is RenderDriverStartup with an older message
+// prefix from LegacyMessagePrefixes.
+func RenderDriverStartupLegacy(base []byte, infPaths []string, prefix string) ([]byte, error) {
+	return renderDriverStartup(base, infPaths, prefix)
 }
 
 func renderDriverStartup(base []byte, infPaths []string, product string) ([]byte, error) {

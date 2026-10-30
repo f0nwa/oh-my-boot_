@@ -6,7 +6,7 @@ import (
 )
 
 func TestDriverStartupLoadsBeforeNetworkAndSetup(t *testing.T) {
-	base := []byte("@echo off\r\necho Oh My Boot: initializing network...\r\nwpeinit\r\nnet use Y: \\server\\share\r\nY:\\17\\sources\\setup.exe\r\n:failed\r\ncmd /k\r\n")
+	base := []byte("@echo off\r\necho OMB: initializing network...\r\nwpeinit\r\nnet use Y: \\server\\share\r\nY:\\17\\sources\\setup.exe\r\n:failed\r\ncmd /k\r\n")
 	got, err := RenderDriverStartup(base, []string{"pxe-drivers/abcdef/net/driver.inf"})
 	if err != nil {
 		t.Fatal(err)

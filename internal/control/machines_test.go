@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -18,11 +19,12 @@ func TestMachineRowsJoinDHCPTFTPAndHTTP(t *testing.T) {
 		{At: t0.Add(61 * time.Second), Kind: "tftp-failed", IP: "10.30.0.20", Detail: "ipxeboot/x86_64/undionly.kpxe"},
 	}
 	httpEvents := []boot.Event{
+		{At: t0.Add(15 * time.Second), Kind: "choice", Path: "/boot/choice?id=4", RemoteAddr: "10.30.0.19:5000", MAC: "bc:24:11:04:2a:ed"},
 		{At: t0.Add(30 * time.Second), Kind: "asset", Path: "/assets/windows-driver-wims/abc/boot.wim", RemoteAddr: "10.30.0.19:5000", MAC: "bc:24:11:04:2a:ed"},
 		{At: t0.Add(20 * time.Second), Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.19:5000", MAC: "bc:24:11:04:2a:ed"},
 		{At: t0.Add(10 * time.Second), Kind: "menu", Path: "/boot/menu.ipxe", RemoteAddr: "10.30.0.19:5000", MAC: "bc:24:11:04:2a:ed"},
 	}
-	names := map[string]string{"windriver_4": "Windows 11 VirtIO Net SCSI test"}
+	names := map[string]string{"install_4": "Windows 11 VirtIO Net SCSI test"}
 	rows := machineRows(httpEvents, dhcp, names)
 	if len(rows) != 2 {
 		t.Fatalf("rows=%+v", rows)
@@ -134,7 +136,7 @@ func TestMachineProgressFollowsTheFurthestStepOfABoot(t *testing.T) {
 	if len(rows) != 1 || rows[0].Stage != "ipxe" || rows[0].Firmware != "UEFI" {
 		t.Fatalf("rows=%+v", rows)
 	}
-	if got := trailStates(machineTrail(rows[0], false)); got != "done,done,done,none,none,none" {
+	if got := trailStates(machineTrail(rows[0], false)); got != "done,done,done,none,none,none,none" {
 		t.Fatalf("trail=%s", got)
 	}
 	sessions := machineSessions(mac, nil, dhcp, nil)
@@ -155,5 +157,67 @@ func TestMachineProgressFollowsTheFurthestStepOfABoot(t *testing.T) {
 	later := append(dhcp, agent.DHCPEvent{At: t0.Add(5 * time.Hour), Kind: "PXE", MAC: mac})
 	if rows := machineRows(nil, later, nil); rows[0].Stage != "pxe" {
 		t.Fatalf("new boot stage=%s", rows[0].Stage)
+	}
+}
+
+func TestMachinesUseExplicitChoiceForSharedUbuntuFiles(t *testing.T) {
+	at := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	names := map[string]string{"install_100": "Ubuntu Lab", "install_101": "Ubuntu Rescue"}
+	choice := boot.Event{Kind: "choice", Path: "/boot/choice?id=101", At: at, MAC: "bc:24:11:04:2a:ed", RemoteAddr: "10.30.0.19:1"}
+	file := boot.Event{Kind: "asset", Path: "/assets/ubuntu/vmlinuz", At: at.Add(time.Second), MAC: choice.MAC, RemoteAddr: choice.RemoteAddr}
+	for _, tc := range []struct {
+		name                  string
+		events                []boot.Event
+		wantChoice, wantStage string
+		ok                    bool
+	}{
+		{"choice only", []boot.Event{choice}, "Ubuntu Rescue", "choice", false},
+		{"choice then files", []boot.Event{choice, file}, "Ubuntu Rescue", "files", true},
+		{"files without choice", []boot.Event{file}, "", "files", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rows := machineRows(tc.events, nil, names)
+			if len(rows) != 1 || rows[0].Choice != tc.wantChoice || rows[0].Stage != tc.wantStage {
+				t.Fatalf("rows=%+v", rows)
+			}
+			sessions := machineSessions(choice.MAC, tc.events, nil, names)
+			if len(sessions) != 1 || sessions[0].Choice != tc.wantChoice || sessions[0].Outcome != tc.wantStage || sessions[0].OK() != tc.ok {
+				t.Fatalf("sessions=%+v", sessions)
+			}
+			for _, step := range sessions[0].Steps {
+				if step.Raw == file.Path && step.Stage == "Выбор" {
+					t.Fatalf("file transfer became choice: %+v", step)
+				}
+			}
+		})
+	}
+}
+
+func TestMenuNamesUseInstallationIdentityAndPublishedTitle(t *testing.T) {
+	s, store := newInstallServer(t)
+	store.installations = []Installation{{ID: 100, BootProfileID: 52, Title: "Ubuntu Lab"}, {ID: 101, BootProfileID: 52, Title: "Ubuntu Rescue"}}
+	store.versions = []MenuVersion{{ID: 1, Active: true, Items: []MenuVersionItem{{InstallationID: 101, Title: "Published Rescue"}}}}
+	names := s.menuNames(context.Background())
+	if len(names) != 2 || names["install_100"] != "Ubuntu Lab" || names["install_101"] != "Published Rescue" {
+		t.Fatalf("names=%+v", names)
+	}
+}
+
+func TestMachineChoiceUsesMostRecentEventWithoutChangingTransferStage(t *testing.T) {
+	at := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	mac := "bc:24:11:04:2a:ed"
+	events := []boot.Event{
+		{Kind: "choice", Path: "/boot/choice?id=101", At: at.Add(2 * time.Second), MAC: mac},
+		{Kind: "choice", Path: "/boot/choice?id=100", At: at, MAC: mac},
+		{Kind: "asset", Path: "/assets/ubuntu/vmlinuz", At: at.Add(time.Second), MAC: mac},
+	}
+	names := map[string]string{"install_100": "Lab", "install_101": "Rescue"}
+	rows := machineRows(events, nil, names)
+	sessions := machineSessions(mac, events, nil, names)
+	if len(rows) != 1 || rows[0].Choice != "Rescue" || rows[0].Stage != "files" {
+		t.Fatalf("rows=%+v", rows)
+	}
+	if len(sessions) != 1 || sessions[0].Choice != "Rescue" || sessions[0].Outcome != "files" {
+		t.Fatalf("sessions=%+v", sessions)
 	}
 }

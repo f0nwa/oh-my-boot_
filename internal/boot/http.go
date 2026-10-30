@@ -94,6 +94,31 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			}
 		})
 	}
+	// Choice telemetry is public like the menu and grants no management access.
+	mux.HandleFunc("/boot/choice", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		query, err := url.ParseQuery(r.URL.RawQuery)
+		ids := query["id"]
+		if err != nil || len(ids) != 1 {
+			http.Error(w, "invalid installation ID", http.StatusBadRequest)
+			return
+		}
+		id, err := strconv.ParseInt(ids[0], 10, 64)
+		if err != nil || id <= 0 || strconv.FormatInt(id, 10) != ids[0] {
+			http.Error(w, "invalid installation ID", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte("#!ipxe\n"))
+		if record != nil {
+			record(Event{Kind: "choice", Path: "/boot/choice?id=" + strconv.FormatInt(id, 10), RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
+		}
+	})
 	mux.HandleFunc("/boot/menu.ipxe", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")

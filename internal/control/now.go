@@ -11,7 +11,7 @@ import (
 	"pxe-platform/internal/boot"
 )
 
-// trailStep is one of the six boot steps shown for a machine on the
+// trailStep is one of the boot steps shown for a machine on the
 // «Сейчас» page. State is done, current, failed or none.
 type trailStep struct {
 	Label, Sub, State string
@@ -62,13 +62,10 @@ const nowMachineLimit = 50
 // booting right now.
 const liveWindow = 3 * time.Minute
 
-var trailLabels = []string{"DHCP", "TFTP", "iPXE", "Меню", "Выбор", "Установка"}
+var trailLabels = []string{"DHCP", "TFTP", "iPXE", "Меню", "Выбор", "Файлы", "Установка"}
 
-// machineTrail turns a machine summary into the six boot steps. The step
-// after the last completed one is current while the machine is still active.
-// «Выбор» covers the boot files of the chosen item: iPXE does not report the
-// choice itself, so the first file request is the choice, and the last ones
-// (boot.wim) are its download.
+// machineTrail keeps explicit choice telemetry separate from file transfer.
+// A missing choice stays unknown even when the boot files have been served.
 func machineTrail(row machineRow, live bool) []trailStep {
 	done := 1 // the machine is in the log, so DHCP answered
 	failed := -1
@@ -83,21 +80,20 @@ func machineTrail(row machineRow, live bool) []trailStep {
 		done = 3
 	case "menu":
 		done = 4
-	case "files_failed":
-		done, failed = 4, 4
-	case "files", "winpe", "copy":
+	case "choice":
 		done = 5
-	case "stuck", "winpe_left", "copy_broken":
+	case "files_failed":
 		done, failed = 5, 5
-	case "copied":
+	case "files", "winpe", "copy":
 		done = 6
-	}
-	if row.Stage == "files" && row.Choice == "" {
-		done = 4
+	case "stuck", "winpe_left", "copy_broken":
+		done, failed = 6, 6
+	case "copied":
+		done = 7
 	}
 	// A boot file still on its way: the choice is made but not yet loaded.
 	if row.Download != nil && row.Stage == "files" {
-		done = 4
+		done = 5
 	}
 	// While Setup holds the share, the machine is busy even if the last
 	// boot request was long ago.
@@ -130,16 +126,20 @@ func machineTrail(row machineRow, live bool) []trailStep {
 		steps[3].Sub = "ждёт выбора"
 	}
 	steps[4].Sub = row.Choice
+	// Later file or Setup progress never invents a missing choice event.
+	if row.Choice == "" && row.Stage != "menu" {
+		steps[4].State = "none"
+	}
 	switch {
 	case row.Stage == "files_failed":
-		steps[4].File, steps[4].Sub = problemFile(row.Problem), problemText(row.Problem)
+		steps[5].File, steps[5].Sub = problemFile(row.Problem), problemText(row.Problem)
 	case row.Download != nil:
-		steps[4].File, steps[4].Sub = fileName(row.Download.Path), ""
-		steps[4].Bytes, steps[4].Total = row.Download.Bytes, row.Download.Size
+		steps[5].File, steps[5].Sub = fileName(row.Download.Path), ""
+		steps[5].Bytes, steps[5].Total = row.Download.Bytes, row.Download.Size
 	}
-	steps[5].Sub = map[string]string{"winpe": "WinPE подключился", "copy": "копирует Windows", "copied": "скопировано, перезагрузка", "stuck": "застрял в WinPE", "winpe_left": "отключился", "copy_broken": "связь прервалась"}[row.Stage]
+	steps[6].Sub = map[string]string{"winpe": "WinPE подключился", "copy": "копирует Windows", "copied": "скопировано, перезагрузка", "stuck": "застрял в WinPE", "winpe_left": "отключился", "copy_broken": "связь прервалась"}[row.Stage]
 	if row.Stage == "copy" || row.Stage == "copied" || row.Stage == "copy_broken" {
-		steps[5].Bytes = row.CopyRead
+		steps[6].Bytes = row.CopyRead
 	}
 	return steps
 }

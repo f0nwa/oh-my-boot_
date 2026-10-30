@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"path"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,7 +15,7 @@ import (
 
 // machineRow sums up what one PXE client (by MAC) did most recently.
 // Stage is the furthest step of its latest boot: pxe, loader,
-// loader_failed, loader_rejected, ipxe, menu or files.
+// loader_failed, loader_rejected, ipxe, menu, choice or files.
 type machineRow struct {
 	MAC, IP, Firmware, Stage, Choice string
 	LastSeen                         time.Time
@@ -156,25 +155,21 @@ func soleRecentPXEClient(dhcp []agent.DHCPEvent, at time.Time) string {
 	return mac
 }
 
-var choicePath = regexp.MustCompile(`^/assets/(windows-driver-configs|windows-answers|windows-profiles)/([0-9]+)/`)
-
-// choiceKey names the installation a boot file belongs to; more specific
-// installations rank higher.
-func choiceKey(e boot.Event) (string, int) {
-	if m := choicePath.FindStringSubmatch(e.Path); m != nil {
-		switch m[1] {
-		case "windows-driver-configs":
-			return "windriver_" + m[2], 3
-		case "windows-answers":
-			return "winanswer_" + m[2], 2
-		default:
-			return "winiso_" + m[2], 1
-		}
+// choiceKey reads only the canonical choice events recorded by Boot. Shared
+// profile files cannot identify an installation, even for older events.
+func choiceKey(e boot.Event) string {
+	if e.Kind != "choice" {
+		return ""
 	}
-	if e.Kind == "iso" || strings.Contains(e.Path, "/ubuntu") {
-		return "ubuntu", 1
+	raw, ok := strings.CutPrefix(e.Path, "/boot/choice?id=")
+	if !ok {
+		return ""
 	}
-	return "", 0
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != raw {
+		return ""
+	}
+	return "install_" + raw
 }
 
 // shimRejectAfter is how long after the firmware got a UEFI shim the shim
@@ -203,7 +198,7 @@ func firmwareOf(file string) string {
 }
 
 // machineRows groups DHCP, TFTP and HTTP events by MAC. names maps menu keys
-// (winiso_N, …, ubuntu) to the titles people know them by.
+// (install_N) to the titles people know them by.
 func machineRows(httpEvents []boot.Event, dhcp []agent.DHCPEvent, names map[string]string) []machineRow {
 	return machineRowsWith(httpEvents, dhcp, installLog{}, names, time.Now())
 }
@@ -216,7 +211,6 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 		stage, ip string
 		firmware  string
 		key       string
-		rank      int
 		install   int // share session state; install moments never start a new boot
 		read      int64
 		started   time.Time // share session start of an install moment
@@ -246,11 +240,16 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 		en := entry{at: e.At, ip: eventIP(e.RemoteAddr), stage: "files"}
 		if e.Kind == "menu" {
 			en.stage = "menu"
+		} else if e.Kind == "choice" {
+			en.key = choiceKey(e)
+			if en.key == "" {
+				continue
+			}
+			en.stage = "choice"
 		}
-		en.key, en.rank = choiceKey(e)
 		en.problem = fileProblem(e)
 		en.bootWIM = isBootWIM(e) && en.problem == ""
-		if e.Kind != "menu" {
+		if e.Kind == "asset" || e.Kind == "iso" {
 			en.file = fileName(e.Path)
 		}
 		byMAC[e.MAC] = append(byMAC[e.MAC], en)
@@ -264,7 +263,6 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 		row := machineRow{MAC: mac}
 		var boot bootProgress
 		var last, bootWIMAt, bootStart, shimAt time.Time
-		bestRank := 0
 		problems := map[string]string{} // boot file -> its last problem in this boot
 		for _, en := range entries {
 			if en.install > 0 {
@@ -286,7 +284,7 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 			}
 			if last.IsZero() || en.at.Sub(last) > bootSessionGap || boot.restartedBy(en.stage) {
 				// A new boot attempt: progress and choice start over.
-				boot, row.Choice, bestRank, bootWIMAt, row.CopyRead, shimAt = bootProgress{}, "", 0, time.Time{}, 0, time.Time{}
+				boot, row.Choice, bootWIMAt, row.CopyRead, shimAt = bootProgress{}, "", time.Time{}, 0, time.Time{}
 				problems = map[string]string{}
 				bootStart = en.at
 			}
@@ -313,10 +311,10 @@ func machineRowsWith(httpEvents []boot.Event, dhcp []agent.DHCPEvent, install in
 			boot.add(en.stage)
 			if en.stage == "menu" {
 				row.Boots++
-				row.Choice, bestRank = "", 0
+				row.Choice = ""
 			}
-			if en.rank > bestRank {
-				row.Choice, bestRank = en.key, en.rank
+			if en.key != "" {
+				row.Choice = en.key
 			}
 		}
 		row.Stage = boot.stage()
@@ -364,19 +362,28 @@ func attachDownloads(rows []machineRow, transfers []boot.Transfer, now time.Time
 
 // menuNames maps menu keys to object titles for the machine summary.
 func (s *Server) menuNames(ctx context.Context) map[string]string {
-	names := map[string]string{"ubuntu": "Ubuntu Desktop"}
-	profiles, answers, configs, err := s.menuSources(ctx)
+	names := map[string]string{}
+	sources, err := s.installationMenuSources(ctx)
 	if err != nil {
 		return names
 	}
-	for _, p := range profiles {
-		names[keyFor("winiso", p.ID)] = p.Title
+	for _, item := range sources.Installations {
+		names[keyFor("install", item.ID)] = item.Title
 	}
-	for _, a := range answers {
-		names[keyFor("winanswer", a.ID)] = a.Title
-	}
-	for _, c := range configs {
-		names[keyFor("windriver", c.ID)] = c.Title
+	// The published title is the name clients actually saw when choosing.
+	versions, err := s.Store.MenuVersions(ctx)
+	if err == nil {
+		for _, version := range versions {
+			if !version.Active {
+				continue
+			}
+			for _, item := range version.Items {
+				if item.InstallationID > 0 && item.Title != "" {
+					names[keyFor("install", item.InstallationID)] = item.Title
+				}
+			}
+			break
+		}
 	}
 	return names
 }
@@ -386,7 +393,7 @@ func (s *Server) menuNames(ctx context.Context) map[string]string {
 // a UEFI shim aborts its first transfer on purpose before fetching the file
 // again, so the furthest step counts, not the last line.
 type bootProgress struct {
-	loaderSent, loaderFailed, ipxe, menu, files bool
+	loaderSent, loaderFailed, ipxe, menu, choice, files bool
 	// shim is a UEFI shim sent; chain is the loader it fetched after it.
 	// Without chain the shim never ran, and a DHCP answer after it is the
 	// firmware trying again, not iPXE.
@@ -401,11 +408,11 @@ type bootProgress struct {
 func (b bootProgress) restartedBy(stage string) bool {
 	switch stage {
 	case "loader", "loader_failed":
-		return b.ipxe || b.menu || b.files || b.install > 0
+		return b.ipxe || b.menu || b.choice || b.files || b.install > 0
 	case "loader_shim":
-		return b.chain || b.ipxe || b.menu || b.files || b.install > 0
+		return b.chain || b.ipxe || b.menu || b.choice || b.files || b.install > 0
 	case "menu":
-		return b.files || b.install > 0
+		return b.choice || b.files || b.install > 0
 	}
 	return false
 }
@@ -428,6 +435,8 @@ func (b *bootProgress) add(stage string) {
 		b.loaderFailed = true
 	case "menu":
 		b.menu = true
+	case "choice":
+		b.choice = true
 	case "files":
 		b.files = true
 	}
@@ -435,11 +444,11 @@ func (b *bootProgress) add(stage string) {
 
 // shimOnly reports a boot that got a UEFI shim and nothing after it.
 func (b bootProgress) shimOnly() bool {
-	return b.shim && !b.chain && !b.ipxe && !b.menu && !b.files && b.install == 0
+	return b.shim && !b.chain && !b.ipxe && !b.menu && !b.choice && !b.files && b.install == 0
 }
 
 // stage names the furthest step: copied, copy, winpe, winpe_left, files,
-// menu, ipxe, loader, loader_failed or pxe.
+// choice, menu, ipxe, loader, loader_failed or pxe.
 func (b bootProgress) stage() string {
 	if name, ok := installStageNames[b.install]; ok {
 		return name
@@ -447,6 +456,8 @@ func (b bootProgress) stage() string {
 	switch {
 	case b.files:
 		return "files"
+	case b.choice:
+		return "choice"
 	case b.menu:
 		return "menu"
 	case b.ipxe:
@@ -499,6 +510,8 @@ func machineStageLabel(stage string) string {
 		return "iPXE запущен"
 	case "menu":
 		return "Меню"
+	case "choice":
+		return "Установка выбрана"
 	case "files":
 		return "Загрузка файлов"
 	case "files_failed":

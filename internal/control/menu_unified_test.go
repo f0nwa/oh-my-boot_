@@ -46,11 +46,11 @@ func TestUnifiedMenuPublishesOrderedInstallationsAndStructure(t *testing.T) {
 	script := (*published)[0]
 	for _, want := range []string{
 		"item install_71 Ubuntu Lab\n", "item install_72 Windows Lab\n", "item install_73 Ubuntu Recovery\n",
-		":install_71\nkernel " + testBootURL + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + testBootURL + "/images/ubuntu-desktop.iso ---\n",
+		"kernel " + testBootURL + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + testBootURL + "/images/ubuntu-desktop.iso ---\n",
 		"initrd " + testBootURL + "/assets/ubuntu/initrd\n",
 		"iseq ${platform} efi && goto install_73_efi || goto install_73_boot\n",
 		"shim " + testBootURL + "/assets/ubuntu/bootx64.efi || goto install_73_failed\n",
-		":install_72\nkernel " + testBootURL + "/assets/windows/wimboot\n",
+		"kernel " + testBootURL + "/assets/windows/wimboot\n",
 		"initrd " + testBootURL + "/assets/windows-profiles/17/boot.wim boot.wim\n",
 	} {
 		if !strings.Contains(script, want) {
@@ -189,7 +189,7 @@ func TestUnifiedWindowsDriverPublicationKeepsChecks(t *testing.T) {
 	if res.Code != http.StatusSeeOther || len(*published) != 1 {
 		t.Fatalf("driver publish=%d %s", res.Code, res.Body.String())
 	}
-	for _, want := range []string{":install_72\nkernel " + testBootURL + "/assets/windows/wimboot", "/assets/windows-driver-wims/" + strings.Repeat("1", 64) + "/boot.wim", "/assets/windows-driver-configs/2/pxe-setup.cmd", "/assets/windows-answers/31/pxe-answer.xml"} {
+	for _, want := range []string{"kernel " + testBootURL + "/assets/windows/wimboot", "/assets/windows-driver-wims/" + strings.Repeat("1", 64) + "/boot.wim", "/assets/windows-driver-configs/2/pxe-setup.cmd", "/assets/windows-answers/31/pxe-answer.xml"} {
 		if !strings.Contains((*published)[0], want) {
 			t.Errorf("missing %s", want)
 		}
@@ -198,5 +198,30 @@ func TestUnifiedWindowsDriverPublicationKeepsChecks(t *testing.T) {
 	res = menuPost(t, s, "/menu/rollback", url.Values{"id": {"100"}})
 	if res.Code < 400 || len(*published) != 1 {
 		t.Fatalf("restored changed driver build: %d publishes=%d", res.Code, len(*published))
+	}
+}
+
+func TestUnifiedMenuReportsChoiceBeforeBootFiles(t *testing.T) {
+	for _, windows := range []string{"manual", "answer", "drivers"} {
+		t.Run(windows, func(t *testing.T) {
+			s, store, published := unifiedMenuFixture(t)
+			switch windows {
+			case "answer":
+				store.installations[1].AnswerID = 31
+			case "drivers":
+				store.installations[1].DriverConfigID = 2
+				s.DriverConfigs, s.DriverPackages = &recordingDriverCheck{}, &recordingPackageCheck{}
+			}
+			res := menuPost(t, s, "/menu/publish", url.Values{})
+			if res.Code != http.StatusSeeOther || len(*published) != 1 {
+				t.Fatalf("publish=%d", res.Code)
+			}
+			for _, id := range []string{"71", "72", "73"} {
+				report := ":install_" + id + "\nimgfetch --name pxe-choice " + testBootURL + "/boot/choice?id=" + id + " && imgfree pxe-choice || echo -n\nkernel "
+				if strings.Count((*published)[0], report) != 1 {
+					t.Errorf("installation %s does not report exactly one choice before kernel with best-effort request", id)
+				}
+			}
+		})
 	}
 }

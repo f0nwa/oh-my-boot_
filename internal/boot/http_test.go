@@ -238,3 +238,38 @@ func TestUbuntuISOEndpointRejectsSymlink(t *testing.T) {
 		t.Fatalf("symlink exposed: %d %q", res.Code, res.Body.String())
 	}
 }
+
+func TestHandlerRecordsInstallationChoice(t *testing.T) {
+	var events []Event
+	h, err := NewHandler(t.TempDir(), []byte("#!ipxe\n"), func(e Event) { events = append(events, e) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{"", "0", "-1", "abc", "1.5", "+1", "01", "9223372036854775808", "1&id=2"} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/boot/choice?id="+raw, nil))
+		if res.Code != http.StatusBadRequest {
+			t.Errorf("id=%q: status=%d", raw, res.Code)
+		}
+	}
+	for _, method := range []string{http.MethodPost, http.MethodHead} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(method, "/boot/choice?id=73", nil))
+		if res.Code != http.StatusMethodNotAllowed || res.Header().Get("Allow") != "GET" {
+			t.Errorf("method=%s: status=%d allow=%q", method, res.Code, res.Header().Get("Allow"))
+		}
+	}
+	if len(events) != 0 {
+		t.Fatalf("invalid requests recorded: %+v", events)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/boot/choice?id=73&ignored=value", nil)
+	req.RemoteAddr = "10.30.0.19:1234"
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK || res.Body.String() != "#!ipxe\n" || res.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("response=%d %q headers=%v", res.Code, res.Body.String(), res.Header())
+	}
+	if len(events) != 1 || events[0].Kind != "choice" || events[0].Path != "/boot/choice?id=73" || events[0].RemoteAddr != req.RemoteAddr || events[0].At.IsZero() || events[0].Status != 0 || events[0].Size != 0 || events[0].Bytes != 0 {
+		t.Fatalf("events=%+v", events)
+	}
+}

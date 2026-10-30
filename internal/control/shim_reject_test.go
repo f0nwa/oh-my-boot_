@@ -48,7 +48,7 @@ func TestShimRejectedByFirmware(t *testing.T) {
 		if len(rows) != 1 || rows[0].Stage != "loader_rejected" || rows[0].Firmware != "UEFI" {
 			t.Fatalf("retries=%d: rows=%+v", retries, rows)
 		}
-		if got := trailStates(machineTrail(rows[0], true)); got != "done,done,failed,none,none,none" {
+		if got := trailStates(machineTrail(rows[0], true)); got != "done,done,failed,none,none,none,none" {
 			t.Fatalf("retries=%d: trail=%s", retries, got)
 		}
 		sessions := machineSessionsWith(mac, nil, dhcp, installLog{}, nil, last.Add(time.Minute))

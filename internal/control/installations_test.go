@@ -83,21 +83,21 @@ func TestObserverSeesNoInstallationButtons(t *testing.T) {
 	}
 }
 
-func TestInstallationUsageCountsBootsPerItem(t *testing.T) {
+func TestInstallationUsageCountsChoicesPerItem(t *testing.T) {
 	t0 := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
 	events := []boot.Event{
-		{At: t0, Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.19:1"},
+		{At: t0, Kind: "choice", Path: "/boot/choice?id=4", RemoteAddr: "10.30.0.19:1"},
 		{At: t0.Add(5 * time.Second), Kind: "asset", Path: "/assets/windows-driver-configs/4/winpeshl.ini", RemoteAddr: "10.30.0.19:1"},
-		{At: t0.Add(time.Hour), Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.19:1"},
-		{At: t0.Add(time.Minute), Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.20:1"},
+		{At: t0.Add(time.Hour), Kind: "choice", Path: "/boot/choice?id=4", RemoteAddr: "10.30.0.19:1"},
+		{At: t0.Add(time.Minute), Kind: "choice", Path: "/boot/choice?id=4", RemoteAddr: "10.30.0.20:1"},
 		{At: t0, Kind: "menu", Path: "/boot/menu.ipxe", RemoteAddr: "10.30.0.19:1"},
-		{At: t0.Add(2 * time.Hour), Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.10:1"},
+		{At: t0.Add(2 * time.Hour), Kind: "choice", Path: "/boot/choice?id=4", RemoteAddr: "10.30.0.10:1"},
 	}
 	use := installationUsage(events, map[string]bool{"10.30.0.10": true})
-	if use["windriver_4"].Count != 3 || !use["windriver_4"].Last.Equal(t0.Add(time.Hour)) || len(use) != 1 {
+	if use["install_4"].Count != 3 || !use["install_4"].Last.Equal(t0.Add(time.Hour)) || len(use) != 1 {
 		t.Fatalf("use=%+v", use)
 	}
-	if (installationRow{}).UsedLabel() != "не выбирали" || !strings.HasPrefix((installationRow{Used: 3, LastUsed: time.Now()}).UsedLabel(), "загрузок: 3 · ") {
+	if (installationRow{}).UsedLabel() != "не выбирали" || !strings.HasPrefix((installationRow{Used: 3, LastUsed: time.Now()}).UsedLabel(), "выборов: 3 · ") {
 		t.Fatal("used label")
 	}
 }
@@ -170,6 +170,38 @@ func TestUnifiedInstallationPagesTranslateUbuntuSource(t *testing.T) {
 		body := libraryGet(t, s, path)
 		if !strings.Contains(body, "System Ubuntu source") || strings.Contains(body, "Системный источник Ubuntu") {
 			t.Errorf("%s has untranslated Ubuntu source", path)
+		}
+	}
+}
+
+func TestInstallationUsageCountsExplicitChoicesSharingUbuntuAssets(t *testing.T) {
+	at := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	events := []boot.Event{
+		{Kind: "choice", Path: "/boot/choice?id=101", At: at.Add(time.Minute), RemoteAddr: "10.30.0.19:2"},
+		{Kind: "asset", Path: "/assets/ubuntu/vmlinuz", At: at.Add(2 * time.Second), RemoteAddr: "10.30.0.19:1"},
+		{Kind: "choice", Path: "/boot/choice?id=101", At: at, RemoteAddr: "10.30.0.19:1"},
+		{Kind: "asset", Path: "/assets/ubuntu/initrd", At: at.Add(3 * time.Second), RemoteAddr: "10.30.0.20:1"},
+		{Kind: "iso", Path: "/images/ubuntu-desktop.iso", At: at.Add(4 * time.Second), RemoteAddr: "10.30.0.20:1"},
+		{Kind: "choice", Path: "/boot/choice?id=100", At: at.Add(5 * time.Second), RemoteAddr: "10.30.0.10:1"},
+	}
+	use := installationUsage(events, map[string]bool{"10.30.0.10": true})
+	if len(use) != 1 || use["install_101"].Count != 2 || !use["install_101"].Last.Equal(at.Add(time.Minute)) || use["install_100"].Count != 0 {
+		t.Fatalf("usage=%+v", use)
+	}
+}
+
+func TestInstallationUsageIgnoresInvalidChoiceEvents(t *testing.T) {
+	for _, event := range []boot.Event{
+		{Kind: "choice", Path: "/boot/choice?id=0"},
+		{Kind: "choice", Path: "/boot/choice?id=-1"},
+		{Kind: "choice", Path: "/boot/choice?id=01"},
+		{Kind: "choice", Path: "/boot/choice?id=9223372036854775808"},
+		{Kind: "choice", Path: "/boot/choice?id=100&id=101"},
+		{Kind: "choice", Path: "/assets/ubuntu/vmlinuz"},
+		{Kind: "asset", Path: "/boot/choice?id=100"},
+	} {
+		if use := installationUsage([]boot.Event{event}, nil); len(use) != 0 {
+			t.Errorf("event=%+v use=%+v", event, use)
 		}
 	}
 }

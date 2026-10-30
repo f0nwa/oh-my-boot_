@@ -1,7 +1,6 @@
 package control
 
 import (
-	"sort"
 	"time"
 
 	"fmt"
@@ -25,18 +24,17 @@ type installationRow struct {
 	Error    string
 	// Folder is where the item shows in the menu; empty is the main screen.
 	Folder string
-	// Used counts boots that took this installation's files; LastUsed is
-	// the latest of them.
+	// Used counts explicit choices of this installation; LastUsed is the latest.
 	Used     int
 	LastUsed time.Time
 }
 
-// UsedLabel says how often and how recently machines took this installation.
+// UsedLabel says how often and how recently machines chose this installation.
 func (r installationRow) UsedLabel() string {
 	if r.Used == 0 {
 		return "не выбирали"
 	}
-	return fmt.Sprintf("загрузок: %d · %s", r.Used, ago(time.Now(), r.LastUsed))
+	return fmt.Sprintf("выборов: %d · %s", r.Used, ago(time.Now(), r.LastUsed))
 }
 
 // Group puts the status in one of the filters on the installations page.
@@ -64,32 +62,17 @@ func installationFilters() []installationFilter {
 	}
 }
 
-// usageWindow groups the files one machine fetched for one boot.
-const usageWindow = 10 * time.Minute
-
-// installationUsage counts, per menu item key, the boots that fetched its
-// files: one per client address and item within usageWindow. Requests from
-// the addresses in skip (the server itself checking its menu) do not count.
+// installationUsage counts explicit menu choices by installation ID. Each
+// choice counts once; file requests and server probes do not count.
 func installationUsage(events []boot.Event, skip map[string]bool) map[string]installationUse {
-	type bootKey struct {
-		ip, key string
-	}
-	last := map[bootKey]time.Time{}
 	use := map[string]installationUse{}
-	sorted := append([]boot.Event(nil), events...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].At.Before(sorted[j].At) })
-	for _, e := range sorted {
-		key, rank := choiceKey(e)
-		ip := eventIP(e.RemoteAddr)
-		if rank == 0 || skip[ip] {
+	for _, e := range events {
+		key := choiceKey(e)
+		if key == "" || skip[eventIP(e.RemoteAddr)] {
 			continue
 		}
-		k := bootKey{ip, key}
 		u := use[key]
-		if prev, ok := last[k]; !ok || e.At.Sub(prev) > usageWindow {
-			u.Count++
-		}
-		last[k] = e.At
+		u.Count++
 		if e.At.After(u.Last) {
 			u.Last = e.At
 		}

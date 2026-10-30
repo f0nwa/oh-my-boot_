@@ -24,16 +24,16 @@ func TestMachineTrailMarksDoneCurrentAndFailedSteps(t *testing.T) {
 		live bool
 		want string
 	}{
-		{machineRow{Stage: "pxe"}, true, "done,current,none,none,none,none"},
-		{machineRow{Stage: "loader_failed", Firmware: "BIOS"}, true, "done,failed,none,none,none,none"},
-		{machineRow{Stage: "menu"}, true, "done,done,done,done,current,none"},
-		{machineRow{Stage: "menu"}, false, "done,done,done,done,none,none"},
-		{machineRow{Stage: "files", Choice: "Win11"}, false, "done,done,done,done,done,none"},
-		{machineRow{Stage: "files", Choice: "Win11"}, true, "done,done,done,done,done,current"},
-		{machineRow{Stage: "copy", Choice: "Win11"}, false, "done,done,done,done,done,current"},
-		{machineRow{Stage: "copied", Choice: "Win11"}, false, "done,done,done,done,done,done"},
-		{machineRow{Stage: "stuck", Choice: "Win11"}, false, "done,done,done,done,done,failed"},
-		{machineRow{Stage: "files"}, true, "done,done,done,done,current,none"},
+		{machineRow{Stage: "pxe"}, true, "done,current,none,none,none,none,none"},
+		{machineRow{Stage: "loader_failed", Firmware: "BIOS"}, true, "done,failed,none,none,none,none,none"},
+		{machineRow{Stage: "menu"}, true, "done,done,done,done,current,none,none"},
+		{machineRow{Stage: "menu"}, false, "done,done,done,done,none,none,none"},
+		{machineRow{Stage: "files", Choice: "Win11"}, false, "done,done,done,done,done,done,none"},
+		{machineRow{Stage: "files", Choice: "Win11"}, true, "done,done,done,done,done,done,current"},
+		{machineRow{Stage: "copy", Choice: "Win11"}, false, "done,done,done,done,done,done,current"},
+		{machineRow{Stage: "copied", Choice: "Win11"}, false, "done,done,done,done,done,done,done"},
+		{machineRow{Stage: "stuck", Choice: "Win11"}, false, "done,done,done,done,done,done,failed"},
+		{machineRow{Stage: "files"}, true, "done,done,done,done,none,done,current"},
 	}
 	for _, c := range cases {
 		if got := trailStates(machineTrail(c.row, c.live)); got != c.want {
@@ -151,5 +151,16 @@ func TestNowPageFiltersMachines(t *testing.T) {
 	}
 	if body := render("now", failed, old); !strings.Contains(body, "Сейчас никто не грузится.") || !strings.Contains(body, "Последняя загрузка:") || !strings.Contains(body, failed.MAC) {
 		t.Fatalf("empty now: %s", body)
+	}
+}
+
+func TestMachineTrailSeparatesChoiceFromFileTransfer(t *testing.T) {
+	steps := machineTrail(machineRow{Stage: "choice", Choice: "Ubuntu Rescue"}, true)
+	if len(steps) != 7 || steps[4].Label != "Выбор" || steps[4].State != "done" || steps[4].Sub != "Ubuntu Rescue" || steps[5].Label != "Файлы" || steps[5].State != "current" {
+		t.Fatalf("choice trail=%+v", steps)
+	}
+	steps = machineTrail(machineRow{Stage: "files"}, false)
+	if len(steps) != 7 || steps[4].State != "none" || steps[4].Sub != "" || steps[5].State != "done" {
+		t.Fatalf("file-only trail=%+v", steps)
 	}
 }

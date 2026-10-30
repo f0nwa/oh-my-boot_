@@ -115,6 +115,7 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.BootProfileChoices = s.bootProfileChoices(r.Context(), sources.BootProfiles, profiles)
 	data.WindowsAnswerVariants, data.PackageChoices = answers, packageChoices(packages)
+	data.UbuntuAutoinstalls = sources.Autoinstalls
 	data.Form = pageForm(r)
 	if data.Form == nil {
 		data.Form = url.Values{}
@@ -178,6 +179,20 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ubuntu не поддерживает компоненты Windows", http.StatusBadRequest)
 		return
 	}
+	autoinstallID := int64(0)
+	if raw := r.FormValue("autoinstall_id"); raw != "" && raw != "0" {
+		autoinstallID, err = strconv.ParseInt(raw, 10, 64)
+		found := false
+		for _, file := range sources.Autoinstalls {
+			if file.ID == autoinstallID && file.State == "validated" {
+				found = true
+			}
+		}
+		if err != nil || autoinstallID <= 0 || shared.Kind != BootProfileUbuntuBuiltin || !found {
+			http.Error(w, "Выберите проверенный файл Autoinstall только для Ubuntu", http.StatusBadRequest)
+			return
+		}
+	}
 	answerID, answerTitle := int64(0), ""
 	if raw := r.FormValue("answer_id"); raw != "" && raw != "0" {
 		answerID, err = strconv.ParseInt(raw, 10, 64)
@@ -239,7 +254,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	item := Installation{BootProfileID: shared.ID, Title: title, Folder: folder, AnswerID: answerID}
+	item := Installation{BootProfileID: shared.ID, Title: title, Folder: folder, AnswerID: answerID, AutoinstallID: autoinstallID}
 	if len(infs) > 0 {
 		unique := map[string]bool{}
 		values := url.Values{"profile_id": {strconv.FormatInt(profile.ID, 10)}, "answer_id": {strconv.FormatInt(answerID, 10)}, "title": {title}, "folder": {folder}}

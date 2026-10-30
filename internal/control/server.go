@@ -221,6 +221,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /usb", s.protect("view", s.usbPage))
 	mux.HandleFunc("POST /usb/uefica", s.protect("view", withPageErrors(s.usbPage, s.ueficaUSBDownload)))
 	mux.HandleFunc("GET /assets/usb.js", usbScript)
+	mux.HandleFunc("GET /ubuntu-autoinstall", s.protect("view", s.ubuntuAutoinstallList))
+	mux.HandleFunc("GET /ubuntu-autoinstall/new", s.protect("images", s.ubuntuAutoinstallNew))
+	mux.HandleFunc("POST /ubuntu-autoinstall/preview", s.protect("images", s.ubuntuAutoinstallPreview))
+	mux.HandleFunc("POST /ubuntu-autoinstall/preview/download", s.protect("images", s.ubuntuAutoinstallPreviewDownload))
+	mux.HandleFunc("POST /ubuntu-autoinstall", s.protect("images", s.ubuntuAutoinstallSave))
+	mux.HandleFunc("GET /ubuntu-autoinstall/{id}", s.protect("view", s.ubuntuAutoinstallFile))
+	mux.HandleFunc("GET /ubuntu-autoinstall/{id}/download", s.protect("view", s.ubuntuAutoinstallFile))
+	mux.HandleFunc("GET /ubuntu-autoinstall/{id}/copy", s.protect("images", s.ubuntuAutoinstallFile))
 	mux.HandleFunc("GET /answers", s.protect("view", s.answersPage))
 	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
 	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))
@@ -503,6 +511,12 @@ func (s *Server) libraryData(r *http.Request) pageData {
 		data.ImageError = "Не удалось прочитать сценарии Windows"
 	} else {
 		data.WindowsAnswerVariants = answers
+	}
+	files, err := s.Store.UbuntuAutoinstalls(r.Context())
+	if err != nil {
+		data.ImageError = "Не удалось прочитать файлы Autoinstall"
+	} else {
+		data.UbuntuAutoinstalls = files
 	}
 	if s.Images == nil {
 		data.ImageError = "Сервис образов недоступен"

@@ -136,6 +136,12 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 				row.Answer, row.AnswerWipesDisk = answer.Title, answer.WipesDisk
 			}
 		}
+		for _, file := range source.Autoinstalls {
+			if file.ID == installation.AutoinstallID {
+				wipes := file.DiskMode == "serial"
+				row.Answer, row.AnswerWipesDisk = file.Title, &wipes
+			}
+		}
 		if row.Status == "" {
 			if _, _, err := menuProfileForInstallation(installation.ID, "", source, profiles, answers, configs); err != nil {
 				row.Status, row.Error = "unavailable", err.Error()

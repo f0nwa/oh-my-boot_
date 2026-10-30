@@ -30,6 +30,8 @@ type menuVersionRow struct {
 }
 
 type pageData struct {
+	UbuntuEditor          *ubuntuAutoinstallEditorView
+	UbuntuAutoinstalls    []UbuntuAutoinstallSummary
 	Editor                *editorView
 	USB                   *usbView
 	Journal               *journalView

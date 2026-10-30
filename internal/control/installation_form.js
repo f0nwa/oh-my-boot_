@@ -22,6 +22,9 @@
       group.hidden = !windows;
       group.disabled = !windows;
     });
+    var ubuntu = document.getElementById("ubuntu-autoinstall");
+    ubuntu.hidden = !profile || profile.dataset.kind !== "ubuntu_builtin";
+    ubuntu.disabled = ubuntu.hidden;
     ["summary-build-label", "summary-build"].forEach(function (id) { document.getElementById(id).hidden = !windows; });
     form.querySelectorAll('input[name="answer_id"][data-profile]').forEach(function (input) {
       var own = windows && input.dataset.profile === id;

@@ -18,6 +18,7 @@ Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an i
 - **Boot menu** for BIOS and UEFI clients, with folders, a draft that clients do not see until it is published, version history and rollback.
 - **Images:** an ISO catalog across local folders and SMB shares, upload from the browser, prepared Windows x64 profiles. Source ISOs stay on their storage; Windows clients receive WinPE startup files over HTTP and installation media over a read-only SMB share.
 - **Windows installs:** several independent `autounattend.xml` scenarios per ISO next to the manual installer, an answer file editor in the admin page, and WinPE driver packages imported from a folder or ZIP and built into separate menu entries.
+- **Ubuntu Autoinstall:** immutable generated files with interactive storage or exact-serial disk erasure, selected per installation; see the [operations guide](docs/en/control-installation.md#ubuntu-autoinstall).
 - **Unified installations** for Windows and Ubuntu Desktop: multiple independent choices can share a boot profile, with their own names, menu folders and selection counts.
 - **Machines:** every machine that reached the menu, with its model and maker, editable names, CSV import and export, and MAC-prefix rules.
 - **Secure Boot:** a signed iPXE chain, a hint when firmware rejects the loader, an SCCM script and a WinPE USB stick (**Library → USB media**) that turn on the Microsoft UEFI CA key on Lenovo, Dell and HP laptops ([Secure Boot guide](docs/en/secure-boot.md)).
@@ -57,6 +58,7 @@ For local verification:
 ```sh
 go test ./...
 go vet ./...
+./scripts/validate-ubuntu-autoinstall.sh testdata/autoinstall/interactive-user-data testdata/autoinstall/serial-user-data
 scripts/fetch-ipxe_test.sh
 ```
 

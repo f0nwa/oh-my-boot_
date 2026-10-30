@@ -1,0 +1,16 @@
+#cloud-config
+autoinstall:
+    version: 1
+    storage:
+        layout:
+            name: direct
+            match:
+                serial: 'DISK: #123'
+    identity:
+        hostname: lab
+        username: operator
+        password: $y$j9T$NYshfaFwut.wi/HLy1iG00$7DADrNeWOByjSJjEyjR0piGKlFqjp1jlm775WU8jTd/
+    locale: en_US.UTF-8
+    keyboard:
+        layout: us
+    timezone: UTC

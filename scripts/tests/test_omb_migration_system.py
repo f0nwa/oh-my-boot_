@@ -175,3 +175,48 @@ class SQLFingerprintTests(unittest.TestCase):
         with patch.object(self.m,'rows',return_value=[{'schemaname':'public','tablename':'auth_users'}]), patch.object(self.m,'pg',side_effect=lambda db,sql:statements.append(sql) or ('0' if 'count(*)' in sql else 'hash')):
             self.m.tables('pxe_control')
         self.assertIn('FROM "public"."auth_users" t)',statements[1])
+
+class LiveIntegrationRegressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec=importlib.util.spec_from_file_location('migration',SOURCE);cls.m=importlib.util.module_from_spec(spec);spec.loader.exec_module(cls.m)
+    def test_owned_database_role_is_renamed_without_modifying_secret(self):
+        source='PXE_CONTROL_DATABASE_URL="host=/var/run/postgresql dbname=pxe_control user=pxe-control password=pxe-control-secret"\n'
+        self.assertEqual(self.m.transform_env(source),'OMB_CONTROL_DATABASE_URL="host=/var/run/postgresql dbname=omb_control user=omb-control password=pxe-control-secret"\n')
+    def test_uri_role_is_renamed_without_modifying_password_or_host(self):
+        source='PXE_BOOT_DATABASE_URL=postgresql://pxe-boot:pxe-boot-secret@db.example/pxe_boot?sslmode=require\n'
+        self.assertEqual(self.m.transform_env(source),'OMB_BOOT_DATABASE_URL=postgresql://omb-boot:pxe-boot-secret@db.example/omb_boot?sslmode=require\n')
+    def test_ubuntu_iso_owned_path_is_mapped(self):
+        self.assertEqual(self.m.transform_env('PXE_BOOT_UBUNTU_ISO=/srv/pxe/tftp/ubuntu/ubuntu.iso\n'),'OMB_BOOT_UBUNTU_ISO=/srv/omb/tftp/ubuntu/ubuntu.iso\n')
+    def test_quiet_refresh_preserves_original_service_states(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'manifest';p.write_text('{}');p.chmod(0o600)
+            before={'pxe_boot':{'boot_events':{'count':1,'identity_md5':'old'}},'pxe_control':{'users':{'count':6,'identity_md5':'same'}},'pxe_images':{}}
+            after={'pxe_boot':{'boot_events':{'count':2,'identity_md5':'new'}},'pxe_control':before['pxe_control'],'pxe_images':{}}
+            m={'table_fingerprints':before,'table_counts':{db:{t:x['count'] for t,x in ts.items()} for db,ts in before.items()},'schema_fingerprints':{db:'schema' for db in self.m.DBS},'boot_snapshot':{'path':'boot','sha256':'same'},'system_units':[{'ActiveState':'active'}]}
+            with self.m.State(p) as state,patch.object(self.m,'assert_source_quiet'),patch.object(self.m,'schema_digest',return_value='schema'),patch.object(self.m,'tables',side_effect=lambda db:after[db]),patch.object(self.m,'digest',return_value='same'):
+                self.m.refresh_operational_manifest(p,m,state)
+            self.assertEqual(m['table_counts']['pxe_boot']['boot_events'],2)
+            self.assertEqual(m['system_units'][0]['ActiveState'],'active')
+            self.assertIn('quiesced_at',json.loads(p.read_text()))
+    def test_quiet_refresh_refuses_immutable_changes(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'manifest';p.write_text('{}');p.chmod(0o600)
+            m={'table_fingerprints':{db:{'users':{'count':1,'identity_md5':'old'}} for db in self.m.DBS},'schema_fingerprints':{db:'schema' for db in self.m.DBS},'boot_snapshot':{'path':'boot','sha256':'same'}}
+            with self.m.State(p) as state,patch.object(self.m,'assert_source_quiet'),patch.object(self.m,'schema_digest',return_value='schema'),patch.object(self.m,'tables',return_value={'users':{'count':2,'identity_md5':'new'}}):
+                with self.assertRaisesRegex(self.m.Abort,'immutable'):self.m.refresh_operational_manifest(p,m,state)
+            self.assertEqual(p.read_text(),'{}')
+    def test_database_like_tokens_inside_password_stay_opaque(self):
+        source="PXE_CONTROL_DATABASE_URL=host=/var/run/postgresql dbname='pxe_control' user='pxe-control' password='dbname=pxe_control user=pxe-control'\n"
+        self.assertEqual(self.m.transform_env(source),"OMB_CONTROL_DATABASE_URL=host=/var/run/postgresql dbname='omb_control' user='omb-control' password='dbname=pxe_control user=pxe-control'\n")
+    def test_bound_manifest_never_refreshes_again(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'manifest';p.write_text('unchanged');p.chmod(0o600)
+            with self.m.State(p) as state:
+                state.update(manifest_sha256='bound')
+                with patch.object(self.m,'assert_source_quiet',side_effect=AssertionError('must not refresh bound state')):
+                    self.m.refresh_operational_manifest(p,{},state)
+            self.assertEqual(p.read_text(),'unchanged')

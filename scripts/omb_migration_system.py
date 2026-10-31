@@ -100,13 +100,43 @@ def transform_env(text):
         m=re.match(r'^(\s*)(PXE_[A-Z0-9_]+)=(.*?)(\n?)$',line)
         if not m: result.append(line); continue
         space,key,value,nl=m.groups()
-        if key.endswith(('_FILE','_DIR','_PATH','_ROOT','_SOCKET')): value=transform_paths(value)
+        if key.endswith(('_FILE','_DIR','_PATH','_ROOT','_SOCKET')) or key=='PXE_BOOT_UBUNTU_ISO': value=transform_paths(value)
         if key.endswith(('_DB_URL','_DATABASE_URL','_DB_DSN','_DATABASE_DSN')):
-            # Only the database component; user/password and host stay byte-for-byte.
-            value=re.sub(r'(?<=/)pxe_(boot|control|images)(?=[?\'\"\s]|$)',r'omb_\1',value)
-            value=re.sub(r'(?<=dbname=)pxe_(boot|control|images)(?=[\s\'\"]|$)',r'omb_\1',value)
+            value=transform_dsn(value)
         result.append(space+'OMB_'+key[4:]+'='+value+nl)
     return ''.join(result)
+
+def transform_dsn(value):
+    """Change only libpq database/user fields; never rewrite a password token."""
+    wrapper=value[0] if len(value)>1 and value[0] in "\"'" and value[-1]==value[0] else ''
+    body=value[1:-1] if wrapper else value
+    names={'pxe_'+c:'omb_'+c for c in ('boot','control','images')}
+    roles={'pxe-'+c:'omb-'+c for c in ('boot','control','images')}
+    uri=re.match(r'^(postgres(?:ql)?://)([^/]*)(/[^?#]*)?([?#].*)?$',body)
+    if uri:
+        scheme,authority,path,tail=uri.groups();path=path or '';tail=tail or ''
+        if '@' in authority:
+            auth,host=authority.rsplit('@',1);user,sep,password=auth.partition(':')
+            authority=roles.get(user,user)+sep+password+'@'+host
+        path='/'+names.get(path[1:],path[1:]) if path else path
+        # URI parameter keys are delimited; password values remain opaque.
+        tail=re.sub(r'([?&])(user|dbname)=([^&#]*)',lambda m:m[1]+m[2]+'='+(roles if m[2]=='user' else names).get(m[3],m[3]),tail)
+        result=scheme+authority+path+tail
+    else:
+        token=re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*('(?:\\.|[^'\\])*'|(?:\\.|[^\s])*)")
+        parts=[];end=0
+        for match in token.finditer(body):
+            if body[end:match.start()].strip(): raise Abort('Unsupported PostgreSQL connection string')
+            raw=match[2];quoted=raw.startswith("'") and raw.endswith("'")
+            plain=re.sub(r'\\(.)',r'\1',raw[1:-1] if quoted else raw)
+            mapping=roles if match[1]=='user' else names if match[1]=='dbname' else {}
+            replacement=mapping.get(plain)
+            parts.append(body[end:match.start(2)])
+            parts.append(("'"+replacement+"'" if quoted else replacement) if replacement else raw)
+            end=match.end()
+        if body[end:].strip() or not parts: raise Abort('Unsupported PostgreSQL connection string')
+        result=''.join(parts)+body[end:]
+    return wrapper+result+wrapper
 
 def transform_unit(text):
     text=transform_paths(text)
@@ -334,6 +364,33 @@ def assert_source_quiet(m):
         raise Abort('Active installation-share clients must disconnect')
     sessions=rows('postgres',"SELECT datname,pid FROM pg_stat_activity WHERE datname IN ('pxe_boot','pxe_control','pxe_images','omb_boot','omb_control','omb_images') AND pid<>pg_backend_pid()")
     if sessions: raise Abort('Product PostgreSQL sessions remain; do not terminate clients automatically')
+
+OPERATIONAL_TABLES={
+    'pxe_boot':{'boot_events'},
+    'pxe_control':{'audit_events','machines','sessions','mail_outbox','mail_tokens','oidc_flows','oidc_logout_jti','recovery_rate_limits'},
+    'pxe_images':set(),
+}
+
+def refresh_operational_manifest(manifest,m,state):
+    """Freeze post-quiesce journals without losing pre-stop service activity."""
+    if state.value.get('manifest_sha256') or state.value.get('backup_started'):
+        return
+    assert_source_quiet(m)
+    if {db:schema_digest(db) for db in DBS}!=m['schema_fingerprints']:
+        raise Abort('Database schema changed since inspect')
+    fresh={db:tables(db) for db in DBS}
+    for db,current in fresh.items():
+        original=m['table_fingerprints'][db]
+        if set(current)!=set(original): raise Abort('Database table inventory changed since inspect')
+        for table,observation in current.items():
+            if observation!=original[table] and table not in OPERATIONAL_TABLES[db]:
+                raise Abort('Database immutable object changed since inspect: '+db+'.'+table)
+    if digest(m['boot_snapshot']['path'])!=m['boot_snapshot']['sha256']:
+        raise Abort('Boot snapshot changed since inspect')
+    m['table_fingerprints']=fresh
+    m['table_counts']={db:{name:v['count'] for name,v in ts.items()} for db,ts in fresh.items()}
+    m['quiesced_at']=datetime.datetime.now(datetime.timezone.utc).isoformat()
+    atomic_json(manifest,m)
 
 def backup(manifest,m,state,backup_dir):
     if state.value.get('backup_complete'): verify_artifacts(manifest,m,state); return
@@ -850,6 +907,7 @@ def main(argv=None):
     else:
         m=load_manifest(manifest)
         with State(manifest) as state:
+            if args.command=='backup': refresh_operational_manifest(manifest,m,state)
             bind_state(state,manifest)
             if args.command=='backup': backup(manifest,m,state,args.backup_dir.absolute())
             elif args.command=='verify-backup': verify_backup(manifest,m,state)

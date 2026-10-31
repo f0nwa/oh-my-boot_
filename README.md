@@ -64,7 +64,7 @@ scripts/fetch-ipxe_test.sh
 
 ## Names
 
-The product was called PXE Platform until 29 October 2026. The repository now targets OMB technical names (`omb-control`, `omb-agent`, `/etc/omb`, …). Migration of the installed test stand is still pending; follow the [technical migration plan](docs/superpowers/plans/2026-10-31-omb-technical-migration.md). Historical plans and test reports retain their original names, paths and outcomes.
+The product was called PXE Platform until 29 October 2026. The repository now targets OMB technical names (`omb-control`, `omb-agent`, `/etc/omb`, …). The existing test stand has been migrated, including a verified restore rehearsal and server reboot. Client boot acceptance remains pending; see the [migration report](docs/research/2026-10-31-omb-technical-migration.md) and [plan](docs/superpowers/plans/2026-10-31-omb-technical-migration.md). Historical plans and test reports retain their original names, paths and outcomes.
 
 ## License
 

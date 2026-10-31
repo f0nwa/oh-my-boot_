@@ -106,21 +106,11 @@ func (r RuntimeRebuilder) Rebuild(ctx context.Context, in BuildInput) (BuildResu
 		result.Answers[id] = AnswerChange{ProfileID: number(old, "profile_id"), OldHash: text(old, "sha256"), NewHash: digest}
 	}
 	drivers := &agent.DriverManager{Root: resolve("/var/lib/omb-agent/drivers"), ProfileRoot: profiles, AnswerRoot: answers, WIMRoot: stage("windows-driver-wims"), ConfigRoot: stage("windows-driver-configs"), Runner: driverRunner{runner}}
-	// Legacy cache keys omit the product's embedded driver directory. Even a
-	// matching key/hash can still contain pxe-drivers, so rebuild each ready key
-	// once before any configurations reuse the new staged result.
-	cleared := map[string]bool{}
-	for _, old := range in.Manifest.Drivers {
-		key := text(old, "wim_key")
-		if text(old, "state") == "ready" && !cleared[key] {
-			if !validHash(key) {
-				return result, fmt.Errorf("invalid legacy WIM key")
-			}
-			if e := os.RemoveAll(filepath.Join(drivers.WIMRoot, key)); e != nil {
-				return result, e
-			}
-			cleared[key] = true
-		}
+	// Every legacy derived cache entry can contain pxe-drivers, including
+	// unused keys that a future configuration might otherwise reuse. Originals
+	// have already been archived; reset only the private staging cache.
+	if e := os.RemoveAll(drivers.WIMRoot); e != nil {
+		return result, e
 	}
 	for _, old := range in.Manifest.Drivers {
 		id := number(old, "id")

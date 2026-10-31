@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCopyTreePreservesSetgidForRegeneratedAnswerOwnership(t *testing.T) {
@@ -39,5 +40,16 @@ func TestCopyTreePreservesSetgidForRegeneratedAnswerOwnership(t *testing.T) {
 	}
 	if os.FileMode(record.Mode)&os.ModeSetgid == 0 {
 		t.Fatal("tree fingerprint ignores setgid ownership policy")
+	}
+}
+
+func TestISOModificationIdentityUsesCatalogMicrosecondPrecision(t *testing.T) {
+	actual := time.Unix(1756188573, 378684300)
+	stored := time.Unix(1756188573, 378684000)
+	if !sameCatalogTime(actual, stored) {
+		t.Fatal("fractional CIFS nanoseconds differ from PostgreSQL microsecond precision")
+	}
+	if sameCatalogTime(actual.Add(time.Microsecond), stored) {
+		t.Fatal("accepted a changed catalog timestamp")
 	}
 }

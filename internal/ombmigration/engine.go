@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"omb/internal/agent"
 )
@@ -50,6 +51,10 @@ type inspection struct {
 }
 
 var assetTrees = []string{"windows-profiles", "windows-answers", "windows-driver-wims", "windows-driver-configs", "ubuntu-autoinstall"}
+
+func sameCatalogTime(actual, stored time.Time) bool {
+	return actual.Truncate(time.Microsecond).Equal(stored.Truncate(time.Microsecond))
+}
 
 func (e *Engine) path(p string) (string, error) { return safePath(e.Root, p) }
 func (e *Engine) journalPath() string           { return e.ManifestPath + ".data/journal.json" }
@@ -190,7 +195,7 @@ func (e *Engine) inspect(ctx context.Context, renamed bool) (inspection, error) 
 			// Source ISO bytes are immutable external input. Validate the recorded
 			// identity without hashing tens of gigabytes over CIFS on every pass.
 			src, err := os.Lstat(fullSource)
-			if err != nil || !src.Mode().IsRegular() || src.Size() != req.Size || src.ModTime().UnixNano() != req.Modified.UnixNano() {
+			if err != nil || !src.Mode().IsRegular() || src.Size() != req.Size || !sameCatalogTime(src.ModTime(), req.Modified) {
 				return in, fmt.Errorf("ISO source differs: profile %d", id)
 			}
 			for _, file := range []string{"boot.wim", "winpeshl.ini", "pxe-setup.cmd"} {

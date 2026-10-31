@@ -59,6 +59,9 @@ func TestRuntimeRebuildDoesNotReuseLegacyDriverWIMCache(t *testing.T) {
 	oldWIM := []byte("legacy cached WIM with pxe-drivers")
 	write("stage/windows-driver-wims/"+key+"/boot.wim", oldWIM)
 	write("stage/windows-driver-wims/"+key+"/sha256", []byte(hashBytes(oldWIM)))
+	unused := strings.Repeat("c", 64)
+	write("stage/windows-driver-wims/"+unused+"/boot.wim", oldWIM)
+	write("stage/windows-driver-wims/"+unused+"/sha256", []byte(hashBytes(oldWIM)))
 	updates := 0
 	runner := RunFunc(func(_ context.Context, name string, args []string, input []byte) ([]byte, error) {
 		if name == "mountpoint" {
@@ -88,6 +91,9 @@ func TestRuntimeRebuildDoesNotReuseLegacyDriverWIMCache(t *testing.T) {
 	result, err := (RuntimeRebuilder{Runner: runner}).Rebuild(context.Background(), BuildInput{Root: root, Stage: stage, Manifest: m, Source: source, XML: map[int64][]byte{3: xml}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(stage, "windows-driver-wims", unused)); !os.IsNotExist(err) {
+		t.Fatal("unreferenced legacy WIM cache could break future configurations")
 	}
 	if updates != 1 || result.Drivers[4].NewWIM == hashBytes(oldWIM) {
 		t.Fatal("reused old WIM containing legacy embedded driver directory")

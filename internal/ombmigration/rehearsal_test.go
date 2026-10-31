@@ -22,6 +22,9 @@ func TestSameHostDataRehearsal(t *testing.T) {
 	if root == "/" || !filepath.IsAbs(root) || !strings.Contains(root, "/rehearsal-") {
 		t.Fatal("unsafe rehearsal root")
 	}
+	if filepath.Dir(root) != filepath.Dir(manifestPath) || filepath.Base(root) != "root" || filepath.Base(manifestPath) != "source.json" {
+		t.Fatal("rehearsal manifest must be separate from the live migration state")
+	}
 	if _, err := privateRead(filepath.Join(root, ".omb-rehearsal")); err != nil {
 		t.Fatal("missing private rehearsal ownership marker")
 	}

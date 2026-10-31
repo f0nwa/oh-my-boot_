@@ -895,7 +895,9 @@ def reconnect_storage(manifest,m,state):
         if any(x['target']==str(destination) for x in all_mounts()): raise Abort('Target ISO mount conflict')
         destination.mkdir(parents=True,exist_ok=True)
         record={'kind':'iso','source':str(source),'target':str(destination),'status':'intent'}; journal.append(record); state.update(storage_journal=journal)
-        run(['mount','-t','iso9660,udf','-o','loop,ro','--',str(source),str(destination)])
+        # Match the application's ISO mounter: autodetect the original
+        # filesystem and keep its non-executable read-only restrictions.
+        run(['mount','-o','loop,ro,nosuid,nodev,noexec','--',str(source),str(destination)])
         record['status']='done'; state.update(storage_journal=journal)
     state.update(storage_complete=True)
 

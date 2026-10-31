@@ -212,6 +212,18 @@ def assert_stopped(runner,units):
 def owned_unit(name):
     return bool(re.fullmatch(r'pxe-(boot|agent|control|images|dnsmasq)\.service|pxe-winiso@(?:\d*)\.service',name)) or (name.startswith('mnt-pxe\\x2dplatform') and name.endswith('.mount'))
 
+def systemd_words(value):
+    # systemctl quotes and doubles backslashes in list properties. Preserve
+    # literal systemd path escapes (\x2d), rather than decoding them to '-'.
+    result=[]
+    for match in re.finditer(r'"((?:\\.|[^"\\])*)"|(\S+)',value):
+        if match[1] is not None:
+            result.append(re.sub(r'\\([\\"])',r'\1',match[1]))
+        else:
+            if '"' in match[2]: raise Abort('Malformed systemd list property')
+            result.append(match[2])
+    return result
+
 def unit_inventory(unit_directory=Path('/etc/systemd/system')):
     names=set('pxe-'+s+'.service' for s in SERVICE_NAMES)
     names.add('pxe-winiso@.service')
@@ -239,11 +251,11 @@ def unit_inventory(unit_directory=Path('/etc/systemd/system')):
             for line in run(['systemctl','show',name,'--property=Id,ActiveState,UnitFileState,FragmentPath,DropInPaths,Where,What,Type,Requires,Wants,Before,After,User,Group,ReadWritePaths']).splitlines():
                 if '=' in line: k,v=line.split('=',1); props[k]=v
         for dependency in ('Requires','Wants','Before','After'):
-            for d in props.get(dependency,'').split():
-                if 'pxe' in d and not owned_unit(d) and not d.startswith('system-pxe\\x2dwiniso.slice'):
+            for d in systemd_words(props.get(dependency,'')):
+                if 'pxe' in d and not owned_unit(d) and d!='system-pxe\\x2dwiniso.slice':
                     raise Abort('Unsupported source dependency: '+d)
         fragment=props.get('FragmentPath','')
-        paths=([fragment] if fragment else [])+props.get('DropInPaths','').split()
+        paths=([fragment] if fragment else [])+systemd_words(props.get('DropInPaths',''))
         props['files']=[file_info(p) for p in paths]
         # Effective contents are secret-bearing; only hashes enter the manifest.
         props['effective_sha256']=hashlib.sha256(run(['systemctl','cat',name]).encode()).hexdigest() if fragment else ''

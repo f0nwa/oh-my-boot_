@@ -232,7 +232,7 @@ class TemplateInventoryRegressionTests(unittest.TestCase):
             def runner(argv,**kwargs):
                 if argv[1]=='show':
                     self.assertNotIn('@.service',argv[2])
-                    return 'Id='+argv[2]+'\nActiveState=inactive\nFragmentPath=\n'
+                    return 'Id='+argv[2]+'\nActiveState=inactive\nFragmentPath=\nAfter='+r'"system-pxe\\x2dwiniso.slice"'+'\n'
                 if argv[1]=='cat':return unit.read_text()
                 if argv[1]=='is-enabled':return 'indirect'
                 return ''

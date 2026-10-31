@@ -182,7 +182,11 @@ func (p PSQL) Commit(ctx context.Context, before, after Snapshot) error {
 		// known objects. No role, schema, trigger, sequence or ciphertext is changed.
 		for _, table := range sortedKeys(oldTables) {
 			oldJSON, _ := json.Marshal(oldTables[table])
-			sql.WriteString(`DO $omb$ BEGIN IF (SELECT COALESCE(jsonb_agg(x ORDER BY x::text),'[]'::jsonb) FROM (SELECT to_jsonb(t) x FROM public."` + table + `" t) q) IS DISTINCT FROM (SELECT COALESCE(jsonb_agg(x ORDER BY x::text),'[]'::jsonb) FROM jsonb_array_elements(` + quoteSQL(string(oldJSON)) + `::jsonb) x) THEN RAISE EXCEPTION 'migration source changed'; END IF; END $omb$;` + "\n")
+			tag := "$omb_guard$"
+			for strings.Contains(string(oldJSON), tag) {
+				tag = strings.TrimSuffix(tag, "$") + "x$"
+			}
+			sql.WriteString(`DO ` + tag + ` BEGIN IF (SELECT COALESCE(jsonb_agg(x ORDER BY x::text),'[]'::jsonb) FROM (SELECT to_jsonb(t) x FROM public."` + table + `" t) q) IS DISTINCT FROM (SELECT COALESCE(jsonb_agg(x ORDER BY x::text),'[]'::jsonb) FROM jsonb_array_elements(` + quoteSQL(string(oldJSON)) + `::jsonb) x) THEN RAISE EXCEPTION 'migration source changed'; END IF; END ` + tag + `;` + "\n")
 			for _, newRow := range newTables[table] {
 				id := number(newRow, "id")
 				if id <= 0 {

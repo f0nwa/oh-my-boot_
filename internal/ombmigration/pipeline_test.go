@@ -254,3 +254,26 @@ func TestDataApplyRejectsSystemStateBoundToDifferentManifest(t *testing.T) {
 		t.Fatal("created migration journal before validating backup binding")
 	}
 }
+
+func TestDatabaseGuardCannotBeClosedByUserDisplayText(t *testing.T) {
+	_, d, _ := fixture(t)
+	d.data.rows("pxe_images", "storages")[0]["name"] = "literal $omb$ storage title"
+	after := cloneSnapshot(d.data)
+	after.rows("pxe_images", "storages")[0]["root"] = "/var/lib/omb-images/iso"
+	var sql string
+	p := PSQL{Runner: RunFunc(func(_ context.Context, _ string, _ []string, input []byte) ([]byte, error) {
+		sql = string(input)
+		return nil, nil
+	})}
+	if err := p.Commit(context.Background(), d.data, after); err != nil {
+		t.Fatal(err)
+	}
+	start := strings.Index(sql, "DO ")
+	if start < 0 {
+		t.Fatal("missing guard")
+	}
+	tag := strings.Fields(sql[start:])[1]
+	if strings.Contains(string(mustJSON(d.data.rows("pxe_images", "storages"))), tag) {
+		t.Fatal("user text can close outer SQL guard delimiter")
+	}
+}

@@ -128,7 +128,7 @@ If there is no such option, look for a key mode like “Factory Keys” or “Re
 
 ### USB stick for machines outside the domain
 
-**Library → USB media** (or **USB media →** next to a prepared profile under ISO images): choose the WinPE image and the boot loader; the summary on the right has **Download the archive**. The admin page builds `pxe-uefica-<profile>-<2011|2023>.zip` from that ISO's WinPE (about 600 MB; the first build takes up to a minute, later downloads come from a cache). Unpack it into the root of a FAT32 USB stick (MBR or GPT) and boot the machine from it with the boot menu (F12). Secure Boot may stay on: WinPE is signed with the Windows key. All roles can download it; the audit log records `uefica-usb.download`.
+**Library → USB media** (or **USB media →** next to a prepared profile under ISO images): choose the WinPE image and the boot loader; the summary on the right has **Download the archive**. The admin page builds `omb-uefica-<profile>-<2011|2023>.zip` from that ISO's WinPE (about 600 MB; the first build takes up to a minute, later downloads come from a cache). Unpack it into the root of a FAT32 USB stick (MBR or GPT) and boot the machine from it with the boot menu (F12). Secure Boot may stay on: WinPE is signed with the Windows key. All roles can download it; the audit log records `uefica-usb.download`.
 
 On screen (in English, with the keyboard switched to US):
 

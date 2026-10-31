@@ -220,3 +220,23 @@ class LiveIntegrationRegressionTests(unittest.TestCase):
                 with patch.object(self.m,'assert_source_quiet',side_effect=AssertionError('must not refresh bound state')):
                     self.m.refresh_operational_manifest(p,{},state)
             self.assertEqual(p.read_text(),'unchanged')
+
+class TemplateInventoryRegressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec=importlib.util.spec_from_file_location('migration',SOURCE);cls.m=importlib.util.module_from_spec(spec);spec.loader.exec_module(cls.m)
+    def test_template_is_inventoried_without_showing_empty_instance(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);unit=root/'pxe-winiso@.service';unit.write_text('[Service]\nType=oneshot\nExecStart=/usr/local/bin/pxe-winiso-prepare %i\n')
+            def runner(argv,**kwargs):
+                if argv[1]=='show':
+                    self.assertNotIn('@.service',argv[2])
+                    return 'Id='+argv[2]+'\nActiveState=inactive\nFragmentPath=\n'
+                if argv[1]=='cat':return unit.read_text()
+                if argv[1]=='is-enabled':return 'indirect'
+                return ''
+            with patch.object(self.m,'run',side_effect=runner):
+                result=self.m.unit_inventory(root)
+            template=next(u for u in result if u['Id']=='pxe-winiso@.service')
+            self.assertEqual(template['FragmentPath'],str(unit));self.assertEqual(template['ActiveState'],'inactive')

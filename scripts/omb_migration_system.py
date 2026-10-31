@@ -212,19 +212,32 @@ def assert_stopped(runner,units):
 def owned_unit(name):
     return bool(re.fullmatch(r'pxe-(boot|agent|control|images|dnsmasq)\.service|pxe-winiso@(?:\d*)\.service',name)) or (name.startswith('mnt-pxe\\x2dplatform') and name.endswith('.mount'))
 
-def unit_inventory():
+def unit_inventory(unit_directory=Path('/etc/systemd/system')):
     names=set('pxe-'+s+'.service' for s in SERVICE_NAMES)
     names.add('pxe-winiso@.service')
     for line in run(['systemctl','list-units','--all','--plain','--no-legend','--no-pager','pxe-*','mnt-pxe*']).splitlines():
         if line and not line.split()[0].startswith('system-pxe'): names.add(line.split()[0])
-    for p in Path('/etc/systemd/system').glob('*pxe*'):
+    for p in unit_directory.glob('*pxe*'):
         if p.name.endswith(('.service','.mount')): names.add(p.name)
     out=[]
     for name in sorted(names):
         if not owned_unit(name): raise Abort('Unsupported source unit dependency: '+name)
         props={}
-        for line in run(['systemctl','show',name,'--property=Id,ActiveState,UnitFileState,FragmentPath,DropInPaths,Where,What,Type,Requires,Wants,Before,After,User,Group,ReadWritePaths']).splitlines():
-            if '=' in line: k,v=line.split('=',1); props[k]=v
+        if '@.service' in name:
+            # A template has files but no runtime instance. Recent systemd
+            # rejects `show service@.service`; loaded instances are separate.
+            fragment=unit_directory/name
+            if not fragment.is_file(): raise Abort('Missing source unit template: '+name)
+            dropins=sorted((unit_directory/(name+'.d')).glob('*.conf'))
+            props={'Id':name,'ActiveState':'inactive','UnitFileState':run(['systemctl','is-enabled',name],allowed=(0,1,4)).strip(),'FragmentPath':str(fragment),'DropInPaths':' '.join(str(p) for p in dropins)}
+            for source in [fragment,*dropins]:
+                for line in source.read_text().splitlines():
+                    if '=' in line:
+                        key,value=line.split('=',1)
+                        if key in ('Requires','Wants','Before','After'): props[key]=props.get(key,'')+' '+value
+        else:
+            for line in run(['systemctl','show',name,'--property=Id,ActiveState,UnitFileState,FragmentPath,DropInPaths,Where,What,Type,Requires,Wants,Before,After,User,Group,ReadWritePaths']).splitlines():
+                if '=' in line: k,v=line.split('=',1); props[k]=v
         for dependency in ('Requires','Wants','Before','After'):
             for d in props.get(dependency,'').split():
                 if 'pxe' in d and not owned_unit(d) and not d.startswith('system-pxe\\x2dwiniso.slice'):
@@ -577,7 +590,9 @@ def preflight(m,bundle):
         if Path('/usr/local/bin/omb-'+c).exists() or Path('/usr/local/bin/omb-'+c).is_symlink(): raise Abort('Target executable exists')
     for u in m['system_units']:
         target=unit_target(u)
-        if run(['systemctl','show',target,'--property=LoadState','--value']).strip()!='not-found': raise Abort('Target unit already exists: '+target)
+        if '@.service' in target:
+            if any((Path(base)/target).exists() for base in ('/etc/systemd/system','/run/systemd/system','/usr/lib/systemd/system','/lib/systemd/system')): raise Abort('Target unit already exists: '+target)
+        elif run(['systemctl','show',target,'--property=LoadState','--value']).strip()!='not-found': raise Abort('Target unit already exists: '+target)
         for f in u['files']:
             if file_info(f['path'])!=f: raise Abort('Source unit metadata changed since inspect: '+f['path'])
     # Validate transformations and JSON without touching the source.

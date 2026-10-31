@@ -277,3 +277,18 @@ func TestDatabaseGuardCannotBeClosedByUserDisplayText(t *testing.T) {
 		t.Fatal("user text can close outer SQL guard delimiter")
 	}
 }
+
+func TestLivePreviewAllowsJournalGrowthButApplyRequiresFrozenCounts(t *testing.T) {
+	e, d, _ := fixture(t)
+	d.data["pxe_boot"]["boot_events"] = []Object{{"id": int64(1)}}
+	if err := d.data.validate(e.Manifest, true); err != nil {
+		t.Fatal("live preview rejected ordinary journal growth", err)
+	}
+	if err := d.data.validate(e.Manifest, false); err == nil {
+		t.Fatal("apply accepted drift from quiesced backup")
+	}
+	e.Manifest.TableCounts["pxe_control"]["opaque_auth"] = 0
+	if err := d.data.validate(e.Manifest, true); err == nil {
+		t.Fatal("preview accepted opaque data count drift")
+	}
+}

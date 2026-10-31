@@ -26,7 +26,20 @@ func snapshotHash(s Snapshot) string {
 	b, _ := json.Marshal(normalized)
 	return hashBytes(b)
 }
-func (s Snapshot) validate(m Manifest) error {
+func operationalTable(db, table string) bool {
+	if db == "pxe_boot" {
+		return table == "boot_events"
+	}
+	if db != "pxe_control" {
+		return false
+	}
+	switch table {
+	case "audit_events", "machines", "sessions", "mail_outbox", "mail_tokens", "oidc_flows", "oidc_logout_jti", "recovery_rate_limits":
+		return true
+	}
+	return false
+}
+func (s Snapshot) validate(m Manifest, preview bool) error {
 	for db, counts := range m.TableCounts {
 		tables, ok := s[db]
 		if !ok || len(tables) != len(counts) {
@@ -34,7 +47,7 @@ func (s Snapshot) validate(m Manifest) error {
 		}
 		for table, count := range counts {
 			rows, ok := tables[table]
-			if !ok || int64(len(rows)) != count {
+			if !ok || int64(len(rows)) != count && !(preview && operationalTable(db, table)) {
 				return fmt.Errorf("table count differs: %s.%s", db, table)
 			}
 		}

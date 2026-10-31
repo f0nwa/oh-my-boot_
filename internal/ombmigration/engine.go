@@ -94,7 +94,9 @@ func (e *Engine) inspect(ctx context.Context, renamed bool) (inspection, error) 
 	if err != nil {
 		return in, err
 	}
-	if err = snapshot.validate(e.Manifest); err != nil {
+	// A read-only preview can observe new journal entries while old services
+	// run. Apply uses the strict snapshot frozen after system quiescence.
+	if err = snapshot.validate(e.Manifest, !renamed); err != nil {
 		return in, err
 	}
 	in.Before = snapshot

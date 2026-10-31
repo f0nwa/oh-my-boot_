@@ -1,5 +1,7 @@
 # Первая загрузка Ubuntu Desktop по PXE
 
+> Актуальные команды установки используют целевые имена OMB. Датированные отчёты о развёртывании, исходные пути резервных копий и результаты относятся к стенду до миграции; его перенос ещё предстоит. См. [план технической миграции](../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 > Исторический отчёт о первой загрузке. Текущий порядок создания установки и автоматизации описан в разделе «Автоматическая установка» ниже.
 
 [English version](en/ubuntu-desktop-pxe.md)
@@ -10,19 +12,19 @@
 
 ## Настройка
 
-На сервере Boot должен иметь доступ на чтение к выбранному ISO: добавить `pxe-images` в `SupplementaryGroups` юнита `pxe-boot.service`. В `/etc/pxe-platform/boot.env` задать абсолютный путь к файлу:
+На сервере Boot должен иметь доступ на чтение к выбранному ISO: добавить `omb-images` в `SupplementaryGroups` юнита `omb-boot.service`. В `/etc/omb/boot.env` задать абсолютный путь к файлу:
 
 ```ini
-PXE_BOOT_UBUNTU_ISO=/mnt/pxe-platform-smb/84e4b95528e2b8c5a405adb7061bc5bf/ubuntu-26.04.1-desktop-amd64.iso
+OMB_BOOT_UBUNTU_ISO=/mnt/omb-smb/84e4b95528e2b8c5a405adb7061bc5bf/ubuntu-26.04.1-desktop-amd64.iso
 ```
 
-В `/etc/pxe-platform/control.env` задать доступный клиентам адрес Boot:
+В `/etc/omb/control.env` задать доступный клиентам адрес Boot:
 
 ```ini
-PXE_CONTROL_BOOT_BASE_URL=http://10.30.0.10:8080
+OMB_CONTROL_BOOT_BASE_URL=http://10.30.0.10:8080
 ```
 
-Ядро и initrd скопировать из того же ISO в `/srv/pxe/tftp/ubuntu/vmlinuz` и `/srv/pxe/tftp/ubuntu/initrd`; для Secure Boot также скопировать подписанный Ubuntu shim `EFI/boot/bootx64.efi` в `/srv/pxe/tftp/ubuntu/bootx64.efi`. После копирования сравнить SHA-256 исходных файлов и копий. Затем обновить бинарные файлы Boot и Control, перечитать юниты и перезапустить обе службы. До публикации меню проверить `HEAD` для всех URL и диапазонный `GET` ISO. Если SMB-подключение пропадёт, выдача ISO вернёт 404; диагностическое меню Boot продолжит работать.
+Ядро и initrd скопировать из того же ISO в `/srv/omb/tftp/ubuntu/vmlinuz` и `/srv/omb/tftp/ubuntu/initrd`; для Secure Boot также скопировать подписанный Ubuntu shim `EFI/boot/bootx64.efi` в `/srv/omb/tftp/ubuntu/bootx64.efi`. После копирования сравнить SHA-256 исходных файлов и копий. Затем обновить бинарные файлы Boot и Control, перечитать юниты и перезапустить обе службы. До публикации меню проверить `HEAD` для всех URL и диапазонный `GET` ISO. Если SMB-подключение пропадёт, выдача ISO вернёт 404; диагностическое меню Boot продолжит работать.
 
 ## Проверка и откат
 

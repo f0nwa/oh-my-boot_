@@ -5,17 +5,17 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pxe-images
-Group=pxe-images
-EnvironmentFile=/etc/pxe-platform/images.env
-ExecStart=/usr/local/bin/pxe-images
+User=omb-images
+Group=omb-images
+EnvironmentFile=/etc/omb/images.env
+ExecStart=/usr/local/bin/omb-images
 Restart=on-failure
-RuntimeDirectory=pxe-platform-images
+RuntimeDirectory=omb-images
 RuntimeDirectoryMode=0750
 UMask=0007
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/mnt/pxe-platform-smb-upload -/var/lib/pxe-platform-images
+ReadWritePaths=/mnt/omb-smb-upload -/var/lib/omb-images
 ProtectHome=true
 PrivateTmp=true
 RestrictAddressFamilies=AF_UNIX

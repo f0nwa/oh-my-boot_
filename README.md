@@ -64,7 +64,7 @@ scripts/fetch-ipxe_test.sh
 
 ## Names
 
-The product was called PXE Platform until 29 October 2026. Component, service and path names (`pxe-control`, `pxe-agent`, `/etc/pxe-platform`, …) still use the `pxe-` prefix; whether to rename them is an open question in the [branding roadmap](docs/roadmaps/2026-10-28-oh-my-boot-branding.md). Historical plans and test reports keep the old name.
+The product was called PXE Platform until 29 October 2026. The repository now targets OMB technical names (`omb-control`, `omb-agent`, `/etc/omb`, …). Migration of the installed test stand is still pending; follow the [technical migration plan](docs/superpowers/plans/2026-10-31-omb-technical-migration.md). Historical plans and test reports retain their original names, paths and outcomes.
 
 ## License
 

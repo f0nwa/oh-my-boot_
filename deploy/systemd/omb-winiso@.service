@@ -8,8 +8,8 @@ StartLimitBurst=3
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/bin/pxe-winiso-prepare %i
-ExecStop=/usr/bin/umount /mnt/pxe-platform-iso/profiles/%i
+ExecStart=/usr/local/bin/omb-winiso-prepare %i
+ExecStop=/usr/bin/umount /mnt/omb-iso/profiles/%i
 Restart=on-failure
 RestartSec=10s
 

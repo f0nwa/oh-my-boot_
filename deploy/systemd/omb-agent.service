@@ -1,0 +1,23 @@
+[Unit]
+Description=Oh My Boot network agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=omb-control
+ExecStart=/usr/local/bin/omb-agent
+Restart=on-failure
+RuntimeDirectory=omb
+RuntimeDirectoryMode=0750
+StateDirectory=omb-agent
+StateDirectoryMode=0750
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/etc/omb /etc/systemd/system /mnt/omb-smb /mnt/omb-smb-upload /mnt/omb-iso/profiles /run/omb /var/lib/omb-agent /srv/omb/tftp/windows-profiles /srv/omb/tftp/windows-answers /srv/omb/tftp/windows-driver-wims /srv/omb/tftp/windows-driver-configs -/run/samba
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+[Unit]
+Description=Oh My Boot boot HTTP service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omb-boot
+Group=omb-control
+SupplementaryGroups=omb-images
+EnvironmentFile=/etc/omb/boot.env
+ExecStart=/usr/local/bin/omb-boot -listen 0.0.0.0:8080 -assets /srv/omb/tftp -snapshot /var/lib/omb-boot/menu.ipxe -base-url ${OMB_BOOT_BASE_URL}
+Restart=on-failure
+StateDirectory=omb-boot
+StateDirectoryMode=0750
+RuntimeDirectory=omb-boot
+RuntimeDirectoryMode=0750
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/srv/omb/tftp
+ReadWritePaths=/srv/omb/tftp/ubuntu-autoinstall
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

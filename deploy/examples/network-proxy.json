@@ -4,5 +4,5 @@
   "server_ip": "192.0.2.10",
   "subnet": "192.0.2.0/24",
   "boot_url": "http://192.0.2.10:8080/boot/menu.ipxe",
-  "tftp_root": "/srv/pxe/tftp"
+  "tftp_root": "/srv/omb/tftp"
 }

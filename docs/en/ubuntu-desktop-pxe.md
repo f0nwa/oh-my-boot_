@@ -1,5 +1,7 @@
 # First Ubuntu Desktop boot over PXE
 
+> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; its migration is pending. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 > This is the historical first-boot report. For current installation creation and automation, see “Automated installation” below.
 
 [Русская версия](../ubuntu-desktop-pxe.md)
@@ -10,19 +12,19 @@ After the kernel starts, `casper` gets an address over DHCP, downloads the ISO o
 
 ## Setup
 
-On the server, Boot must be able to read the selected ISO: add `pxe-images` to `SupplementaryGroups` of the `pxe-boot.service` unit. In `/etc/pxe-platform/boot.env`, set the absolute path to the file:
+On the server, Boot must be able to read the selected ISO: add `omb-images` to `SupplementaryGroups` of the `omb-boot.service` unit. In `/etc/omb/boot.env`, set the absolute path to the file:
 
 ```ini
-PXE_BOOT_UBUNTU_ISO=/mnt/pxe-platform-smb/84e4b95528e2b8c5a405adb7061bc5bf/ubuntu-26.04.1-desktop-amd64.iso
+OMB_BOOT_UBUNTU_ISO=/mnt/omb-smb/84e4b95528e2b8c5a405adb7061bc5bf/ubuntu-26.04.1-desktop-amd64.iso
 ```
 
-In `/etc/pxe-platform/control.env`, set the Boot address that clients can reach:
+In `/etc/omb/control.env`, set the Boot address that clients can reach:
 
 ```ini
-PXE_CONTROL_BOOT_BASE_URL=http://10.30.0.10:8080
+OMB_CONTROL_BOOT_BASE_URL=http://10.30.0.10:8080
 ```
 
-Copy the kernel and initrd from the same ISO to `/srv/pxe/tftp/ubuntu/vmlinuz` and `/srv/pxe/tftp/ubuntu/initrd`; for Secure Boot also copy the signed Ubuntu shim `EFI/boot/bootx64.efi` to `/srv/pxe/tftp/ubuntu/bootx64.efi`. After copying, compare the SHA-256 of the source files and the copies. Then update the Boot and Control binaries, reload the units and restart both services. Before publishing the menu, check `HEAD` for all URLs and a range `GET` of the ISO. If the SMB connection is lost, serving the ISO returns 404; the Boot diagnostics menu keeps working.
+Copy the kernel and initrd from the same ISO to `/srv/omb/tftp/ubuntu/vmlinuz` and `/srv/omb/tftp/ubuntu/initrd`; for Secure Boot also copy the signed Ubuntu shim `EFI/boot/bootx64.efi` to `/srv/omb/tftp/ubuntu/bootx64.efi`. After copying, compare the SHA-256 of the source files and the copies. Then update the Boot and Control binaries, reload the units and restart both services. Before publishing the menu, check `HEAD` for all URLs and a range `GET` of the ISO. If the SMB connection is lost, serving the ISO returns 404; the Boot diagnostics menu keeps working.
 
 ## Check and rollback
 

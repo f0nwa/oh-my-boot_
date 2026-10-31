@@ -19,7 +19,7 @@ sudo ./scripts/fetch-ipxe.sh \
   01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1 \
   https://github.com/ipxe/shim/releases/download/ipxe-16.1/ipxe-shimx64.efi \
   5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf \
-  /srv/pxe/tftp
+  /srv/omb/tftp
 ```
 
 The script replaces only the archive's `x86_64-sb/shimx64.efi` before publishing the directory. Both `ipxe-shim.efi` and `snponly-shim.efi` remain links to that file. The signed `ipxe.efi` and `snponly.efi` from v2.0.0 are unchanged. `ipxeboot/x86_64/undionly.kpxe` is offered to BIOS clients. The shim loads the matching EFI binary from the same directory; keep the archive layout intact. See the [upstream Secure Boot instructions](https://ipxe.org/secboot). The new shim's signatures and TFTP transfer were verified on the test server; a VM boot with a 2023-only `db` remains to be checked.

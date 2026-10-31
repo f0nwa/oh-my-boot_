@@ -1,5 +1,7 @@
 # Установка без доступа в интернет
 
+> Актуальные команды установки используют целевые имена OMB. Датированные отчёты о развёртывании, исходные пути резервных копий и результаты относятся к стенду до миграции; его перенос ещё предстоит. См. [план технической миграции](../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 [English version](en/offline-installation.md)
 
 Обычные руководства рассчитаны на сервер с выходом в интернет: пакеты ставятся через `apt`, Go-модули скачиваются при сборке, iPXE и wimboot загружаются с GitHub. Этот документ описывает, как на машине с интернетом собрать комплект со всем необходимым, перенести его на изолированный сервер и установить там без обращений наружу.
@@ -31,12 +33,12 @@
 Готовый комплект выглядит так:
 
 ```text
-pxe-offline/
+omb-offline/
   COMMIT                    коммит, из которого собраны файлы
   bin/                      восемь бинарных файлов Linux x86_64
   debs/                     .deb со всеми зависимостями и индекс Packages.gz
   assets/                   ipxeboot.tar.gz, ipxe-shimx64.efi, wimboot, expected.sha256
-  pxe-platform-src.tar.gz   deploy/, scripts/ и docs/ того же коммита
+  omb-src.tar.gz   deploy/, scripts/ и docs/ того же коммита
   SHA256SUMS
 ```
 
@@ -50,11 +52,11 @@ pxe-offline/
 test -z "$(git status --porcelain)" || { echo 'есть незакоммиченные изменения'; exit 1; }
 go test ./... && go vet ./...
 
-KIT=$HOME/pxe-offline
+KIT=$HOME/omb-offline
 mkdir -p "$KIT/bin"
 git rev-parse HEAD > "$KIT/COMMIT"
-for c in pxe-boot pxe-agent pxe-agentctl pxe-control pxe-controlctl \
-         pxe-images pxe-imagesctl pxe-winiso-prepare; do
+for c in omb-boot omb-agent omb-agentctl omb-control omb-controlctl \
+         omb-images omb-imagesctl omb-winiso-prepare; do
   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$KIT/bin/$c" ./cmd/$c
 done
 ```
@@ -69,12 +71,12 @@ done
 
 | Пакет | Зачем |
 | --- | --- |
-| `dnsmasq-base` | DHCP, proxy-DHCP и TFTP (`pxe-dnsmasq.service`) |
-| `postgresql` | Базы `pxe_boot`, `pxe_control`, `pxe_images` |
+| `dnsmasq-base` | DHCP, proxy-DHCP и TFTP (`omb-dnsmasq.service`) |
+| `postgresql` | Базы `omb_boot`, `omb_control`, `omb_images` |
 | `ca-certificates`, `curl` | `fetch-ipxe.sh` и проверки HTTP из руководств |
 | `openssl` | Самоподписанный сертификат админки |
 | `cifs-utils` | Монтирование SMB-хранилищ с ISO |
-| `samba` | Папка `pxeisos`, с которой WinPE запускает Setup; `smbstatus` для журнала Agent |
+| `samba` | Папка `ombisos`, с которой WinPE запускает Setup; `smbstatus` для журнала Agent |
 | `wimtools` | `wimlib-imagex` для WIM с драйверами |
 
 Пакеты скачиваются в чистом контейнере того же выпуска Ubuntu. В контейнере установлено меньше, чем на Ubuntu Server, поэтому в комплект попадут все зависимости, даже те, что на сервере уже есть. Для них же строится индекс локального репозитория:
@@ -115,11 +117,11 @@ cd -
 ### 1.4 Исходники и контрольные суммы
 
 ```sh
-git archive --format=tar.gz -o "$KIT/pxe-platform-src.tar.gz" HEAD
+git archive --format=tar.gz -o "$KIT/omb-src.tar.gz" HEAD
 cd "$KIT"
 find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS   # macOS: xargs shasum -a 256
 cd ..
-tar -czf "pxe-offline-$(cat pxe-offline/COMMIT | cut -c1-8).tar.gz" pxe-offline
+tar -czf "omb-offline-$(cat omb-offline/COMMIT | cut -c1-8).tar.gz" omb-offline
 ```
 
 Хеш итогового архива запишите отдельно от носителя, например в заявку на перенос.
@@ -129,10 +131,10 @@ tar -czf "pxe-offline-$(cat pxe-offline/COMMIT | cut -c1-8).tar.gz" pxe-offline
 Скопируйте архив на сервер любым разрешённым способом и распакуйте в `/opt`:
 
 ```sh
-sudo tar -xzf pxe-offline-*.tar.gz -C /opt
-sudo chown -R root:root /opt/pxe-offline
-sudo chmod -R u=rwX,go=rX /opt/pxe-offline
-cd /opt/pxe-offline && sha256sum -c --quiet SHA256SUMS && echo 'комплект цел'
+sudo tar -xzf omb-offline-*.tar.gz -C /opt
+sudo chown -R root:root /opt/omb-offline
+sudo chmod -R u=rwX,go=rX /opt/omb-offline
+cd /opt/omb-offline && sha256sum -c --quiet SHA256SUMS && echo 'комплект цел'
 ```
 
 Права `go=rX` нужны и для `apt`: он читает локальный репозиторий от служебного пользователя `_apt`.
@@ -144,28 +146,28 @@ cd /opt/pxe-offline && sha256sum -c --quiet SHA256SUMS && echo 'комплект
 Подключите каталог `debs` как локальный репозиторий и обновите индекс только по нему. Остальные источники при этом не опрашиваются:
 
 ```sh
-echo 'deb [trusted=yes] file:/opt/pxe-offline/debs ./' | sudo tee /etc/apt/sources.list.d/pxe-offline.list
+echo 'deb [trusted=yes] file:/opt/omb-offline/debs ./' | sudo tee /etc/apt/sources.list.d/omb-offline.list
 sudo apt-get update \
-  -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/pxe-offline.list \
+  -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/omb-offline.list \
   -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
 sudo apt-get install -y --no-install-recommends \
   dnsmasq-base postgresql ca-certificates curl openssl cifs-utils samba wimtools
 ```
 
-`trusted=yes` отключает проверку подписи репозитория. Это допустимо, потому что целостность комплекта уже проверена по `SHA256SUMS`. После установки файл `/etc/apt/sources.list.d/pxe-offline.list` можно удалить.
+`trusted=yes` отключает проверку подписи репозитория. Это допустимо, потому что целостность комплекта уже проверена по `SHA256SUMS`. После установки файл `/etc/apt/sources.list.d/omb-offline.list` можно удалить.
 
 После установки пакета `samba` служба `smbd` сразу запускается с конфигурацией Ubuntu по умолчанию. Замените `/etc/samba/smb.conf` по [образцу](../deploy/samba/smb.conf), исправив `interfaces` и `hosts allow` под свою сеть, до того как подключать сервер к сети клиентов.
 
 ### 3.2 Бинарные файлы и исходники
 
 ```sh
-sudo install -m 0755 /opt/pxe-offline/bin/* /usr/local/bin/
-sudo install -d -m 0755 /opt/pxe-platform-src
-sudo tar -xzf /opt/pxe-offline/pxe-platform-src.tar.gz -C /opt/pxe-platform-src
-cd /opt/pxe-platform-src
+sudo install -m 0755 /opt/omb-offline/bin/* /usr/local/bin/
+sudo install -d -m 0755 /opt/omb-src
+sudo tar -xzf /opt/omb-offline/omb-src.tar.gz -C /opt/omb-src
+cd /opt/omb-src
 ```
 
-Дальше все команды с путями `deploy/...` и `scripts/...` выполняются из `/opt/pxe-platform-src`.
+Дальше все команды с путями `deploy/...` и `scripts/...` выполняются из `/opt/omb-src`.
 
 ### 3.3 iPXE и wimboot
 
@@ -173,47 +175,46 @@ cd /opt/pxe-platform-src
 
 ```sh
 sudo ./scripts/fetch-ipxe.sh \
-  file:///opt/pxe-offline/assets/ipxeboot.tar.gz \
+  file:///opt/omb-offline/assets/ipxeboot.tar.gz \
   01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1 \
-  file:///opt/pxe-offline/assets/ipxe-shimx64.efi \
+  file:///opt/omb-offline/assets/ipxe-shimx64.efi \
   5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf \
-  /srv/pxe/tftp
+  /srv/omb/tftp
 ```
 
-Меню Windows загружает `wimboot` по адресу `/assets/windows/wimboot`, то есть из `/srv/pxe/tftp/windows/wimboot`:
+Меню Windows загружает `wimboot` по адресу `/assets/windows/wimboot`, то есть из `/srv/omb/tftp/windows/wimboot`:
 
 ```sh
-sudo install -d -m 0755 /srv/pxe/tftp/windows
-sudo install -m 0644 /opt/pxe-offline/assets/wimboot /srv/pxe/tftp/windows/wimboot
-echo '5f067ccdc4d084d5bf77b6c853bd0f8402dfc2b4cd1b103d358993ae97fae8e3  /srv/pxe/tftp/windows/wimboot' | sha256sum -c
+sudo install -d -m 0755 /srv/omb/tftp/windows
+sudo install -m 0644 /opt/omb-offline/assets/wimboot /srv/omb/tftp/windows/wimboot
+echo '5f067ccdc4d084d5bf77b6c853bd0f8402dfc2b4cd1b103d358993ae97fae8e3  /srv/omb/tftp/windows/wimboot' | sha256sum -c
 ```
 
 ### 3.4 Пользователи и базы данных
 
-Системные пользователи создаются так же, как в руководствах; группа `pxe-control` нужна до запуска Boot и Agent, потому что их юниты используют её как `Group=`:
+Системные пользователи создаются так же, как в руководствах; группа `omb-control` нужна до запуска Boot и Agent, потому что их юниты используют её как `Group=`:
 
 ```sh
-sudo useradd --system --user-group --home /var/lib/pxe-platform-control --shell /usr/sbin/nologin pxe-control
-sudo useradd --system --user-group --home /var/lib/pxe-platform-images --shell /usr/sbin/nologin pxe-images
-sudo useradd --system --home /var/lib/pxe-platform-boot --shell /usr/sbin/nologin pxe-boot
+sudo useradd --system --user-group --home /var/lib/omb-control --shell /usr/sbin/nologin omb-control
+sudo useradd --system --user-group --home /var/lib/omb-images --shell /usr/sbin/nologin omb-images
+sudo useradd --system --home /var/lib/omb-boot --shell /usr/sbin/nologin omb-boot
 for svc in boot control images; do
-  sudo runuser -u postgres -- psql -c "CREATE ROLE \"pxe-$svc\" LOGIN"
-  sudo runuser -u postgres -- createdb -O "pxe-$svc" "pxe_$svc"
+  sudo runuser -u postgres -- psql -c "CREATE ROLE \"omb-$svc\" LOGIN"
+  sudo runuser -u postgres -- createdb -O "omb-$svc" "omb_$svc"
 done
 ```
 
 В руководствах миграции описаны как обновления уже работающего сервера. Для пустых баз большая часть миграций уже входит в основные схемы, поэтому порядок другой:
 
 ```sh
-sudo runuser -u pxe-boot    -- psql -v ON_ERROR_STOP=1 -d pxe_boot    < deploy/sql/boot.sql
-sudo runuser -u pxe-boot    -- psql -v ON_ERROR_STOP=1 -d pxe_boot    < deploy/sql/2026-10-23-boot-transfer.sql
-sudo runuser -u pxe-images  -- psql -v ON_ERROR_STOP=1 -d pxe_images  < deploy/sql/images.sql
-sudo runuser -u pxe-control -- psql -v ON_ERROR_STOP=1 -d pxe_control < deploy/sql/control.sql
-sudo runuser -u pxe-control -- psql -v ON_ERROR_STOP=1 -d pxe_control < deploy/sql/2026-10-19-winpe-drivers.sql
+sudo runuser -u omb-boot    -- psql -v ON_ERROR_STOP=1 -d omb_boot    < deploy/sql/boot.sql
+sudo runuser -u omb-boot    -- psql -v ON_ERROR_STOP=1 -d omb_boot    < deploy/sql/2026-10-23-boot-transfer.sql
+sudo runuser -u omb-images  -- psql -v ON_ERROR_STOP=1 -d omb_images  < deploy/sql/images.sql
+sudo runuser -u omb-control -- psql -v ON_ERROR_STOP=1 -d omb_control < deploy/sql/control.sql
 ```
 
 - `boot.sql` не содержит колонок `status`, `bytes` и `size`, поэтому миграция `2026-10-23-boot-transfer.sql` нужна.
-- `control.sql` не содержит таблиц каталога драйверов, поэтому нужна `2026-10-19-winpe-drivers.sql`. Остальные миграции Control уже входят в `control.sql`; их повторный запуск ничего не меняет.
+- `control.sql` уже содержит таблицы каталога драйверов и остальные изменения Control. Для пустой базы достаточно основной схемы; `2026-10-19-winpe-drivers.sql` отдельно применять не нужно.
 - **Не применяйте** `2026-10-15-managed-smb.sql` к новой базе Images: её колонки уже есть в `images.sql`, и миграция завершится ошибкой.
 
 Новые миграции, добавленные после этого документа, проверяйте так же: если основная схема их не содержит, примените их после схемы.
@@ -222,19 +223,19 @@ sudo runuser -u pxe-control -- psql -v ON_ERROR_STOP=1 -d pxe_control < deploy/s
 
 Дальше настройка не отличается от обычной:
 
-- [Установка Boot](installation.md): юниты, `boot.env`, проверка меню, применение DHCP через `pxe-agentctl`. Шаги `apt` и `fetch-ipxe.sh` уже выполнены выше.
+- [Установка Boot](installation.md): юниты, `boot.env`, проверка меню, применение DHCP через `omb-agentctl`. Шаги `apt` и `fetch-ipxe.sh` уже выполнены выше.
 - [Руководство Control](control-installation.md): `control.env`, сертификат, первый администратор. Сертификат создаётся локально, без обращений в сеть, например:
   ```sh
-  sudo install -d -m 0700 -o pxe-control -g pxe-control /var/lib/pxe-platform-control
-  sudo openssl req -x509 -newkey rsa:3072 -nodes -days 90 -subj '/CN=pxe-control' \
+  sudo install -d -m 0700 -o omb-control -g omb-control /var/lib/omb-control
+  sudo openssl req -x509 -newkey rsa:3072 -nodes -days 90 -subj '/CN=omb-control' \
     -addext 'subjectAltName=IP:<адрес админки>' \
-    -keyout /var/lib/pxe-platform-control/control.key -out /var/lib/pxe-platform-control/control.crt
-  sudo chown pxe-control:pxe-control /var/lib/pxe-platform-control/control.*
-  sudo chmod 0600 /var/lib/pxe-platform-control/control.key
+    -keyout /var/lib/omb-control/control.key -out /var/lib/omb-control/control.crt
+  sudo chown omb-control:omb-control /var/lib/omb-control/control.*
+  sudo chmod 0600 /var/lib/omb-control/control.key
   ```
-- [Руководство Images](images-installation.md): `images.env`, хранилища, профили Windows, шаблоны `deploy/boot-assets/windows-profiles/` в `/usr/share/pxe-platform/windows-profiles`, пользователь Samba `pxe-iso`.
+- [Руководство Images](images-installation.md): `images.env`, хранилища, профили Windows, шаблоны `deploy/boot-assets/windows-profiles/` в `/usr/share/omb/windows-profiles`, пользователь Samba `omb-iso`.
 
-`pxe-agent.service` работает с `ProtectSystem=strict` и не запустится, если отсутствует хоть один путь из его `ReadWritePaths`. До первого запуска должны существовать `/etc/pxe-platform`, `/etc/pxe-platform/winiso`, `/mnt/pxe-platform-smb`, `/mnt/pxe-platform-smb-upload`, `/mnt/pxe-platform-iso/profiles`, `/srv/pxe/tftp/windows-profiles`, `/srv/pxe/tftp/windows-answers`, `/srv/pxe/tftp/windows-driver-wims` и `/srv/pxe/tftp/windows-driver-configs`. Владельцы и права указаны в руководстве Images и в разделе о драйверах руководства Control.
+`omb-agent.service` работает с `ProtectSystem=strict` и не запустится, если отсутствует хоть один путь из его `ReadWritePaths`. До первого запуска должны существовать `/etc/omb`, `/etc/omb/winiso`, `/mnt/omb-smb`, `/mnt/omb-smb-upload`, `/mnt/omb-iso/profiles`, `/srv/omb/tftp/windows-profiles`, `/srv/omb/tftp/windows-answers`, `/srv/omb/tftp/windows-driver-wims` и `/srv/omb/tftp/windows-driver-configs`. Владельцы и права указаны в руководстве Images и в разделе о драйверах руководства Control.
 
 ## 4. Проверить
 
@@ -247,7 +248,7 @@ curl -sS -m 5 -o /dev/null https://proxy.golang.org && echo 'ВНИМАНИЕ: �
 Затем проверьте службы и меню так же, как в руководствах:
 
 ```sh
-systemctl is-active postgresql pxe-boot pxe-agent pxe-control pxe-images smbd
+systemctl is-active postgresql omb-boot omb-agent omb-control omb-images smbd
 curl -fsS http://<адрес Boot>:8080/boot/menu.ipxe | head -1        # ожидается #!ipxe
 curl -fsSI http://<адрес Boot>:8080/assets/windows/wimboot | head -1
 ```

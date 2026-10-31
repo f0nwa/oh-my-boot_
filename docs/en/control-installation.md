@@ -1,5 +1,7 @@
 # Control and the HTTPS admin interface on the test VM
 
+> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; its migration is pending. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 [Русская версия](../control-installation.md)
 
 Address: **https://192.168.10.135:8443**. The certificate is self-signed with the IP address in the SAN, so the browser asks you to trust it. The lab certificate is valid for 90 days.
@@ -8,7 +10,7 @@ The admin interface is available in Russian and English. Each user chooses the l
 
 ## Services
 
-`pxe-control` is a separate Go process with its own PostgreSQL database, `pxe_control`. The browser talks only to it. Control calls Boot and Agent over local Unix sockets. When Control is stopped, `pxe-boot` keeps serving the last published menu on `10.30.0.10:8080`, and `pxe-agent` keeps proxy-DHCP running on `ens19`. In the lab, the list of interfaces the dashboard may change contains only `ens19`.
+`omb-control` is a separate Go process with its own PostgreSQL database, `omb_control`. The browser talks only to it. Control calls Boot and Agent over local Unix sockets. When Control is stopped, `omb-boot` keeps serving the last published menu on `10.30.0.10:8080`, and `omb-agent` keeps proxy-DHCP running on `ens19`. In the lab, the list of interfaces the dashboard may change contains only `ens19`.
 
 ## Boot menu folders
 
@@ -20,21 +22,21 @@ On 16.10.2026 a new Control binary was installed on the test VM; HTTPS responded
 
 ## Installation
 
-Build Linux x86_64 versions of `./cmd/pxe-boot`, `./cmd/pxe-agent`, `./cmd/pxe-control` and `./cmd/pxe-controlctl` with `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build`. Install the binaries in `/usr/local/bin` and the [units](../../deploy/systemd) in `/etc/systemd/system`. Before replacing Boot and Agent, keep their current binaries and units for rollback.
+Build Linux x86_64 versions of `./cmd/omb-boot`, `./cmd/omb-agent`, `./cmd/omb-control` and `./cmd/omb-controlctl` with `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build`. Install the binaries in `/usr/local/bin` and the [units](../../deploy/systemd) in `/etc/systemd/system`. Before replacing Boot and Agent, keep their current binaries and units for rollback.
 
-Create the `pxe-control` system group and user, a PostgreSQL role with the same name and the `pxe_control` database. Apply the [Control schema](../../deploy/sql/control.sql) as `pxe-control`. The `pxe_boot` database stays separate.
+Create the `omb-control` system group and user, a PostgreSQL role with the same name and the `omb_control` database. Apply the [Control schema](../../deploy/sql/control.sql) as `omb-control`. The `omb_boot` database stays separate.
 
-Settings in `/etc/pxe-platform/control.env`:
+Settings in `/etc/omb/control.env`:
 
 ```ini
-PXE_CONTROL_LISTEN=192.168.10.135:8443
-PXE_CONTROL_INTERFACES=ens19
-PXE_CONTROL_DATABASE_URL=host=/var/run/postgresql dbname=pxe_control user=pxe-control
+OMB_CONTROL_LISTEN=192.168.10.135:8443
+OMB_CONTROL_INTERFACES=ens19
+OMB_CONTROL_DATABASE_URL=host=/var/run/postgresql dbname=omb_control user=omb-control
 ```
 
-The certificate `control.crt` and key `control.key` are in `/var/lib/pxe-platform-control`; the directory belongs to `pxe-control` with mode `0700`, and the key has mode `0600`. For the lab, the certificate was created with `subjectAltName=IP:192.168.10.135`. After installation, run `systemctl daemon-reload`, restart Boot and Agent, then enable Control. **Installing the dashboard does not change the DHCP mode or the Keenetic settings.**
+The certificate `control.crt` and key `control.key` are in `/var/lib/omb-control`; the directory belongs to `omb-control` with mode `0700`, and the key has mode `0600`. For the lab, the certificate was created with `subjectAltName=IP:192.168.10.135`. After installation, run `systemctl daemon-reload`, restart Boot and Agent, then enable Control. **Installing the dashboard does not change the DHCP mode or the Keenetic settings.**
 
-The first administrator was created with the local command `pxe-controlctl create-admin -username fonwa`, which reads the password from stdin. There is no default password. If access is lost, `pxe-controlctl reset-password -username fonwa` reads a new password from stdin and ends the existing sessions. Both commands need `PXE_CONTROL_DATABASE_URL` and run as the `pxe-control` system user.
+The first administrator was created with the local command `omb-controlctl create-admin -username fonwa`, which reads the password from stdin. There is no default password. If access is lost, `omb-controlctl reset-password -username fonwa` reads a new password from stdin and ends the existing sessions. Both commands need `OMB_CONTROL_DATABASE_URL` and run as the `omb-control` system user.
 
 ## Checks on 15.10.2026
 
@@ -69,7 +71,7 @@ The record number and the selected INF files are shown on the **Menu** page so t
 
 The first release accepts uploads up to 256 MiB, up to 512 MiB of files after extraction, up to 4096 files and up to 128 selected INF files. INF paths, which WinPE runs from a batch file, must use Latin letters and other ASCII characters. Drivers are loaded only in WinPE; they are not added to the installed Windows. Package files and prepared WIM files are kept for earlier menu versions; automatic cleanup is not enabled yet.
 
-To deploy, install the `wimtools` package, apply the [migration](../../deploy/sql/2026-10-19-winpe-drivers.sql) to the `pxe_control` database as `pxe-control`, create `/srv/pxe/tftp/windows-driver-wims` and `/srv/pxe/tftp/windows-driver-configs`, then update Agent and Control together with their systemd units. The source WIM files under `/srv/pxe/tftp/windows-profiles` are not modified. Before publishing, Control checks the ISO, XML, driver package, derived WIM and startup script again.
+To deploy, install the `wimtools` package, apply the [migration](../../deploy/sql/2026-10-19-winpe-drivers.sql) to the `omb_control` database as `omb-control`, create `/srv/omb/tftp/windows-driver-wims` and `/srv/omb/tftp/windows-driver-configs`, then update Agent and Control together with their systemd units. The source WIM files under `/srv/omb/tftp/windows-profiles` are not modified. Before publishing, Control checks the ISO, XML, driver package, derived WIM and startup script again.
 
 On 19.10.2026 `wimtools` 1.14.5 and the new Agent and Control were installed on the test server. The previous binaries and units are kept in `/var/backups/pxe-platform-winpe-drivers-20261019/`. The migration created both tables. Agent, Control, Boot and dnsmasq are active; HTTPS redirects a guest to the sign-in page. Right after deployment the menu kept the SHA-256 `43459a54e0d3dc7a8361d731062653a94293ffcadc90fce0fe3ff35f52ddabf9`; later the user published a test configuration. Importing NetKVM and booting WinPE with VirtIO networking on VM 113 succeeded with OVMF Secure Boot Enabled; see the [test report](winpe-driver-test-2026-10-19.md).
 
@@ -78,9 +80,9 @@ Deleting Windows profiles, XML answer files and driver configurations requires a
 ## Diagnostics and rollback
 
 ```sh
-sudo systemctl status pxe-boot pxe-agent pxe-dnsmasq pxe-control
-sudo journalctl -u pxe-control -u pxe-boot -u pxe-agent -n 100 --no-pager
-curl --cacert /var/lib/pxe-platform-control/control.crt https://192.168.10.135:8443/login
+sudo systemctl status omb-boot omb-agent omb-dnsmasq omb-control
+sudo journalctl -u omb-control -u omb-boot -u omb-agent -n 100 --no-pager
+curl --cacert /var/lib/omb-control/control.crt https://192.168.10.135:8443/login
 curl -fsS http://10.30.0.10:8080/boot/menu.ipxe
 ```
 
@@ -109,7 +111,7 @@ Possible improvements at that time: a background storage availability check and 
 
 ## Background storage check and errors on pages, 20.10.2026
 
-- Images checks every storage in the ready or unavailable state once a minute: SMB and mounted paths must be mounted and the root must be readable; the check gets 20 seconds. A ready storage that fails the check becomes unavailable with the reason (“Storage is unavailable: not responding for more than 20s” or the system error). An unavailable storage that passes the check again is scanned automatically: the scan refreshes the catalog and makes it ready. Automatic rescans of one storage run at most once every 10 minutes. Storages that are being scanned are not checked, and a hung check is not started again. The interval is set with `pxe-images -storage-check-interval` (default `1m`; `0` disables the check).
+- Images checks every storage in the ready or unavailable state once a minute: SMB and mounted paths must be mounted and the root must be readable; the check gets 20 seconds. A ready storage that fails the check becomes unavailable with the reason (“Storage is unavailable: not responding for more than 20s” or the system error). An unavailable storage that passes the check again is scanned automatically: the scan refreshes the catalog and makes it ready. Automatic rescans of one storage run at most once every 10 minutes. Storages that are being scanned are not checked, and a hung check is not started again. The interval is set with `omb-images -storage-check-interval` (default `1m`; `0` disables the check).
 - Publishing and restoring the menu, and preparing a Windows profile, report the cause separately: “storage “…” is unavailable: <reason>”, “storage “…” is being scanned, try again later”, “the source ISO of profile N was not found in storage “…”” and “the source ISO of profile N has changed”. The last one is used only when the size or date changed.
 - Form errors on the **Menu**, **Images** and **Drivers** pages are shown as a red notice on the same page instead of a separate text page; the response status code is kept. ISO upload and driver import still report errors inside their forms.
 
@@ -133,9 +135,9 @@ Check on the server: outgoing TCP 445 to the NAS was blocked at 00:56:55. Withou
 
 At 10:57 the PXE server rebooted before the NAS (VM 110 on the same Proxmox host) was reachable. The SMB mount units failed with `cifs_mount failed w/return code = -113`; systemd does not retry mount units, so all `pxe-winiso@N` units stopped after them, and `pxe-windows11-iso` restarted every 10 seconds. Publishing the menu was rejected during this time because the profile ISO files were not mounted. Boot kept serving the menu. At 12:07 the share and profiles were started manually; Images detected the storage by itself and made it ready again at 12:08.
 
-Agent now recovers such failures by itself. On a schedule it restarts inactive SMB mount units that have stored credentials, and, once the mounts succeed, inactive units of prepared profiles `pxe-winiso@N`. While a storage is unavailable, profiles are left alone. Recovery uses the same locks as connecting and deleting, so it does not collide with actions in the admin interface. Every action is written to the Agent log (`Storage recovery: restarted …`).
+Agent now recovers such failures by itself. On a schedule it restarts inactive SMB mount units that have stored credentials, and, once the mounts succeed, inactive units of prepared profiles `omb-winiso@N`. While a storage is unavailable, profiles are left alone. Recovery uses the same locks as connecting and deleting, so it does not collide with actions in the admin interface. Every action is written to the Agent log (`Storage recovery: restarted …`).
 
-The setting is stored by Agent in `/etc/pxe-platform/storage-recovery.json` (flag `pxe-agent -storage-recovery-config`), so recovery works right after boot, before Control and PostgreSQL start. Recovery is enabled by default with a 1-minute interval. On the **Images** page, the **Automatic connection recovery** block shows the state, the time of the last check, the actions taken and the last error. An administrator enables or disables recovery, sets the interval from 1 to 60 minutes and can press **Check now**. Changes and manual checks are recorded in the audit log as `storage-recovery.update` and `storage-recovery.run`.
+The setting is stored by Agent in `/etc/omb/storage-recovery.json` (flag `omb-agent -storage-recovery-config`), so recovery works right after boot, before Control and PostgreSQL start. Recovery is enabled by default with a 1-minute interval. On the **Images** page, the **Automatic connection recovery** block shows the state, the time of the last check, the actions taken and the last error. An administrator enables or disables recovery, sets the interval from 1 to 60 minutes and can press **Check now**. Changes and manual checks are recorded in the audit log as `storage-recovery.update` and `storage-recovery.run`.
 
 Check on the server: after Agent was installed, the first check changed nothing. The `pxe-winiso@3` unit was stopped at 12:14:38; at 12:15:26 Agent restarted it (`restarted pxe-winiso@3.service`), the ISO was mounted again, and the profile check returned `204`. The active menu did not change. The previous Agent and Control are kept in `/var/backups/pxe-platform-storage-recovery-20261020/`.
 
@@ -164,7 +166,7 @@ The Log page has Machines, HTTP requests and DHCP and TFTP tabs. Boot records th
 
 ## Dark theme, 20.10.2026
 
-The **Appearance** section of My account chooses the admin theme: **Same as system** (default; follows the browser and OS `prefers-color-scheme` setting), **Light** or **Dark**. The choice is stored in the user account (`users.theme`) and applies on all of the user's devices. The sign-in page always follows the system theme. Before starting the new Control, apply the [migration](../../deploy/sql/2026-10-20-theme.sql) to the `pxe_control` database as `pxe-control` (the column is also added to `deploy/sql/control.sql`).
+The **Appearance** section of My account chooses the admin theme: **Same as system** (default; follows the browser and OS `prefers-color-scheme` setting), **Light** or **Dark**. The choice is stored in the user account (`users.theme`) and applies on all of the user's devices. The sign-in page always follows the system theme. Before starting the new Control, apply the [migration](../../deploy/sql/2026-10-20-theme.sql) to the `omb_control` database as `omb-control` (the column is also added to `deploy/sql/control.sql`).
 
 Rollout 20.10.2026: applied `2026-10-20-theme.sql` (every user has `theme = system`), replaced only `pxe-control` (SHA-256 `4a81221b…`). The previous binary and the `users` table schema were backed up to `/var/backups/pxe-platform-theme-20261020/`.
 
@@ -200,13 +202,13 @@ Rollout 21.10.2026: replaced only `pxe-control` (SHA-256 `a637317d…`). The dns
 
 After a NAS disk was replaced and the shared folder recreated, the `//192.168.10.10/Downloads/iso` mount stayed "mounted" for systemd while every access failed with `Stale file handle` (kernel log: `reconnect tcon failed rc = -2`). Storage recovery only restarted inactive mounts and missed it; Images saw the storage as "reachable again" every 10 minutes (the file list came from cache) but its rescan failed on `lstat`.
 
-Agent storage recovery now checks every active SMB mount the way a reader would: `stat` of the root and reading one entry (at most 15 seconds). When a mount is unreadable, Agent stops only the Windows ISO profiles whose ISOs live on that share, restarts the mount, and the regular pass starts the profiles again. Images also checks a storage with `stat` of its root. The mount account is kept in `/etc/pxe-platform/smb/<key>.cred` (currently `v.pogutsa`).
+Agent storage recovery now checks every active SMB mount the way a reader would: `stat` of the root and reading one entry (at most 15 seconds). When a mount is unreadable, Agent stops only the Windows ISO profiles whose ISOs live on that share, restarts the mount, and the regular pass starts the profiles again. Images also checks a storage with `stat` of its root. The mount account is kept in `/etc/omb/smb/<key>.cred` (currently `v.pogutsa`).
 
 Rollout 23.10.2026: replaced `pxe-agent` (SHA-256 `9650f3f0…`) and `pxe-images` (SHA-256 `848cdc92…`). The first pass after the Agent restart remounted both shares and the three profiles; DSM is "Available" again. The previous binaries are in `/var/backups/pxe-platform-agent-recovery-20261023/`. The client menu SHA-256 did not change (`7ecede91…`).
 
 ## Windows Setup progress after WinPE, 23.10.2026
 
-After `boot.wim` the server sees no more Boot requests from the machine, but WinPE connects to the `\\10.30.0.10\pxeisos` share and runs Windows Setup from it. Every 10 seconds the Agent reads `smbstatus --json` and records connections to `pxeisos`: the IP, the profile (the first folder in the paths of open files), whether `install.wim`/`install.esd`/`install*.swm` is open, how much the Samba process serving the client has read (`rchar` in `/proc/<pid>/io`), and when the connection closed. Seven days of history are kept in `/var/lib/pxe-platform-agent/smb-sessions.json` and served to Control as `GET /smb-sessions` on the Agent socket.
+After `boot.wim` the server sees no more Boot requests from the machine, but WinPE connects to the `\\10.30.0.10\ombisos` share and runs Windows Setup from it. Every 10 seconds the Agent reads `smbstatus --json` and records connections to `ombisos`: the IP, the profile (the first folder in the paths of open files), whether `install.wim`/`install.esd`/`install*.swm` is open, how much the Samba process serving the client has read (`rchar` in `/proc/<pid>/io`), and when the connection closed. Seven days of history are kept in `/var/lib/omb-agent/smb-sessions.json` and served to Control as `GET /smb-sessions` on the Agent socket.
 
 Control ties a connection to a machine by IP (the nearest earlier Boot request from the same address, at most 30 minutes before) and adds a seventh step, “Install”, on the Now page, plus “Install” lines in the machine’s steps:
 
@@ -221,7 +223,7 @@ An open `install.wim` alone does not mean copying: Setup opens it to list the ed
 
 While Setup holds the connection, the machine counts as active. The end of the installation (OOBE, first sign-in) is not visible to the server: after the reboot Windows installs from the machine's own disk.
 
-For `smbstatus`, `pxe-agent.service` gains `ReadWritePaths=-/run/samba` (without it smbstatus cannot create its messaging context; the “-” keeps the unit working where Samba is not installed). The smbstatus warning “no network interfaces found” inside the Agent sandbox is expected; the JSON is complete.
+For `smbstatus`, `omb-agent.service` gains `ReadWritePaths=-/run/samba` (without it smbstatus cannot create its messaging context; the “-” keeps the unit working where Samba is not installed). The smbstatus warning “no network interfaces found” inside the Agent sandbox is expected; the JSON is complete.
 
 Rollout 23.10.2026 (10:30, fixed at 10:45): replaced `pxe-agent` (SHA-256 `feda3ab3…`) and `pxe-control` (SHA-256 `f542e891…`) and updated `/etc/systemd/system/pxe-agent.service`. Previous files: `/usr/local/bin/pxe-agent.bak-202610231029`, `/usr/local/bin/pxe-control.bak-202610231029`, `/root/pxe-agent.service.bak-202610231029`. The client menu did not change.
 
@@ -229,7 +231,7 @@ Rollout 23.10.2026 (10:30, fixed at 10:45): replaced `pxe-agent` (SHA-256 `feda3
 
 - On the ISO Images page, the Storage list now offers, besides SMB shares, the server's local storages that the Images service may write to. Each entry shows where it is (“network share” or “on this server”) and how much is free; if the file will not fit, the browser says so before the transfer starts.
 - Every available storage shows its space: “free X of Y · used N%” with a bar (yellow from 85%, red from 95%), on the Storages page (Space column) and on System → Overview. Images computes it on every catalog request (statfs of the root, at most 3 seconds so that a hung share does not hold the page).
-- A Windows profile can be prepared from an ISO in a local storage inside `/var/lib/pxe-platform-images`: the Agent and `pxe-winiso-prepare` now mount ISO files from that directory too, not only from SMB connections.
+- A Windows profile can be prepared from an ISO in a local storage inside `/var/lib/omb-images`: the Agent and `omb-winiso-prepare` now mount ISO files from that directory too, not only from SMB connections.
 - Images API: upload and the folder list are available as `/storages/{id}/upload` and `/storages/{id}/folders`; the earlier `/smb-storages/…` paths still work.
 
 Rollout 23.10.2026, 13:16: replaced `pxe-agent` (SHA-256 `acc66103…`), `pxe-control` (`c6e3b050…`), `pxe-images` (`9f19758e…`) and `pxe-winiso-prepare` (`6725b513…`); previous files are `/usr/local/bin/*.bak-202610231316`. `pxe-images.service` gains `ReadWritePaths=-/var/lib/pxe-platform-images` (previous unit copied to `/root/pxe-images.service.bak-202610231316`), and `/var/lib/pxe-platform-images/iso` became `2770 root:pxe-images` (was `750`). A test upload of a 4-byte file to Local succeeded; the file and its catalog row were removed, and the audit log keeps an `iso.upload ok` line by user `claude`. The client menu did not change.
@@ -258,7 +260,7 @@ Follow-up 23.10.2026, 14:49 (`pxe-control` SHA-256 `32fb3073…`, previous `.bak
 
 - **No per-machine resolution.** `console --x 640 --y 480` is a minimum, not an exact mode: iPXE looks through the modes the machine's graphics offer and takes the smallest one that is at least 640×480. One setting therefore suits every machine. If there is no such mode at all, the firmware text console stays and the menu still works.
 - **The right edge is no longer cut off.** iPXE's graphical console draws each character in a 9-pixel cell, so 640×480 gives 71 columns, not 80, and hints aligned to 80 columns were clipped (“aut”, “vioscs”). Item lines are now sized for the narrowest screen: 65 characters (71 less frame and padding). On wider screens the hints sit slightly left of the edge.
-- The menu script now carries `# pxe-platform:look pult-3`; from it the draft can tell that the published menu uses an older look and shows “New look of the machine screen”.
+- The menu script now carries `# omb:look pult-3`; from it the draft can tell that the published menu uses an older look and shows “New look of the machine screen”.
 
 ## Steps on the Now page: “Image” merged into “Choice”, 23.10.2026
 
@@ -293,7 +295,7 @@ Rollout 23.10.2026, 15:50: replaced `pxe-control` (SHA-256 `8ae95cba…`); the p
 At the bottom of the Journal page an administrator sees a “Journal keeping” block:
 
 - how many Boot requests the log holds, since when, and the table size;
-- **Automatic cleanup**: “Keep everything” (default), or older than 7, 30, 90, 180 days or a year. Boot deletes old requests once an hour and right after the period changes. The setting lives in `/var/lib/pxe-platform-boot/journal.json` and survives restarts;
+- **Automatic cleanup**: “Keep everything” (default), or older than 7, 30, 90, 180 days or a year. Boot deletes old requests once an hour and right after the period changes. The setting lives in `/var/lib/omb-boot/journal.json` and survives restarts;
 - **Clear the whole log** (with confirmation): Boot deletes all `boot_events` rows, the Agent forgets finished WinPE share connections (an installation in progress stays), and Control stops showing DHCP/TFTP lines logged before that moment. journald keeps those lines on its own, and they cannot be deleted on our command. Machines disappear from the Now and Journal pages until they boot again.
 
 Both actions are audited (`journal.retention`, `journal.clear`). The system keeps DHCP and TFTP lines in journald for up to 7 days and WinPE connections for 7 days, whatever the setting.
@@ -304,7 +306,7 @@ Rollout 23.10.2026, 16:10: replaced `pxe-boot` (SHA-256 `09b437f4…`), `pxe-con
 
 ## Machine list: model, maker and own name, 23.10.2026
 
-Control keeps a list of every machine it has seen in the `machines` table of the `pxe_control` database ([migration](../../deploy/sql/2026-10-23-machines.sql)). Clearing the boot log does not clear it. For each machine it holds:
+Control keeps a list of every machine it has seen in the `machines` table of the `omb_control` database ([migration](../../deploy/sql/2026-10-23-machines.sql)). Clearing the boot log does not clear it. For each machine it holds:
 
 - the MAC, when it was first and last seen, the last IP and firmware;
 - **what the machine reported about itself**: maker, model, serial number and UUID from SMBIOS. The boot menu sends them with one `imgfetch` line to `/boot/hello` (relative to the menu's own address); Boot logs it as kind `hello`, and Control moves it into the list. Firmware placeholders (“To Be Filled By O.E.M.”, “Default string”, an all-zero UUID) are dropped. If sending fails, the menu still shows. For machines to start reporting, the menu has to be published again: the draft shows “Updated menu script”;
@@ -388,7 +390,7 @@ Rollout 24.10.2026: no migrations. 03:28 — `pxe-control` (“wipes disk” lab
 **Library → USB media**. Details: [secure-boot.md](secure-boot.md#usb-stick-for-machines-outside-the-domain).
 
 - Package `internal/ueficausb`: the stick's scripts (`uefica.cmd`, `uefica.vbs`, `winpeshl.ini`, `README.txt`) are embedded in the agent; the build runs `wimlib-imagex export … 1 --boot`, then `update` with the three files in `Windows/System32`; for "UEFI CA 2023" it adds `bootmgfw_EX.efi` and the `Fonts_EX` fonts.
-- Agent: `POST /uefica-usb/build {profile_id, loader}` returns the archive key; `GET /uefica-usb/file/{key}` returns the archive. The cache is `/var/lib/pxe-platform-agent/uefica-usb`, keyed by the SHA-256 of the source `boot.wim`, the scripts version and the loader; a rebuild removes the old archive of the same profile and loader.
+- Agent: `POST /uefica-usb/build {profile_id, loader}` returns the archive key; `GET /uefica-usb/file/{key}` returns the archive. The cache is `/var/lib/omb-agent/uefica-usb`, keyed by the SHA-256 of the source `boot.wim`, the scripts version and the loader; a rebuild removes the old archive of the same profile and loader.
 - Control: `POST /usb/uefica` with fields `profile_id` and `loader` (action `view`, all roles) streams the archive with no write time limit; audit `uefica-usb.download` (`ok`/`error`, `<profile>-<loader>`).
 
 Rollout 26.10.2026 20:43: no migrations. `pxe-agent` SHA-256 `8032a17e…`, `pxe-control` `9afd921b…`; previous files are `/usr/local/bin/*.bak-202610262043`. Check: as `claude`, archives of profile 3 (Windows 11 26H2) were downloaded: "2011" is 613 MB in 17 s (8 s from the cache), its `boot.wim` has one bootable image with the three stick files, `bootx64.efi` is signed by Microsoft Windows Production PCA 2011; in "2023" `bootx64.efi` and `bootmgr.efi` are signed by Windows UEFI CA 2023 and the fonts come from `Fonts_EX`. The audit log has `uefica-usb.download|ok|3-2011` and `3-2023`. The stick has not yet booted a VM or real hardware (see TODO).
@@ -443,8 +445,8 @@ For an empty database, apply [control.sql](../../deploy/sql/control.sql). Contro
 
 Transition an existing test stand in this order:
 
-1. Record binary and unit versions. Stop Control to prevent library/menu changes. Back up the complete `pxe_control` database with `pg_dump -Fc`, the Control and Boot binaries, configuration and units. Save Boot's current iPXE script and SHA-256; its file location comes from Boot configuration. Check the dump with `pg_restore --list`. Boot can continue serving its existing script.
-2. Apply the [one-time migration](../../deploy/sql/2026-10-30-unified-installations.sql) to `pxe_control` as its owner: `psql -v ON_ERROR_STOP=1 -d pxe_control -f deploy/sql/2026-10-30-unified-installations.sql`. Do not substitute the clean schema over an old database. The transaction preserves every Windows ISO, answer-file and driver-configuration row. It creates one shared profile per Windows ISO, separate manual/XML/driver installations, and one Ubuntu profile and installation. It discards the old draft and menu versions. Repeating a successful migration changes nothing.
+1. Record binary and unit versions. Stop Control to prevent library/menu changes. Back up the complete `omb_control` database with `pg_dump -Fc`, the Control and Boot binaries, configuration and units. Save Boot's current iPXE script and SHA-256; its file location comes from Boot configuration. Check the dump with `pg_restore --list`. Boot can continue serving its existing script.
+2. Apply the [one-time migration](../../deploy/sql/2026-10-30-unified-installations.sql) to `omb_control` as its owner: `psql -v ON_ERROR_STOP=1 -d omb_control -f deploy/sql/2026-10-30-unified-installations.sql`. Do not substitute the clean schema over an old database. The transaction preserves every Windows ISO, answer-file and driver-configuration row. It creates one shared profile per Windows ISO, separate manual/XML/driver installations, and one Ubuntu profile and installation. It discards the old draft and menu versions. Repeating a successful migration changes nothing.
 3. Install matching new Boot and Control binaries and start the services. Boot needs the new `/boot/choice?id=N` endpoint. Keep prepared boot files and the Ubuntu source. Verify the library, imported installation counts, unique Ubuntu profile and empty menu history. Boot keeps serving the saved script until publication.
 4. Select installations for the new draft, set names, folders and order, and optionally create another Ubuntu installation using the same profile. Publish. Control checks Windows through Agent and uses HEAD requests to check Ubuntu's ISO, kernel, initrd and UEFI file. Failed readiness checks leave the previous script active; failed database saving after publication triggers restoration of Boot's previous script. Verify publication, script SHA-256 and the new structured version.
 5. Boot Ubuntu using BIOS, UEFI and UEFI Secure Boot where supported; repeat manual Windows, XML and driver scenarios. Verify independent names/folders, `install_N` labels and counts for two Ubuntu items. Successful HTTP file checks alone do not establish OS boot success.
@@ -469,7 +471,7 @@ Interactive mode displays the installer's storage screen. Serial mode uses `dire
 
 After the unified-installations transition, back up the existing database and apply the [additive migration](../../deploy/sql/2026-10-30-ubuntu-autoinstall.sql) as its owner with `psql -v ON_ERROR_STOP=1`. For a new database use the current `control.sql`. Install matching Boot and Control binaries together: Boot must support staging and checking the files over its Unix socket and Control must support the new schema. Save the previous binaries, configuration, database and published script before upgrading.
 
-Before restarting Boot, create the directory with `sudo install -d -o pxe-boot -g pxe-control -m 0700 /srv/pxe/tftp/ubuntu-autoinstall` and install the updated `pxe-boot.service` with `ReadWritePaths=/srv/pxe/tftp/ubuntu-autoinstall`. Without this allowance, `ProtectSystem=strict` prevents Boot from staging NoCloud files. Run `sudo systemctl daemon-reload` after installing the unit.
+Before restarting Boot, create the directory with `sudo install -d -o omb-boot -g omb-control -m 0700 /srv/omb/tftp/ubuntu-autoinstall` and install the updated `omb-boot.service` with `ReadWritePaths=/srv/omb/tftp/ubuntu-autoinstall`. Without this allowance, `ProtectSystem=strict` prevents Boot from staging NoCloud files. Run `sudo systemctl daemon-reload` after installing the unit.
 
 On publication Control checks the source files, stages and verifies the NoCloud pair, then switches the menu. A staging failure leaves the active menu and draft unchanged; a database save failure after the switch triggers script rollback. To restore, select a previous version under **Menu → Versions**: Control verifies its assets before switching. Retain Boot assets while menu versions reference them. For a full binary and database rollback use the matching backup, accounting for changes made since it was taken.
 

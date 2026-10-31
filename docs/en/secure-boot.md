@@ -1,5 +1,7 @@
 # Secure Boot: why Oh My Boot boots without turning it off
 
+> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; its migration is pending. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 ## In short
 
 With Secure Boot on, firmware runs only programs signed with a trusted key. The enrolled keys depend on the model and firmware settings: a Windows key may be present while the Microsoft key for third-party loaders is absent. Oh My Boot uses a signed chain in which each executable stage is verified before it runs. Secure Boot can stay on when the firmware trusts the third-party loader key.
@@ -120,7 +122,7 @@ For machines outside the domain, or with a foreign or broken Windows, use the US
 
 If there is no such option, look for a key mode like “Factory Keys” or “Restore Factory Keys”: on some models the standard set already contains the key.
 
-**2. Add our loader to the trusted list by hand.** Some BIOSes offer “Enroll EFI Image”, “Add Trusted File” or “Append Image Hash”. Copy `ipxe-shim.efi` from the server (`/srv/pxe/tftp/ipxeboot/x86_64-sb/`) to a FAT32 USB stick, pick it in that BIOS option and save. The firmware remembers the fingerprint of exactly this file; if the shim on the server is updated, repeat this. Not every vendor has the option, and it usually works only from a USB stick or disk, not over the network.
+**2. Add our loader to the trusted list by hand.** Some BIOSes offer “Enroll EFI Image”, “Add Trusted File” or “Append Image Hash”. Copy `ipxe-shim.efi` from the server (`/srv/omb/tftp/ipxeboot/x86_64-sb/`) to a FAT32 USB stick, pick it in that BIOS option and save. The firmware remembers the fingerprint of exactly this file; if the shim on the server is updated, repeat this. Not every vendor has the option, and it usually works only from a USB stick or disk, not over the network.
 
 **3. Turn Secure Boot off.** The simplest, but it turns the protection off completely. Fine for a test bench or a machine that joins the regular fleet after installation: Secure Boot can be turned back on afterwards, and Windows boots with it.
 
@@ -204,8 +206,8 @@ The choice that does matter is iPXE's network driver. `ipxe.efi` has its own net
 
 The signatures can be seen in the files themselves, for example with `strings -a`:
 
-- `/srv/pxe/tftp/ipxeboot/x86_64-sb/ipxe-shim.efi` contains `Microsoft Corporation UEFI CA 2011` and `iPXE Secure Boot CA`;
-- `/srv/pxe/tftp/ipxeboot/x86_64-sb/ipxe.efi` contains `iPXE Secure Boot Automatic Code Signing`;
-- `/srv/pxe/tftp/windows/wimboot` is `wimboot v2.9.0` with a signature in the file.
+- `/srv/omb/tftp/ipxeboot/x86_64-sb/ipxe-shim.efi` contains `Microsoft Corporation UEFI CA 2011` and `iPXE Secure Boot CA`;
+- `/srv/omb/tftp/ipxeboot/x86_64-sb/ipxe.efi` contains `iPXE Secure Boot Automatic Code Signing`;
+- `/srv/omb/tftp/windows/wimboot` is `wimboot v2.9.0` with a signature in the file.
 
 More: [iPXE — UEFI Secure Boot](https://ipxe.org/secboot), [the shim command](https://ipxe.org/cmd/shim).

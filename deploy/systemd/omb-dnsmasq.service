@@ -2,11 +2,11 @@
 Description=Oh My Boot dedicated dnsmasq
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/etc/pxe-platform/dnsmasq.conf
+ConditionPathExists=/etc/omb/dnsmasq.conf
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/dnsmasq --no-daemon --conf-file=/etc/pxe-platform/dnsmasq.conf --pid-file=
+ExecStart=/usr/sbin/dnsmasq --no-daemon --conf-file=/etc/omb/dnsmasq.conf --pid-file=
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=true

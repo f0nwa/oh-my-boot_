@@ -1,25 +1,27 @@
 # Каталог ISO на тестовой ВМ
 
+> Актуальные команды установки используют целевые имена OMB. Датированные отчёты о развёртывании, исходные пути резервных копий и результаты относятся к стенду до миграции; его перенос ещё предстоит. См. [план технической миграции](../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 [English version](en/images-installation.md)
 
 Этот шаг добавляет сервис Images и список найденных ISO в существующую HTTPS-админку. Он не меняет работу DHCP, Boot и опубликованное PXE-меню. Найденный ISO имеет состояние «Обнаружен, не проверен» и пока не загружается по сети.
 
 ## Настройка
 
-Собрать `./cmd/pxe-images`, `./cmd/pxe-imagesctl` и обновлённый `./cmd/pxe-control` для Linux amd64. Создать системного пользователя и группу `pxe-images`, PostgreSQL-роль и отдельную базу `pxe_images`. Применить [схему Images](../deploy/sql/images.sql) от имени владельца базы. Установить [юнит Images](../deploy/systemd/pxe-images.service) и обновить [юнит Control](../deploy/systemd/pxe-control.service), чтобы Control получил доступ к Unix-сокету Images. Для Images нужна переменная:
+Собрать `./cmd/omb-images`, `./cmd/omb-imagesctl` и обновлённый `./cmd/omb-control` для Linux amd64. Создать системного пользователя и группу `omb-images`, PostgreSQL-роль и отдельную базу `omb_images`. Применить [схему Images](../deploy/sql/images.sql) от имени владельца базы. Установить [юнит Images](../deploy/systemd/omb-images.service) и обновить [юнит Control](../deploy/systemd/omb-control.service), чтобы Control получил доступ к Unix-сокету Images. Для Images нужна переменная:
 
 ```ini
-PXE_IMAGES_DATABASE_URL=host=/var/run/postgresql dbname=pxe_images user=pxe-images
+OMB_IMAGES_DATABASE_URL=host=/var/run/postgresql dbname=omb_images user=omb-images
 ```
 
-Сервис Images открывает только `/run/pxe-platform-images/images.sock`. Внешний TCP-порт ему не нужен. Для пустого местного хранилища можно создать `/var/lib/pxe-platform-images/iso` с правом чтения для `pxe-images`, затем зарегистрировать его от имени этого пользователя:
+Сервис Images открывает только `/run/omb-images/images.sock`. Внешний TCP-порт ему не нужен. Для пустого местного хранилища можно создать `/var/lib/omb-images/iso` с правом чтения для `omb-images`, затем зарегистрировать его от имени этого пользователя:
 
 ```sh
-sudo -u pxe-images env PXE_IMAGES_DATABASE_URL='host=/var/run/postgresql dbname=pxe_images user=pxe-images' \
-  /usr/local/bin/pxe-imagesctl add-path -name Local -kind local -root /var/lib/pxe-platform-images/iso
+sudo -u omb-images env OMB_IMAGES_DATABASE_URL='host=/var/run/postgresql dbname=omb_images user=omb-images' \
+  /usr/local/bin/omb-imagesctl add-path -name Local -kind local -root /var/lib/omb-images/iso
 ```
 
-Чтобы загружать ISO в местное хранилище из админки, дайте группе `pxe-images` право записи в каталог (`sudo chmod 2770 /var/lib/pxe-platform-images/iso`). Unit `pxe-images.service` уже разрешает запись в `/var/lib/pxe-platform-images` (`ReadWritePaths=-/var/lib/pxe-platform-images`). Пока каталог доступен только для чтения, хранилище работает как раньше, но в списке «Хранилище» при загрузке его нет, а на странице «Хранилища» у него пометка «только чтение». Профили Windows можно готовить из ISO местных хранилищ внутри `/var/lib/pxe-platform-images`: Agent монтирует ISO только из SMB-подключений и из этого каталога.
+Чтобы загружать ISO в местное хранилище из админки, дайте группе `omb-images` право записи в каталог (`sudo chmod 2770 /var/lib/omb-images/iso`). Unit `omb-images.service` уже разрешает запись в `/var/lib/omb-images` (`ReadWritePaths=-/var/lib/omb-images`). Пока каталог доступен только для чтения, хранилище работает как раньше, но в списке «Хранилище» при загрузке его нет, а на странице «Хранилища» у него пометка «только чтение». Профили Windows можно готовить из ISO местных хранилищ внутри `/var/lib/omb-images`: Agent монтирует ISO только из SMB-подключений и из этого каталога.
 
 Свободное место показывается для каждого доступного хранилища (statfs корня, не дольше 3 секунд): при выборе хранилища для загрузки, на страницах «Хранилища» и «Система». Для SMB это место на общей папке NAS, для местного хранилища — на файловой системе сервера.
 
@@ -30,9 +32,9 @@ sudo -u pxe-images env PXE_IMAGES_DATABASE_URL='host=/var/run/postgresql dbname=
 ## Проверка
 
 ```sh
-systemctl is-active pxe-images pxe-control pxe-boot pxe-agent pxe-dnsmasq
-sudo -u pxe-control curl --unix-socket /run/pxe-platform-images/images.sock http://unix/catalog
-curl --cacert /var/lib/pxe-platform-control/control.crt https://192.168.10.135:8443/login
+systemctl is-active omb-images omb-control omb-boot omb-agent omb-dnsmasq
+sudo -u omb-control curl --unix-socket /run/omb-images/images.sock http://unix/catalog
+curl --cacert /var/lib/omb-control/control.crt https://192.168.10.135:8443/login
 curl -fsS http://10.30.0.10:8080/boot/menu.ipxe
 ```
 
@@ -46,11 +48,11 @@ curl -fsS http://10.30.0.10:8080/boot/menu.ipxe
 
 ## Управляемые SMB-хранилища
 
-Для этой порции нужен `cifs-utils`. Примените [миграцию Images](../deploy/sql/2026-10-15-managed-smb.sql) в базе `pxe_images`, создайте `/mnt/pxe-platform-smb`, затем установите новые бинарные файлы `pxe-agent`, `pxe-images`, `pxe-control` и [юнит Agent](../deploy/systemd/pxe-agent.service). Перезагрузите systemd и перезапустите эти три службы. Boot и DHCP не меняются.
+Для этой порции нужен `cifs-utils`. Примените [миграцию Images](../deploy/sql/2026-10-15-managed-smb.sql) в базе `omb_images`, создайте `/mnt/omb-smb`, затем установите новые бинарные файлы `omb-agent`, `omb-images`, `omb-control` и [юнит Agent](../deploy/systemd/omb-agent.service). Перезагрузите systemd и перезапустите эти три службы. Boot и DHCP не меняются.
 
 На странице **Образы** администратор указывает один прямой путь к папке ISO, например `//192.168.10.10/Downloads/iso`, пользователя и пароль. Домен можно оставить пустым. Подключение работает только для чтения. Данные нескольких подключений хранятся отдельно. Оператор может запускать повторное сканирование, наблюдатель видит каталог.
 
-Пароль вводите только в HTTPS-форме. Админка не показывает его после сохранения. Agent хранит учётные данные в файле `/etc/pxe-platform/smb/<ключ>.cred` с правами `0600`; запись PostgreSQL содержит только адрес и путь. При неудачном подключении запись остаётся в состоянии «Недоступно»: администратор может повторить попытку с новыми учётными данными или удалить подключение. Удаление сначала отключает системное монтирование, затем удаляет запись из Images.
+Пароль вводите только в HTTPS-форме. Админка не показывает его после сохранения. Agent хранит учётные данные в файле `/etc/omb/smb/<ключ>.cred` с правами `0600`; запись PostgreSQL содержит только адрес и путь. При неудачном подключении запись остаётся в состоянии «Недоступно»: администратор может повторить попытку с новыми учётными данными или удалить подключение. Удаление сначала отключает системное монтирование, затем удаляет запись из Images.
 
 Найденные ISO отображаются в каталоге без публикации в PXE-меню. Если соединение пропало, прежний список файлов сохраняется, а состояние хранилища становится «Недоступно».
 
@@ -62,11 +64,11 @@ curl -fsS http://10.30.0.10:8080/boot/menu.ipxe
 
 ## Профили Windows ISO
 
-На странице «Образы» рядом с найденным Windows x64 ISO из подключённой SMB-папки можно создать профиль. Название и каталог PXE-меню указываются латиницей: встроенный шрифт текущего iPXE-меню не показывает кириллицу. После создания нажмите «Подготовить». Сервис проверит, что ISO не менялся со времени сканирования, смонтирует его только для чтения и скопирует в `/srv/pxe/tftp/windows-profiles/<ID>/` только `sources/boot.wim` и два небольших файла запуска WinPE. Полное содержимое ISO остаётся на исходном SMB-хранилище и показывается клиенту через отдельную папку `\\10.30.0.10\pxeisos\<ID>` только для чтения. Образ ARM64 в профиле x64 недоступен.
+На странице «Образы» рядом с найденным Windows x64 ISO из подключённой SMB-папки можно создать профиль. Название и каталог PXE-меню указываются латиницей: встроенный шрифт текущего iPXE-меню не показывает кириллицу. После создания нажмите «Подготовить». Сервис проверит, что ISO не менялся со времени сканирования, смонтирует его только для чтения и скопирует в `/srv/omb/tftp/windows-profiles/<ID>/` только `sources/boot.wim` и два небольших файла запуска WinPE. Полное содержимое ISO остаётся на исходном SMB-хранилище и показывается клиенту через отдельную папку `\\10.30.0.10\ombisos\<ID>` только для чтения. Образ ARM64 в профиле x64 недоступен.
 
 Подготовленный профиль появляется на странице «Меню» как отдельный пункт с каталогом. Публикация перепроверяет исходный ISO, подключение и загрузочные файлы. Прежние пункты Windows 10/11 остаются до клиентской проверки новых профилей. После выбора ручного пункта WinPE самостоятельно подключает ISO и открывает Setup; дальше человек проходит экраны установки вручную.
 
-Для установки этой версии на тестовый сервер применить [миграцию Control](../deploy/sql/2026-10-17-windows-profiles.sql), обновить `pxe-agent`, `pxe-control` и `pxe-boot`, установить `pxe-winiso-prepare`, [юнит экземпляра](../deploy/systemd/pxe-winiso@.service), два [шаблона запуска](../deploy/boot-assets/windows-profiles/) и секцию `[pxeisos]` из [Samba-конфигурации](../deploy/samba/smb.conf). Понадобятся каталоги `/mnt/pxe-platform-iso/profiles`, `/srv/pxe/tftp/windows-profiles`, `/etc/pxe-platform/winiso` и `/usr/share/pxe-platform/windows-profiles`. Пароль `pxe-iso` остаётся в `/etc/pxe-platform/pxe-iso-password`; в базу и репозиторий он не попадает.
+Для установки этой версии на тестовый сервер применить [миграцию Control](../deploy/sql/2026-10-17-windows-profiles.sql), обновить `omb-agent`, `omb-control` и `omb-boot`, установить `omb-winiso-prepare`, [юнит экземпляра](../deploy/systemd/omb-winiso@.service), два [шаблона запуска](../deploy/boot-assets/windows-profiles/) и секцию `[ombisos]` из [Samba-конфигурации](../deploy/samba/smb.conf). Понадобятся каталоги `/mnt/omb-iso/profiles`, `/srv/omb/tftp/windows-profiles`, `/etc/omb/winiso` и `/usr/share/omb/windows-profiles`. Пароль `omb-iso` остаётся в `/etc/omb/omb-iso-password`; в базу и репозиторий он не попадает.
 
 ## Приёмка профилей Windows ISO — 18.10.2026
 
@@ -86,7 +88,7 @@ curl -fsS http://10.30.0.10:8080/boot/menu.ipxe
 
 XML может содержать пароли и ключи. Админка не показывает его содержимое после загрузки и не записывает его в журнал аудита. Файл доступен устройствам доверенной сети PXE `10.30.0.0/24` по адресу загрузочного сервера, даже если соответствующий пункт ещё не опубликован. Храните исходный файл у себя и не загружайте секреты, которые нельзя раскрывать этой сети.
 
-Для установки примените [миграцию Control](../deploy/sql/2026-10-18-windows-answers.sql) к базе `pxe_control`. Создайте `/srv/pxe/tftp/windows-answers` с владельцем `root`, группой `pxe-control` и режимом `2750`. Обновите бинарные файлы `pxe-agent`, `pxe-control`, `pxe-boot` и [юнит Agent](../deploy/systemd/pxe-agent.service), перечитайте конфигурацию systemd и перезапустите только эти службы. Полные ISO и существующие профили не переподготавливаются. Действующее меню не меняется до следующего нажатия «Опубликовать».
+Для установки примените [миграцию Control](../deploy/sql/2026-10-18-windows-answers.sql) к базе `omb_control`. Создайте `/srv/omb/tftp/windows-answers` с владельцем `root`, группой `omb-control` и режимом `2750`. Обновите бинарные файлы `omb-agent`, `omb-control`, `omb-boot` и [юнит Agent](../deploy/systemd/omb-agent.service), перечитайте конфигурацию systemd и перезапустите только эти службы. Полные ISO и существующие профили не переподготавливаются. Действующее меню не меняется до следующего нажатия «Опубликовать».
 
 ### Установка на тестовом сервере, 18.10.2026
 
@@ -98,7 +100,7 @@ XML может содержать пароли и ключи. Админка н�
 
 На странице «Образы» оператор или администратор выбирает управляемое SMB-хранилище, одну из существующих подпапок (или корень), затем ISO-файл размером до 32 ГиБ. Передача идёт прямо из браузера на выбранную SMB-шару; полный ISO на диске PXE-сервера не создаётся. Индикатор показывает передачу файла, после неё сервер проверяет размер, вычисляет SHA-256 и добавляет запись в каталог. Кнопка «Отменить» прерывает передачу и удаляет временный файл. Готовый файл с тем же именем не перезаписывается. Публикация в PXE-меню остаётся отдельным действием.
 
-Для записи Agent использует сохранённые учётные данные SMB и создаёт вторую точку монтирования `/mnt/pxe-platform-smb-upload/<ключ>` с режимом `rw`. Исходная точка `/mnt/pxe-platform-smb/<ключ>` остаётся `ro` для чтения и сканирования. Для новой установки создайте каталог `/mnt/pxe-platform-smb-upload`, установите обновлённые `pxe-agent`, `pxe-images`, `pxe-control` и обновите юниты [Agent](../deploy/systemd/pxe-agent.service) и [Images](../deploy/systemd/pxe-images.service), затем перечитайте конфигурацию systemd и перезапустите эти три службы. Право записи на стороне SMB должно быть у ранее введённой учётной записи. При отказе в записи форма сообщит об ошибке; остальные службы продолжат работать.
+Для записи Agent использует сохранённые учётные данные SMB и создаёт вторую точку монтирования `/mnt/omb-smb-upload/<ключ>` с режимом `rw`. Исходная точка `/mnt/omb-smb/<ключ>` остаётся `ro` для чтения и сканирования. Для новой установки создайте каталог `/mnt/omb-smb-upload`, установите обновлённые `omb-agent`, `omb-images`, `omb-control` и обновите юниты [Agent](../deploy/systemd/omb-agent.service) и [Images](../deploy/systemd/omb-images.service), затем перечитайте конфигурацию systemd и перезапустите эти три службы. Право записи на стороне SMB должно быть у ранее введённой учётной записи. При отказе в записи форма сообщит об ошибке; остальные службы продолжат работать.
 
 На тестовом сервере перед обновлением сохранены бинарные файлы и юниты в `/var/backups/pxe-platform-pre-iso-upload-20261018/`. Службы Agent, Images, Control и Boot активны. Для DSM отдельное подключение открылось в режиме `rw`, пробная запись от имени `pxe-images` прошла. Небольшой пробный файл был передан через Images API, его SHA-256 совпал с файлом на DSM, запись появилась в каталоге. Пробный файл и запись затем удалены. Читающее подключение сохранило режим `ro`; действующее PXE-меню не изменилось, SHA-256 остался `f8573c7b6da173184dc7745106f3b082757f1297b1256087dbed018c9c477d33`.
 

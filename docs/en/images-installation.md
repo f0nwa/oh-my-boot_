@@ -1,25 +1,27 @@
 # ISO catalog on the test VM
 
+> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; its migration is pending. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 [Русская версия](../images-installation.md)
 
 This step adds the Images service and the list of found ISO files to the existing HTTPS admin interface. It does not change DHCP, Boot or the published PXE menu. A found ISO has the state “Found, not checked” and is not yet bootable over the network.
 
 ## Setup
 
-Build `./cmd/pxe-images`, `./cmd/pxe-imagesctl` and the updated `./cmd/pxe-control` for Linux amd64. Create the `pxe-images` system user and group, a PostgreSQL role and a separate `pxe_images` database. Apply the [Images schema](../../deploy/sql/images.sql) as the database owner. Install the [Images unit](../../deploy/systemd/pxe-images.service) and update the [Control unit](../../deploy/systemd/pxe-control.service) so that Control can reach the Images Unix socket. Images needs this variable:
+Build `./cmd/omb-images`, `./cmd/omb-imagesctl` and the updated `./cmd/omb-control` for Linux amd64. Create the `omb-images` system user and group, a PostgreSQL role and a separate `omb_images` database. Apply the [Images schema](../../deploy/sql/images.sql) as the database owner. Install the [Images unit](../../deploy/systemd/omb-images.service) and update the [Control unit](../../deploy/systemd/omb-control.service) so that Control can reach the Images Unix socket. Images needs this variable:
 
 ```ini
-PXE_IMAGES_DATABASE_URL=host=/var/run/postgresql dbname=pxe_images user=pxe-images
+OMB_IMAGES_DATABASE_URL=host=/var/run/postgresql dbname=omb_images user=omb-images
 ```
 
-The Images service opens only `/run/pxe-platform-images/images.sock`. It does not need an external TCP port. For an empty local storage, create `/var/lib/pxe-platform-images/iso` readable by `pxe-images`, then register it as that user:
+The Images service opens only `/run/omb-images/images.sock`. It does not need an external TCP port. For an empty local storage, create `/var/lib/omb-images/iso` readable by `omb-images`, then register it as that user:
 
 ```sh
-sudo -u pxe-images env PXE_IMAGES_DATABASE_URL='host=/var/run/postgresql dbname=pxe_images user=pxe-images' \
-  /usr/local/bin/pxe-imagesctl add-path -name Local -kind local -root /var/lib/pxe-platform-images/iso
+sudo -u omb-images env OMB_IMAGES_DATABASE_URL='host=/var/run/postgresql dbname=omb_images user=omb-images' \
+  /usr/local/bin/omb-imagesctl add-path -name Local -kind local -root /var/lib/omb-images/iso
 ```
 
-To upload ISO files into the local storage from the admin interface, give the `pxe-images` group write access to the directory (`sudo chmod 2770 /var/lib/pxe-platform-images/iso`). The `pxe-images.service` unit already allows writing to `/var/lib/pxe-platform-images` (`ReadWritePaths=-/var/lib/pxe-platform-images`). While the directory is read-only, the storage works as before, but it is missing from the upload storage list and marked “read-only” on the Storages page. Windows profiles can be prepared from ISO files in local storages inside `/var/lib/pxe-platform-images`: the Agent mounts ISO files only from SMB connections and from that directory.
+To upload ISO files into the local storage from the admin interface, give the `omb-images` group write access to the directory (`sudo chmod 2770 /var/lib/omb-images/iso`). The `omb-images.service` unit already allows writing to `/var/lib/omb-images` (`ReadWritePaths=-/var/lib/omb-images`). While the directory is read-only, the storage works as before, but it is missing from the upload storage list and marked “read-only” on the Storages page. Windows profiles can be prepared from ISO files in local storages inside `/var/lib/omb-images`: the Agent mounts ISO files only from SMB connections and from that directory.
 
 Free space is shown for every available storage (statfs of its root, at most 3 seconds): when choosing the upload storage and on the Storages and System pages. For SMB it is the space on the NAS share; for a local storage, on the server's file system.
 
@@ -32,15 +34,15 @@ Since 20.10.2026 Images also checks storage availability in the background and r
 ## Check
 
 ```sh
-systemctl is-active pxe-images pxe-control pxe-boot pxe-agent pxe-dnsmasq
-sudo -u pxe-control curl --unix-socket /run/pxe-platform-images/images.sock http://unix/catalog
-curl --cacert /var/lib/pxe-platform-control/control.crt https://192.168.10.135:8443/login
+systemctl is-active omb-images omb-control omb-boot omb-agent omb-dnsmasq
+sudo -u omb-control curl --unix-socket /run/omb-images/images.sock http://unix/catalog
+curl --cacert /var/lib/omb-control/control.crt https://192.168.10.135:8443/login
 curl -fsS http://10.30.0.10:8080/boot/menu.ipxe
 ```
 
 ## Check on 15.10.2026
 
-The `pxe_images` database was created on the VM, the `pxe-images` service was started, and the empty `Local` directory was registered. The scan request returned HTTP 202; after it the catalog became `ready` with an empty ISO list. Access to the Unix socket was checked with the group used by the Control process. A temporary test with two directories that both contained `same.iso` confirmed that the files are tracked separately; after one file was deleted, a new scan marked only that file as missing. The temporary directories and records were removed, leaving only `Local`. The HTTPS sign-in page is reachable; Boot, Agent, dnsmasq, Control and Images are active. The SHA-256 of the active PXE menu was the same before and after installation: `674ec52f0b9227bd69388dba861da5ecffb470c92da2aa7baf9607085be7c087`.
+The `omb_images` database was created on the VM, the `omb-images` service was started, and the empty `Local` directory was registered. The scan request returned HTTP 202; after it the catalog became `ready` with an empty ISO list. Access to the Unix socket was checked with the group used by the Control process. A temporary test with two directories that both contained `same.iso` confirmed that the files are tracked separately; after one file was deleted, a new scan marked only that file as missing. The temporary directories and records were removed, leaving only `Local`. The HTTPS sign-in page is reachable; Boot, Agent, dnsmasq, Control and Images are active. The SHA-256 of the active PXE menu was the same before and after installation: `674ec52f0b9227bd69388dba861da5ecffb470c92da2aa7baf9607085be7c087`.
 
 The user was to provide a real ISO later. The web page with an administrator session on the VM was not checked separately; the HTML, file name escaping and role permissions were checked by local tests. A backup of the previous Control binary and unit is in `/var/backups/pxe-platform-pre-images/`.
 
@@ -48,11 +50,11 @@ After fixes, Images and Control were installed again. A scan deliberately left i
 
 ## Managed SMB storages
 
-This part needs `cifs-utils`. Apply the [Images migration](../../deploy/sql/2026-10-15-managed-smb.sql) to the `pxe_images` database, create `/mnt/pxe-platform-smb`, then install the new `pxe-agent`, `pxe-images` and `pxe-control` binaries and the [Agent unit](../../deploy/systemd/pxe-agent.service). Reload systemd and restart these three services. Boot and DHCP do not change.
+This part needs `cifs-utils`. Apply the [Images migration](../../deploy/sql/2026-10-15-managed-smb.sql) to the `omb_images` database, create `/mnt/omb-smb`, then install the new `omb-agent`, `omb-images` and `omb-control` binaries and the [Agent unit](../../deploy/systemd/omb-agent.service). Reload systemd and restart these three services. Boot and DHCP do not change.
 
 On the **Images** page, the administrator enters one direct path to the ISO folder, for example `//192.168.10.10/Downloads/iso`, a username and a password. The domain can be left empty. The connection is read-only. Data for several connections is stored separately. An operator can start a new scan; an observer sees the catalog.
 
-Enter the password only in the HTTPS form. The admin interface does not show it after saving. Agent stores the credentials in `/etc/pxe-platform/smb/<key>.cred` with mode `0600`; the PostgreSQL record contains only the address and path. If the connection fails, the record stays “Unavailable”: the administrator can retry with new credentials or delete the connection. Deletion first unmounts the share, then deletes the record from Images.
+Enter the password only in the HTTPS form. The admin interface does not show it after saving. Agent stores the credentials in `/etc/omb/smb/<key>.cred` with mode `0600`; the PostgreSQL record contains only the address and path. If the connection fails, the record stays “Unavailable”: the administrator can retry with new credentials or delete the connection. Deletion first unmounts the share, then deletes the record from Images.
 
 Found ISO files are shown in the catalog without being published to the PXE menu. If the connection is lost, the previous file list is kept and the storage becomes “Unavailable”.
 
@@ -64,11 +66,11 @@ After the credentials of the real share were entered, it turned out that the pre
 
 ## Windows ISO profiles
 
-On the **Images** page, a profile can be created next to a found Windows x64 ISO from a connected SMB folder. Use Latin letters for the PXE menu title and folder: the built-in font of the current iPXE menu cannot show Cyrillic. After creating it, press **Prepare**. The service checks that the ISO has not changed since the scan, mounts it read-only and copies to `/srv/pxe/tftp/windows-profiles/<ID>/` only `sources/boot.wim` and two small WinPE startup files. The full ISO content stays on the source SMB storage and is shown to the client through a separate read-only share, `\\10.30.0.10\pxeisos\<ID>`. An ARM64 image is not available in an x64 profile.
+On the **Images** page, a profile can be created next to a found Windows x64 ISO from a connected SMB folder. Use Latin letters for the PXE menu title and folder: the built-in font of the current iPXE menu cannot show Cyrillic. After creating it, press **Prepare**. The service checks that the ISO has not changed since the scan, mounts it read-only and copies to `/srv/omb/tftp/windows-profiles/<ID>/` only `sources/boot.wim` and two small WinPE startup files. The full ISO content stays on the source SMB storage and is shown to the client through a separate read-only share, `\\10.30.0.10\ombisos\<ID>`. An ARM64 image is not available in an x64 profile.
 
 A prepared profile appears on the **Menu** page as a separate item with a folder. Publishing checks the source ISO, the connection and the boot files again. The previous Windows 10/11 items stay until the new profiles are checked on a client. After the manual item is chosen, WinPE connects the ISO by itself and opens Setup; a person then goes through the installation screens manually.
 
-To install this version on the test server, apply the [Control migration](../../deploy/sql/2026-10-17-windows-profiles.sql), update `pxe-agent`, `pxe-control` and `pxe-boot`, and install `pxe-winiso-prepare`, the [instance unit](../../deploy/systemd/pxe-winiso@.service), the two [startup templates](../../deploy/boot-assets/windows-profiles/) and the `[pxeisos]` section of the [Samba configuration](../../deploy/samba/smb.conf). The directories `/mnt/pxe-platform-iso/profiles`, `/srv/pxe/tftp/windows-profiles`, `/etc/pxe-platform/winiso` and `/usr/share/pxe-platform/windows-profiles` are needed. The `pxe-iso` password stays in `/etc/pxe-platform/pxe-iso-password`; it never reaches the database or the repository.
+To install this version on the test server, apply the [Control migration](../../deploy/sql/2026-10-17-windows-profiles.sql), update `omb-agent`, `omb-control` and `omb-boot`, and install `omb-winiso-prepare`, the [instance unit](../../deploy/systemd/omb-winiso@.service), the two [startup templates](../../deploy/boot-assets/windows-profiles/) and the `[ombisos]` section of the [Samba configuration](../../deploy/samba/smb.conf). The directories `/mnt/omb-iso/profiles`, `/srv/omb/tftp/windows-profiles`, `/etc/omb/winiso` and `/usr/share/omb/windows-profiles` are needed. The `omb-iso` password stays in `/etc/omb/omb-iso-password`; it never reaches the database or the repository.
 
 ## Windows ISO profile acceptance — 18.10.2026
 
@@ -88,7 +90,7 @@ On the **Menu** page, the manual item and any number of ready answer files of on
 
 An XML file can contain passwords and keys. The admin interface does not show its content after upload and does not write it to the audit log. The file is available to devices in the trusted PXE network `10.30.0.0/24` at the boot server address, even if the matching item is not published yet. Keep the source file yourself, and do not upload secrets that must not be disclosed to this network.
 
-To install, apply the [Control migration](../../deploy/sql/2026-10-18-windows-answers.sql) to the `pxe_control` database. Create `/srv/pxe/tftp/windows-answers` owned by `root`, group `pxe-control`, mode `2750`. Update the `pxe-agent`, `pxe-control` and `pxe-boot` binaries and the [Agent unit](../../deploy/systemd/pxe-agent.service), reload the systemd configuration and restart only these services. The full ISO files and existing profiles are not prepared again. The active menu does not change until **Publish** is pressed again.
+To install, apply the [Control migration](../../deploy/sql/2026-10-18-windows-answers.sql) to the `omb_control` database. Create `/srv/omb/tftp/windows-answers` owned by `root`, group `omb-control`, mode `2750`. Update the `omb-agent`, `omb-control` and `omb-boot` binaries and the [Agent unit](../../deploy/systemd/omb-agent.service), reload the systemd configuration and restart only these services. The full ISO files and existing profiles are not prepared again. The active menu does not change until **Publish** is pressed again.
 
 ### Installation on the test server, 18.10.2026
 
@@ -100,7 +102,7 @@ The first XML upload revealed a missing write path in the Agent systemd restrict
 
 On the **Images** page, an operator or administrator chooses a managed SMB storage, one of its existing subfolders (or the root), then an ISO file up to 32 GiB. The transfer goes straight from the browser to the selected SMB share; no full ISO is created on the PXE server disk. A progress bar shows the transfer; afterwards the server checks the size, computes the SHA-256 and adds a record to the catalog. **Cancel** stops the transfer and deletes the temporary file. An existing file with the same name is not overwritten. Publishing to the PXE menu remains a separate action.
 
-For writing, Agent uses the stored SMB credentials and creates a second mount point, `/mnt/pxe-platform-smb-upload/<key>`, in `rw` mode. The original mount point `/mnt/pxe-platform-smb/<key>` stays `ro` for reading and scanning. For a new installation, create the `/mnt/pxe-platform-smb-upload` directory, install the updated `pxe-agent`, `pxe-images` and `pxe-control`, update the [Agent](../../deploy/systemd/pxe-agent.service) and [Images](../../deploy/systemd/pxe-images.service) units, then reload the systemd configuration and restart these three services. The previously entered account must have write permission on the SMB side. If writing is denied, the form reports the error; the other services keep working.
+For writing, Agent uses the stored SMB credentials and creates a second mount point, `/mnt/omb-smb-upload/<key>`, in `rw` mode. The original mount point `/mnt/omb-smb/<key>` stays `ro` for reading and scanning. For a new installation, create the `/mnt/omb-smb-upload` directory, install the updated `omb-agent`, `omb-images` and `omb-control`, update the [Agent](../../deploy/systemd/omb-agent.service) and [Images](../../deploy/systemd/omb-images.service) units, then reload the systemd configuration and restart these three services. The previously entered account must have write permission on the SMB side. If writing is denied, the form reports the error; the other services keep working.
 
 On the test server, the binaries and units were saved to `/var/backups/pxe-platform-pre-iso-upload-20261018/` before the update. Agent, Images, Control and Boot are active. A separate connection to DSM opened in `rw` mode, and a test write as `pxe-images` succeeded. A small test file was sent through the Images API; its SHA-256 matched the file on DSM, and the record appeared in the catalog. The test file and record were then deleted. The read connection stayed `ro`; the active PXE menu did not change, and its SHA-256 stayed `f8573c7b6da173184dc7745106f3b082757f1297b1256087dbed018c9c477d33`.
 

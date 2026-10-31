@@ -1,5 +1,7 @@
 # Secure Boot: почему Oh My Boot грузится без его отключения
 
+> Актуальные команды установки используют целевые имена OMB. Датированные отчёты о развёртывании, исходные пути резервных копий и результаты относятся к стенду до миграции; его перенос ещё предстоит. См. [план технической миграции](../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 ## Коротко
 
 На машине с включённым Secure Boot прошивка запускает только программы, подписанные доверенным ключом. Набор ключей зависит от модели и настроек BIOS: ключ Windows может присутствовать, а ключ Microsoft для сторонних загрузчиков — отсутствовать. Oh My Boot использует подписанную цепочку: перед запуском каждого исполняемого звена проверяется его подпись. Если прошивка доверяет ключу для сторонних загрузчиков, Secure Boot выключать не нужно.
@@ -120,7 +122,7 @@ BdsDxe: failed to load Boot0001 "UEFI PXEv4 ..." : Access Denied
 
 Если такого пункта нет, поищите режим ключей вроде «Factory Keys» или «Restore Factory Keys»: на некоторых моделях стандартный набор уже содержит нужный ключ.
 
-**2. Добавить наш загрузчик в доверенные вручную.** Некоторые BIOS умеют «Enroll EFI Image», «Add Trusted File» или «Append Image Hash». Скопируйте `ipxe-shim.efi` с сервера (`/srv/pxe/tftp/ipxeboot/x86_64-sb/`) на флешку FAT32, выберите его в этом пункте BIOS и сохраните. Прошивка запомнит отпечаток именно этого файла. Если shim на сервере обновится, процедуру придётся повторить. Пункт есть не у всех производителей, и обычно он работает только с флешки или диска, а не по сети.
+**2. Добавить наш загрузчик в доверенные вручную.** Некоторые BIOS умеют «Enroll EFI Image», «Add Trusted File» или «Append Image Hash». Скопируйте `ipxe-shim.efi` с сервера (`/srv/omb/tftp/ipxeboot/x86_64-sb/`) на флешку FAT32, выберите его в этом пункте BIOS и сохраните. Прошивка запомнит отпечаток именно этого файла. Если shim на сервере обновится, процедуру придётся повторить. Пункт есть не у всех производителей, и обычно он работает только с флешки или диска, а не по сети.
 
 **3. Отключить Secure Boot.** Самый простой способ, но защита на машине выключается целиком. Подходит для стенда или машины, которую после установки всё равно переводят в общий парк: после установки Secure Boot можно включить обратно, Windows с ним грузится.
 
@@ -204,8 +206,8 @@ Microsoft меняет ключи Secure Boot: на смену **Microsoft Corpo
 
 Подписи можно увидеть в самих файлах, например `strings -a`:
 
-- в `/srv/pxe/tftp/ipxeboot/x86_64-sb/ipxe-shim.efi` есть строки `Microsoft Corporation UEFI CA 2011` и `iPXE Secure Boot CA`;
-- в `/srv/pxe/tftp/ipxeboot/x86_64-sb/ipxe.efi` — `iPXE Secure Boot Automatic Code Signing`;
-- `/srv/pxe/tftp/windows/wimboot` — `wimboot v2.9.0` с подписью в файле.
+- в `/srv/omb/tftp/ipxeboot/x86_64-sb/ipxe-shim.efi` есть строки `Microsoft Corporation UEFI CA 2011` и `iPXE Secure Boot CA`;
+- в `/srv/omb/tftp/ipxeboot/x86_64-sb/ipxe.efi` — `iPXE Secure Boot Automatic Code Signing`;
+- `/srv/omb/tftp/windows/wimboot` — `wimboot v2.9.0` с подписью в файле.
 
 Подробнее: [iPXE — UEFI Secure Boot](https://ipxe.org/secboot), [команда shim](https://ipxe.org/cmd/shim).

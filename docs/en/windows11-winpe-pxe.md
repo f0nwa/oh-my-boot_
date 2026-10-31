@@ -1,5 +1,7 @@
 # Windows 11 x64: first WinPE check
 
+> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; its migration is pending. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 [Русская версия](../windows11-winpe-pxe.md)
 
 > On 20.10.2026 this static item, the local ISO copy, the `windows11` and `windows11iso` shares and the `pxe-windows11-iso` service were removed; Windows 11 boots through ISO profiles (see the [Images guide](images-installation.md)). The history of the first check follows.

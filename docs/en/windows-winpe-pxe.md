@@ -1,5 +1,7 @@
 # Windows 10: first WinPE check over PXE
 
+> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; its migration is pending. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 [Русская версия](../windows-winpe-pxe.md)
 
 > On 20.10.2026 this static item, the local ISO copy and the `windows10` share were removed; Windows 10 boots through an ISO profile (see the [Images guide](images-installation.md)). The history of the first check follows.

@@ -1,5 +1,7 @@
 # Answer file editor
 
+> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; its migration is pending. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+
 “Library → Answer files → Create in editor” builds an `autounattend.xml` for Windows Setup. Every ready file in the list has an “Open in editor” button. The editor is a Go port of [cschneegans/unattend-generator](https://github.com/cschneegans/unattend-generator), the library behind [schneegans.de](https://schneegans.de/windows/unattend-generator/), so the settings and the output are those of the site.
 
 ## The page
@@ -24,7 +26,7 @@ Permissions: everyone can open and download; administrators and operators can sa
 
 ## How files open
 
-- **A file saved by the editor** keeps its settings inside the XML: an `<Editor xmlns="urn:pxe-platform:unattend-editor" version="1">` element with JSON in CDATA (base64 when passwords are obscured). Windows Setup skips elements of foreign namespaces. Such a file opens exactly. If it was edited by hand since, the editor warns that saving drops the manual edits.
+- **A file saved by the editor** keeps its settings inside the XML: an `<Editor xmlns="urn:omb:unattend-editor" version="1">` element with JSON in CDATA (base64 when passwords are obscured). Windows Setup skips elements of foreign namespaces. Such a file opens exactly. If it was edited by hand since, the editor warns that saving drops the manual edits.
 - **A foreign file** (from the Schneegans site, written by hand, from another generator) is taken apart. Known settings go into the form: language and keyboards, time zone, computer name, edition and key, activation key, Windows 11 check bypass, accounts and automatic sign-in, OOBE screens, the `$OEM$` folder, scripts of Schneegans files. Everything else is kept verbatim under “Custom XML” and merged back into the same component when the file is built: a list item (`RunSynchronous`, `DriverPaths`, accounts and the like) is added unless the same item is there; any other element replaces the form's element of the same name.
 - **Self-check:** a setting moves into the form only if rebuilding reproduces its value exactly; otherwise it stays as verbatim XML. So nothing is lost on opening. Only XML comments are dropped, and the editor shows how many there were.
 - **Scripts of Schneegans files** (`Specialize.ps1`, `FirstLogon.ps1`, `UserOnce.ps1`, `DefaultUser.ps1`) run in the same phases from `C:\Windows\Setup\Scripts\Imported\`; their helper files stay as they were.

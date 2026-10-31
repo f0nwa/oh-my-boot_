@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/jackc/pgx/v5"
-	"pxe-platform/internal/agent"
+	"omb/internal/agent"
 )
 
 func (s Store) CreateDriverConfig(ctx context.Context, config DriverConfig) (DriverConfig, error) {

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"pxe-platform/internal/network"
+	"omb/internal/network"
 )
 
 type Runner interface {
@@ -154,7 +154,7 @@ func writeCandidate(path string, content []byte, mode os.FileMode) (string, erro
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return "", err
 	}
-	file, err := os.CreateTemp(filepath.Dir(path), ".pxe-candidate-*")
+	file, err := os.CreateTemp(filepath.Dir(path), ".omb-candidate-*")
 	if err != nil {
 		return "", err
 	}

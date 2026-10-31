@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 var macAddress = regexp.MustCompile(`^[0-9a-f]{2}(:[0-9a-f]{2}){5}$`)

@@ -53,7 +53,7 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 		"item install_1002 Windows 11 x64\n",
 		"kernel http://10.30.0.10:8080/assets/windows/wimboot\n",
 		"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows-profiles/2/winpeshl.ini\n",
-		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/2/pxe-setup.cmd\n",
+		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/2/omb-setup.cmd\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/2/boot.wim boot.wim\n",
 		"item local Boot local disk\n",
 	} {

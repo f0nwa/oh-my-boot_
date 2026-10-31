@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"pxe-platform/internal/network"
+	"omb/internal/network"
 )
 
 func networkForm(r *http.Request) network.Config {
@@ -21,7 +21,7 @@ func networkForm(r *http.Request) network.Config {
 
 func networkConfirmation(token string, c network.Config) string {
 	payload, _ := json.Marshal(c)
-	sum := sha256.Sum256(append([]byte("pxe-network-confirm:"+token+":"), payload...))
+	sum := sha256.Sum256(append([]byte("omb-network-confirm:"+token+":"), payload...))
 	return hex.EncodeToString(sum[:])
 }
 

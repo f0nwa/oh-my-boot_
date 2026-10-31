@@ -103,7 +103,7 @@ func (m *WindowsISOManager) RemoveProfile(ctx context.Context, id int64) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	if err := m.Systemctl.Run(ctx, "disable", "--now", "pxe-winiso@"+name+".service"); err != nil {
+	if err := m.Systemctl.Run(ctx, "disable", "--now", "omb-winiso@"+name+".service"); err != nil {
 		return err
 	}
 	if info, err := os.Lstat(target); err == nil {

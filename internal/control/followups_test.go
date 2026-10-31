@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/drivers"
-	"pxe-platform/internal/images"
+	"omb/internal/agent"
+	"omb/internal/drivers"
+	"omb/internal/images"
 )
 
 func TestImagesPageIsOneTableWithUsage(t *testing.T) {

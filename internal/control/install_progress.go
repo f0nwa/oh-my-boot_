@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 // After boot.wim WinPE starts, connects to the install share and runs
@@ -128,7 +128,7 @@ func installStep(e installEvent) machineStep {
 	case "connected":
 		step.Text = "WinPE подключился к установщику"
 		if e.Profile != "" {
-			step.Raw = fmt.Sprintf("%s · \\\\pxeisos\\%s", e.IP, e.Profile)
+			step.Raw = fmt.Sprintf("%s · \\\\ombisos\\%s", e.IP, e.Profile)
 		}
 	case "copy":
 		step.Text, step.Raw = "Копирует Windows", "install.wim"

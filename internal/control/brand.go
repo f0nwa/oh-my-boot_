@@ -8,9 +8,6 @@ const (
 	productName        = "Oh My Boot"
 	productMenuTitle   = "oh my boot_"
 	defaultMenuMessage = "Oh My Boot network boot is ready"
-	// legacyMenuMessage is the default diagnostic message before the rename;
-	// drafts that still carry it get the new default.
-	legacyMenuMessage = "PXE Platform network boot is ready"
 )
 
 // brandFiles are the browser icons, served without a session so the sign-in

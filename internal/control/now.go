@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 // trailStep is one of the boot steps shown for a machine on the

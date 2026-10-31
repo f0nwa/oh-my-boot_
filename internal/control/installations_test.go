@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 )
 
 func rowByKey(rows []installationRow, key string) (installationRow, int) {

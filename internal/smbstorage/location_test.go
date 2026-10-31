@@ -21,7 +21,7 @@ func TestValidateLocationAndRoot(t *testing.T) {
 	if err := Validate(key, "192.168.10.10", "Downloads", "iso"); err != nil {
 		t.Fatal(err)
 	}
-	if got := Root(key); got != "/mnt/pxe-platform-smb/"+key {
+	if got := Root(key); got != "/mnt/omb-smb/"+key {
 		t.Fatalf("root=%q", got)
 	}
 	for _, test := range []struct{ key, server, share, subpath string }{

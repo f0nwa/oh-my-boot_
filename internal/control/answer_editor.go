@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/unattend"
+	"omb/internal/agent"
+	"omb/internal/unattend"
 )
 
 // The answer file editor: «Библиотека → Файлы ответов → Редактор». The form

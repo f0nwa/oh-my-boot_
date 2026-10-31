@@ -35,7 +35,7 @@ func (f *fakeWindowsISOSystemctl) Run(_ context.Context, args ...string) error {
 				return err
 			}
 		}
-		for _, name := range []string{"boot.wim", "winpeshl.ini", "pxe-setup.cmd"} {
+		for _, name := range []string{"boot.wim", "winpeshl.ini", "omb-setup.cmd"} {
 			file := filepath.Join(f.assetRoot, "17", name)
 			if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
 				return err
@@ -76,7 +76,7 @@ func TestWindowsISOManagerStoresImmutableConfigAndStartsIDUnit(t *testing.T) {
 	if err != nil || !strings.Contains(string(config), `"relative_path":"win10.iso"`) {
 		t.Fatalf("profile config missing source: %q %v", config, err)
 	}
-	if len(systemctl.calls) != 1 || strings.Join(systemctl.calls[0], " ") != "enable --now pxe-winiso@17.service" {
+	if len(systemctl.calls) != 1 || strings.Join(systemctl.calls[0], " ") != "enable --now omb-winiso@17.service" {
 		t.Fatalf("unexpected systemctl calls: %+v", systemctl.calls)
 	}
 	if err := manager.Check(context.Background(), req); err != nil {
@@ -154,7 +154,7 @@ func TestWindowsISORuntimePreparesSelectedSourceAtStableID(t *testing.T) {
 	}
 	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "win10.iso", Size: info.Size(), Modified: info.ModTime()}
 	mounter := &fakeWindowsISOMounter{}
-	runtime := WindowsISORuntime{SourceRoot: base, MountRoot: t.TempDir(), AssetRoot: t.TempDir(), Template: []byte("__PXE_ISO_PASSWORD__ __PXE_PROFILE_ID__ __PXE_INSTALL_FILE__"), Winpeshl: []byte("launch"), Password: strings.Repeat("A", 32), Mounter: mounter}
+	runtime := WindowsISORuntime{SourceRoot: base, MountRoot: t.TempDir(), AssetRoot: t.TempDir(), Template: []byte("__OMB_ISO_PASSWORD__ __OMB_PROFILE_ID__ __OMB_INSTALL_FILE__"), Winpeshl: []byte("launch"), Password: strings.Repeat("A", 32), Mounter: mounter}
 	result, err := runtime.Prepare(context.Background(), req)
 	if err != nil || result.InstallFile != "install.wim" {
 		t.Fatalf("preparation: %+v %v", result, err)
@@ -235,8 +235,8 @@ func TestPrepareWindowsISOAssetsCopiesOnlyBootWIMAndRendersProfile(t *testing.T)
 		}
 	}
 	assets := t.TempDir()
-	template := []byte("@echo off\r\nset PASSWORD=__PXE_ISO_PASSWORD__\r\nY:\\__PXE_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__PXE_PROFILE_ID__\\sources\\__PXE_INSTALL_FILE__\r\n")
-	installFile, err := prepareWindowsISOAssets(mounted, assets, 17, template, []byte("[LaunchApps]\r\npxe-setup.cmd\r\n"), strings.Repeat("A", 32))
+	template := []byte("@echo off\r\nset PASSWORD=__OMB_ISO_PASSWORD__\r\nY:\\__OMB_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__OMB_PROFILE_ID__\\sources\\__OMB_INSTALL_FILE__\r\n")
+	installFile, err := prepareWindowsISOAssets(mounted, assets, 17, template, []byte("[LaunchApps]\r\nomb-setup.cmd\r\n"), strings.Repeat("A", 32))
 	if err != nil || installFile != "install.wim" {
 		t.Fatalf("asset preparation: %q %v", installFile, err)
 	}
@@ -244,7 +244,7 @@ func TestPrepareWindowsISOAssetsCopiesOnlyBootWIMAndRendersProfile(t *testing.T)
 	if err != nil || string(boot) != "boot-image" {
 		t.Fatalf("boot.wim differs from ISO: %q %v", boot, err)
 	}
-	script, err := os.ReadFile(filepath.Join(assets, "17", "pxe-setup.cmd"))
+	script, err := os.ReadFile(filepath.Join(assets, "17", "omb-setup.cmd"))
 	if err != nil || !strings.Contains(string(script), `Y:\17\sources\install.wim`) {
 		t.Fatalf("startup script missing profile path: %q %v", script, err)
 	}
@@ -259,7 +259,7 @@ func TestPrepareWindowsISOAssetsCopiesOnlyBootWIMAndRendersProfile(t *testing.T)
 	if err := os.Chmod(profileDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prepareWindowsISOAssets(mounted, assets, 17, template, []byte("[LaunchApps]\r\npxe-setup.cmd\r\n"), strings.Repeat("A", 32)); err != nil {
+	if _, err := prepareWindowsISOAssets(mounted, assets, 17, template, []byte("[LaunchApps]\r\nomb-setup.cmd\r\n"), strings.Repeat("A", 32)); err != nil {
 		t.Fatalf("re-prepare existing profile: %v", err)
 	}
 	info, err = os.Stat(profileDir)
@@ -281,7 +281,7 @@ func TestPrepareWindowsISOAssetsRejectsExistingSymlinkTarget(t *testing.T) {
 	}
 	assets := t.TempDir()
 	outside := t.TempDir()
-	for _, name := range []string{"boot.wim", "winpeshl.ini", "pxe-setup.cmd"} {
+	for _, name := range []string{"boot.wim", "winpeshl.ini", "omb-setup.cmd"} {
 		if err := os.WriteFile(filepath.Join(outside, name), []byte("x"), 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -289,7 +289,7 @@ func TestPrepareWindowsISOAssetsRejectsExistingSymlinkTarget(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(assets, "17")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prepareWindowsISOAssets(root, assets, 17, []byte("__PXE_ISO_PASSWORD__ __PXE_PROFILE_ID__ __PXE_INSTALL_FILE__"), []byte("x"), strings.Repeat("A", 32)); err == nil {
+	if _, err := prepareWindowsISOAssets(root, assets, 17, []byte("__OMB_ISO_PASSWORD__ __OMB_PROFILE_ID__ __OMB_INSTALL_FILE__"), []byte("x"), strings.Repeat("A", 32)); err == nil {
 		t.Fatal("accepted symlink target for generated assets")
 	}
 }

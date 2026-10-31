@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 )
 
 type bookStore struct {

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 type windowsMenuPageStore struct {
@@ -37,7 +37,7 @@ func TestWindowsMenuPagePrefillsActiveProfile(t *testing.T) {
 	s := &Server{Store: windowsMenuPageStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Script: string(script), Title: "PXE", Label: "Diagnostics", Message: "Ready", Items: []MenuVersionItem{{InstallationID: 1017, Title: p.Title, Folder: "Windows/Installers"}}}}}, profiles: []WindowsProfile{p}}}
 	// The selected item shows its folder path in the properties column.
 	req := httptest.NewRequest(http.MethodGet, "/menu?item=install_1017", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "install_1017") || !strings.Contains(res.Body.String(), `value="Windows/Installers"`) {
@@ -58,8 +58,8 @@ func TestWindowsMenuPublishesSeparateProfilesAndFolders(t *testing.T) {
 	got := string(script)
 	for _, want := range []string{
 		"menu oh my boot_ / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem install_1017 Windows 10 x64\nitem install_1018 Windows 11 x64\n",
-		":install_1017\nimgfetch --name pxe-choice http://10.30.0.10:8080/boot/choice?id=1017 && imgfree pxe-choice || echo -n\nkernel http://10.30.0.10:8080/assets/windows/wimboot\n",
-		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd\n",
+		":install_1017\nimgfetch --name omb-choice http://10.30.0.10:8080/boot/choice?id=1017 && imgfree omb-choice || echo -n\nkernel http://10.30.0.10:8080/assets/windows/wimboot\n",
+		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-setup.cmd\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/18/boot.wim boot.wim\n",
 	} {
 		if !strings.Contains(got, want) {
@@ -84,11 +84,11 @@ func TestWindowsProfileMenuUsesPlainInitrdNamesForBIOS(t *testing.T) {
 		"iseq ${platform} efi && goto install_1017_efi_initrd || goto install_1017_bios_initrd\n",
 		":install_1017_bios_initrd\n" +
 			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini winpeshl.ini\n" +
-			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd pxe-setup.cmd\n" +
+			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/omb-setup.cmd omb-setup.cmd\n" +
 			"goto install_1017_initrd_done\n",
 		":install_1017_efi_initrd\n" +
 			"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini\n" +
-			"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/pxe-setup.cmd\n" +
+			"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-setup.cmd\n" +
 			":install_1017_initrd_done\n" +
 			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim\n",
 	} {
@@ -100,7 +100,7 @@ func TestWindowsProfileMenuUsesPlainInitrdNamesForBIOS(t *testing.T) {
 
 func TestWindowsMenuChecksCurrentSourceBeforePublication(t *testing.T) {
 	modified := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
-	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/pxe-platform-smb/key7", Path: "windows.iso", Size: 123, Modified: modified, Title: "Windows 11 x64", Folder: "Windows"}
+	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "windows.iso", Size: 123, Modified: modified, Title: "Windows 11 x64", Folder: "Windows"}
 	store := &recordingWindowsProfileStore{profile: WindowsProfile{ID: 17, WindowsProfileSource: source, State: "ready", InstallFile: "install.wim"}}
 	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Root: source.StorageRoot, State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: source.Path, Size: source.Size, Modified: modified, Present: true}}}}
 	check := &recordingWindowsISOAPI{}
@@ -144,8 +144,8 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 		"item install_1017 Windows 11 x64\n",
 		"item install_2031 Windows 11 Lab A${sp",
 		"item install_2032 Windows 11 Lab B${sp",
-		"initrd -n pxe-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/pxe-answer.xml\n",
-		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-answers/32/pxe-setup.cmd\n",
+		"initrd -n omb-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/omb-answer.xml\n",
+		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-answers/32/omb-setup.cmd\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim\n",
 	} {
 		if !strings.Contains(got, want) {
@@ -191,7 +191,7 @@ func TestWindowsMenuPagePrefillsActiveAnswer(t *testing.T) {
 	store := windowsMenuPageStore{menuPageStore: menuPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, versions: []MenuVersion{{Active: true, Script: string(script), Title: "PXE", Label: "Diagnostics", Message: "Ready", Items: []MenuVersionItem{{InstallationID: 2031, Title: a.Title, Folder: "Windows/Tests"}}}}}, profiles: []WindowsProfile{p}, answers: []WindowsAnswerVariant{a}}
 	s := &Server{Store: store}
 	req := httptest.NewRequest(http.MethodGet, "/menu?item=install_2031", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "install_2031") || !strings.Contains(res.Body.String(), `value="Windows/Tests"`) || strings.Contains(res.Body.String(), "install_1017") {
@@ -201,7 +201,7 @@ func TestWindowsMenuPagePrefillsActiveAnswer(t *testing.T) {
 
 func TestWindowsMenuRejectsAnswerItemMissingFromSnapshotMetadata(t *testing.T) {
 	modified := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
-	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/pxe-platform-smb/key7", Path: "windows.iso", Size: 123, Modified: modified, Title: "Windows 11", Folder: "Windows"}
+	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "windows.iso", Size: 123, Modified: modified, Title: "Windows 11", Folder: "Windows"}
 	p := WindowsProfile{ID: 17, WindowsProfileSource: source, State: "ready", InstallFile: "install.wim"}
 	answers := []WindowsAnswerVariant{
 		{ID: 31, ProfileID: 17, Title: "Lab A", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"},

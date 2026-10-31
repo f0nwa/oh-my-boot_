@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/images"
-	"pxe-platform/internal/unattend"
+	"omb/internal/agent"
+	"omb/internal/images"
+	"omb/internal/unattend"
 )
 
 // editorStore is a store with one ready profile, its answers and an audit log.
@@ -67,7 +67,7 @@ func editorServer(role, lang string) (*Server, *editorStore, *editorAgent) {
 
 func editorGet(s *Server, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, path, nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	return res
@@ -77,7 +77,7 @@ func editorPost(s *Server, path string, form url.Values) *httptest.ResponseRecor
 	form.Set("csrf", CSRFToken("test-token"))
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	return res

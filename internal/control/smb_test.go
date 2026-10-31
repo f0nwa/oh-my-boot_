@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 type fakeManagedImages struct {
@@ -103,7 +103,7 @@ func submitSMB(t *testing.T, s *Server, path string, form url.Values) *httptest.
 	t.Helper()
 	req := httptest.NewRequest("POST", path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	return res
@@ -160,7 +160,7 @@ func TestSMBPageEscapesFieldsAndNeverShowsPassword(t *testing.T) {
 	api := &fakeManagedImages{events: &events, fakeImagesAPI: fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Name: "<script>NAS</script>", Kind: "smb", Server: "192.168.10.10", Share: "Downloads", Subpath: "iso", Key: "0123456789abcdef0123456789abcdef"}}}}}
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, Images: api}
 	req := httptest.NewRequest("GET", "/storages", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || strings.Contains(res.Body.String(), "<script>") || !strings.Contains(res.Body.String(), "&lt;script&gt;") || !strings.Contains(res.Body.String(), "name=\"password\"") {
@@ -173,7 +173,7 @@ func TestSMBFormIsAdminOnly(t *testing.T) {
 		events := []string{}
 		s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: role, Enabled: true}}, Images: &fakeManagedImages{events: &events}}
 		req := httptest.NewRequest("GET", "/storages", nil)
-		req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+		req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 		res := httptest.NewRecorder()
 		s.Handler().ServeHTTP(res, req)
 		hasForm := strings.Contains(res.Body.String(), `action="/images/smb"`)

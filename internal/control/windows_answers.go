@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"pxe-platform/internal/agent"
+	"omb/internal/agent"
 )
 
 const maxWindowsAnswerBytes = 1 << 20

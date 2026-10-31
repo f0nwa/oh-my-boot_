@@ -78,7 +78,7 @@ func autoinstallParts(id int64, digest string) ([]string, error) {
 }
 
 func autoinstallMetaData(id int64, digest string) []byte {
-	return []byte(fmt.Sprintf("instance-id: pxe-installation-%d-%s\n", id, digest))
+	return []byte(fmt.Sprintf("instance-id: omb-installation-%d-%s\n", id, digest))
 }
 func assetDigest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 

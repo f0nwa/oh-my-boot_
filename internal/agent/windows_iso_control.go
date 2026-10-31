@@ -87,7 +87,7 @@ func (m *WindowsISOManager) Prepare(ctx context.Context, req WindowsISORequest) 
 	} else {
 		return WindowsISOResult{}, err
 	}
-	unit := "pxe-winiso@" + id + ".service"
+	unit := "omb-winiso@" + id + ".service"
 	if err := m.Systemctl.Run(ctx, "enable", "--now", unit); err != nil {
 		return WindowsISOResult{}, err
 	}
@@ -102,7 +102,7 @@ func (m *WindowsISOManager) Prepare(ctx context.Context, req WindowsISORequest) 
 }
 
 func (m *WindowsISOManager) checkWindowsISOAssets(id string) error {
-	for _, name := range []string{"boot.wim", "winpeshl.ini", "pxe-setup.cmd"} {
+	for _, name := range []string{"boot.wim", "winpeshl.ini", "omb-setup.cmd"} {
 		if err := requireRegularISOFile(filepath.Join(m.AssetRoot, id), name); err != nil {
 			return err
 		}

@@ -10,10 +10,10 @@ import (
 	"unicode/utf8"
 )
 
-const menuFolderMarker = "# pxe-platform:folders-v1 "
-const menuWindowsMarker = "# pxe-platform:winiso-v1 "
-const menuAnswerMarker = "# pxe-platform:winanswers-v1 "
-const menuDriverMarker = "# pxe-platform:windrivers-v1 "
+const menuFolderMarker = "# omb:folders-v1 "
+const menuWindowsMarker = "# omb:winiso-v1 "
+const menuAnswerMarker = "# omb:winanswers-v1 "
+const menuDriverMarker = "# omb:windrivers-v1 "
 
 type menuProfile struct {
 	kind               string
@@ -65,21 +65,21 @@ type menuTreeNode struct {
 // though, so runs of spaces come from settings: sp1…sp64 hold 1…64 spaces
 // as hex bytes and ${spN:string} prints them inside one word.
 var menuTheme = menuLookMarker + menuLook + "\n" +
-	"console --x 640 --y 480 && set pxe_fb 1 || set pxe_fb 0\n" +
+	"console --x 640 --y 480 && set omb_fb 1 || set omb_fb 0\n" +
 	"colour --rgb 0x0E1013 0 || echo -n\n" +
 	"colour --rgb 0xF2A93B 3 || echo -n\n" +
 	"colour --rgb 0xC3C8CF 7 || echo -n\n" +
 	"cpair --foreground 7 --background 0 1 || echo -n\n" +
-	"iseq ${pxe_fb} 1 && cpair --foreground 0 --background 3 2 || cpair --foreground 7 --background 3 2 || echo -n\n" +
+	"iseq ${omb_fb} 1 && cpair --foreground 0 --background 3 2 || cpair --foreground 7 --background 3 2 || echo -n\n" +
 	"cpair --foreground 3 --background 0 3 || echo -n\n" +
 	menuPadSettings() +
-	"iseq ${platform} efi && set pxe_fw UEFI || set pxe_fw BIOS\n" +
+	"iseq ${platform} efi && set omb_fw UEFI || set omb_fw BIOS\n" +
 	menuHello
 
 // menuHello reports the machine's maker, model, serial and UUID from SMBIOS
 // to Boot (relative to the menu's own address, so /boot/hello) and frees the
 // empty answer. A failure only skips the report.
-const menuHello = "imgfetch --name pxe-hello hello?manufacturer=${manufacturer:uristring}&product=${product:uristring}&serial=${serial:uristring}&uuid=${uuid}&platform=${platform} && imgfree pxe-hello || echo -n\n"
+const menuHello = "imgfetch --name omb-hello hello?manufacturer=${manufacturer:uristring}&product=${product:uristring}&serial=${serial:uristring}&uuid=${uuid}&platform=${platform} && imgfree omb-hello || echo -n\n"
 
 func menuPadSettings() string {
 	var b strings.Builder
@@ -113,7 +113,7 @@ func expandMenuPad(text string) string {
 
 // menuTitleSuffix names the machine in every screen title; iPXE fills the
 // variables on the machine itself.
-var menuTitleSuffix = menuPad(2) + "|" + menuPad(2) + "${netX/mac}" + menuPad(2) + "|" + menuPad(2) + "${pxe_fw}"
+var menuTitleSuffix = menuPad(2) + "|" + menuPad(2) + "${netX/mac}" + menuPad(2) + "|" + menuPad(2) + "${omb_fw}"
 
 // menuFooter is the last line of every screen.
 var menuFooter = "ip ${netX/ip}" + menuPad(4) + "Enter: boot" + menuPad(4) + "Esc: back"
@@ -357,17 +357,17 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	choiceReport := ""
 	if raw, ok := strings.CutPrefix(profile.id, "install_"); ok {
 		// A failed telemetry request must never prevent boot file downloads.
-		choiceReport = "imgfetch --name pxe-choice " + base + "/boot/choice?id=" + raw + " && imgfree pxe-choice || echo -n\n"
+		choiceReport = "imgfetch --name omb-choice " + base + "/boot/choice?id=" + raw + " && imgfree omb-choice || echo -n\n"
 	}
 	if profile.driverConfigID > 0 {
 		configID := fmt.Sprintf("%d", profile.driverConfigID)
 		profileID := fmt.Sprintf("%d", profile.windowsISOID)
 		files := []windowsInitrdFile{
 			{name: "winpeshl.ini", url: base + "/assets/windows-profiles/" + profileID + "/winpeshl.ini"},
-			{name: "pxe-setup.cmd", url: base + "/assets/windows-driver-configs/" + configID + "/pxe-setup.cmd"},
+			{name: "omb-setup.cmd", url: base + "/assets/windows-driver-configs/" + configID + "/omb-setup.cmd"},
 		}
 		if profile.driverAnswerID > 0 {
-			files = append(files, windowsInitrdFile{name: "pxe-answer.xml", url: base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.driverAnswerID) + "/pxe-answer.xml"})
+			files = append(files, windowsInitrdFile{name: "omb-answer.xml", url: base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.driverAnswerID) + "/omb-answer.xml"})
 		}
 		out.WriteString(":" + profile.id + "\n" + choiceReport +
 			"kernel " + base + "/assets/windows/wimboot\n" +
@@ -380,14 +380,14 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	if profile.windowsISOID > 0 {
 		id := fmt.Sprintf("%d", profile.windowsISOID)
 		prefix := base + "/assets/windows-profiles/" + id + "/"
-		startup := prefix + "pxe-setup.cmd"
+		startup := prefix + "omb-setup.cmd"
 		files := []windowsInitrdFile{{name: "winpeshl.ini", url: prefix + "winpeshl.ini"}}
 		if profile.answerID > 0 {
 			answerPrefix := base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.answerID) + "/"
-			startup = answerPrefix + "pxe-setup.cmd"
-			files = append(files, windowsInitrdFile{name: "pxe-setup.cmd", url: startup}, windowsInitrdFile{name: "pxe-answer.xml", url: answerPrefix + "pxe-answer.xml"})
+			startup = answerPrefix + "omb-setup.cmd"
+			files = append(files, windowsInitrdFile{name: "omb-setup.cmd", url: startup}, windowsInitrdFile{name: "omb-answer.xml", url: answerPrefix + "omb-answer.xml"})
 		} else {
-			files = append(files, windowsInitrdFile{name: "pxe-setup.cmd", url: startup})
+			files = append(files, windowsInitrdFile{name: "omb-setup.cmd", url: startup})
 		}
 		out.WriteString(":" + profile.id + "\n" + choiceReport +
 			"kernel " + base + "/assets/windows/wimboot\n" +

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 type countedReader struct {
@@ -39,7 +39,7 @@ func TestISOUploadRejectsObserverAndBadCSRFBeforeReadingBody(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/images/upload/7?name=test.iso", io.NopCloser(body))
 			req.ContentLength = 1
 			req.Header.Set("X-CSRF-Token", tc.csrf)
-			req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+			req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 			res := httptest.NewRecorder()
 			s.Handler().ServeHTTP(res, req)
 			if res.Code != http.StatusForbidden || body.read != 0 || len(events) != 0 || api.uploaded != "" {
@@ -56,7 +56,7 @@ func TestISOUploadStreamsToSelectedStorageAndFolder(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/images/upload/7?name=win.iso&folder=Windows/Test", strings.NewReader("iso-data"))
 	req.ContentLength = 8
 	req.Header.Set("X-CSRF-Token", CSRFToken("test-token"))
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusCreated || api.uploaded != "iso-data" || api.selectedFolder != "Windows/Test" || strings.Join(events, ",") != "enable-upload" {
@@ -68,7 +68,7 @@ func TestISOPageOffersUploadForReadySMBStorage(t *testing.T) {
 	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{uploadStorage()}}}
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, Images: api}
 	req := httptest.NewRequest(http.MethodGet, "/images", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "iso-upload-form") || !strings.Contains(res.Body.String(), "DSM") || !strings.Contains(res.Body.String(), `<select id="iso-folder" name="folder"></select>`) {
@@ -77,7 +77,7 @@ func TestISOPageOffersUploadForReadySMBStorage(t *testing.T) {
 }
 
 func localStorage(uploads bool) images.Storage {
-	return images.Storage{ID: 3, Name: "Local", Kind: "local", Root: "/var/lib/pxe-platform-images/iso", State: "ready", Uploads: uploads, Total: 39 << 30, Free: 26 << 30}
+	return images.Storage{ID: 3, Name: "Local", Kind: "local", Root: "/var/lib/omb-images/iso", State: "ready", Uploads: uploads, Total: 39 << 30, Free: 26 << 30}
 }
 
 func TestISOUploadIntoLocalStorageNeedsNoSMBMount(t *testing.T) {
@@ -87,7 +87,7 @@ func TestISOUploadIntoLocalStorageNeedsNoSMBMount(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/images/upload/3?name=win.iso", strings.NewReader("iso-data"))
 	req.ContentLength = 8
 	req.Header.Set("X-CSRF-Token", CSRFToken("test-token"))
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusCreated || api.uploaded != "iso-data" || len(events) != 0 {
@@ -99,7 +99,7 @@ func TestISOUploadIntoLocalStorageNeedsNoSMBMount(t *testing.T) {
 	req = httptest.NewRequest(http.MethodPost, "/images/upload/3?name=win.iso", strings.NewReader("iso-data"))
 	req.ContentLength = 8
 	req.Header.Set("X-CSRF-Token", CSRFToken("test-token"))
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res = httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusNotFound || api.uploaded != "" {
@@ -112,7 +112,7 @@ func TestISOPageListsUploadTargetsWithFreeSpace(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, Images: api}
 	for _, page := range []string{"/images", "/storages", "/system"} {
 		req := httptest.NewRequest(http.MethodGet, page, nil)
-		req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+		req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 		res := httptest.NewRecorder()
 		s.Handler().ServeHTTP(res, req)
 		body := res.Body.String()
@@ -129,7 +129,7 @@ func TestISOPageListsUploadTargetsWithFreeSpace(t *testing.T) {
 }
 
 func TestLocalISOStorageMustBeUnderTheAgentRoot(t *testing.T) {
-	for root, want := range map[string]bool{"/var/lib/pxe-platform-images/iso": true, "/var/lib/pxe-platform-images": true, "/srv/iso": false, "/var/lib/pxe-platform-images/../x": false} {
+	for root, want := range map[string]bool{"/var/lib/omb-images/iso": true, "/var/lib/omb-images": true, "/srv/iso": false, "/var/lib/omb-images/../x": false} {
 		if got := localISOStorage(root); got != want {
 			t.Errorf("%s: %v", root, got)
 		}

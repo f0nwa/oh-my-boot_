@@ -12,7 +12,7 @@ import (
 )
 
 func TestRunSendsConfigOverUnixSocket(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "pxe-ctl-")
+	dir, err := os.MkdirTemp("/tmp", "omb-ctl-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestRunSendsConfigOverUnixSocket(t *testing.T) {
 
 func TestDryRunRendersWithoutAgent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	content := `{"mode":"proxy","interface":"enp2s0","server_ip":"192.0.2.10","subnet":"192.0.2.0/24","boot_url":"http://192.0.2.10:8080/boot/menu.ipxe","tftp_root":"/srv/pxe/tftp"}`
+	content := `{"mode":"proxy","interface":"enp2s0","server_ip":"192.0.2.10","subnet":"192.0.2.0/24","boot_url":"http://192.0.2.10:8080/boot/menu.ipxe","tftp_root":"/srv/omb/tftp"}`
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}

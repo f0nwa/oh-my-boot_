@@ -17,8 +17,8 @@ import (
 	"strings"
 	"syscall"
 
-	"pxe-platform/internal/drivers"
-	"pxe-platform/internal/winpe"
+	"omb/internal/drivers"
+	"omb/internal/winpe"
 )
 
 type SelectedINF struct {
@@ -134,20 +134,7 @@ func (m *DriverManager) CheckConfig(ctx context.Context, req DriverBuildRequest,
 	}
 	scriptSum := sha256.Sum256(script)
 	if hex.EncodeToString(scriptSum[:]) != result.ScriptSHA256 {
-		matched := false
-		for _, prefix := range winpe.LegacyMessagePrefixes {
-			legacy, err := m.legacyDriverScript(req, prefix)
-			if err != nil {
-				return err
-			}
-			if legacySum := sha256.Sum256(legacy); hex.EncodeToString(legacySum[:]) == result.ScriptSHA256 {
-				script, matched = legacy, true
-				break
-			}
-		}
-		if !matched {
-			return fmt.Errorf("WinPE startup script differs")
-		}
+		return fmt.Errorf("WinPE startup script differs")
 	}
 	final := filepath.Join(m.ConfigRoot, strconv.FormatInt(req.ConfigID, 10))
 	stored, err := os.ReadFile(filepath.Join(final, "build.json"))
@@ -161,7 +148,7 @@ func (m *DriverManager) CheckConfig(ctx context.Context, req DriverBuildRequest,
 	if !sameDriverBuild(req, manifest.Request) || manifest.Result != result {
 		return fmt.Errorf("driver configuration differs")
 	}
-	actual, err := os.ReadFile(filepath.Join(final, "pxe-setup.cmd"))
+	actual, err := os.ReadFile(filepath.Join(final, "omb-setup.cmd"))
 	if err != nil || !bytes.Equal(actual, script) {
 		return fmt.Errorf("published WinPE script differs")
 	}
@@ -202,34 +189,22 @@ func (m *DriverManager) validateBuildRequest(req DriverBuildRequest) error {
 }
 
 func (m *DriverManager) driverScript(req DriverBuildRequest) ([]byte, error) {
-	return m.renderDriverScript(req, winpe.RenderDriverStartup)
-}
-
-// legacyDriverScript is the script of configurations built while WinPE
-// messages had an older prefix; only those messages differ.
-func (m *DriverManager) legacyDriverScript(req DriverBuildRequest, prefix string) ([]byte, error) {
-	return m.renderDriverScript(req, func(base []byte, paths []string) ([]byte, error) {
-		return winpe.RenderDriverStartupLegacy(base, paths, prefix)
-	})
-}
-
-func (m *DriverManager) renderDriverScript(req DriverBuildRequest, render func([]byte, []string) ([]byte, error)) ([]byte, error) {
 	root := filepath.Join(m.ProfileRoot, strconv.FormatInt(req.ProfileID, 10))
 	if req.AnswerID > 0 {
 		root = filepath.Join(m.AnswerRoot, strconv.FormatInt(req.AnswerID, 10))
 	}
-	if err := requireRegularISOFile(root, "pxe-setup.cmd"); err != nil {
+	if err := requireRegularISOFile(root, "omb-setup.cmd"); err != nil {
 		return nil, err
 	}
-	base, err := os.ReadFile(filepath.Join(root, "pxe-setup.cmd"))
+	base, err := os.ReadFile(filepath.Join(root, "omb-setup.cmd"))
 	if err != nil {
 		return nil, err
 	}
 	paths := make([]string, 0, len(req.PackageINFs))
 	for _, selected := range req.PackageINFs {
-		paths = append(paths, path.Join("pxe-drivers", selected.PackageSHA256, selected.INFPath))
+		paths = append(paths, path.Join("omb-drivers", selected.PackageSHA256, selected.INFPath))
 	}
-	return render(base, paths)
+	return winpe.RenderDriverStartup(base, paths)
 }
 
 func driverWIMKey(sourceHash string, selected []SelectedINF) string {
@@ -303,7 +278,7 @@ func (m *DriverManager) ensureDriverWIM(ctx context.Context, source string, sour
 		if strings.ContainsAny(src, "\"\r\n") {
 			return "", fmt.Errorf("driver storage path cannot be quoted")
 		}
-		fmt.Fprintf(&commands, "add \"%s\" \"/Windows/System32/pxe-drivers/%s\"\n", src, item.PackageSHA256)
+		fmt.Fprintf(&commands, "add \"%s\" \"/Windows/System32/omb-drivers/%s\"\n", src, item.PackageSHA256)
 	}
 	if _, err := runner.Run(ctx, commands.String(), "wimlib-imagex", "update", copyPath, string(match[1])); err != nil {
 		return "", err
@@ -360,7 +335,7 @@ func (m *DriverManager) publishDriverConfig(req DriverBuildRequest, result Drive
 		if !sameDriverBuild(req, manifest.Request) || manifest.Result != result {
 			return fmt.Errorf("driver configuration is immutable")
 		}
-		actual, err := os.ReadFile(filepath.Join(final, "pxe-setup.cmd"))
+		actual, err := os.ReadFile(filepath.Join(final, "omb-setup.cmd"))
 		if err != nil || !bytes.Equal(actual, script) {
 			return fmt.Errorf("existing driver script differs")
 		}
@@ -380,7 +355,7 @@ func (m *DriverManager) publishDriverConfig(req DriverBuildRequest, result Drive
 	if err := os.WriteFile(filepath.Join(stage, "build.json"), manifest, 0644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(stage, "pxe-setup.cmd"), script, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(stage, "omb-setup.cmd"), script, 0644); err != nil {
 		return err
 	}
 	if err := os.Chmod(stage, 0755); err != nil {

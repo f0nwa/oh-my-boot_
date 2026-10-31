@@ -19,7 +19,7 @@ func preparedAnswer(t *testing.T) (*WindowsISOManager, WindowsAnswerCheck, []byt
 	if err := os.Mkdir(filepath.Join(profiles, "17"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(profiles, "17", "pxe-setup.cmd"), []byte("@echo off\r\nY:\\17\\sources\\setup.exe /InstallFrom:Y:\\17\\sources\\install.wim\r\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(profiles, "17", "omb-setup.cmd"), []byte("@echo off\r\nY:\\17\\sources\\setup.exe /InstallFrom:Y:\\17\\sources\\install.wim\r\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	xml := []byte("<unattend xmlns=\"urn:schemas-microsoft-com:unattend\">\r\n\t<!-- Привет -->\r\n</unattend>")
@@ -69,7 +69,7 @@ func TestWindowsAnswerXML(t *testing.T) {
 
 func TestWindowsAnswerXMLRejectsSymlink(t *testing.T) {
 	m, check, _ := preparedAnswer(t)
-	final := filepath.Join(m.AnswerRoot, "4", "pxe-answer.xml")
+	final := filepath.Join(m.AnswerRoot, "4", "omb-answer.xml")
 	elsewhere := filepath.Join(t.TempDir(), "x.xml")
 	data, _ := os.ReadFile(final)
 	if err := os.WriteFile(elsewhere, data, 0644); err != nil {

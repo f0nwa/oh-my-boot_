@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"pxe-platform/internal/agent"
+	"omb/internal/agent"
 )
 
 type DriverConfig struct {

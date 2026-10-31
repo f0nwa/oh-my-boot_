@@ -13,24 +13,24 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"pxe-platform/internal/control"
+	"omb/internal/control"
 )
 
 func main() {
 	listen := flag.String("listen", "", "HTTPS management address")
 	cert := flag.String("tls-cert", "", "TLS certificate with management IP SAN")
 	key := flag.String("tls-key", "", "TLS private key")
-	bootSocket := flag.String("boot-socket", "/run/pxe-platform-boot/control.sock", "Boot local API socket")
-	agentSocket := flag.String("agent-socket", "/run/pxe-platform/agent.sock", "Agent local API socket")
-	imagesSocket := flag.String("images-socket", "/run/pxe-platform-images/images.sock", "Images local API socket")
+	bootSocket := flag.String("boot-socket", "/run/omb-boot/control.sock", "Boot local API socket")
+	agentSocket := flag.String("agent-socket", "/run/omb/agent.sock", "Agent local API socket")
+	imagesSocket := flag.String("images-socket", "/run/omb-images/images.sock", "Images local API socket")
 	allowed := flag.String("allowed-interfaces", "", "comma-separated PXE interface allowlist")
 	flag.Parse()
 	if *listen == "" || *cert == "" || *key == "" || *allowed == "" {
 		log.Fatal("listen, TLS certificate/key and PXE interface allowlist are required")
 	}
-	dsn := os.Getenv("PXE_CONTROL_DATABASE_URL")
+	dsn := os.Getenv("OMB_CONTROL_DATABASE_URL")
 	if dsn == "" {
-		log.Fatal("PXE_CONTROL_DATABASE_URL is required")
+		log.Fatal("OMB_CONTROL_DATABASE_URL is required")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
@@ -59,7 +59,7 @@ func main() {
 	}
 	agentClient := control.NewAgentClient(*agentSocket)
 	bootClient := control.NewBootClient(*bootSocket)
-	server := &control.Server{Store: store, Boot: bootClient, DeletionMenu: bootClient, Agent: agentClient, SMB: agentClient, WindowsISO: agentClient, WindowsAnswers: agentClient, DriverPackages: agentClient, DriverConfigs: agentClient, Cleanup: agentClient, StorageRecovery: agentClient, UEFICAUSB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist, BootBaseURL: os.Getenv("PXE_CONTROL_BOOT_BASE_URL")}
+	server := &control.Server{Store: store, Boot: bootClient, DeletionMenu: bootClient, Agent: agentClient, SMB: agentClient, WindowsISO: agentClient, WindowsAnswers: agentClient, DriverPackages: agentClient, DriverConfigs: agentClient, Cleanup: agentClient, StorageRecovery: agentClient, UEFICAUSB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist, BootBaseURL: os.Getenv("OMB_CONTROL_BOOT_BASE_URL")}
 	httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 6 * time.Minute, IdleTimeout: 60 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()

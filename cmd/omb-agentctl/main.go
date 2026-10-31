@@ -12,11 +12,11 @@ import (
 	"os"
 	"time"
 
-	"pxe-platform/internal/network"
+	"omb/internal/network"
 )
 
 func main() {
-	socket := flag.String("socket", "/run/pxe-platform/agent.sock", "agent Unix socket")
+	socket := flag.String("socket", "/run/omb/agent.sock", "agent Unix socket")
 	config := flag.String("config", "", "JSON network config to apply")
 	preview := flag.Bool("dry-run", false, "validate and print dnsmasq config without applying")
 	flag.Parse()

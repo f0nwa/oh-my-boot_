@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 	"strconv"
 	"strings"
 	"time"

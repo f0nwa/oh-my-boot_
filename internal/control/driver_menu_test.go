@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/drivers"
-	"pxe-platform/internal/images"
+	"omb/internal/agent"
+	"omb/internal/drivers"
+	"omb/internal/images"
 )
 
 type driverMenuStore struct {
@@ -52,7 +52,7 @@ func (c *recordingPackageCheck) CheckDriverPackage(_ context.Context, hash strin
 }
 
 func driverMenuFixture() (WindowsProfile, WindowsAnswerVariant, []DriverConfig) {
-	profile := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/pxe-platform-smb/key7", Path: "windows.iso", Size: 123, Modified: time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC), Title: "Windows 11", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
+	profile := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "windows.iso", Size: 123, Modified: time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC), Title: "Windows 11", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
 	answer := WindowsAnswerVariant{ID: 31, ProfileID: 17, Title: "Lab", State: "ready", SHA256: strings.Repeat("d", 64), Size: 100}
 	configs := []DriverConfig{
 		{ID: 1, ProfileID: 17, Title: "Windows 11 Laptop A", Folder: "Windows/Laptops", State: "ready", PackageINFs: []agent.SelectedINF{{PackageSHA256: strings.Repeat("a", 64), INFPath: "net.inf"}}, Build: agent.DriverBuildResult{WIMKey: strings.Repeat("b", 64), WIMSHA256: strings.Repeat("c", 64), ScriptSHA256: strings.Repeat("e", 64)}},
@@ -77,7 +77,7 @@ func TestMenuDistinguishesDuplicateDriverConfigTitles(t *testing.T) {
 	// Equal titles in the structure carry their keys; the selected item
 	// names what it loads.
 	req := httptest.NewRequest(http.MethodGet, "/menu?item=install_3001", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
@@ -103,8 +103,8 @@ func TestDriverMenuRendersSeparateEntriesAndFolders(t *testing.T) {
 		"item install_3002 Windows 11 Laptop B${sp",
 		"item menu_root .. Back\n",
 		"initrd http://10.30.0.10:8080/assets/windows-driver-wims/" + configs[0].Build.WIMKey + "/boot.wim boot.wim\n",
-		"initrd -n pxe-setup.cmd http://10.30.0.10:8080/assets/windows-driver-configs/2/pxe-setup.cmd\n",
-		"initrd -n pxe-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/pxe-answer.xml\n",
+		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-driver-configs/2/omb-setup.cmd\n",
+		"initrd -n omb-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/omb-answer.xml\n",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q", want)

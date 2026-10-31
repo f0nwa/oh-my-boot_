@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 // searchResult is one hit of the ⌘K search.

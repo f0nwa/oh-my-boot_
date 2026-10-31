@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 func TestWindowsProfileSourceProblemExplainsCause(t *testing.T) {

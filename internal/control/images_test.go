@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 type fakeImagesAPI struct {
@@ -65,7 +65,7 @@ func TestImagesPageEscapesISONameAndShowsStorage(t *testing.T) {
 	}}
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Username: "viewer", Role: "observer", Enabled: true}}, Images: api}
 	req := httptest.NewRequest("GET", "/images", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "NAS") || strings.Contains(res.Body.String(), "<script>") || !strings.Contains(res.Body.String(), "&lt;script&gt;") {
@@ -76,7 +76,7 @@ func TestImagesPageEscapesISONameAndShowsStorage(t *testing.T) {
 func TestImagesPageShowsServiceOutage(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}, Images: &fakeImagesAPI{err: errors.New("offline")}}
 	req := httptest.NewRequest("GET", "/images", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "недоступен") {
@@ -99,7 +99,7 @@ func TestImagesScanRoleAndCSRF(t *testing.T) {
 			body := "id=5&csrf=" + CSRFToken("test-token")
 			req := httptest.NewRequest("POST", "/images/scan", strings.NewReader(body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+			req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 			res := httptest.NewRecorder()
 			s.Handler().ServeHTTP(res, req)
 			if res.Code != tc.want {
@@ -117,7 +117,7 @@ func TestImagesScanAuditsAcceptedRequestNotCompletion(t *testing.T) {
 	s := &Server{Store: store, Images: &fakeImagesAPI{}}
 	req := httptest.NewRequest("POST", "/images/scan", strings.NewReader("id=5&csrf="+CSRFToken("test-token")))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusSeeOther || store.action != "images.scan.requested" || store.result != "accepted" {

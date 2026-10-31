@@ -72,7 +72,7 @@ func Allowed(role, action string) bool {
 }
 
 func CSRFToken(sessionToken string) string {
-	sum := sha256.Sum256([]byte("pxe-control-csrf:" + sessionToken))
+	sum := sha256.Sum256([]byte("omb-control-csrf:" + sessionToken))
 	return hex.EncodeToString(sum[:])
 }
 func CheckCSRF(sessionToken, provided string) bool {

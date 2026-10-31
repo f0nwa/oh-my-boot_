@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 )
 
 type autoinstallMenuStore struct {
@@ -132,7 +132,7 @@ func TestUbuntuAutoinstallMixedMenuStagesSelectedFilesBeforePublish(t *testing.T
 	script, _ := h.publisher.Current()
 	for _, id := range []int64{71, 72, 73, 74, 75} {
 		block := installationScript(t, string(script), id)
-		report := fmt.Sprintf(":install_%d\nimgfetch --name pxe-choice %s/boot/choice?id=%d && imgfree pxe-choice || echo -n\nkernel ", id, s.BootBaseURL, id)
+		report := fmt.Sprintf(":install_%d\nimgfetch --name omb-choice %s/boot/choice?id=%d && imgfree omb-choice || echo -n\nkernel ", id, s.BootBaseURL, id)
 		if strings.Count(string(script), report) != 1 {
 			t.Errorf("choice %d is not unique and before files", id)
 		}
@@ -155,7 +155,7 @@ func TestUbuntuAutoinstallMixedMenuStagesSelectedFilesBeforePublish(t *testing.T
 		}
 		assertSeedAvailable(t, h, id, store.files[i])
 	}
-	for _, want := range []string{"kernel " + s.BootBaseURL + "/assets/windows/wimboot\n", "/assets/windows-profiles/17/boot.wim boot.wim\n", "/assets/windows-answers/31/pxe-answer.xml"} {
+	for _, want := range []string{"kernel " + s.BootBaseURL + "/assets/windows/wimboot\n", "/assets/windows-profiles/17/boot.wim boot.wim\n", "/assets/windows-answers/31/omb-answer.xml"} {
 		if !strings.Contains(string(script), want) {
 			t.Errorf("Windows path changed: %s", want)
 		}
@@ -181,7 +181,7 @@ func assertSeedAvailable(t *testing.T, h *autoinstallMenuBoot, id int64, f Ubunt
 		h.public.ServeHTTP(w, r)
 		want := string(f.UserData)
 		if name == "meta-data" {
-			want = fmt.Sprintf("instance-id: pxe-installation-%d-%s\n", id, f.SHA256)
+			want = fmt.Sprintf("instance-id: omb-installation-%d-%s\n", id, f.SHA256)
 		}
 		if w.Code != http.StatusOK || w.Body.String() != want || w.Header().Get("Cache-Control") != "no-store" {
 			t.Errorf("seed %d/%s status=%d body=%s", id, name, w.Code, w.Body.String())

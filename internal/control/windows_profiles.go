@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/images"
+	"omb/internal/agent"
+	"omb/internal/images"
 )
 
 type WindowsProfileSource struct {

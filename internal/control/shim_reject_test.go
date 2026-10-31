@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 // shimLog is what dnsmasq logged for the test VM on 23.10.2026: proxy-DHCP

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"pxe-platform/internal/agent"
+	"omb/internal/agent"
 )
 
 // StorageRecoveryAPI reads and changes Agent's automatic storage recovery.

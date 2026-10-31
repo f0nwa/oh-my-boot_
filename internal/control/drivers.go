@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"pxe-platform/internal/drivers"
+	"omb/internal/drivers"
 )
 
 //go:embed driver_upload.js
@@ -84,7 +84,7 @@ func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {
 }
 
 func spoolDriverUpload(r *http.Request) (*os.File, int64, error) {
-	archive, err := os.CreateTemp("", "pxe-driver-upload-*.zip")
+	archive, err := os.CreateTemp("", "omb-driver-upload-*.zip")
 	if err != nil {
 		return nil, 0, err
 	}

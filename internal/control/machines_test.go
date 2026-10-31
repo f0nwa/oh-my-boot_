@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 func TestMachineRowsJoinDHCPTFTPAndHTTP(t *testing.T) {
@@ -21,7 +21,7 @@ func TestMachineRowsJoinDHCPTFTPAndHTTP(t *testing.T) {
 	httpEvents := []boot.Event{
 		{At: t0.Add(15 * time.Second), Kind: "choice", Path: "/boot/choice?id=4", RemoteAddr: "10.30.0.19:5000", MAC: "bc:24:11:04:2a:ed"},
 		{At: t0.Add(30 * time.Second), Kind: "asset", Path: "/assets/windows-driver-wims/abc/boot.wim", RemoteAddr: "10.30.0.19:5000", MAC: "bc:24:11:04:2a:ed"},
-		{At: t0.Add(20 * time.Second), Kind: "asset", Path: "/assets/windows-driver-configs/4/pxe-setup.cmd", RemoteAddr: "10.30.0.19:5000", MAC: "bc:24:11:04:2a:ed"},
+		{At: t0.Add(20 * time.Second), Kind: "asset", Path: "/assets/windows-driver-configs/4/omb-setup.cmd", RemoteAddr: "10.30.0.19:5000", MAC: "bc:24:11:04:2a:ed"},
 		{At: t0.Add(10 * time.Second), Kind: "menu", Path: "/boot/menu.ipxe", RemoteAddr: "10.30.0.19:5000", MAC: "bc:24:11:04:2a:ed"},
 	}
 	names := map[string]string{"install_4": "Windows 11 VirtIO Net SCSI test"}

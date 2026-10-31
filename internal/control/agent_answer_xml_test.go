@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/agent"
+	"omb/internal/agent"
 )
 
 func TestAgentClientWindowsAnswerXML(t *testing.T) {

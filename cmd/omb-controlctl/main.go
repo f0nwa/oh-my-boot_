@@ -10,12 +10,12 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"pxe-platform/internal/control"
+	"omb/internal/control"
 )
 
 func main() {
 	if len(os.Args) < 2 || (os.Args[1] != "create-admin" && os.Args[1] != "reset-password") {
-		log.Fatal("usage: pxe-controlctl create-admin|reset-password -username NAME (password from stdin)")
+		log.Fatal("usage: omb-controlctl create-admin|reset-password -username NAME (password from stdin)")
 	}
 	options := flag.NewFlagSet("create-admin", flag.ExitOnError)
 	username := options.String("username", "", "initial administrator username")
@@ -25,9 +25,9 @@ func main() {
 	if *username == "" {
 		log.Fatal("username is required")
 	}
-	dsn := os.Getenv("PXE_CONTROL_DATABASE_URL")
+	dsn := os.Getenv("OMB_CONTROL_DATABASE_URL")
 	if dsn == "" {
-		log.Fatal("PXE_CONTROL_DATABASE_URL is required")
+		log.Fatal("OMB_CONTROL_DATABASE_URL is required")
 	}
 	fmt.Fprint(os.Stderr, "Новый пароль (из stdin): ")
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')

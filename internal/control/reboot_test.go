@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 // A machine that reboots a few minutes after reaching Setup: the row must

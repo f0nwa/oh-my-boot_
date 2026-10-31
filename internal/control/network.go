@@ -5,7 +5,7 @@ import (
 	"net"
 	"net/netip"
 
-	"pxe-platform/internal/network"
+	"omb/internal/network"
 )
 
 func ValidateNetworkTarget(c network.Config, allowed map[string]bool, interfaceIPs []netip.Addr) error {

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"pxe-platform/internal/drivers"
+	"omb/internal/drivers"
 )
 
 func driverArchive(t *testing.T) []byte {

@@ -27,7 +27,7 @@ type DHCPEvent struct {
 var (
 	dhcpLine   = regexp.MustCompile(`^(DHCP[A-Z]+|PXE)\([^)]*\) (?:([0-9.]+) )?([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})(?: (.*))?$`)
 	tftpLine   = regexp.MustCompile(`^(sent|failed sending) (\S+) to ([0-9.]+)$`)
-	tftpRoot   = "/srv/pxe/tftp/"
+	tftpRoot   = "/srv/omb/tftp/"
 	maxDHCPLog = 1000
 )
 
@@ -84,12 +84,12 @@ type DHCPLog struct {
 	Read func(context.Context) ([]byte, error)
 }
 
-// NewDHCPLog reads the last seven days of the pxe-dnsmasq unit from journald.
+// NewDHCPLog reads the last seven days of the omb-dnsmasq unit from journald.
 func NewDHCPLog() *DHCPLog {
 	return &DHCPLog{Read: func(ctx context.Context) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		return exec.CommandContext(ctx, "journalctl", "-u", "pxe-dnsmasq", "--since", "-7d", "-o", "json", "--no-pager", "-q").Output()
+		return exec.CommandContext(ctx, "journalctl", "-u", "omb-dnsmasq", "--since", "-7d", "-o", "json", "--no-pager", "-q").Output()
 	}}
 }
 

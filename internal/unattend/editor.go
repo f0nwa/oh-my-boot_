@@ -14,7 +14,7 @@ import (
 
 // EditorNamespace is the namespace of the <Editor> element. Windows Setup
 // ignores elements of foreign namespaces, as it does with <Extensions>.
-const EditorNamespace = "urn:pxe-platform:unattend-editor"
+const EditorNamespace = "urn:omb:unattend-editor"
 
 // EditorVersion is the format version of the <Editor> element.
 const EditorVersion = "1"

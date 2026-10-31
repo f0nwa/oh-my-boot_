@@ -135,7 +135,7 @@ func ReceiveISO(ctx context.Context, root, folder, name string, body io.Reader, 
 	} else if !os.IsNotExist(err) {
 		return UploadResult{}, err
 	}
-	temp, err := os.CreateTemp(directory, ".pxe-upload-*.part")
+	temp, err := os.CreateTemp(directory, ".omb-upload-*.part")
 	if err != nil {
 		return UploadResult{}, err
 	}

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 func TestMachineSessionsSplitBootsAndNameOutcome(t *testing.T) {
@@ -25,7 +25,7 @@ func TestMachineSessionsSplitBootsAndNameOutcome(t *testing.T) {
 		{At: t0.Add(10 * time.Second), Kind: "choice", Path: "/boot/choice?id=7", RemoteAddr: "10.30.0.19:1", MAC: mac},
 		{At: t0.Add(3 * time.Second), Kind: "menu", Path: "/boot/menu.ipxe", RemoteAddr: "10.30.0.19:1", MAC: mac},
 		{At: t0.Add(20 * time.Second), Kind: "asset", Path: "/assets/windows-profiles/3/boot.wim", RemoteAddr: "10.30.0.19:1", MAC: mac},
-		{At: t0.Add(21 * time.Second), Kind: "asset", Path: "/assets/windows-driver-configs/7/pxe-setup.cmd", RemoteAddr: "10.30.0.19:1", MAC: mac},
+		{At: t0.Add(21 * time.Second), Kind: "asset", Path: "/assets/windows-driver-configs/7/omb-setup.cmd", RemoteAddr: "10.30.0.19:1", MAC: mac},
 	}
 	sessions := machineSessions(mac, httpEvents, dhcp, map[string]string{"install_7": "Win11 VirtIO"})
 	if len(sessions) != 2 {
@@ -77,7 +77,7 @@ func TestMachinePageRendersTimelineAndSessions(t *testing.T) {
 func TestMachinePageRejectsBadMACAndLinksFromEvents(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}
 	req := httptest.NewRequest(http.MethodGet, "/events/machines/not-a-mac", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusBadRequest {

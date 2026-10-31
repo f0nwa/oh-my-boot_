@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"strings"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
-	"pxe-platform/internal/images"
-	"pxe-platform/internal/network"
+	"omb/internal/agent"
+	"omb/internal/boot"
+	"omb/internal/images"
+	"omb/internal/network"
 )
 
 type imageRow struct {

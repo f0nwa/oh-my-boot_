@@ -14,7 +14,7 @@ func TestRenderDnsmasqFullOffersLeasesAndArchitectureBootFiles(t *testing.T) {
 		"port=0",
 		"interface=enp2s0",
 		"enable-tftp",
-		"tftp-root=/srv/pxe/tftp",
+		"tftp-root=/srv/omb/tftp",
 		"dhcp-range=192.0.2.100,192.0.2.150,12h",
 		"dhcp-match=set:ipxe,175",
 		"dhcp-match=set:efi64,option:client-arch,7",

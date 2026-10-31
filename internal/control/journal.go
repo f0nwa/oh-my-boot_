@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 // journalView is the «Хранение журнала» block of the Journal page.

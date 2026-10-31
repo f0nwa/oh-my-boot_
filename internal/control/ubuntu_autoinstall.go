@@ -3,7 +3,7 @@ package control
 import (
 	"time"
 
-	"pxe-platform/internal/autoinstall"
+	"omb/internal/autoinstall"
 )
 
 // UbuntuAutoinstallFile is an immutable, validated constructor result. Values

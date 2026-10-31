@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
-	"pxe-platform/internal/drivers"
-	"pxe-platform/internal/images"
-	"pxe-platform/internal/ueficausb"
+	"omb/internal/agent"
+	"omb/internal/boot"
+	"omb/internal/drivers"
+	"omb/internal/images"
+	"omb/internal/ueficausb"
 )
 
 type Storage interface {
@@ -267,7 +267,7 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("pxe_session")
+		cookie, err := r.Cookie("omb_session")
 		if err != nil || cookie.Value == "" {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
@@ -342,7 +342,7 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ошибка", 500)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "pxe_login_csrf", Value: token, Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 600})
+	http.SetCookie(w, &http.Cookie{Name: "omb_login_csrf", Value: token, Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 600})
 	render(w, "login", pageData{Lang: languageFromRequest(r), CSRF: token, Message: r.URL.Query().Get("error")})
 }
 
@@ -352,7 +352,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверная форма", 400)
 		return
 	}
-	cookie, err := r.Cookie("pxe_login_csrf")
+	cookie, err := r.Cookie("omb_login_csrf")
 	if err != nil || cookie.Value == "" || !constantEqual(cookie.Value, r.FormValue("csrf")) {
 		http.Error(w, translate(languageFromRequest(r), "Недействительный токен формы"), 403)
 		return
@@ -362,8 +362,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error=Неверное+имя+или+пароль", 303)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "pxe_session", Value: token, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Expires: time.Now().Add(sessionLifetime)})
-	http.SetCookie(w, &http.Cookie{Name: "pxe_login_csrf", Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "omb_session", Value: token, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Expires: time.Now().Add(sessionLifetime)})
+	http.SetCookie(w, &http.Cookie{Name: "omb_login_csrf", Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	_ = s.Store.Audit(r.Context(), user.ID, "login", "ok", "")
 	http.Redirect(w, r, "/", 303)
 }
@@ -376,7 +376,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	info := requestInfo(r)
 	_ = s.Store.Logout(r.Context(), info.Token)
 	_ = s.Store.Audit(r.Context(), info.User.ID, "logout", "ok", "")
-	http.SetCookie(w, &http.Cookie{Name: "pxe_session", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "omb_session", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	http.Redirect(w, r, "/login", 303)
 }
 
@@ -653,7 +653,7 @@ func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if id == info.User.ID {
-		http.SetCookie(w, &http.Cookie{Name: "pxe_session", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+		http.SetCookie(w, &http.Cookie{Name: "omb_session", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 		http.Redirect(w, r, "/login", 303)
 		return
 	}

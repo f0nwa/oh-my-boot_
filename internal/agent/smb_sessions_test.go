@@ -20,11 +20,11 @@ func smbStatusJSON(withSession bool, files ...string) []byte {
 		return b
 	}
 	sid := map[string]any{"pid": "58474", "unique_id": "119"}
-	v["sessions"] = map[string]any{"1002": map[string]any{"session_id": "1002", "server_id": sid, "username": "pxe-iso", "remote_machine": "10.30.0.19", "creation_time": "2026-10-23T10:04:17.243763+03:00"}}
-	v["tcons"] = map[string]any{"35": map[string]any{"service": "pxeisos", "session_id": "1002"}, "36": map[string]any{"service": "other", "session_id": "9"}}
+	v["sessions"] = map[string]any{"1002": map[string]any{"session_id": "1002", "server_id": sid, "username": "omb-iso", "remote_machine": "10.30.0.19", "creation_time": "2026-10-23T10:04:17.243763+03:00"}}
+	v["tcons"] = map[string]any{"35": map[string]any{"service": "ombisos", "session_id": "1002"}, "36": map[string]any{"service": "other", "session_id": "9"}}
 	open := map[string]any{}
 	for _, f := range files {
-		open["/mnt/pxe-platform-iso/profiles/"+f] = map[string]any{"service_path": "/mnt/pxe-platform-iso/profiles", "filename": f, "opens": map[string]any{"58474/1": map[string]any{"server_id": sid}}}
+		open["/mnt/omb-iso/profiles/"+f] = map[string]any{"service_path": "/mnt/omb-iso/profiles", "filename": f, "opens": map[string]any{"58474/1": map[string]any{"server_id": sid}}}
 	}
 	v["open_files"] = open
 	b, _ := json.Marshal(v)
@@ -37,7 +37,7 @@ var setupFiles = []string{"2/sources/setup.exe", "2/sources/uxlib.dll", "2/sourc
 func withWIM() []string { return append(append([]string{}, setupFiles...), "2/sources/install.wim") }
 
 func TestParseSMBStatusKeepsInstallShare(t *testing.T) {
-	snap, err := parseSMBStatus(smbStatusJSON(true, withWIM()...), "pxeisos", time.Now())
+	snap, err := parseSMBStatus(smbStatusJSON(true, withWIM()...), "ombisos", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestParseSMBStatusKeepsInstallShare(t *testing.T) {
 	if !ok || len(snap.sessions) != 1 {
 		t.Fatalf("sessions = %#v", snap.sessions)
 	}
-	if live.ip != "10.30.0.19" || live.profile != "2" || !live.setup || !live.wim || live.pid != "58474" || live.wimPath != "/mnt/pxe-platform-iso/profiles/2/sources/install.wim" {
+	if live.ip != "10.30.0.19" || live.profile != "2" || !live.setup || !live.wim || live.pid != "58474" || live.wimPath != "/mnt/omb-iso/profiles/2/sources/install.wim" {
 		t.Fatalf("live = %#v", live)
 	}
 	if got := live.started.Format(time.RFC3339); got != "2026-10-23T07:04:17Z" {
@@ -69,7 +69,7 @@ type setupRun struct {
 func newSetupRun(t *testing.T, path string) *setupRun {
 	r := &setupRun{t: t, now: time.Date(2026, 10, 23, 7, 5, 0, 0, time.UTC)}
 	r.w = &SMBWatcher{
-		Path: path, Share: "pxeisos", Keep: 7 * 24 * time.Hour,
+		Path: path, Share: "ombisos", Keep: 7 * 24 * time.Hour,
 		Now:       func() time.Time { return r.now },
 		Status:    func(context.Context) ([]byte, error) { return r.status, nil },
 		ReadBytes: func(pid string) (int64, bool) { return r.read, pid == "58474" },
@@ -193,7 +193,7 @@ func TestSMBSessionsHandler(t *testing.T) {
 	if rec0.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unread watcher answered %d", rec0.Code)
 	}
-	w := &SMBWatcher{Share: "pxeisos", Status: func(context.Context) ([]byte, error) { return smbStatusJSON(true), nil }}
+	w := &SMBWatcher{Share: "ombisos", Status: func(context.Context) ([]byte, error) { return smbStatusJSON(true), nil }}
 	_ = w.Poll(context.Background())
 	h := HandlerWithSMBSessions(http.NotFoundHandler(), w)
 	rec := httptest.NewRecorder()

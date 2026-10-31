@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/autoinstall"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/autoinstall"
+	"omb/internal/boot"
 )
 
 type menuDraftRow struct {
@@ -252,7 +252,7 @@ func (s *Server) stageMenuAutoinstalls(ctx context.Context, entries []menuProfil
 		if err != nil || id <= 0 {
 			return fmt.Errorf("invalid Ubuntu Autoinstall installation identity")
 		}
-		meta := fmt.Sprintf("instance-id: pxe-installation-%d-%s\n", id, file.SHA256)
+		meta := fmt.Sprintf("instance-id: omb-installation-%d-%s\n", id, file.SHA256)
 		expected := boot.AssetInfo{UserDataSHA256: file.SHA256, MetaDataSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(meta)))}
 		staged, err := s.Boot.StageAutoinstall(ctx, id, file.SHA256, file.UserData)
 		if err != nil || staged != expected {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/network"
+	"omb/internal/network"
 )
 
 type fakeRunner struct {
@@ -46,7 +46,7 @@ func agentConfig() network.Config {
 	return network.Config{
 		Mode: "proxy", Interface: "enp2s0", ServerIP: "192.0.2.10",
 		Subnet: "192.0.2.0/24", BootURL: "http://192.0.2.10:8080/boot/menu.ipxe",
-		TFTPRoot: "/srv/pxe/tftp",
+		TFTPRoot: "/srv/omb/tftp",
 	}
 }
 

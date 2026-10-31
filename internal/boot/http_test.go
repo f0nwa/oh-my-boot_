@@ -71,7 +71,7 @@ func TestWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "windows-profiles", "1"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "windows-profiles", "1", "pxe-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "windows-profiles", "1", "omb-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
@@ -86,7 +86,7 @@ func TestWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 		{"192.168.10.55:12345", http.StatusNotFound},
 		{"[::1]:12345", http.StatusNotFound},
 	} {
-		req := httptest.NewRequest(http.MethodGet, "/assets/windows-profiles/1/pxe-setup.cmd", nil)
+		req := httptest.NewRequest(http.MethodGet, "/assets/windows-profiles/1/omb-setup.cmd", nil)
 		req.RemoteAddr = tc.remote
 		res := httptest.NewRecorder()
 		h.ServeHTTP(res, req)
@@ -98,9 +98,9 @@ func TestWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 		}
 	}
 	for _, path := range []string{
-		"/assets/windows-profiles/1//pxe-setup.cmd",
-		"/assets/windows-profiles/2/../1/pxe-setup.cmd",
-		"/assets/windows-profiles%2f1%2fpxe-setup.cmd",
+		"/assets/windows-profiles/1//omb-setup.cmd",
+		"/assets/windows-profiles/2/../1/omb-setup.cmd",
+		"/assets/windows-profiles%2f1%2fomb-setup.cmd",
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.RemoteAddr = "192.168.10.55:12345"
@@ -118,7 +118,7 @@ func TestProfileWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pxe-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "omb-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
@@ -129,7 +129,7 @@ func TestProfileWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 		remote string
 		want   int
 	}{{"10.30.0.7:12345", http.StatusOK}, {"192.168.10.55:12345", http.StatusNotFound}} {
-		req := httptest.NewRequest(http.MethodGet, "/assets/windows-profiles/17/pxe-setup.cmd", nil)
+		req := httptest.NewRequest(http.MethodGet, "/assets/windows-profiles/17/omb-setup.cmd", nil)
 		req.RemoteAddr = tc.remote
 		res := httptest.NewRecorder()
 		h.ServeHTTP(res, req)
@@ -148,7 +148,7 @@ func TestWindowsAnswerAssetsAreLimitedToPXESubnet(t *testing.T) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"pxe-answer.xml", "pxe-setup.cmd"} {
+	for _, name := range []string{"omb-answer.xml", "omb-setup.cmd"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("sensitive"), 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -157,7 +157,7 @@ func TestWindowsAnswerAssetsAreLimitedToPXESubnet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"pxe-answer.xml", "pxe-setup.cmd"} {
+	for _, name := range []string{"omb-answer.xml", "omb-setup.cmd"} {
 		for _, tc := range []struct {
 			addr string
 			want int

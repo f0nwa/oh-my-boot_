@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/drivers"
+	"omb/internal/drivers"
 )
 
 type driverPageStore struct {
@@ -81,7 +81,7 @@ func testDriverUpload(t *testing.T, kind, csrf, filename string, content []byte)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/drivers/import", &body)
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	return req
 }
 
@@ -148,7 +148,7 @@ func TestDriversPageObserverIsReadOnly(t *testing.T) {
 	store := &driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}
 	s := &Server{Store: store}
 	req := httptest.NewRequest(http.MethodGet, "/drivers", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || strings.Contains(res.Body.String(), `action="/drivers/import"`) {
@@ -169,7 +169,7 @@ func TestDriverImportRejectsObserver(t *testing.T) {
 func TestDriversPageOperatorShowsBothImportMethods(t *testing.T) {
 	store := &driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
 	req := httptest.NewRequest(http.MethodGet, "/drivers", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
 	for _, required := range []string{`webkitdirectory`, `name="zip"`, `name="csrf"`, `/assets/driver-upload.js`} {

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/ueficausb/ueficausbtest"
+	"omb/internal/agent"
+	"omb/internal/ueficausb/ueficausbtest"
 )
 
 func ueficaAgentClient(t *testing.T, handler http.Handler) *AgentClient {

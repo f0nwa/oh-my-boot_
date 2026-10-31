@@ -38,7 +38,7 @@ func TestAutoinstallAssetsStageRetryAndRestart(t *testing.T) {
 		t.Fatalf("stage: %+v %v", info, err)
 	}
 	dir := filepath.Join(root, "ubuntu-autoinstall", "7", digest)
-	meta := []byte("instance-id: pxe-installation-7-" + digest + "\n")
+	meta := []byte("instance-id: omb-installation-7-" + digest + "\n")
 	for name, want := range map[string][]byte{"user-data": autoinstallTestData, "meta-data": meta} {
 		got, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil || !bytes.Equal(got, want) {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"pxe-platform/internal/drivers"
+	"omb/internal/drivers"
 )
 
 type DriverManager struct {

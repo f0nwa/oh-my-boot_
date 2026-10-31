@@ -10,13 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 func libraryGet(t *testing.T, s *Server, path string) string {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
@@ -49,7 +49,7 @@ func TestSMBErrorRendersOnStoragesPage(t *testing.T) {
 	form := url.Values{"csrf": {CSRFToken("test-token")}}
 	req := httptest.NewRequest(http.MethodPost, "/images/smb", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	body := res.Body.String()
@@ -71,7 +71,7 @@ func TestAnswerUploadFromAnswersPage(t *testing.T) {
 	_ = w.Close()
 	req := httptest.NewRequest(http.MethodPost, "/answers/upload", &data)
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/answers?message=") || len(store.answers) != 1 || store.answers[0].ProfileID != 3 {

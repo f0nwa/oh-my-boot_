@@ -17,7 +17,7 @@ import (
 )
 
 // InstallShare is the Samba share WinPE mounts to run Windows Setup.
-const InstallShare = "pxeisos"
+const InstallShare = "ombisos"
 
 // SMBSession is what the server saw of one WinPE client on the install
 // share: when it connected, which profile it opened, when Windows Setup

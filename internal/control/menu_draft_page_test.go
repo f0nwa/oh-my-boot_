@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 // fakeBoot serves the Boot socket API and records published scripts.

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"pxe-platform/internal/ueficausb"
+	"omb/internal/ueficausb"
 )
 
 // UEFICAUSBRequest asks for the "enable the Microsoft UEFI CA key" USB stick of a profile.

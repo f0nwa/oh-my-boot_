@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/ueficausb"
+	"omb/internal/ueficausb"
 )
 
 type runner struct{}

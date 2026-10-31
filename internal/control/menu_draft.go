@@ -67,7 +67,7 @@ func (d MenuDraft) localTimer() int {
 // look" change until it is published again.
 const menuLook = "pult-4"
 
-const menuLookMarker = "# pxe-platform:look "
+const menuLookMarker = "# omb:look "
 
 // defaultMenuFolder marks an item whose folder should come from its object.
 const defaultMenuFolder = "\x00default"
@@ -416,9 +416,6 @@ func (s *Server) currentDraft(ctx context.Context) (MenuDraft, MenuDraft, error)
 	// so a version drawn with an older one has something to publish.
 	draft.look = menuLook
 	draft.Title = productMenuTitle
-	if draft.Message == legacyMenuMessage {
-		draft.Message = defaultMenuMessage
-	}
 	return draft, active, nil
 }
 

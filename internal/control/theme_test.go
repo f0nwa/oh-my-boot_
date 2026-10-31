@@ -89,7 +89,7 @@ func TestSetThemeStoresChoiceAndReturnsSafely(t *testing.T) {
 	post := func(store *themeStore, form url.Values) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/settings/theme", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+		req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 		res := httptest.NewRecorder()
 		(&Server{Store: store}).Handler().ServeHTTP(res, req)
 		return res

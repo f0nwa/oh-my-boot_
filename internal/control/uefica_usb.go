@@ -40,7 +40,7 @@ type usbView struct {
 
 // Archive is the file name the download gets.
 func (v usbView) Archive() string {
-	return fmt.Sprintf("pxe-uefica-%d-%s.zip", v.Selected.ID, v.Loader)
+	return fmt.Sprintf("omb-uefica-%d-%s.zip", v.Selected.ID, v.Loader)
 }
 
 func (s *Server) usbPage(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +129,7 @@ func (s *Server) ueficaUSBDownload(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(2 * time.Hour))
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="pxe-uefica-%d-%s.zip"`, id, loader))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="omb-uefica-%d-%s.zip"`, id, loader))
 	outcome := "ok"
 	if n, err := io.Copy(w, body); err != nil || n != size {
 		outcome = "error"

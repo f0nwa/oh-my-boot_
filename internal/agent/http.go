@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"pxe-platform/internal/drivers"
-	"pxe-platform/internal/smbstorage"
+	"omb/internal/drivers"
+	"omb/internal/smbstorage"
 
-	"pxe-platform/internal/network"
+	"omb/internal/network"
 )
 
 // Handler exposes the agent's local control protocol.

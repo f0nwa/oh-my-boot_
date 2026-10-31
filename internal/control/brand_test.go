@@ -1,7 +1,6 @@
 package control
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,27 +15,6 @@ func TestMenuSettingsIgnoreTitleField(t *testing.T) {
 	res := menuPost(t, s, "/menu/diagnostics", url.Values{"title": {"Other name"}, "label": {"Diagnostics"}, "message": {"Ready"}})
 	if res.Code != http.StatusSeeOther || store.draft.Title != productMenuTitle {
 		t.Fatalf("status=%d title=%q body=%s", res.Code, store.draft.Title, res.Body.String())
-	}
-}
-
-// An installation upgraded from the old name keeps its published menu until
-// someone publishes; the draft already carries the product name and the new
-// default message, so the rename shows as a pending change.
-func TestOldMenuNameIsReplacedOnlyByPublishing(t *testing.T) {
-	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
-	store.versions[0].Title, store.versions[0].Message = "PXE Platform", legacyMenuMessage
-	store.draft = &MenuDraft{Title: "PXE Platform", Label: "Diagnostics", Message: legacyMenuMessage, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}}}
-	s, published := draftServer(t, store)
-	draft, active, err := s.currentDraft(context.Background())
-	if err != nil || draft.Title != productMenuTitle || draft.Message != defaultMenuMessage || active.Title != "PXE Platform" || len(diffMenuDraft(active, draft)) == 0 {
-		t.Fatalf("err=%v draft=%+v active=%+v", err, draft, active)
-	}
-	if len(*published) != 0 {
-		t.Fatal("the active menu changed without publishing")
-	}
-	res := menuPost(t, s, "/menu/publish", url.Values{})
-	if res.Code != http.StatusSeeOther || len(*published) != 1 || !strings.Contains((*published)[0], "menu "+productMenuTitle) || strings.Contains((*published)[0], "PXE Platform") {
-		t.Fatalf("status=%d published=%v body=%s", res.Code, *published, res.Body.String())
 	}
 }
 

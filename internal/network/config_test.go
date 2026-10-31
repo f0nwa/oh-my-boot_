@@ -11,7 +11,7 @@ func fullConfig() Config {
 		DHCPStart: "192.0.2.100",
 		DHCPEnd:   "192.0.2.150",
 		BootURL:   "http://192.0.2.10:8080/boot/menu.ipxe",
-		TFTPRoot:  "/srv/pxe/tftp",
+		TFTPRoot:  "/srv/omb/tftp",
 	}
 }
 

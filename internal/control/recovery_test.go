@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/images"
+	"omb/internal/agent"
+	"omb/internal/images"
 )
 
 type fakeRecoveryAPI struct {
@@ -49,7 +49,7 @@ func recoveryServer(role string) (*Server, *recoveryPageStore, *fakeRecoveryAPI)
 	api := &fakeRecoveryAPI{status: agent.RecoveryStatus{
 		RecoveryConfig: agent.RecoveryConfig{Enabled: true, IntervalSeconds: 120},
 		LastRun:        time.Date(2026, 10, 20, 12, 7, 0, 0, time.UTC),
-		Actions:        []string{"restarted pxe-winiso@1.service"},
+		Actions:        []string{"restarted omb-winiso@1.service"},
 		LastError:      "mnt-x.mount: start failed",
 	}}
 	return &Server{Store: store, Images: &fakeImagesAPI{catalog: images.Catalog{}}, StorageRecovery: api}, store, api
@@ -64,7 +64,7 @@ func TestImagesPageShowsStorageRecovery(t *testing.T) {
 		res := httptest.NewRecorder()
 		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/storages", nil))
 		body := res.Body.String()
-		for _, want := range []string{"Автоматическое восстановление подключений", "restarted pxe-winiso@1.service", "mnt-x.mount: start failed", "каждые 2 мин"} {
+		for _, want := range []string{"Автоматическое восстановление подключений", "restarted omb-winiso@1.service", "mnt-x.mount: start failed", "каждые 2 мин"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: images page lacks %q", tc.role, want)
 			}

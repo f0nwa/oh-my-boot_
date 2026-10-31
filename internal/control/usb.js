@@ -11,7 +11,7 @@
     if (!image || !loader) return;
     text('usb-image', image.dataset.title);
     text('usb-loader', loader.dataset.title);
-    text('usb-archive', 'pxe-uefica-' + image.value + '-' + loader.value + '.zip');
+    text('usb-archive', 'omb-uefica-' + image.value + '-' + loader.value + '.zip');
     var size = image.dataset[loader.value];
     text('usb-size', size ? size + ' · ' + form.dataset.cached : form.dataset.build);
   }

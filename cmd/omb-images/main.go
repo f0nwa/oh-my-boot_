@@ -13,16 +13,16 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 func main() {
-	socket := flag.String("socket", "/run/pxe-platform-images/images.sock", "local Images API socket")
+	socket := flag.String("socket", "/run/omb-images/images.sock", "local Images API socket")
 	checkInterval := flag.Duration("storage-check-interval", time.Minute, "background storage availability check interval; 0 disables it")
 	flag.Parse()
-	dsn := os.Getenv("PXE_IMAGES_DATABASE_URL")
+	dsn := os.Getenv("OMB_IMAGES_DATABASE_URL")
 	if dsn == "" {
-		log.Fatal("PXE_IMAGES_DATABASE_URL is required")
+		log.Fatal("OMB_IMAGES_DATABASE_URL is required")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)

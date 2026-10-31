@@ -7,12 +7,12 @@ import (
 
 func TestDriverStartupLoadsBeforeNetworkAndSetup(t *testing.T) {
 	base := []byte("@echo off\r\necho OMB: initializing network...\r\nwpeinit\r\nnet use Y: \\server\\share\r\nY:\\17\\sources\\setup.exe\r\n:failed\r\ncmd /k\r\n")
-	got, err := RenderDriverStartup(base, []string{"pxe-drivers/abcdef/net/driver.inf"})
+	got, err := RenderDriverStartup(base, []string{"omb-drivers/abcdef/net/driver.inf"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	script := string(got)
-	load := strings.Index(script, `drvload "X:\Windows\System32\pxe-drivers\abcdef\net\driver.inf"`)
+	load := strings.Index(script, `drvload "X:\Windows\System32\omb-drivers\abcdef\net\driver.inf"`)
 	if load < 0 || load > strings.Index(script, "wpeinit") || strings.Index(script, "wpeinit") > strings.Index(script, "setup.exe") {
 		t.Fatalf("bad startup order: %s", script)
 	}

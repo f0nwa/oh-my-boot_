@@ -1,4 +1,4 @@
-module pxe-platform
+module omb
 
 go 1.26.0
 

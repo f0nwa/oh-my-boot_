@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "add-path" {
-		log.Fatal("usage: pxe-imagesctl add-path -name NAME -kind local|mounted -root ABSOLUTE_PATH")
+		log.Fatal("usage: omb-imagesctl add-path -name NAME -kind local|mounted -root ABSOLUTE_PATH")
 	}
 	flags := flag.NewFlagSet("add-path", flag.ExitOnError)
 	name := flags.String("name", "", "storage name")
@@ -23,7 +23,7 @@ func main() {
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		log.Fatal(err)
 	}
-	if dsn := os.Getenv("PXE_IMAGES_DATABASE_URL"); dsn != "" {
+	if dsn := os.Getenv("OMB_IMAGES_DATABASE_URL"); dsn != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		pool, err := pgxpool.New(ctx, dsn)
@@ -38,5 +38,5 @@ func main() {
 		fmt.Printf("added storage %d: %s (%s)\n", storage.ID, storage.Name, storage.Kind)
 		return
 	}
-	log.Fatal("PXE_IMAGES_DATABASE_URL is required")
+	log.Fatal("OMB_IMAGES_DATABASE_URL is required")
 }

@@ -43,7 +43,7 @@
 та же, что у оригинала.
 
 - **`Build`** = `Generate` + сохранённые элементы чужого файла + элемент
-  `<Editor xmlns="urn:pxe-platform:unattend-editor" version="1">` с JSON
+  `<Editor xmlns="urn:omb:unattend-editor" version="1">` с JSON
   настроек в CDATA (при скрытых паролях — base64). Windows Setup элементы чужого
   пространства имён пропускает.
 - **`Open`** открывает файл редактора точно по `<Editor>` (если файл потом правили

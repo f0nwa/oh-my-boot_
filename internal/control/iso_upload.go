@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"pxe-platform/internal/images"
-	"pxe-platform/internal/smbstorage"
+	"omb/internal/images"
+	"omb/internal/smbstorage"
 )
 
 //go:embed iso_upload.js

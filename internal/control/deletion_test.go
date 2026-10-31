@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"pxe-platform/internal/agent"
+	"omb/internal/agent"
 )
 
 type deletionStore struct {
@@ -170,7 +170,7 @@ func submitDeletion(t *testing.T, s *Server, path string) *httptest.ResponseReco
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("csrf="+CSRFToken("test-token")))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	return res
@@ -254,7 +254,7 @@ func TestMenuHistoryMarksDeletedRecordUnavailable(t *testing.T) {
 	}}
 	server := &Server{Store: store}
 	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	server.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "Удалённый пункт") || strings.Contains(res.Body.String(), `action="/menu/rollback"`) {
@@ -272,7 +272,7 @@ func TestDeleteEndpointsRequireAdminAndCSRF(t *testing.T) {
 	store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
 	req := httptest.NewRequest(http.MethodPost, "/drivers/configs/3/delete", strings.NewReader("csrf=wrong"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusForbidden {
@@ -308,7 +308,7 @@ func TestMenuHistoryShowsVersionNumberAndTimeZone(t *testing.T) {
 		{ID: 25, Active: true, At: time.Date(2026, 10, 19, 23, 17, 0, 0, msk), Script: "#!ipxe\n", Title: "Current"},
 	}}
 	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
 	body := html.UnescapeString(res.Body.String())

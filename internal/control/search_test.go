@@ -23,7 +23,7 @@ func TestSearchAnswersJSONAndPage(t *testing.T) {
 	s := libraryServer()
 	s.Store = authOnlyStore{user: User{ID: 2, Role: "operator", Enabled: true}}
 	req := httptest.NewRequest(http.MethodGet, "/search?format=json&q=%D0%BE%D0%B1%D1%80%D0%B0%D0%B7", nil) // «образ»
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	var results []searchResult
@@ -38,7 +38,7 @@ func TestSearchAnswersJSONAndPage(t *testing.T) {
 		t.Fatalf("results=%+v", results)
 	}
 	empty := httptest.NewRequest(http.MethodGet, "/search?format=json&q=", nil)
-	empty.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	empty.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res = httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, empty)
 	if strings.TrimSpace(res.Body.String()) != "[]" {

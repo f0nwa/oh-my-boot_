@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"pxe-platform/internal/autoinstall"
+	"omb/internal/autoinstall"
 )
 
 // CreateUbuntuAutoinstall persists only a validated normalized constructor result.

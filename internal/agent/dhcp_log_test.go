@@ -13,9 +13,9 @@ import (
 const sampleJournal = `{"__REALTIME_TIMESTAMP":"1792268938244731","SYSLOG_IDENTIFIER":"dnsmasq","MESSAGE":"dnsmasq-dhcp: PXE(ens19) bc:24:11:52:02:39 proxy"}
 {"__REALTIME_TIMESTAMP":"1792268938251452","SYSLOG_IDENTIFIER":"dnsmasq-dhcp","MESSAGE":"PXE(ens19) bc:24:11:52:02:39 proxy"}
 {"__REALTIME_TIMESTAMP":"1792268939000000","SYSLOG_IDENTIFIER":"dnsmasq-dhcp","MESSAGE":"DHCPACK(ens19) 10.30.0.150 52:54:00:12:34:56 lab-pc"}
-{"__REALTIME_TIMESTAMP":"1792268940000000","SYSLOG_IDENTIFIER":"dnsmasq-tftp","MESSAGE":"sent /srv/pxe/tftp/ipxeboot/x86_64-sb/ipxe-shim.efi to 10.30.0.19"}
-{"__REALTIME_TIMESTAMP":"1792268941000000","SYSLOG_IDENTIFIER":"dnsmasq-tftp","MESSAGE":"failed sending /srv/pxe/tftp/ipxeboot/x86_64/undionly.kpxe to 10.30.0.20"}
-{"__REALTIME_TIMESTAMP":"1792268942000000","SYSLOG_IDENTIFIER":"dnsmasq-tftp","MESSAGE":"TFTP root is /srv/pxe/tftp"}
+{"__REALTIME_TIMESTAMP":"1792268940000000","SYSLOG_IDENTIFIER":"dnsmasq-tftp","MESSAGE":"sent /srv/omb/tftp/ipxeboot/x86_64-sb/ipxe-shim.efi to 10.30.0.19"}
+{"__REALTIME_TIMESTAMP":"1792268941000000","SYSLOG_IDENTIFIER":"dnsmasq-tftp","MESSAGE":"failed sending /srv/omb/tftp/ipxeboot/x86_64/undionly.kpxe to 10.30.0.20"}
+{"__REALTIME_TIMESTAMP":"1792268942000000","SYSLOG_IDENTIFIER":"dnsmasq-tftp","MESSAGE":"TFTP root is /srv/omb/tftp"}
 not json
 `
 

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 )
 
 type journalStore struct{ events []time.Time }

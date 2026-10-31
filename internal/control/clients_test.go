@@ -8,14 +8,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestBootClientReadsStatusOverUnixSocket(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "pxe-api-")
+	dir, err := os.MkdirTemp("/tmp", "omb-api-")
 	if err != nil {
 		t.Fatal(err)
 	}

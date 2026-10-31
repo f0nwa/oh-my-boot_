@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/ueficausb"
-	"pxe-platform/internal/ueficausb/ueficausbtest"
+	"omb/internal/ueficausb"
+	"omb/internal/ueficausb/ueficausbtest"
 )
 
 func ueficaHandler(t *testing.T) http.Handler {

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/openwall/yescrypt-go"
-	"pxe-platform/internal/autoinstall"
+	"omb/internal/autoinstall"
 )
 
 const autoinstallPreviewLifetime = 10 * time.Minute

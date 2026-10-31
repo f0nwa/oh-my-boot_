@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const passwordToken = "__PXE_ISO_PASSWORD__"
+const passwordToken = "__OMB_ISO_PASSWORD__"
 
 // renderPassword inserts a limited downstream SMB credential into a WinPE script.
 func renderPassword(template []byte, password string) ([]byte, error) {
@@ -33,8 +33,8 @@ func RenderProfileStartup(template []byte, password string, profileID int64, ins
 	if profileID <= 0 || (installFile != "install.wim" && installFile != "install.esd") {
 		return nil, fmt.Errorf("invalid Windows ISO profile")
 	}
-	const idToken = "__PXE_PROFILE_ID__"
-	const fileToken = "__PXE_INSTALL_FILE__"
+	const idToken = "__OMB_PROFILE_ID__"
+	const fileToken = "__OMB_INSTALL_FILE__"
 	if !bytes.Contains(template, []byte(idToken)) || !bytes.Contains(template, []byte(fileToken)) {
 		return nil, fmt.Errorf("WinPE profile template is incomplete")
 	}
@@ -87,11 +87,11 @@ func renderAnswerStartup(base []byte, profileID int64, peImage bool) ([]byte, er
 				// A failed mapping only matters to pe.cmd; Setup goes on.
 				replacement = append(replacement, []byte("net use "+answerImageLetter+" "+string(m[1])+"\\"+id+" "+strings.TrimSpace(string(m[2]))+"\r\n")...)
 			}
-			replacement = append(replacement, []byte("copy /y X:\\Windows\\System32\\pxe-answer.xml X:\\autounattend.xml >nul\r\n")...)
+			replacement = append(replacement, []byte("copy /y X:\\Windows\\System32\\omb-answer.xml X:\\autounattend.xml >nul\r\n")...)
 		}
-		replacement = append(replacement, []byte("if not exist X:\\Windows\\System32\\pxe-answer.xml goto failed\r\n")...)
+		replacement = append(replacement, []byte("if not exist X:\\Windows\\System32\\omb-answer.xml goto failed\r\n")...)
 		replacement = append(replacement, command[:len(command)-2]...)
-		replacement = append(replacement, []byte(" /Unattend:X:\\Windows\\System32\\pxe-answer.xml\r\n")...)
+		replacement = append(replacement, []byte(" /Unattend:X:\\Windows\\System32\\omb-answer.xml\r\n")...)
 		return bytes.Replace(base, command, replacement, 1), nil
 	}
 	return nil, fmt.Errorf("prepared Windows Setup command is missing")
@@ -100,38 +100,23 @@ func renderAnswerStartup(base []byte, profileID int64, peImage bool) ([]byte, er
 // RenderDriverStartup adds selected INF loads before WinPE initializes the
 // network. The original SMB mapping and Setup command remain in the script.
 func RenderDriverStartup(base []byte, infPaths []string) ([]byte, error) {
-	return renderDriverStartup(base, infPaths, "OMB")
-}
-
-// LegacyMessagePrefixes are the prefixes of WinPE messages in scripts built
-// before they became "OMB:"; such driver configurations stay valid until they
-// are rebuilt.
-var LegacyMessagePrefixes = []string{"PXE Platform", "Oh My Boot"}
-
-// RenderDriverStartupLegacy is RenderDriverStartup with an older message
-// prefix from LegacyMessagePrefixes.
-func RenderDriverStartupLegacy(base []byte, infPaths []string, prefix string) ([]byte, error) {
-	return renderDriverStartup(base, infPaths, prefix)
-}
-
-func renderDriverStartup(base []byte, infPaths []string, product string) ([]byte, error) {
 	needle := []byte("\r\nwpeinit\r\n")
 	if len(infPaths) == 0 || len(infPaths) > 128 || bytes.Count(base, needle) != 1 || bytes.Contains(base, []byte(":driver_failed")) {
 		return nil, fmt.Errorf("invalid WinPE startup script or driver selection")
 	}
 	var added strings.Builder
-	added.WriteString("\r\nset PXE_DRIVER_LOG=X:\\pxe-driver.log\r\necho " + product + ": loading WinPE drivers...\r\n")
+	added.WriteString("\r\nset OMB_DRIVER_LOG=X:\\omb-driver.log\r\necho OMB: loading WinPE drivers...\r\n")
 	for _, name := range infPaths {
 		if !safeDriverBatchPath(name) {
 			return nil, fmt.Errorf("INF path cannot be used in WinPE startup")
 		}
 		windowsPath := strings.ReplaceAll(name, "/", `\`)
-		added.WriteString(`drvload "X:\Windows\System32\` + windowsPath + "\" >>%PXE_DRIVER_LOG% 2>&1\r\n")
+		added.WriteString(`drvload "X:\Windows\System32\` + windowsPath + "\" >>%OMB_DRIVER_LOG% 2>&1\r\n")
 		added.WriteString("if errorlevel 1 goto driver_failed\r\n")
 	}
 	added.WriteString("wpeinit\r\n")
 	out := bytes.Replace(base, needle, []byte(added.String()), 1)
-	out = append(out, []byte("\r\n:driver_failed\r\necho "+product+": a selected WinPE driver failed to load.\r\ntype %PXE_DRIVER_LOG%\r\ncmd /k\r\n")...)
+	out = append(out, []byte("\r\n:driver_failed\r\necho OMB: a selected WinPE driver failed to load.\r\ntype %OMB_DRIVER_LOG%\r\ncmd /k\r\n")...)
 	return out, nil
 }
 

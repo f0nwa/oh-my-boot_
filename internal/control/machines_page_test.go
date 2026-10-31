@@ -130,7 +130,7 @@ func TestMachinesPageInEnglish(t *testing.T) {
 	store.user.Language = langEN
 	s := &Server{Store: store}
 	req := httptest.NewRequest(http.MethodGet, "/machines", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	page := rec.Body.String()

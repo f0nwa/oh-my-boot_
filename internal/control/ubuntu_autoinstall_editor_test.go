@@ -204,7 +204,7 @@ func TestUbuntuConstructorChangedFieldsAndInvalidTokens(t *testing.T) {
 	form.Set("csrf", CSRFToken("other-session"))
 	req := httptest.NewRequest("POST", "/ubuntu-autoinstall", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "other-session"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "other-session"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != 400 {
@@ -267,7 +267,7 @@ func TestUbuntuConstructorRoleCSRFAndPrivateErrors(t *testing.T) {
 				} else {
 					req = httptest.NewRequest("POST", path, strings.NewReader("csrf=bad"))
 					req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-					req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+					req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 				}
 				res := httptest.NewRecorder()
 				s.Handler().ServeHTTP(res, req)

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"pxe-platform/internal/smbstorage"
+	"omb/internal/smbstorage"
 )
 
 type APIRepository interface {

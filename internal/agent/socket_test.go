@@ -8,7 +8,7 @@ import (
 )
 
 func TestListenUnixReplacesStaleSocketButNotRegularFile(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "pxe-sock-")
+	dir, err := os.MkdirTemp("/tmp", "omb-sock-")
 	if err != nil {
 		t.Fatal(err)
 	}

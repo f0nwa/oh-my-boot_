@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"pxe-platform/internal/drivers"
+	"omb/internal/drivers"
 )
 
 type DriverPackage struct {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 )
 
 func bootFilesFixture(wim boot.Event) []boot.Event {

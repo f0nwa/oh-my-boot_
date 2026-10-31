@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"pxe-platform/internal/winpe"
+	"omb/internal/winpe"
 )
 
 type WindowsISORequest struct {
@@ -113,7 +113,7 @@ func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequ
 
 // LocalISORoot holds the local ISO storages of this server; an ISO for a
 // Windows profile comes either from an SMB storage or from under this root.
-const LocalISORoot = "/var/lib/pxe-platform-images"
+const LocalISORoot = "/var/lib/omb-images"
 
 // resolveWindowsISOSource finds the ISO of a profile request. Its storage
 // must be one SMB mount directly under allowedRoot, or localRoot or a
@@ -218,7 +218,7 @@ func prepareWindowsISOAssets(mountedRoot, assetRoot string, profileID int64, tem
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("Windows ISO asset target is not a directory")
 		}
-		for _, name := range []string{"boot.wim", "winpeshl.ini", "pxe-setup.cmd"} {
+		for _, name := range []string{"boot.wim", "winpeshl.ini", "omb-setup.cmd"} {
 			if err := requireRegularISOFile(final, name); err != nil {
 				return "", err
 			}
@@ -254,7 +254,7 @@ func prepareWindowsISOAssets(mountedRoot, assetRoot string, profileID int64, tem
 	if err := os.WriteFile(filepath.Join(stage, "winpeshl.ini"), winpeshl, 0644); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(stage, "pxe-setup.cmd"), script, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(stage, "omb-setup.cmd"), script, 0644); err != nil {
 		return "", err
 	}
 	if err := os.Chmod(stage, 0755); err != nil {

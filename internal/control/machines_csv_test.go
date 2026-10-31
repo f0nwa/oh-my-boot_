@@ -23,7 +23,7 @@ func TestMachinesCSVExport(t *testing.T) {
 	store.machines["bc:24:11:52:02:37"] = m
 	s := &Server{Store: store}
 	req := httptest.NewRequest(http.MethodGet, "/machines.csv", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || !strings.HasPrefix(res.Header().Get("Content-Type"), "text/csv") || !regexp.MustCompile(`attachment; filename="machines-\d{4}-\d{2}-\d{2}\.csv"`).MatchString(res.Header().Get("Content-Disposition")) {
@@ -60,7 +60,7 @@ func TestMachinesCSVExport(t *testing.T) {
 	}
 	// The search narrows the file like the table.
 	req = httptest.NewRequest(http.MethodGet, "/machines.csv?q=elitebook", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res = httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if n := strings.Count(res.Body.String(), "\r\n"); n != 2 {
@@ -158,7 +158,7 @@ func csvUpload(t *testing.T, s *Server, content string) *httptest.ResponseRecord
 	_ = w.Close()
 	req := httptest.NewRequest(http.MethodPost, "/machines/import", &data)
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	return res
@@ -241,7 +241,7 @@ func TestMachinesCSVRoundTrip(t *testing.T) {
 		store.machines["bc:24:11:52:02:37"] = m
 		s := &Server{Store: store}
 		req := httptest.NewRequest(http.MethodGet, "/machines.csv", nil)
-		req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+		req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 		res := httptest.NewRecorder()
 		s.Handler().ServeHTTP(res, req)
 		file, err := parseMachineCSV(res.Body.Bytes())

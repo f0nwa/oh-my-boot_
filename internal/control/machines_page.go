@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 // machineList is the «Система → Машины» page: every machine in the book,

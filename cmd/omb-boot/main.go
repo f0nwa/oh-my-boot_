@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 )
 
 func main() {
@@ -21,7 +21,7 @@ func main() {
 	assets := flag.String("assets", "./assets", "boot asset directory")
 	snapshot := flag.String("snapshot", "./menu.ipxe", "published menu snapshot")
 	baseURL := flag.String("base-url", "", "client-visible HTTP base URL")
-	controlSocket := flag.String("control-socket", "/run/pxe-platform-boot/control.sock", "local control socket")
+	controlSocket := flag.String("control-socket", "/run/omb-boot/control.sock", "local control socket")
 	flag.Parse()
 	if *baseURL == "" {
 		log.Fatal("-base-url is required")
@@ -37,7 +37,7 @@ func main() {
 	var store boot.EventStore
 	var reader boot.EventReader
 	journal := &boot.Journal{Path: filepath.Join(filepath.Dir(*snapshot), "journal.json")}
-	if dsn := os.Getenv("PXE_BOOT_DATABASE_URL"); dsn != "" {
+	if dsn := os.Getenv("OMB_BOOT_DATABASE_URL"); dsn != "" {
 		pool, err := pgxpool.New(context.Background(), dsn)
 		if err != nil {
 			log.Fatal(err)
@@ -49,7 +49,7 @@ func main() {
 	}
 	recorder := boot.NewRecorder(store, log.Default())
 	transfers := boot.NewTransfers()
-	handler, err := boot.NewDynamicHandlerWithTransfers(*assets, publisher, recorder.Record, os.Getenv("PXE_BOOT_UBUNTU_ISO"), transfers)
+	handler, err := boot.NewDynamicHandlerWithTransfers(*assets, publisher, recorder.Record, os.Getenv("OMB_BOOT_UBUNTU_ISO"), transfers)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -249,7 +249,7 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 
 func validWindowsAnswerAsset(name string) bool {
 	parts := strings.Split(name, "/")
-	if len(parts) != 3 || parts[0] != "windows-answers" || (parts[2] != "pxe-answer.xml" && parts[2] != "pxe-setup.cmd") {
+	if len(parts) != 3 || parts[0] != "windows-answers" || (parts[2] != "omb-answer.xml" && parts[2] != "omb-setup.cmd") {
 		return false
 	}
 	id, err := strconv.ParseUint(parts[1], 10, 63)
@@ -258,7 +258,7 @@ func validWindowsAnswerAsset(name string) bool {
 
 func privateWinPEScript(name string) bool {
 	parts := strings.Split(name, "/")
-	if len(parts) != 3 || parts[0] != "windows-profiles" || parts[2] != "pxe-setup.cmd" {
+	if len(parts) != 3 || parts[0] != "windows-profiles" || parts[2] != "omb-setup.cmd" {
 		return false
 	}
 	id, err := strconv.ParseUint(parts[1], 10, 63)

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 )
 
 func TestEventsEscapesClientEventText(t *testing.T) {

@@ -170,7 +170,7 @@ func installationTestStore(t *testing.T) Store {
 			t.Skipf("PostgreSQL integration requires %s", binary)
 		}
 	}
-	root, err := os.MkdirTemp("/tmp", "pxe-installations-")
+	root, err := os.MkdirTemp("/tmp", "omb-installations-")
 	if err != nil {
 		t.Fatal(err)
 	}

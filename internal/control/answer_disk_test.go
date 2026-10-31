@@ -67,7 +67,7 @@ func inspectRequest(t *testing.T, path string, body []byte) *http.Request {
 	_ = w.Close()
 	req := httptest.NewRequest(http.MethodPost, path, &data)
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	return req
 }
 

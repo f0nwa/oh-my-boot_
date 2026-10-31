@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/boot"
+	"omb/internal/boot"
 )
 
 // Uses Boot's real file handlers so readiness follows its configured ISO and

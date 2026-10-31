@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/images"
+	"omb/internal/images"
 )
 
 func trailStates(steps []trailStep) string {
@@ -94,7 +94,7 @@ func TestHomeIsNowAndInstallationsMoved(t *testing.T) {
 		t.Fatalf("installations page: %s", body)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/no-such-page", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusNotFound {

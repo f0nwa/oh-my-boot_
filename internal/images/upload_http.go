@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"pxe-platform/internal/smbstorage"
+	"omb/internal/smbstorage"
 )
 
 func uploadErrorStatus(err error) int {

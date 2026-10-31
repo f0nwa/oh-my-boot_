@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/drivers"
+	"omb/internal/agent"
+	"omb/internal/drivers"
 )
 
 type driverConfigStore struct {
@@ -120,7 +120,7 @@ func TestDriverConfigCreateAndPrepare(t *testing.T) {
 	form := url.Values{"csrf": {CSRFToken("test-token")}, "boot_profile_id": {"17"}, "answer_id": {"4"}, "title": {"Laptop A"}, "folder": {"Windows"}, "inf": {strings.Repeat("a", 64) + ":net.inf"}}
 	req := httptest.NewRequest(http.MethodPost, "/installations", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusSeeOther || len(store.configs) != 1 {
@@ -128,7 +128,7 @@ func TestDriverConfigCreateAndPrepare(t *testing.T) {
 	}
 	prepare := httptest.NewRequest(http.MethodPost, "/drivers/configs/1/prepare", strings.NewReader("csrf="+url.QueryEscape(CSRFToken("test-token"))))
 	prepare.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	prepare.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	prepare.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	prepared := httptest.NewRecorder()
 	s.Handler().ServeHTTP(prepared, prepare)
 	if prepared.Code != http.StatusSeeOther || store.configs[0].State != "ready" || len(builder.calls) != 1 || builder.calls[0].AnswerID != 4 {

@@ -8,7 +8,7 @@ import (
 
 func TestReadProfileRequestBindsConfigToInstanceID(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "17.json")
-	if err := os.WriteFile(file, []byte(`{"id":17,"storage_root":"/mnt/pxe-platform-smb/key7","relative_path":"win10.iso","size":3,"modified":"2026-10-16T15:00:00Z"}`), 0600); err != nil {
+	if err := os.WriteFile(file, []byte(`{"id":17,"storage_root":"/mnt/omb-smb/key7","relative_path":"win10.iso","size":3,"modified":"2026-10-16T15:00:00Z"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	got, err := readProfileRequest(file, 17)

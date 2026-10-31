@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"pxe-platform/internal/smbstorage"
+	"omb/internal/smbstorage"
 )
 
 type SMBMountRequest struct {

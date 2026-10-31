@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
+	"omb/internal/agent"
+	"omb/internal/boot"
 )
 
 // machineRow sums up what one PXE client (by MAC) did most recently.

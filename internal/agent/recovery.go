@@ -364,7 +364,7 @@ func (m *WindowsISOManager) StopProfilesOn(ctx context.Context, roots []string) 
 		if !uses {
 			continue
 		}
-		unit := "pxe-winiso@" + strconv.FormatInt(id, 10) + ".service"
+		unit := "omb-winiso@" + strconv.FormatInt(id, 10) + ".service"
 		if m.Systemctl.Run(ctx, "is-active", "--quiet", unit) != nil {
 			continue
 		}
@@ -399,7 +399,7 @@ func (m *WindowsISOManager) RecoverProfiles(ctx context.Context) ([]string, erro
 	var actions []string
 	var problems []error
 	for _, id := range ids {
-		unit := "pxe-winiso@" + strconv.FormatInt(id, 10) + ".service"
+		unit := "omb-winiso@" + strconv.FormatInt(id, 10) + ".service"
 		done, err := restartIfInactive(ctx, m.Systemctl, unit)
 		if done {
 			actions = append(actions, "restarted "+unit)

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"pxe-platform/internal/winpe"
+	"omb/internal/winpe"
 )
 
 type WindowsAnswerRequest struct {
@@ -63,10 +63,10 @@ func (m *WindowsISOManager) PrepareAnswer(_ context.Context, req WindowsAnswerRe
 		return err
 	}
 	defer os.RemoveAll(stage)
-	if err := os.WriteFile(filepath.Join(stage, "pxe-answer.xml"), req.XML, 0640); err != nil {
+	if err := os.WriteFile(filepath.Join(stage, "omb-answer.xml"), req.XML, 0640); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(stage, "pxe-setup.cmd"), script, 0640); err != nil {
+	if err := os.WriteFile(filepath.Join(stage, "omb-setup.cmd"), script, 0640); err != nil {
 		return err
 	}
 	if err := os.Chmod(stage, 0750); err != nil {
@@ -105,10 +105,10 @@ func validWindowsAnswerRequest(req WindowsAnswerCheck) error {
 
 func (m *WindowsISOManager) answerStartup(profileID int64) ([]byte, error) {
 	parent := filepath.Join(m.AssetRoot, strconv.FormatInt(profileID, 10))
-	if err := requireRegularISOFile(parent, "pxe-setup.cmd"); err != nil {
+	if err := requireRegularISOFile(parent, "omb-setup.cmd"); err != nil {
 		return nil, err
 	}
-	base, err := os.ReadFile(filepath.Join(parent, "pxe-setup.cmd"))
+	base, err := os.ReadFile(filepath.Join(parent, "omb-setup.cmd"))
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func (m *WindowsISOManager) answerStartup(profileID int64) ([]byte, error) {
 // legacyAnswerStartup is the script of variants prepared before the
 // profile folder was mapped for pe.cmd; such variants stay valid.
 func (m *WindowsISOManager) legacyAnswerStartup(profileID int64) []byte {
-	base, err := os.ReadFile(filepath.Join(m.AssetRoot, strconv.FormatInt(profileID, 10), "pxe-setup.cmd"))
+	base, err := os.ReadFile(filepath.Join(m.AssetRoot, strconv.FormatInt(profileID, 10), "omb-setup.cmd"))
 	if err != nil {
 		return nil
 	}
@@ -135,12 +135,12 @@ func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck, expectedSc
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("answer asset directory is unavailable")
 	}
-	for _, name := range []string{"pxe-answer.xml", "pxe-setup.cmd"} {
+	for _, name := range []string{"omb-answer.xml", "omb-setup.cmd"} {
 		if err := requireRegularISOFile(final, name); err != nil {
 			return err
 		}
 	}
-	xml, err := os.ReadFile(filepath.Join(final, "pxe-answer.xml"))
+	xml, err := os.ReadFile(filepath.Join(final, "omb-answer.xml"))
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck, expectedSc
 	if hex.EncodeToString(sum[:]) != req.SHA256 {
 		return fmt.Errorf("answer asset hash differs")
 	}
-	script, err := os.ReadFile(filepath.Join(final, "pxe-setup.cmd"))
+	script, err := os.ReadFile(filepath.Join(final, "omb-setup.cmd"))
 	if err != nil {
 		return err
 	}
@@ -179,10 +179,10 @@ func (m *WindowsISOManager) AnswerXML(_ context.Context, req WindowsAnswerCheck)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, errAnswerMissing
 	}
-	if err := requireRegularISOFile(final, "pxe-answer.xml"); err != nil {
+	if err := requireRegularISOFile(final, "omb-answer.xml"); err != nil {
 		return nil, errAnswerMissing
 	}
-	xml, err := os.ReadFile(filepath.Join(final, "pxe-answer.xml"))
+	xml, err := os.ReadFile(filepath.Join(final, "omb-answer.xml"))
 	if err != nil {
 		return nil, errAnswerMissing
 	}

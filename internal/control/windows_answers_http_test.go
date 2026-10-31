@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/images"
+	"omb/internal/agent"
+	"omb/internal/images"
 )
 
 type answerPageStore struct {
@@ -81,7 +81,7 @@ func answerUploadRequest(t *testing.T, body []byte, csrf string) *http.Request {
 	}
 	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles/17/answers", &data)
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	return req
 }
 
@@ -97,7 +97,7 @@ func TestWindowsAnswerUploadCreatesReadyVariantWithoutEchoingXML(t *testing.T) {
 		t.Fatalf("upload status=%d answers=%+v agent=%+v body=%s", res.Code, store.answers, agentAPI.prepared, res.Body.String())
 	}
 	page := httptest.NewRequest(http.MethodGet, "/answers", nil)
-	page.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	page.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	pageResult := httptest.NewRecorder()
 	s.Handler().ServeHTTP(pageResult, page)
 	if pageResult.Code != http.StatusOK || !strings.Contains(pageResult.Body.String(), `action="/answers/upload"`) || !strings.Contains(pageResult.Body.String(), "Windows 11 Lab") || strings.Contains(pageResult.Body.String(), "private-token") {

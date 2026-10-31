@@ -69,7 +69,7 @@ func recoveryFixture(t *testing.T, ctl *recoverySystemctl) (*StorageRecovery, st
 		}
 	}
 	key := strings.Repeat("a", 32)
-	mountRoot, uploadRoot := "/mnt/pxe-platform-smb", "/mnt/pxe-platform-smb-upload"
+	mountRoot, uploadRoot := "/mnt/omb-smb", "/mnt/omb-smb-upload"
 	readUnit, uploadUnit := smbUnitName(filepath.Join(mountRoot, key)), smbUnitName(filepath.Join(uploadRoot, key))
 	for path, content := range map[string]string{
 		filepath.Join(creds, key+".cred"):  "username=u\n",
@@ -89,10 +89,10 @@ func recoveryFixture(t *testing.T, ctl *recoverySystemctl) (*StorageRecovery, st
 }
 
 func TestRecoveryRestartsFailedMountsThenProfiles(t *testing.T) {
-	ctl := &recoverySystemctl{active: map[string]bool{"pxe-winiso@3.service": true}}
+	ctl := &recoverySystemctl{active: map[string]bool{"omb-winiso@3.service": true}}
 	recovery, readUnit, uploadUnit, _ := recoveryFixture(t, ctl)
 	status := recovery.RunOnce(context.Background())
-	want := []string{readUnit, uploadUnit, "pxe-winiso@1.service"}
+	want := []string{readUnit, uploadUnit, "omb-winiso@1.service"}
 	if got := ctl.restarts(); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("restarts = %v, want %v", got, want)
 	}
@@ -113,7 +113,7 @@ func TestRecoverySkipsProfilesWhileStorageIsDown(t *testing.T) {
 	ctl.failStart[readUnit] = true
 	status := recovery.RunOnce(context.Background())
 	for _, unit := range ctl.restarts() {
-		if strings.HasPrefix(unit, "pxe-winiso@") {
+		if strings.HasPrefix(unit, "omb-winiso@") {
 			t.Fatalf("profile restarted while storage is down: %v", ctl.restarts())
 		}
 	}
@@ -183,10 +183,10 @@ func TestRecoveryHTTP(t *testing.T) {
 
 func TestRecoveryRemountsAnActiveButUnreadableShare(t *testing.T) {
 	key := strings.Repeat("a", 32)
-	readTarget := filepath.Join("/mnt/pxe-platform-smb", key)
+	readTarget := filepath.Join("/mnt/omb-smb", key)
 	ctl := &recoverySystemctl{active: map[string]bool{}}
 	recovery, readUnit, uploadUnit, base := recoveryFixture(t, ctl)
-	for _, unit := range []string{readUnit, uploadUnit, "pxe-winiso@1.service", "pxe-winiso@3.service"} {
+	for _, unit := range []string{readUnit, uploadUnit, "omb-winiso@1.service", "omb-winiso@3.service"} {
 		ctl.active[unit] = true
 	}
 	winiso := filepath.Join(base, "winiso")
@@ -213,7 +213,7 @@ func TestRecoveryRemountsAnActiveButUnreadableShare(t *testing.T) {
 			order = append(order, call)
 		}
 	}
-	want := []string{"stop pxe-winiso@1.service", "restart " + readUnit, "restart pxe-winiso@1.service"}
+	want := []string{"stop omb-winiso@1.service", "restart " + readUnit, "restart omb-winiso@1.service"}
 	if strings.Join(order, ",") != strings.Join(want, ",") {
 		t.Fatalf("calls = %v, want %v", order, want)
 	}

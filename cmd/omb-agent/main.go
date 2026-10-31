@@ -11,51 +11,51 @@ import (
 	"syscall"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/ueficausb"
+	"omb/internal/agent"
+	"omb/internal/ueficausb"
 )
 
 func main() {
-	socket := flag.String("socket", "/run/pxe-platform/agent.sock", "local control socket")
-	config := flag.String("config-path", "/etc/pxe-platform/dnsmasq.conf", "managed dnsmasq config")
-	state := flag.String("state-path", "/var/lib/pxe-platform-agent/network.json", "last successful network config")
-	recoveryConfig := flag.String("storage-recovery-config", "/etc/pxe-platform/storage-recovery.json", "storage recovery settings")
+	socket := flag.String("socket", "/run/omb/agent.sock", "local control socket")
+	config := flag.String("config-path", "/etc/omb/dnsmasq.conf", "managed dnsmasq config")
+	state := flag.String("state-path", "/var/lib/omb-agent/network.json", "last successful network config")
+	recoveryConfig := flag.String("storage-recovery-config", "/etc/omb/storage-recovery.json", "storage recovery settings")
 	flag.Parse()
 	applier, err := agent.NewApplier(*config, *state, agent.SystemRunner{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	imagesUser, err := user.Lookup("pxe-images")
+	imagesUser, err := user.Lookup("omb-images")
 	if err != nil {
 		log.Fatal(err)
 	}
 	smb := &agent.SMBManager{
-		CredentialsDir: "/etc/pxe-platform/smb",
+		CredentialsDir: "/etc/omb/smb",
 		UnitDir:        "/etc/systemd/system",
-		MountRoot:      "/mnt/pxe-platform-smb",
-		UploadRoot:     "/mnt/pxe-platform-smb-upload",
+		MountRoot:      "/mnt/omb-smb",
+		UploadRoot:     "/mnt/omb-smb-upload",
 		ImagesUID:      imagesUser.Uid,
 		ImagesGID:      imagesUser.Gid,
 		Systemctl:      agent.SMBCommandSystemctl{},
 	}
 	windows := &agent.WindowsISOManager{
-		SourceRoot: "/mnt/pxe-platform-smb",
+		SourceRoot: "/mnt/omb-smb",
 		LocalRoot:  agent.LocalISORoot,
-		ConfigRoot: "/etc/pxe-platform/winiso",
-		MountRoot:  "/mnt/pxe-platform-iso/profiles",
-		AssetRoot:  "/srv/pxe/tftp/windows-profiles",
-		AnswerRoot: "/srv/pxe/tftp/windows-answers",
+		ConfigRoot: "/etc/omb/winiso",
+		MountRoot:  "/mnt/omb-iso/profiles",
+		AssetRoot:  "/srv/omb/tftp/windows-profiles",
+		AnswerRoot: "/srv/omb/tftp/windows-answers",
 		Systemctl:  agent.SMBCommandSystemctl{},
 	}
-	driverManager := &agent.DriverManager{Root: "/var/lib/pxe-platform-agent/drivers", ProfileRoot: "/srv/pxe/tftp/windows-profiles", AnswerRoot: "/srv/pxe/tftp/windows-answers", WIMRoot: "/srv/pxe/tftp/windows-driver-wims", ConfigRoot: "/srv/pxe/tftp/windows-driver-configs"}
+	driverManager := &agent.DriverManager{Root: "/var/lib/omb-agent/drivers", ProfileRoot: "/srv/omb/tftp/windows-profiles", AnswerRoot: "/srv/omb/tftp/windows-answers", WIMRoot: "/srv/omb/tftp/windows-driver-wims", ConfigRoot: "/srv/omb/tftp/windows-driver-configs"}
 	listener, err := agent.ListenUnix(*socket)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer listener.Close()
 	recovery := &agent.StorageRecovery{SMB: smb, Windows: windows, ConfigPath: *recoveryConfig}
-	smbSessions := agent.NewSMBWatcher("/var/lib/pxe-platform-agent/smb-sessions.json")
-	usbBuilder := &ueficausb.Builder{MediaRoot: "/mnt/pxe-platform-iso/profiles", CacheRoot: "/var/lib/pxe-platform-agent/uefica-usb", Runner: agent.ExecDriverCommandRunner{}, FreeBytes: agent.FreeBytes}
+	smbSessions := agent.NewSMBWatcher("/var/lib/omb-agent/smb-sessions.json")
+	usbBuilder := &ueficausb.Builder{MediaRoot: "/mnt/omb-iso/profiles", CacheRoot: "/var/lib/omb-agent/uefica-usb", Runner: agent.ExecDriverCommandRunner{}, FreeBytes: agent.FreeBytes}
 	server := &http.Server{Handler: agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

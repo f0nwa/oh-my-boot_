@@ -18,11 +18,11 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
-	"pxe-platform/internal/drivers"
-	"pxe-platform/internal/images"
-	"pxe-platform/internal/network"
+	"omb/internal/agent"
+	"omb/internal/boot"
+	"omb/internal/drivers"
+	"omb/internal/images"
+	"omb/internal/network"
 )
 
 var cyrillic = regexp.MustCompile(`[\x{0400}-\x{04FF}]+`)
@@ -45,7 +45,7 @@ func samplePageData(lang string) pageData {
 
 func samplePageDataBase(lang string) pageData {
 	now := time.Date(2026, 10, 20, 1, 0, 0, 0, time.UTC)
-	cfg := network.Config{Mode: "proxy", Interface: "ens19", ServerIP: "10.30.0.10", Subnet: "10.30.0.0/24", DHCPStart: "10.30.0.100", DHCPEnd: "10.30.0.200", BootURL: "http://10.30.0.10:8080/boot/menu.ipxe", TFTPRoot: "/srv/pxe/tftp"}
+	cfg := network.Config{Mode: "proxy", Interface: "ens19", ServerIP: "10.30.0.10", Subnet: "10.30.0.0/24", DHCPStart: "10.30.0.100", DHCPEnd: "10.30.0.200", BootURL: "http://10.30.0.10:8080/boot/menu.ipxe", TFTPRoot: "/srv/omb/tftp"}
 	profile := WindowsProfile{ID: 2, WindowsProfileSource: WindowsProfileSource{StorageID: 6, Path: "win11.iso", Title: "Windows 11", Folder: "Windows"}, State: "unavailable", Error: "Исходный ISO изменился или недоступен"}
 	answer := WindowsAnswerVariant{ID: 3, ProfileID: 2, Title: "Lab", Folder: "Windows/Tests", State: "error", Error: "Не удалось подготовить сценарий"}
 	config := DriverConfig{ID: 4, ProfileID: 2, AnswerID: 3, Title: "VirtIO", Folder: "Windows/Tests", PackageINFs: []agent.SelectedINF{{PackageSHA256: "abc", INFPath: "netkvm.inf"}}, State: "error", Error: "Не удалось подготовить WinPE: недостаточно свободного места"}
@@ -199,7 +199,7 @@ func TestSetLanguageStoresChoiceAndReturnsSafely(t *testing.T) {
 		form := url.Values{"csrf": {CSRFToken("test-token")}, "language": {tc.language}, "return": {tc.ret}}
 		req := httptest.NewRequest(http.MethodPost, "/settings/language", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+		req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 		res := httptest.NewRecorder()
 		(&Server{Store: store}).Handler().ServeHTTP(res, req)
 		if res.Code != http.StatusSeeOther || res.Header().Get("Location") != tc.location || store.saved != tc.language {
@@ -210,7 +210,7 @@ func TestSetLanguageStoresChoiceAndReturnsSafely(t *testing.T) {
 	for _, form := range []url.Values{{"csrf": {CSRFToken("test-token")}, "language": {"de"}}, {"csrf": {"bad"}, "language": {"en"}}} {
 		req := httptest.NewRequest(http.MethodPost, "/settings/language", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+		req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 		res := httptest.NewRecorder()
 		(&Server{Store: store}).Handler().ServeHTTP(res, req)
 		if res.Code < 400 || store.saved != "" {
@@ -223,7 +223,7 @@ func TestEnglishUserGetsTranslatedPlainErrors(t *testing.T) {
 	store := authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true, Language: langEN}}
 	req := httptest.NewRequest(http.MethodPost, "/menu/publish", strings.NewReader("csrf="+CSRFToken("test-token")))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusForbidden || strings.TrimSpace(res.Body.String()) != "Access denied" {

@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/boot"
-	"pxe-platform/internal/drivers"
-	"pxe-platform/internal/images"
-	"pxe-platform/internal/network"
-	"pxe-platform/internal/ueficausb"
+	"omb/internal/agent"
+	"omb/internal/boot"
+	"omb/internal/drivers"
+	"omb/internal/images"
+	"omb/internal/network"
+	"omb/internal/ueficausb"
 )
 
 type BootStatus struct {

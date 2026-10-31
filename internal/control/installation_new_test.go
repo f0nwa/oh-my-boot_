@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/drivers"
+	"omb/internal/agent"
+	"omb/internal/drivers"
 )
 
 type newInstallStore struct {

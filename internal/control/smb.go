@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"pxe-platform/internal/images"
-	"pxe-platform/internal/smbstorage"
+	"omb/internal/images"
+	"omb/internal/smbstorage"
 )
 
 func newSMBKey() (string, error) {

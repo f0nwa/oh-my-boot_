@@ -22,11 +22,11 @@ func (r SystemRunner) Test(ctx context.Context, path string) error {
 }
 
 func (r SystemRunner) Restart(ctx context.Context) error {
-	return run(ctx, r.systemctl(), "restart", "pxe-dnsmasq")
+	return run(ctx, r.systemctl(), "restart", "omb-dnsmasq")
 }
 
 func (r SystemRunner) Stop(ctx context.Context) error {
-	return run(ctx, r.systemctl(), "stop", "pxe-dnsmasq")
+	return run(ctx, r.systemctl(), "stop", "omb-dnsmasq")
 }
 
 func (r SystemRunner) systemctl() string {

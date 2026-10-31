@@ -8,7 +8,7 @@ import (
 )
 
 func TestDeployTemplateRendersWithOneCredential(t *testing.T) {
-	templatePath := filepath.Join("..", "..", "deploy", "boot-assets", "windows-profiles", "pxe-setup.cmd.in")
+	templatePath := filepath.Join("..", "..", "deploy", "boot-assets", "windows-profiles", "omb-setup.cmd.in")
 	template, err := os.ReadFile(templatePath)
 	if err != nil {
 		t.Fatal(err)
@@ -19,13 +19,13 @@ func TestDeployTemplateRendersWithOneCredential(t *testing.T) {
 }
 
 func TestRenderPasswordReplacesOnlyDownstreamCredential(t *testing.T) {
-	template := []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\pxeisos __PXE_ISO_PASSWORD__ /user:pxe-iso\r\n")
+	template := []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\ombisos __OMB_ISO_PASSWORD__ /user:omb-iso\r\n")
 	password := strings.Repeat("aB9", 12)
 	got, err := renderPassword(template, password)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(got), "__PXE_ISO_PASSWORD__") || !strings.Contains(string(got), password) {
+	if strings.Contains(string(got), "__OMB_ISO_PASSWORD__") || !strings.Contains(string(got), password) {
 		t.Fatal("rendered WinPE script did not contain the downstream credential")
 	}
 	if !strings.Contains(string(got), "\r\n") {
@@ -38,10 +38,10 @@ func TestRenderPasswordRejectsUnsafePasswordAndTemplate(t *testing.T) {
 		template string
 		password string
 	}{
-		{"__PXE_ISO_PASSWORD__", "bad&password"},
-		{"__PXE_ISO_PASSWORD__", "short"},
+		{"__OMB_ISO_PASSWORD__", "bad&password"},
+		{"__OMB_ISO_PASSWORD__", "short"},
 		{"no token", strings.Repeat("A", 32)},
-		{"__PXE_ISO_PASSWORD____PXE_ISO_PASSWORD__", strings.Repeat("A", 32)},
+		{"__OMB_ISO_PASSWORD____OMB_ISO_PASSWORD__", strings.Repeat("A", 32)},
 	} {
 		if _, err := renderPassword([]byte(tc.template), tc.password); err == nil {
 			t.Fatalf("accepted unsafe render input: %#v", tc)
@@ -50,13 +50,13 @@ func TestRenderPasswordRejectsUnsafePasswordAndTemplate(t *testing.T) {
 }
 
 func TestRenderProfileStartupTargetsOnlySelectedISO(t *testing.T) {
-	template := []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\pxeisos __PXE_ISO_PASSWORD__ /user:pxe-iso\r\nif not exist Y:\\__PXE_PROFILE_ID__\\sources\\__PXE_INSTALL_FILE__ goto failed\r\nY:\\__PXE_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__PXE_PROFILE_ID__\\sources\\__PXE_INSTALL_FILE__\r\n")
+	template := []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\ombisos __OMB_ISO_PASSWORD__ /user:omb-iso\r\nif not exist Y:\\__OMB_PROFILE_ID__\\sources\\__OMB_INSTALL_FILE__ goto failed\r\nY:\\__OMB_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__OMB_PROFILE_ID__\\sources\\__OMB_INSTALL_FILE__\r\n")
 	got, err := RenderProfileStartup(template, strings.Repeat("A", 32), 17, "install.esd")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(got)
-	if !strings.Contains(text, `Y:\17\sources\install.esd`) || !strings.Contains(text, `\\10.30.0.10\pxeisos`) || strings.Contains(text, "__PXE_") {
+	if !strings.Contains(text, `Y:\17\sources\install.esd`) || !strings.Contains(text, `\\10.30.0.10\ombisos`) || strings.Contains(text, "__OMB_") {
 		t.Fatalf("profile was not rendered safely: %s", text)
 	}
 	for _, bad := range []struct {
@@ -75,7 +75,7 @@ func TestRenderAnswerStartupRequiresXMLAndPassesItToSetup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(got), "if not exist X:\\Windows\\System32\\pxe-answer.xml goto failed\r\n") || !strings.Contains(string(got), " /Unattend:X:\\Windows\\System32\\pxe-answer.xml\r\n") {
+	if !strings.Contains(string(got), "if not exist X:\\Windows\\System32\\omb-answer.xml goto failed\r\n") || !strings.Contains(string(got), " /Unattend:X:\\Windows\\System32\\omb-answer.xml\r\n") {
 		t.Fatalf("answer option or required-file check missing: %q", got)
 	}
 	if _, err := RenderAnswerStartup([]byte("@echo off\r\n"), 17); err == nil {
@@ -88,7 +88,7 @@ func TestRenderAnswerStartupRequiresXMLAndPassesItToSetup(t *testing.T) {
 // the answer file to X:\autounattend.xml, after the share is connected and
 // before Setup starts. The legacy variant does neither.
 func TestRenderAnswerStartupMapsProfileForPECmd(t *testing.T) {
-	template, err := os.ReadFile("../../deploy/boot-assets/windows-profiles/pxe-setup.cmd.in")
+	template, err := os.ReadFile("../../deploy/boot-assets/windows-profiles/omb-setup.cmd.in")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,13 +101,13 @@ func TestRenderAnswerStartupMapsProfileForPECmd(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(got)
-	mapping := `net use I: \\10.30.0.10\pxeisos\17 %PXE_ISO_PASSWORD% /user:pxe-iso /persistent:no >nul 2>&1` + "\r\n"
-	copyLine := `copy /y X:\Windows\System32\pxe-answer.xml X:\autounattend.xml >nul` + "\r\n"
+	mapping := `net use I: \\10.30.0.10\ombisos\17 %OMB_ISO_PASSWORD% /user:omb-iso /persistent:no >nul 2>&1` + "\r\n"
+	copyLine := `copy /y X:\Windows\System32\omb-answer.xml X:\autounattend.xml >nul` + "\r\n"
 	ready, m, c, setup := strings.Index(text, ":media_ready"), strings.Index(text, mapping), strings.Index(text, copyLine), strings.Index(text, `Y:\17\sources\setup.exe`)
 	if ready < 0 || m < ready || c < m || setup < c || strings.Count(text, "net use I:") != 1 {
 		t.Fatalf("mapping not between the share and Setup:\n%s", text)
 	}
-	if !strings.Contains(text, `/Unattend:X:\Windows\System32\pxe-answer.xml`) || strings.Contains(text, "AAAAAAAA\\") {
+	if !strings.Contains(text, `/Unattend:X:\Windows\System32\omb-answer.xml`) || strings.Contains(text, "AAAAAAAA\\") {
 		t.Fatalf("bad Setup line or credential:\n%s", text)
 	}
 	legacy, err := RenderAnswerStartupLegacy(base, 17)

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/agent"
-	"pxe-platform/internal/images"
+	"omb/internal/agent"
+	"omb/internal/images"
 )
 
 type recordingWindowsProfileStore struct {
@@ -82,7 +82,7 @@ func (a *recordingWindowsISOAPI) CheckWindowsISO(_ context.Context, req agent.Wi
 
 func TestWindowsProfilePrepareUsesSavedSourceFingerprint(t *testing.T) {
 	modified := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
-	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/pxe-platform-smb/key7", Path: "Win10/RU-RU.ISO", Size: 7304607744, Modified: modified, Title: "Windows 10 x64", Folder: "Windows"}
+	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "Win10/RU-RU.ISO", Size: 7304607744, Modified: modified, Title: "Windows 10 x64", Folder: "Windows"}
 	store := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 17, WindowsProfileSource: source, State: "pending"}}
 	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Root: source.StorageRoot, State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: source.Path, Size: source.Size, Modified: source.Modified, Present: true}}}}
 	preparer := &recordingWindowsISOAPI{}
@@ -90,7 +90,7 @@ func TestWindowsProfilePrepareUsesSavedSourceFingerprint(t *testing.T) {
 	form := url.Values{"csrf": {CSRFToken("test-token")}}
 	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles/17/prepare", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusSeeOther || store.state != "ready" || store.install != "install.wim" || preparer.req.ID != 17 || preparer.req.Size != source.Size || !preparer.req.Modified.Equal(modified) {
@@ -100,7 +100,7 @@ func TestWindowsProfilePrepareUsesSavedSourceFingerprint(t *testing.T) {
 
 func TestWindowsProfilePreparePersistsResultAfterBrowserDisconnect(t *testing.T) {
 	modified := time.Date(2026, 10, 18, 20, 53, 51, 0, time.UTC)
-	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/pxe-platform-smb/key7", Path: "Windows11.ISO", Size: 8748939264, Modified: modified, Title: "Windows 11 26H2", Folder: "Windows"}
+	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "Windows11.ISO", Size: 8748939264, Modified: modified, Title: "Windows 11 26H2", Folder: "Windows"}
 	record := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 3, WindowsProfileSource: source, State: "pending"}}
 	store := contextCheckingProfileStore{record}
 	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Root: source.StorageRoot, State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: source.Path, Size: source.Size, Modified: source.Modified, Present: true}}}}
@@ -110,7 +110,7 @@ func TestWindowsProfilePreparePersistsResultAfterBrowserDisconnect(t *testing.T)
 	form := url.Values{"csrf": {CSRFToken("test-token")}}
 	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles/3/prepare", strings.NewReader(form.Encode())).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	if record.state != "ready" || record.install != "install.wim" {
@@ -123,7 +123,7 @@ func TestImagesPageOffersCatalogISOAsWindowsProfile(t *testing.T) {
 	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Name: "NAS", Kind: "smb", State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: "Win10/RU-RU.ISO", Present: true}, {StorageID: 7, Path: "Other.ISO", Present: true}}}}
 	s := &Server{Store: store, Images: api}
 	req := httptest.NewRequest(http.MethodGet, "/images", nil)
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
 	for _, want := range []string{`action="/images/windows-profiles"`, `name="storage_id" value="7"`, `name="path" value="Other.ISO"`, `action="/images/windows-profiles/17/prepare"`} {
@@ -148,17 +148,17 @@ func TestWindowsProfileCreateUsesCatalogRatherThanFormPath(t *testing.T) {
 	modified := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
 	store := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
 	api := &fakeImagesAPI{catalog: images.Catalog{
-		Storages: []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/pxe-platform-smb/key7", State: "ready"}},
+		Storages: []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/omb-smb/key7", State: "ready"}},
 		Images:   []images.Image{{StorageID: 7, Path: "Win10/RU-RU.ISO", Size: 7304607744, Modified: modified, Present: true}},
 	}}
 	s := &Server{Store: store, Images: api}
 	form := url.Values{"storage_id": {"7"}, "path": {"Win10/RU-RU.ISO"}, "title": {"Windows 10 x64"}, "folder": {"Windows"}, "storage_root": {"/etc"}, "csrf": {CSRFToken("test-token")}}
 	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pxe_session", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusSeeOther || len(store.created) != 1 || store.created[0].StorageRoot != "/mnt/pxe-platform-smb/key7" {
+	if res.Code != http.StatusSeeOther || len(store.created) != 1 || store.created[0].StorageRoot != "/mnt/omb-smb/key7" {
 		t.Fatalf("status=%d created=%+v body=%s", res.Code, store.created, res.Body.String())
 	}
 }
@@ -166,21 +166,21 @@ func TestWindowsProfileCreateUsesCatalogRatherThanFormPath(t *testing.T) {
 func TestSelectWindowsISOUsesReadyCatalogRecord(t *testing.T) {
 	modified := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
 	catalog := images.Catalog{
-		Storages: []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/pxe-platform-smb/key7", State: "ready"}},
+		Storages: []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/omb-smb/key7", State: "ready"}},
 		Images:   []images.Image{{StorageID: 7, Path: "Win10/RU-RU.ISO", Size: 7304607744, Modified: modified, Present: true}},
 	}
 	got, err := SelectWindowsISO(catalog, 7, "Win10/RU-RU.ISO", "Windows 10 x64", "Windows")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.StorageID != 7 || got.Path != "Win10/RU-RU.ISO" || got.StorageRoot != "/mnt/pxe-platform-smb/key7" || got.Size != 7304607744 || !got.Modified.Equal(modified) || got.Title != "Windows 10 x64" || got.Folder != "Windows" {
+	if got.StorageID != 7 || got.Path != "Win10/RU-RU.ISO" || got.StorageRoot != "/mnt/omb-smb/key7" || got.Size != 7304607744 || !got.Modified.Equal(modified) || got.Title != "Windows 10 x64" || got.Folder != "Windows" {
 		t.Fatalf("selected source differs from catalog: %+v", got)
 	}
 }
 
 func TestSelectWindowsISORejectsUnlistedOrUnavailableSource(t *testing.T) {
 	base := images.Catalog{
-		Storages: []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/pxe-platform-smb/key7", State: "ready"}},
+		Storages: []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/omb-smb/key7", State: "ready"}},
 		Images:   []images.Image{{StorageID: 7, Path: "Win10/RU-RU.ISO", Size: 7304607744, Present: true}},
 	}
 	for _, tc := range []struct {
@@ -205,7 +205,7 @@ func TestSelectWindowsISORejectsUnlistedOrUnavailableSource(t *testing.T) {
 		})
 	}
 	unavailable := base
-	unavailable.Storages = []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/pxe-platform-smb/key7", State: "unavailable"}}
+	unavailable.Storages = []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/omb-smb/key7", State: "unavailable"}}
 	if _, err := SelectWindowsISO(unavailable, 7, "Win10/RU-RU.ISO", "Windows 10", "Windows"); err == nil {
 		t.Fatal("accepted unavailable storage")
 	}

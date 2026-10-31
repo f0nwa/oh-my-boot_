@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"pxe-platform/internal/boot"
-	"pxe-platform/internal/oui"
+	"omb/internal/boot"
+	"omb/internal/oui"
 )
 
 // MachineInfo is one machine in the book of machines: what the logs and the

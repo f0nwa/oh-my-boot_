@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"pxe-platform/internal/autoinstall"
+	"omb/internal/autoinstall"
 )
 
 func TestUbuntuAutoinstallSchema(t *testing.T) {

@@ -12,38 +12,38 @@ import (
 	"strconv"
 	"strings"
 
-	"pxe-platform/internal/agent"
+	"omb/internal/agent"
 )
 
 func main() {
 	if len(os.Args) != 2 {
-		fatal(fmt.Errorf("usage: pxe-winiso-prepare PROFILE_ID"))
+		fatal(fmt.Errorf("usage: omb-winiso-prepare PROFILE_ID"))
 	}
 	id, err := strconv.ParseInt(os.Args[1], 10, 64)
 	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != os.Args[1] {
 		fatal(fmt.Errorf("invalid profile ID"))
 	}
-	req, err := readProfileRequest(filepath.Join("/etc/pxe-platform/winiso", os.Args[1]+".json"), id)
+	req, err := readProfileRequest(filepath.Join("/etc/omb/winiso", os.Args[1]+".json"), id)
 	if err != nil {
 		fatal(err)
 	}
-	template, err := os.ReadFile("/usr/share/pxe-platform/windows-profiles/pxe-setup.cmd.in")
+	template, err := os.ReadFile("/usr/share/omb/windows-profiles/omb-setup.cmd.in")
 	if err != nil {
 		fatal(err)
 	}
-	winpeshl, err := os.ReadFile("/usr/share/pxe-platform/windows-profiles/winpeshl.ini")
+	winpeshl, err := os.ReadFile("/usr/share/omb/windows-profiles/winpeshl.ini")
 	if err != nil {
 		fatal(err)
 	}
-	secret, err := os.ReadFile("/etc/pxe-platform/pxe-iso-password")
+	secret, err := os.ReadFile("/etc/omb/omb-iso-password")
 	if err != nil {
 		fatal(err)
 	}
 	runtime := agent.WindowsISORuntime{
-		SourceRoot: "/mnt/pxe-platform-smb",
+		SourceRoot: "/mnt/omb-smb",
 		LocalRoot:  agent.LocalISORoot,
-		MountRoot:  "/mnt/pxe-platform-iso/profiles",
-		AssetRoot:  "/srv/pxe/tftp/windows-profiles",
+		MountRoot:  "/mnt/omb-iso/profiles",
+		AssetRoot:  "/srv/omb/tftp/windows-profiles",
 		Template:   template,
 		Winpeshl:   winpeshl,
 		Password:   strings.TrimSpace(string(secret)),

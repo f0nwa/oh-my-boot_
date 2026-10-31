@@ -289,6 +289,16 @@ func convertMenuAsset(s string, r Replacements) (string, error) {
 	if s == "pxe-answer.xml" {
 		return "omb-answer.xml", nil
 	}
+	if !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") && !strings.HasPrefix(s, "/assets/") {
+		for _, old := range ambiguousXML {
+			if strings.Contains(s, old) {
+				return "", fmt.Errorf("ambiguous embedded menu asset reference")
+			}
+		}
+		// These commands also contain flags, operators and kernel arguments
+		// such as url=http://... and ds=nocloud-net;s=http://... . They are not URLs.
+		return s, nil
+	}
 	u, e := url.Parse(s)
 	if e != nil {
 		return "", fmt.Errorf("invalid menu URL")

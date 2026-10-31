@@ -87,3 +87,15 @@ func TestMenuRejectsMissingAssetWithoutMetadataAndUnsupportedCommandReference(t 
 		}
 	}
 }
+
+func TestMenuPreservesKernelArgumentsContainingURLValues(t *testing.T) {
+	line := "kernel http://server/assets/ubuntu/vmlinuz initrd=initrd url=http://server/assets/ubuntu/ubuntu.iso ds=nocloud-net;s=http://server/assets/seed/ ip=dhcp"
+	input := []byte("#!ipxe\n# pxe-platform:folders-v1 e30\n" + line + "\n")
+	got, err := ConvertMenu(input, Replacements{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), line) {
+		t.Fatal("kernel arguments changed")
+	}
+}

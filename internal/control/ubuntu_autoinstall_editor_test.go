@@ -108,7 +108,7 @@ func TestUbuntuConstructorPreviewSaveLibraryAndCopy(t *testing.T) {
 	if bytes.Contains(encoded, []byte(constructorPassword)) || strings.Contains(strings.Join(store.audits, " "), constructorPassword) {
 		t.Fatal("plaintext persisted")
 	}
-	for _, path := range []string{"/answers", "/ubuntu-autoinstall", "/ubuntu-autoinstall/1"} {
+	for _, path := range []string{"/answers", "/ubuntu-autoinstall/1"} {
 		body := libraryGet(t, s, path)
 		if !strings.Contains(body, "Lab Ubuntu") || strings.Contains(body, constructorPassword) {
 			t.Fatalf("library/detail missing or unsafe: %s", path)
@@ -133,6 +133,36 @@ func TestUbuntuConstructorPreviewSaveLibraryAndCopy(t *testing.T) {
 	}
 }
 func fmtDigest(data []byte) string { return fmt.Sprintf("%x", sha256.Sum256(data)) }
+
+func TestUbuntuConstructorReturnsToAnswerLibrary(t *testing.T) {
+	for _, path := range []string{"/ubuntu-autoinstall/new", "/ubuntu-autoinstall/1", "/ubuntu-autoinstall/1/copy"} {
+		t.Run(path, func(t *testing.T) {
+			s, store := autoinstallServer(t)
+			if path != "/ubuntu-autoinstall/new" {
+				store.files = []UbuntuAutoinstallFile{{ID: 1, Title: "Lab Ubuntu", State: "validated"}}
+			}
+			body := libraryGet(t, s, path)
+			crumb := regexp.MustCompile(`<p class="crumbs"><a href="([^"]+)"`).FindStringSubmatch(body)
+			if len(crumb) != 2 {
+				t.Fatal("constructor has no return link")
+			}
+			back, err := url.Parse(html.UnescapeString(crumb[1]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			library := libraryGet(t, s, back.RequestURI())
+			if !strings.Contains(library, `<h1>Файлы ответов</h1>`) || !strings.Contains(library, `href="/answers" class="active" aria-current="page"`) {
+				t.Fatal("return link leaves the answer-file library and its navigation")
+			}
+			if back.Fragment == "" || !strings.Contains(library, `id="`+back.Fragment+`"`) {
+				t.Fatal("return link does not target the Ubuntu section")
+			}
+			if !strings.Contains(library, `href="/ubuntu-autoinstall/new"`) {
+				t.Fatal("returned library has no create action")
+			}
+		})
+	}
+}
 
 func TestUbuntuConstructorPreviewDownload(t *testing.T) {
 	s, store := autoinstallServer(t)
@@ -295,7 +325,7 @@ func TestUbuntuConstructorInstallationBinding(t *testing.T) {
 func TestUbuntuConstructorEnglishUI(t *testing.T) {
 	s, store := autoinstallServer(t)
 	store.user.Language = langEN
-	for _, path := range []string{"/ubuntu-autoinstall", "/ubuntu-autoinstall/new"} {
+	for _, path := range []string{"/answers", "/ubuntu-autoinstall/new"} {
 		body := libraryGet(t, s, path)
 		if cyrillic.MatchString(strings.ReplaceAll(body, "Русский", "")) {
 			t.Fatalf("untranslated UI %s", path)

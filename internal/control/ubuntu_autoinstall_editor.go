@@ -41,16 +41,6 @@ func autoinstallForm(r *http.Request) autoinstall.Form {
 	return autoinstall.Form{Locale: r.FormValue("locale"), Keyboard: r.FormValue("keyboard"), TimeZone: r.FormValue("timezone"), Hostname: r.FormValue("hostname"), Username: r.FormValue("username"), Password: r.FormValue("password"), DiskMode: r.FormValue("disk_mode"), DiskSerial: r.FormValue("disk_serial")}
 }
 
-func (s *Server) ubuntuAutoinstallList(w http.ResponseWriter, r *http.Request) {
-	files, err := s.Store.UbuntuAutoinstalls(r.Context())
-	if err != nil {
-		http.Error(w, "Не удалось прочитать файлы Autoinstall", http.StatusServiceUnavailable)
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	render(w, "ubuntu_autoinstall_list", pageData{Info: requestInfo(r), UbuntuAutoinstalls: files})
-}
-
 func (s *Server) ubuntuAutoinstallNew(w http.ResponseWriter, r *http.Request) {
 	s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{Values: autoinstall.Values{Locale: "en_US.UTF-8", Keyboard: "us", TimeZone: "UTC", DiskMode: "interactive"}})
 }

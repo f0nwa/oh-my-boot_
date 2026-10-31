@@ -221,7 +221,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /usb", s.protect("view", s.usbPage))
 	mux.HandleFunc("POST /usb/uefica", s.protect("view", withPageErrors(s.usbPage, s.ueficaUSBDownload)))
 	mux.HandleFunc("GET /assets/usb.js", usbScript)
-	mux.HandleFunc("GET /ubuntu-autoinstall", s.protect("view", s.ubuntuAutoinstallList))
 	mux.HandleFunc("GET /ubuntu-autoinstall/new", s.protect("images", s.ubuntuAutoinstallNew))
 	mux.HandleFunc("POST /ubuntu-autoinstall/preview", s.protect("images", s.ubuntuAutoinstallPreview))
 	mux.HandleFunc("POST /ubuntu-autoinstall/preview/download", s.protect("images", s.ubuntuAutoinstallPreviewDownload))

@@ -29,7 +29,7 @@ func TestNavigationHidesItemsWithoutPermission(t *testing.T) {
 }
 
 func TestNavigationMarksActiveItem(t *testing.T) {
-	for path, want := range map[string]string{"/images": "/images", "/": "/"} {
+	for path, want := range map[string]string{"/images": "/images", "/": "/", "/ubuntu-autoinstall/new": "/answers", "/ubuntu-autoinstall/preview": "/answers", "/ubuntu-autoinstall/1": "/answers", "/ubuntu-autoinstall/1/copy": "/answers"} {
 		var active []string
 		for _, group := range navigation("admin", path) {
 			for _, item := range group.Items {

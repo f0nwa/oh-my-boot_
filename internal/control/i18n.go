@@ -124,7 +124,6 @@ func translateEN(text string, depth int) string {
 var englishMessages = map[string]string{
 	"Автоматизация Ubuntu":                "Ubuntu automation",
 	"Файл Ubuntu Autoinstall":             "Ubuntu Autoinstall file",
-	"Библиотека автоматизации Ubuntu":     "Ubuntu automation library",
 	"Файлов Ubuntu Autoinstall пока нет.": "No Ubuntu Autoinstall files yet.",
 	"Не проверен":                         "Not validated",
 	"Выбор диска вручную":                 "Manual disk selection",

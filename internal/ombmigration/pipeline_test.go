@@ -67,6 +67,35 @@ type NoWindowsFixture struct{}
 func (NoWindowsFixture) Rebuild(_ context.Context, in BuildInput) (BuildResult, error) {
 	return BuildResult{Answers: map[int64]AnswerChange{}, Drivers: map[int64]DriverChange{}}, nil
 }
+
+func TestCompletedReportUsesPublishedMenuHash(t *testing.T) {
+	e, db, _ := fixture(t)
+	for _, mode := range []string{"apply", "verify", "repeat"} {
+		var report Report
+		var err error
+		if mode == "verify" {
+			report, err = e.Verify(context.Background())
+		} else {
+			report, err = e.Apply(context.Background())
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, object := range report.Objects {
+			if object.Kind == "menu" && object.ID == 44 {
+				found = true
+				if object.SHA256 != text(db.data.find("pxe_control", "menu_versions", 44), "sha256") {
+					t.Fatalf("%s report contains the source hash instead of the published menu hash", mode)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("completed report is missing the menu")
+		}
+	}
+}
+
 func TestPipelinePlansAppliesVerifiesAndRerunsWithoutWrites(t *testing.T) {
 	e, d, root := fixture(t)
 	ctx := context.Background()

@@ -22,6 +22,19 @@ type Journal struct {
 	Report                  Report
 }
 
+func (j Journal) completedReport(mode string) Report {
+	r := j.Report
+	r.Mode, r.Ready, r.Complete = mode, true, true
+	r.Objects = append([]Status(nil), r.Objects...)
+	for i := range r.Objects {
+		r.Objects[i].State = "complete"
+		if r.Objects[i].Kind == "menu" {
+			r.Objects[i].SHA256 = text(j.After.find("pxe_control", "menu_versions", r.Objects[i].ID), "sha256")
+		}
+	}
+	return r
+}
+
 func (e *Engine) readJournal() (Journal, error) {
 	var j Journal
 	b, err := privateRead(e.journalPath())
@@ -77,9 +90,7 @@ func (e *Engine) Apply(ctx context.Context) (Report, error) {
 					return Report{Mode: "apply"}, err
 				}
 			}
-			r := j.Report
-			r.Mode = "apply"
-			return r, nil
+			return j.completedReport("apply"), nil
 		}
 	}
 	backup, err := e.preconditions(ctx)
@@ -287,12 +298,7 @@ func (e *Engine) Apply(ctx context.Context) (Report, error) {
 			return Report{}, err
 		}
 		j.Phase = "complete"
-		j.Report.Mode = "apply"
-		j.Report.Ready = true
-		j.Report.Complete = true
-		for i := range j.Report.Objects {
-			j.Report.Objects[i].State = "complete"
-		}
+		j.Report = j.completedReport("apply")
 		if err = e.saveJournal(j); err != nil {
 			return Report{}, err
 		}
@@ -416,9 +422,5 @@ func (e *Engine) Verify(ctx context.Context) (Report, error) {
 	if err = e.verifyJournal(ctx, j); err != nil {
 		return Report{Mode: "verify"}, err
 	}
-	r := j.Report
-	r.Mode = "verify"
-	r.Ready = true
-	r.Complete = true
-	return r, nil
+	return j.completedReport("verify"), nil
 }

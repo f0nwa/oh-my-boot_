@@ -42,7 +42,7 @@ with secureboot on/off, option enabled/disabled/missing/unknown and
 biospassword yes/no/unknown. Exit code 0; nothing is written to the log.
 
 .PARAMETER LogPath
-Where to append the log. Defaults to %WINDIR%\Temp\PXE-MicrosoftUefiCA.log.
+Where to append the log. Defaults to %WINDIR%\Temp\OMB-MicrosoftUefiCA.log.
 
 .NOTES
 Exit codes (SCCM understands 0 and 3010):
@@ -61,7 +61,7 @@ param(
     [switch]$CheckOnly,
     [switch]$NoBitLockerSuspend,
     [switch]$Report,
-    [string]$LogPath = (Join-Path $env:WINDIR 'Temp\PXE-MicrosoftUefiCA.log')
+    [string]$LogPath = (Join-Path $env:WINDIR 'Temp\OMB-MicrosoftUefiCA.log')
 )
 
 $ErrorActionPreference = 'Stop'

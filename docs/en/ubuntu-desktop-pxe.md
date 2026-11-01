@@ -1,6 +1,6 @@
 # First Ubuntu Desktop boot over PXE
 
-> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; its migration is pending. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md).
+> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; the stand was migrated to OMB on 31 October 2026. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md). Results and remaining acceptance: [migration report](../research/2026-10-31-omb-technical-migration.md).
 
 > This is the historical first-boot report. For current installation creation and automation, see “Automated installation” below.
 

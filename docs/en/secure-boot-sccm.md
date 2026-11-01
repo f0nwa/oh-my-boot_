@@ -21,7 +21,7 @@ The script `scripts/windows/Enable-MicrosoftUefiCA.ps1` turns on the BIOS option
 3. Turns the option on, passing the BIOS administrator (supervisor) password if one is set. The password never reaches the log or the output.
 4. Suspends BitLocker for one restart. At the next boot the firmware changes its Secure Boot keys, and without this BitLocker would ask for the recovery key.
 
-The change takes effect after a restart. The log goes to `C:\Windows\Temp\PXE-MicrosoftUefiCA.log`.
+The change takes effect after a restart. The log goes to `C:\Windows\Temp\OMB-MicrosoftUefiCA.log`.
 
 ### Exit codes
 
@@ -86,7 +86,7 @@ If the command prints `True`, `db` contains the third-party CA 2011 correspondin
    - After running: Configuration Manager restarts computer. You can choose “No action required” to leave the restart to the user; the change then applies at their next restart.
 3. **Collection.** Put only the laptops that do not boot from the network in it: Secured-core models, or the machines the panel marked “Firmware rejected the loader”.
 4. **Deployment.** Make it Required, with a maintenance window. The user gets the usual SCCM restart notice.
-5. **Results.** Monitoring → Deployments shows each machine's exit code. 3010 and 0 mean success; 2, 3, 4 and 5 are explained in the table above. Details are on the machine in `C:\Windows\Temp\PXE-MicrosoftUefiCA.log`.
+5. **Results.** Monitoring → Deployments shows each machine's exit code. 3010 and 0 mean success; 2, 3, 4 and 5 are explained in the table above. Details are on the machine in `C:\Windows\Temp\OMB-MicrosoftUefiCA.log`.
 
 To only check without changes (for example, to survey the fleet in advance), use the same package with a separate program that adds `-CheckOnly`.
 

@@ -26,13 +26,13 @@ Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an i
 
 ## Tested so far
 
-Test VMs reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and the Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 profile also reached its installer and disk in SeaBIOS; a Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements stopped installation on that VM. A Windows 11 installation with a user-supplied answer file completed and booted from disk, and a newly uploaded Windows 11 26H2 ISO reached disk selection. A Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI and, in SeaBIOS, WinPE with network, both disks and the mounted installer. Physical PXE clients and driver entries on real laptops remain to be checked. These firmware results predate the unified-installations build; that build has local PostgreSQL and HTTP integration coverage, with fresh stand boots still required. Strelec support depends on examining a supplied ISO.
+Test VMs reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and the Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 profile also reached its installer and disk in SeaBIOS; a Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements stopped installation on that VM. A Windows 11 installation with a user-supplied answer file completed and booted from disk, and a newly uploaded Windows 11 26H2 ISO reached disk selection. A Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI and, in SeaBIOS, WinPE with network, both disks and the mounted installer. Physical PXE clients and driver entries on real laptops remain to be checked. These detailed firmware results predate the unified-installations build. After the OMB transition, the user confirmed UEFI Secure Boot loading with XML and drivers; the full repeat client run is deferred until the main development work is complete. Strelec support depends on examining a supplied ISO.
 
-Use the [current Control guide](docs/en/control-installation.md#installations-and-menu) for installation and operation. The [archived guide](docs/archive/2026-11-01/control-installation.en.md#unified-windows-and-ubuntu-installations-transition-on-30102026) records the one-time transition from 30 October 2026; do not repeat that import on an already converted stand.
+Use the [current Control guide](docs/en/control-installation.md#installations-and-menu) for installation and operation. Completed transition reports are available through [project history](docs/project-history.md); current recovery instructions are in the [recovery guide](docs/recovery.md).
 
 ## Guides
 
-Start with the [server installation guide](docs/installation.md) ([offline installation](docs/en/offline-installation.md)) and the [first VM test report](docs/vm-test-2026-10-15.md). The other guides are available in English and Russian:
+Start with the [server installation guide](docs/installation.md) ([offline installation](docs/en/offline-installation.md)). The other guides are available in English and Russian:
 
 | Guide | English | Русский |
 | --- | --- | --- |
@@ -45,11 +45,10 @@ Start with the [server installation guide](docs/installation.md) ([offline insta
 | Ubuntu Desktop PXE | [EN](docs/en/ubuntu-desktop-pxe.md) | [RU](docs/ubuntu-desktop-pxe.md) |
 | Windows 10 WinPE | [EN](docs/en/windows-winpe-pxe.md) | [RU](docs/windows-winpe-pxe.md) |
 | Windows 11 WinPE | [EN](docs/en/windows11-winpe-pxe.md) | [RU](docs/windows11-winpe-pxe.md) |
-| WinPE driver test report | [EN](docs/en/winpe-driver-test-2026-10-19.md) | [RU](docs/winpe-driver-test-2026-10-19.md) |
 | Architecture and acceptance plan | [EN](docs/en/omb-design.md) | [RU](docs/superpowers/specs/2026-10-15-omb-design.md) |
 | Brand: mark, files and usage rules | — | [RU](docs/brand/README.md) |
 
-Implementation plans and stage specifications in `docs/superpowers` are kept in Russian.
+Current specifications in `docs/superpowers/specs` and the unfinished machine-list plan in `docs/superpowers/plans` are kept in Russian. Completed implementation plans and test reports are available through [project history](docs/project-history.md).
 
 ## Development
 
@@ -64,7 +63,7 @@ scripts/fetch-ipxe_test.sh
 
 ## Names
 
-The source code, installation files and existing test stand use OMB technical names (`omb-control`, `omb-agent`, `/etc/omb`, …). Migration included a verified restore rehearsal and server reboot. Initial UEFI Secure Boot loading with drivers and XML was confirmed by the user. Full client regression testing is planned after the main development work; see the [migration report](docs/research/2026-10-31-omb-technical-migration.md) and [name audit](docs/research/2026-11-01-omb-name-audit.md). Historical plans and test reports retain the identifiers and outcomes recorded at the time; the standalone migration tool reads the previous formats.
+The source code, installation files and existing test stand use OMB technical names (`omb-control`, `omb-agent`, `/etc/omb`, …). Migration included a verified restore rehearsal and server reboot. Initial UEFI Secure Boot loading with drivers and XML was confirmed by the user. Full client regression testing is planned after the main development work; see the [migration report](docs/research/2026-10-31-omb-technical-migration.md) and [name audit](docs/research/2026-11-01-omb-name-audit.md). Completed plans, reports and the one-time migration tool are retired from the current tree. Their original versions remain in Git, and the verified recovery bundle remains on the stand; see [project history](docs/project-history.md) and [recovery](docs/recovery.md).
 
 ## License
 

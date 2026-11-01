@@ -2,7 +2,7 @@
 
 Current OMB operations guide. The existing stand is at **https://192.168.10.135:8443**. The first-installation commands below are for a new server; do not recreate accounts, databases, certificates or configuration on the running stand.
 
-[Русская версия](../control-installation.md). Past rollout reports and previous-version instructions are preserved in the [archived snapshot](../archive/2026-11-01/control-installation.en.md). The technical transition is recorded in the [migration report](../research/2026-10-31-omb-technical-migration.md).
+[Русская версия](../control-installation.md). Past rollout reports and previous-version instructions are preserved in the [project history](../project-history.md). The technical transition is recorded in the [migration report](../research/2026-10-31-omb-technical-migration.md).
 
 ## Services and paths
 
@@ -171,10 +171,10 @@ To stop only a broken dashboard, use `systemctl stop omb-control.service`. Boot,
 
 Before an update, preserve configuration, TLS material, binaries, units and the relevant databases. Changes to shared formats or relationships require a consistent backup of every affected database and file with writers stopped. Roll back a compatible set of code and schema; replacing one binary may be insufficient.
 
-Rollback of the technical migration has its own [procedure](../omb-migration-runbook.md). It restores the state at the saved backup, so preserve newer data first and arrange a maintenance window. The verified transition backup on the existing stand is `/root/omb-migration-20261031/backup`.
+Rollback of the technical migration has its own [procedure](../recovery.md). It restores the state at the saved backup, so preserve newer data first and arrange a maintenance window. The verified transition backup on the existing stand is `/root/omb-migration-20261031/backup`.
 
 ## Verification limits
 
 The server passed file/database restoration, WinPE rebuild, TFTP, SMB/NAS and reboot checks. The user confirmed UEFI Secure Boot loading with XML and drivers. The full client regression pass is deferred until the main development work is finished; see the [migration report](../research/2026-10-31-omb-technical-migration.md).
 
-Past deployment dates, previous rollback commands and rollout checksums are in the [archived snapshot of this guide](../archive/2026-11-01/control-installation.en.md).
+Past deployment dates, previous rollback commands and rollout checksums are in the [project history](../project-history.md).

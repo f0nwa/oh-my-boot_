@@ -1,6 +1,6 @@
 # Secure Boot: why Oh My Boot boots without turning it off
 
-> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; the stand was migrated to OMB on 31 October 2026. See the [technical migration plan](../../docs/superpowers/plans/2026-10-31-omb-technical-migration.md). Results and remaining acceptance: [migration report](../research/2026-10-31-omb-technical-migration.md).
+> This guide uses current OMB names. See the [stand status and remaining checks](../research/2026-10-31-omb-technical-migration.md).
 
 ## In short
 
@@ -189,7 +189,7 @@ Microsoft is rotating its Secure Boot keys: **Microsoft UEFI CA 2023** is replac
 What was checked on the test server:
 
 - **Since 29 October 2026** the server serves the [official iPXE shim 16.1](https://github.com/ipxe/shim/releases/tag/ipxe-16.1), signed by Microsoft Corporation UEFI CA 2011 and Microsoft UEFI CA 2023. SHA-256: `5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf`. Both signatures were checked with `sbverify --list`. Its loaded sections and embedded iPXE certificate matched the previous shim. The iPXE-signed `ipxe.efi` and `snponly.efi` from v2.0.0 were not changed.
-- **TFTP was checked:** `ipxe-shim.efi` downloads with that SHA-256. The old shim is backed up at `/var/backups/pxe-platform-ipxe-dualsign-20261029/shimx64.efi` (SHA-256 `83ad71c7d4f2cf328b75b653d09bf3bea5f29bee2e67ca058f37d83c07133885`). A VM boot with only the third-party 2023 CA remains untested.
+- **TFTP was checked:** `ipxe-shim.efi` downloads with that SHA-256. A VM boot with only the third-party 2023 CA remains untested.
 - **We cannot add a Microsoft signature ourselves.** Microsoft signs with its private key. Modifying an already signed shim invalidates its existing signatures. We can sign our own build with our own key, but its public certificate must be enrolled in firmware `db` for the first boot stage.
 - **The new shim does not help a Windows-only `db`.** Such firmware has Windows keys but neither third-party CA. It still needs a firmware option or the [SCCM script](secure-boot-sccm.md).
 - The dual signature matters for firmware that trusts only the 2023 third-party CA. Certificate expiry alone does not force rejection; the firmware checks `db` trust and `dbx` revocations.
@@ -200,7 +200,7 @@ Both pinned download sources are in the [boot assets guide](../../deploy/boot-as
 
 iVentoy lets you pick which EFI file to send to machines. Its loader is unsigned, so the file is matched to the firmware. In the main Oh My Boot mode, the chain is signed and all UEFI clients receive the same iPXE loader. The lab now has a global **iPXE / GRUB** choice to test [a separate Debian chain](../grub-secure-boot-test.md); it changes the boot file for every UEFI client and does not select one for a particular firmware.
 
-The choice that does matter is iPXE's network driver. `ipxe.efi` has its own network card drivers, while `snponly.efi` uses the firmware's driver. Some hardware (USB-C docks, USB adapters, some new network cards) works only with the latter. Both are signed and started through the shim, so choosing between them does not affect Secure Boot. It is planned per machine, model or vendor (by MAC prefix): stage 5 of the [machine list plan](../superpowers/plans/2026-10-23-machine-book.md).
+The choice that does matter is iPXE's network driver. `ipxe.efi` has its own network card drivers, while `snponly.efi` uses the firmware's driver. Some hardware (USB-C docks, USB adapters, some new network cards) works only with the latter. Both are signed and started through the shim, so choosing between them does not affect Secure Boot. It is planned per machine, model or vendor (by MAC prefix): the [task in TODO](../../TODO.md).
 
 ## How to check what the server serves
 

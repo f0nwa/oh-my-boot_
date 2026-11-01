@@ -1,6 +1,6 @@
 # Ubuntu Server: first PXE iteration
 
-> Current installation commands use the target OMB names. Dated deployment accounts, original backup paths and outcomes describe the pre-migration stand; the stand was migrated to OMB on 31 October 2026. See the [technical migration plan](../docs/superpowers/plans/2026-10-31-omb-technical-migration.md). Results and remaining acceptance: [migration report](research/2026-10-31-omb-technical-migration.md).
+> This guide uses current OMB names. See the [stand status and remaining checks](research/2026-10-31-omb-technical-migration.md).
 
 The HTTPS dashboard and second-stage installation are described in [Control installation](control-installation.md).
 
@@ -11,7 +11,7 @@ This guide installs the boot foundation on one Ubuntu Server x86_64 host without
 - Use an isolated test network with a PXE client VM and a second NIC on the Ubuntu host. In **full** mode, the PXE service assigns addresses; keep every other DHCP server off that test network. In **proxy** mode, keep an existing DHCP server on that test network and let it assign addresses.
 - Set a static IPv4 address on the Ubuntu test NIC. The examples use the documentation subnet `192.0.2.0/24` and `enp2s0`; replace **every** sample address and interface before applying a configuration. Check the real interface with `ip -br addr`.
 - Ensure clients can reach UDP 67, 69 and 4011 and TCP 8080 on the test network. Firewall rules and VM network mode depend on the lab.
-- The full-DHCP BIOS and UEFI test results are recorded in [the VM test report](vm-test-2026-10-15.md). Proxy-DHCP and ISO boot remain untested.
+- The full-DHCP BIOS and UEFI test results are recorded in [project history](project-history.md). Proxy-DHCP and ISO boot remain untested.
 
 ## Build and install
 

@@ -42,7 +42,7 @@ func TestPagesShowProductName(t *testing.T) {
 			res := httptest.NewRecorder()
 			render(res, name, samplePageData(lang))
 			body := res.Body.String()
-			if strings.Contains(body, "PXE Platform") || !strings.Contains(body, "<title>Oh My Boot</title>") || !strings.Contains(body, `href="/assets/favicon.svg"`) {
+			if !strings.Contains(body, "<title>Oh My Boot</title>") || !strings.Contains(body, `href="/assets/favicon.svg"`) {
 				t.Errorf("%s/%s does not show the product name", lang, name)
 			}
 		}

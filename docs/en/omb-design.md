@@ -59,7 +59,7 @@ If an ISO upload is interrupted, the unfinished file stays a draft and is not pu
 
 ## Stages and acceptance criteria
 
-1. **Boot foundation.** Boot and Network Agent, both DHCP modes, TFTP, iPXE, a test menu. The menu opens in BIOS, UEFI x64 and UEFI Secure Boot on the test network. Details: [stage specification](../superpowers/specs/2026-10-15-boot-foundation-design.md) (in Russian).
+1. **Boot foundation.** Boot and Network Agent, both DHCP modes, TFTP, iPXE, a test menu. The menu opens in BIOS, UEFI x64 and UEFI Secure Boot on the test network. Details: [stage specification](../project-history.md) (in Russian).
 2. **Management.** Control, PostgreSQL, sign-in and three roles, an overview of state and requests, safe application of network settings, manual menu publishing and rollback.
 3. **ISO and Ubuntu.** Images, several storages, browser upload and folder import, checks and publishing, booting the provided Ubuntu Desktop ISO in BIOS and UEFI. First an image catalog is built from pre-mounted paths, then SMB storages are managed through the admin interface, then boot profiles are added. Secure Boot is checked separately on the signed content of the image.
 4. **Windows 10/11.** wimboot, Samba and profiles for both installers. The installation must reach disk selection with the installation files available in the stated boot modes.

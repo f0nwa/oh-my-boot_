@@ -128,3 +128,25 @@ func controlMux(p *Publisher, events EventReader, transfers *Transfers, assets *
 	})
 	return mux
 }
+
+// ControlHandlerWithUbuntuSource exposes verified source metadata only on the local control socket.
+func ControlHandlerWithUbuntuSource(p *Publisher, events EventReader, transfers *Transfers, journal *Journal, assets *AutoinstallAssets, source *UbuntuSource) http.Handler {
+	mux := controlMux(p, events, transfers, assets)
+	handleJournal(mux, journal)
+	mux.HandleFunc("GET /ubuntu/source", func(w http.ResponseWriter, r *http.Request) {
+		catalog, err := source.Catalog()
+		if err != nil {
+			http.Error(w, "Ubuntu source metadata unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		data, err := json.Marshal(catalog)
+		if err != nil || len(data) > 64*1024 {
+			http.Error(w, "Ubuntu source metadata invalid", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(data)
+	})
+	return mux
+}

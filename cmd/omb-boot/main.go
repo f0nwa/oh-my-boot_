@@ -79,7 +79,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	controlServer := &http.Server{Handler: boot.ControlHandlerWithJournal(publisher, reader, transfers, journal, autoinstallAssets), ReadHeaderTimeout: 5 * time.Second}
+	controlServer := &http.Server{Handler: boot.ControlHandlerWithUbuntuSource(publisher, reader, transfers, journal, autoinstallAssets, boot.NewUbuntuSource(os.Getenv("OMB_BOOT_UBUNTU_ISO"), *assets)), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

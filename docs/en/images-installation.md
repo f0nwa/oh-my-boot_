@@ -29,7 +29,7 @@ Another directory that is already mounted is registered with a separate command,
 
 On the **Images** page, an administrator or operator presses **Refresh**. The request starts a background scan and returns the page at once; the state and the found files appear after the page is reloaded. An observer sees the catalog but cannot start a scan. The audit log records that the request was accepted, and the scan result is shown in the storage state. If reading fails, the previous records are kept and the storage is marked unavailable. After a service restart, an interrupted scan is also marked as failed, and the scan can be started again.
 
-Since 20.10.2026 Images also checks storage availability in the background and rescans a storage that becomes reachable again; see the [Control guide](control-installation.md#background-storage-check-and-errors-on-pages-20102026).
+Since 20.10.2026 Images also checks storage availability in the background and rescans a storage that becomes reachable again; see the [Control guide](control-installation.md#storage-availability-and-recovery).
 
 ## Check
 

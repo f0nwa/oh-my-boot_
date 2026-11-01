@@ -32,7 +32,7 @@
 ## Menu rollback with driver items
 
 - **Restore** creates a new version with the same content. Restoring the version without configurations 3 and 4 (SHA-256 `677c9eb1617d…`) created active version 25; VM 112 received this menu, and `Windows/Tests` contained only “Windows 11 VirtIO Net test”.
-- The first attempt to restore version 24 was rejected: “Windows ISO profile is unavailable: files of profile 1 are unavailable”. The cause was the server time zone change and the byte-by-byte comparison of the ISO time in Agent; the fix is described in the [Control guide](control-installation.md#version-numbers-and-time-zone-19102026). The active menu did not change.
+- The first attempt to restore version 24 was rejected: “Windows ISO profile is unavailable: files of profile 1 are unavailable”. The cause was the server time zone change and the byte-by-byte comparison of the ISO time in Agent; the fix is described in the [Control guide](../archive/2026-11-01/control-installation.en.md#version-numbers-and-time-zone-19102026). The active menu did not change.
 - After the fix, restoring version 24 created active version 26 (SHA-256 `df16c13198be…`). On 19.10.2026 at 23:59:30 (MSK), VM 112 loaded `wimboot`, `winpeshl.ini` of profile 3, `pxe-setup.cmd` of configuration 4 and the shared derived WIM, then opened a new `pxe-iso` SMB session to the ISO. WinPE started as it did before the rollback.
 
 ## Deleting records through the admin interface, 20.10.2026

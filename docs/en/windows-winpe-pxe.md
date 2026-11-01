@@ -44,6 +44,10 @@ Server file check: `HEAD` returned HTTP 200 and sizes of 76,064 bytes for `wimbo
 
 ## Rollback
 
+For the current OMB stand, use the [current diagnostics and recovery instructions](control-installation.md#diagnostics-and-rollback). The previous lab procedure below applies only when restoring the server state from 16 October 2026.
+
+### Historical procedure, 16 October 2026
+
 If the profile does not boot, restore the previous version in **Menu → Versions**. The previous Control binary is in `/var/backups/pxe-platform-pre-winpe-20261016/pxe-control`. Restore it to `/usr/local/bin/pxe-control` and restart only `pxe-control`; Boot, proxy-DHCP and the currently published menu snapshot work independently of the dashboard. The Windows 10 files in `/srv/pxe/tftp` can be deleted after the item is removed from the menu.
 
 To roll back SMB, stop and disable `smbd.service`, then remove `/srv/pxe/installers/windows10` once the client checks are finished. `nmbd.service` stays masked: TCP 445 is enough for access by IP address. These actions do not change the PXE menu or DHCP.

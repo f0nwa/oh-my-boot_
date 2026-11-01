@@ -16,12 +16,20 @@ import (
 // Form is transient input. Password must never be persisted or returned to a client.
 type Form struct {
 	Locale, Keyboard, TimeZone, Hostname, Username, Password, DiskMode, DiskSerial string
+
+	RealName, KeyboardVariant, KeyboardToggle, SourceID, PostInstallScript, Shutdown string
+	Drivers, Codecs                                                                  bool
+	Packages                                                                         []string
 }
 
 // Values contains normalized configuration suitable for immutable storage.
 // PasswordHash contains a salted yescrypt crypt string, never a plaintext password.
 type Values struct {
 	Locale, Keyboard, TimeZone, Hostname, Username, PasswordHash, DiskMode, DiskSerial string
+
+	RealName, KeyboardVariant, KeyboardToggle, SourceID, PostInstallScript, Shutdown string
+	Drivers, Codecs                                                                  bool
+	Packages                                                                         []string
 }
 
 var (
@@ -34,20 +42,8 @@ var (
 
 // Compile validates the form, hashes its password and renders the normalized values.
 func Compile(form Form) (Values, []byte, error) {
-	for _, field := range []struct{ name, value string }{
-		{"locale", form.Locale}, {"keyboard", form.Keyboard}, {"timezone", form.TimeZone},
-		{"hostname", form.Hostname}, {"username", form.Username}, {"disk mode", form.DiskMode},
-	} {
-		if !validText(field.value) {
-			return Values{}, nil, errors.New(field.name + ": control characters or invalid UTF-8 are not allowed")
-		}
-	}
-	values := Values{
-		Locale: strings.TrimSpace(form.Locale), Keyboard: strings.TrimSpace(form.Keyboard),
-		TimeZone: strings.TrimSpace(form.TimeZone), Hostname: strings.TrimSpace(form.Hostname),
-		Username: strings.TrimSpace(form.Username), DiskMode: strings.TrimSpace(form.DiskMode), DiskSerial: form.DiskSerial,
-	}
-	if err := validateFields(values); err != nil {
+	values, err := Normalize(form)
+	if err != nil {
 		return Values{}, nil, err
 	}
 	if len(form.Password) == 0 || len(form.Password) > 1024 || !validText(form.Password) {
@@ -65,6 +61,35 @@ func Compile(form Form) (Values, []byte, error) {
 	return values, data, nil
 }
 
+// Normalize validates constructor input without hashing or retaining its password.
+func Normalize(form Form) (Values, error) {
+	for _, field := range []struct{ name, value string }{
+		{"locale", form.Locale}, {"keyboard", form.Keyboard}, {"timezone", form.TimeZone},
+		{"hostname", form.Hostname}, {"username", form.Username}, {"disk mode", form.DiskMode},
+	} {
+		if !validText(field.value) {
+			return Values{}, errors.New(field.name + ": control characters or invalid UTF-8 are not allowed")
+		}
+	}
+	values := Values{
+		Locale: strings.TrimSpace(form.Locale), Keyboard: strings.TrimSpace(form.Keyboard),
+		TimeZone: strings.TrimSpace(form.TimeZone), Hostname: strings.TrimSpace(form.Hostname),
+		Username: strings.TrimSpace(form.Username), DiskMode: strings.TrimSpace(form.DiskMode), DiskSerial: form.DiskSerial,
+	}
+	values.RealName = strings.TrimSpace(form.RealName)
+	values.KeyboardVariant = strings.TrimSpace(form.KeyboardVariant)
+	values.KeyboardToggle = strings.TrimSpace(form.KeyboardToggle)
+	values.SourceID = strings.TrimSpace(form.SourceID)
+	values.PostInstallScript = form.PostInstallScript
+	values.Shutdown = strings.TrimSpace(form.Shutdown)
+	values.Drivers, values.Codecs = form.Drivers, form.Codecs
+	values.Packages = uniqueStrings(form.Packages)
+	if err := validateFields(values); err != nil {
+		return Values{}, err
+	}
+	return values, nil
+}
+
 // Validate checks stored values without accepting or requiring a plaintext password.
 func Validate(values Values) error {
 	if err := validateFields(values); err != nil {
@@ -80,8 +105,8 @@ func validateFields(v Values) error {
 	if !localePattern.MatchString(v.Locale) {
 		return errors.New("locale: required, at most 64 bytes, using letters, digits, _, ., @ or -")
 	}
-	if !keyboardPattern.MatchString(v.Keyboard) {
-		return errors.New("keyboard: required, at most 32 bytes, using lowercase letters, digits, _ or -")
+	if err := validateDesktop(v); err != nil {
+		return err
 	}
 	if !hostnamePattern.MatchString(v.Hostname) {
 		return errors.New("hostname: required DNS label of at most 63 bytes")
@@ -123,12 +148,15 @@ func validText(s string) bool {
 }
 
 type keyboard struct {
-	Layout string `yaml:"layout"`
+	Layout  string `yaml:"layout"`
+	Variant string `yaml:"variant,omitempty"`
+	Toggle  string `yaml:"toggle,omitempty"`
 }
 type identity struct {
 	Hostname string `yaml:"hostname"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
+	RealName string `yaml:"realname,omitempty"`
 }
 type diskMatch struct {
 	Serial string `yaml:"serial"`
@@ -141,13 +169,19 @@ type storage struct {
 	Layout layout `yaml:"layout"`
 }
 type config struct {
-	Version     int      `yaml:"version"`
-	Interactive []string `yaml:"interactive-sections,omitempty"`
-	Storage     *storage `yaml:"storage,omitempty"`
-	Identity    identity `yaml:"identity"`
-	Locale      string   `yaml:"locale"`
-	Keyboard    keyboard `yaml:"keyboard"`
-	TimeZone    string   `yaml:"timezone"`
+	Version      int             `yaml:"version"`
+	Interactive  []string        `yaml:"interactive-sections,omitempty"`
+	Storage      *storage        `yaml:"storage,omitempty"`
+	Identity     identity        `yaml:"identity"`
+	Locale       string          `yaml:"locale"`
+	Keyboard     keyboard        `yaml:"keyboard"`
+	TimeZone     string          `yaml:"timezone"`
+	Source       *desktopSource  `yaml:"source,omitempty"`
+	Drivers      *desktopInstall `yaml:"drivers,omitempty"`
+	Codecs       *desktopInstall `yaml:"codecs,omitempty"`
+	Packages     []string        `yaml:"packages,omitempty"`
+	LateCommands [][]string      `yaml:"late-commands,omitempty"`
+	Shutdown     string          `yaml:"shutdown,omitempty"`
 }
 type document struct {
 	Autoinstall config `yaml:"autoinstall"`
@@ -159,14 +193,15 @@ func Render(values Values) ([]byte, error) {
 		return nil, err
 	}
 	ai := config{
-		Version: 1, Identity: identity{values.Hostname, values.Username, values.PasswordHash},
-		Locale: values.Locale, Keyboard: keyboard{values.Keyboard}, TimeZone: values.TimeZone,
+		Version: 1, Identity: identity{Hostname: values.Hostname, Username: values.Username, Password: values.PasswordHash, RealName: values.RealName},
+		Locale: values.Locale, Keyboard: keyboard{Layout: values.Keyboard, Variant: values.KeyboardVariant, Toggle: values.KeyboardToggle}, TimeZone: values.TimeZone,
 	}
 	if values.DiskMode == "interactive" {
 		ai.Interactive = []string{"storage"}
 	} else {
 		ai.Storage = &storage{Layout: layout{Name: "direct", Match: diskMatch{Serial: values.DiskSerial}}}
 	}
+	applyDesktop(&ai, values)
 	encoded, err := yaml.Marshal(document{Autoinstall: ai})
 	if err != nil {
 		return nil, errors.New("user-data: could not encode configuration")

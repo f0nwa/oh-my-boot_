@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -122,7 +123,7 @@ func verifyAutoinstallPreview(token, session string) (autoinstallPreviewPayload,
 func matchesAutoinstallPreview(payload autoinstallPreviewPayload, title string, form autoinstall.Form) bool {
 	// Match Compile's normalization without computing a second randomly salted hash.
 	values := autoinstall.Values{Locale: strings.TrimSpace(form.Locale), Keyboard: strings.TrimSpace(form.Keyboard), TimeZone: strings.TrimSpace(form.TimeZone), Hostname: strings.TrimSpace(form.Hostname), Username: strings.TrimSpace(form.Username), DiskMode: strings.TrimSpace(form.DiskMode), DiskSerial: form.DiskSerial, PasswordHash: payload.Values.PasswordHash}
-	if strings.TrimSpace(title) != payload.Title || values != payload.Values || len(form.Password) == 0 || len(form.Password) > 1024 {
+	if strings.TrimSpace(title) != payload.Title || !reflect.DeepEqual(values, payload.Values) || len(form.Password) == 0 || len(form.Password) > 1024 {
 		return false
 	}
 	hash, err := yescrypt.Hash([]byte(form.Password), []byte(payload.Values.PasswordHash))

@@ -62,7 +62,7 @@ func TestUbuntuAutoinstallStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.ID <= 0 || saved.CreatedAt.IsZero() || !bytes.Equal(saved.UserData, file.UserData) || saved.SHA256 != file.SHA256 || saved.Values != file.Values {
+	if saved.ID <= 0 || saved.CreatedAt.IsZero() || !bytes.Equal(saved.UserData, file.UserData) || saved.SHA256 != file.SHA256 || !reflect.DeepEqual(saved.Values, file.Values) {
 		t.Fatalf("saved = %+v", saved)
 	}
 	got, err := store.UbuntuAutoinstall(ctx, saved.ID)

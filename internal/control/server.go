@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -128,6 +129,7 @@ type Server struct {
 	SMB               SMBMountAPI
 	WindowsISO        WindowsISOAPI
 	UbuntuReadiness   UbuntuReadiness
+	UbuntuSource      UbuntuSourceAPI
 	WindowsAnswers    WindowsAnswerAPI
 	DriverPackages    DriverPackageAPI
 	DriverConfigs     DriverConfigAPI
@@ -297,6 +299,18 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 					return
 				}
 				r.Body = http.MaxBytesReader(w, r.Body, images.MaxISOBytes)
+			} else if strings.HasPrefix(r.Pattern, "POST /ubuntu-autoinstall") {
+				if r.ContentLength > 512<<10 {
+					http.Error(w, "Форма больше 512 КиБ", http.StatusRequestEntityTooLarge)
+					return
+				}
+				r.Body = http.MaxBytesReader(w, r.Body, 512<<10)
+				err = r.ParseForm()
+				var sizeError *http.MaxBytesError
+				if errors.As(err, &sizeError) {
+					http.Error(w, "Форма больше 512 КиБ", http.StatusRequestEntityTooLarge)
+					return
+				}
 			} else if r.Pattern == "POST /drivers/import" {
 				_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Minute))
 				r.Body = http.MaxBytesReader(w, r.Body, drivers.MaxArchiveBytes+(1<<20))

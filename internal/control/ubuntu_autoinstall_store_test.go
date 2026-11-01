@@ -237,3 +237,27 @@ func TestUbuntuAutoinstallMigration(t *testing.T) {
 		t.Fatalf("rerun changed binding: %+v err=%v", items, err)
 	}
 }
+
+func TestUbuntuExtendedValuesPreserveStoredBytes(t *testing.T) {
+	store := installationTestStore(t)
+	ctx := context.Background()
+	file := testAutoinstallFile(t, "desktop")
+	file.Values.RealName = "Рабочая станция"
+	file.Values.Packages = []string{"curl", "vim"}
+	file.Values.Keyboard = "us,ru"
+	file.Values.KeyboardToggle = "alt_shift_toggle"
+	data, err := autoinstall.Render(file.Values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.UserData = data
+	file.SHA256 = fmtDigest(data)
+	saved, err := store.CreateUbuntuAutoinstall(ctx, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.UbuntuAutoinstall(ctx, saved.ID)
+	if err != nil || !bytes.Equal(got.UserData, data) || !reflect.DeepEqual(got.Values, file.Values) {
+		t.Fatalf("extended values lost: %v", err)
+	}
+}

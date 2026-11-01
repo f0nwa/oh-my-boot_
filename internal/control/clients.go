@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"omb/internal/agent"
+	"omb/internal/autoinstall"
 	"omb/internal/boot"
 	"omb/internal/drivers"
 	"omb/internal/images"
@@ -467,4 +468,10 @@ func (c *AgentClient) OpenUEFICAUSB(ctx context.Context, key string) (io.ReadClo
 		return nil, 0, fmt.Errorf("local API /uefica-usb/file: %d %s", res.StatusCode, string(message))
 	}
 	return res.Body, res.ContentLength, nil
+}
+
+func (c *BootClient) UbuntuSource(ctx context.Context) (autoinstall.SourceCatalog, error) {
+	var catalog autoinstall.SourceCatalog
+	err := localCall(ctx, c.http, http.MethodGet, "/ubuntu/source", nil, &catalog)
+	return catalog, err
 }

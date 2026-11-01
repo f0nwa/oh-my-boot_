@@ -248,6 +248,9 @@ func (s *Server) stageMenuAutoinstalls(ctx context.Context, entries []menuProfil
 		if err != nil || file.ID != entry.autoinstallID || file.State != "validated" || file.SHA256 != entry.autoinstallSHA256 || len(file.UserData) == 0 || len(file.UserData) > boot.MaxAutoinstallUserDataSize || !bytes.Equal(rendered, file.UserData) || fmt.Sprintf("%x", sha256.Sum256(file.UserData)) != entry.autoinstallSHA256 {
 			return fmt.Errorf("Ubuntu Autoinstall file %d is invalid or changed", entry.autoinstallID)
 		}
+		if err := s.validateUbuntuSource(ctx, file.Values); err != nil {
+			return err
+		}
 		id, err := strconv.ParseInt(strings.TrimPrefix(entry.id, "install_"), 10, 64)
 		if err != nil || id <= 0 {
 			return fmt.Errorf("invalid Ubuntu Autoinstall installation identity")

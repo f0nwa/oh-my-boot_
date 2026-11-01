@@ -1,34 +1,14 @@
 package control
 
 import (
-	"bytes"
-	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"reflect"
+	"omb/internal/autoinstall"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/openwall/yescrypt-go"
-	"omb/internal/autoinstall"
 )
-
-const autoinstallPreviewLifetime = 10 * time.Minute
-const maxAutoinstallPreviewToken = 12 << 10
-
-// The only password representation in a preview is a salted hash. The title is
-// bound too, so every constructor field must be resubmitted unchanged on save.
-type autoinstallPreviewPayload struct {
-	Title   string             `json:"title"`
-	Values  autoinstall.Values `json:"values"`
-	YAML    []byte             `json:"yaml"`
-	Digest  string             `json:"digest"`
-	Expires int64              `json:"expires"`
-}
 
 type ubuntuAutoinstallEditorView struct {
 	Title  string
@@ -39,7 +19,40 @@ type ubuntuAutoinstallEditorView struct {
 }
 
 func autoinstallForm(r *http.Request) autoinstall.Form {
-	return autoinstall.Form{Locale: r.FormValue("locale"), Keyboard: r.FormValue("keyboard"), TimeZone: r.FormValue("timezone"), Hostname: r.FormValue("hostname"), Username: r.FormValue("username"), Password: r.FormValue("password"), DiskMode: r.FormValue("disk_mode"), DiskSerial: r.FormValue("disk_serial")}
+	layout := r.FormValue("keyboard")
+	variant := r.FormValue("keyboard_variant")
+	if rows, ok := r.Form["keyboard_layout"]; ok {
+		variants := r.Form["keyboard_layout_variant"]
+		layouts := []string{}
+		kept := []string{}
+		for i, l := range rows {
+			l = strings.TrimSpace(l)
+			if l == "" {
+				continue
+			}
+			layouts = append(layouts, l)
+			v := ""
+			if i < len(variants) {
+				v = strings.TrimSpace(variants[i])
+			}
+			kept = append(kept, v)
+		}
+		layout = strings.Join(layouts, ",")
+		variant = strings.Join(kept, ",")
+		if strings.Trim(variant, ",") == "" {
+			variant = ""
+		}
+	}
+	lines := func(name string) []string {
+		var out []string
+		for _, line := range strings.Split(strings.ReplaceAll(r.FormValue(name), "\r\n", "\n"), "\n") {
+			if x := strings.TrimSpace(line); x != "" {
+				out = append(out, x)
+			}
+		}
+		return out
+	}
+	return autoinstall.Form{Locale: r.FormValue("locale"), Keyboard: layout, KeyboardVariant: variant, KeyboardToggle: r.FormValue("keyboard_toggle"), TimeZone: r.FormValue("timezone"), Hostname: r.FormValue("hostname"), Username: r.FormValue("username"), Password: r.FormValue("password"), DiskMode: r.FormValue("disk_mode"), DiskSerial: r.FormValue("disk_serial"), RealName: r.FormValue("realname"), SourceID: r.FormValue("source_id"), Drivers: r.FormValue("drivers") == "true", Codecs: r.FormValue("codecs") == "true", Packages: lines("packages"), MirrorMode: r.FormValue("mirror_mode"), MirrorURL: r.FormValue("mirror_url"), Network: autoinstall.NetworkValues{Mode: r.FormValue("network_mode"), MAC: r.FormValue("network_mac"), Address: r.FormValue("network_address"), Gateway: r.FormValue("network_gateway"), DNS: lines("network_dns")}, SSH: autoinstall.SSHValues{InstallServer: r.FormValue("ssh_install") == "true", AllowPassword: r.FormValue("ssh_password") == "true", AuthorizedKeys: lines("ssh_keys")}, PostInstallScript: strings.ReplaceAll(r.FormValue("post_install_script"), "\r\n", "\n"), Shutdown: r.FormValue("shutdown")}
 }
 
 func (s *Server) ubuntuAutoinstallNew(w http.ResponseWriter, r *http.Request) {
@@ -57,77 +70,40 @@ func (s *Server) ubuntuAutoinstallPreview(w http.ResponseWriter, r *http.Request
 		http.Error(w, "Название файла обязательно, до 80 символов", http.StatusBadRequest)
 		return
 	}
-	values, data, err := autoinstall.Compile(autoinstallForm(r))
+	form := autoinstallForm(r)
+	var values autoinstall.Values
+	var data []byte
+	var err error
+	if form.Password != "" {
+		values, data, err = autoinstall.Compile(form)
+	} else {
+		previous, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token)
+		if !ok {
+			err = fmt.Errorf("password: required")
+		} else {
+			values, err = autoinstall.Normalize(form)
+			if err == nil {
+				values.PasswordHash = previous.Values.PasswordHash
+				data, err = autoinstall.Render(values)
+			}
+		}
+	}
+	if err == nil {
+		err = s.validateUbuntuSource(r.Context(), values)
+	}
 	if err != nil {
 		// Generator errors contain field names and fixed diagnostics, never input.
 		field, _, _ := strings.Cut(err.Error(), ":")
 		http.Error(w, fmt.Sprintf("Недопустимое значение поля %s", field), http.StatusBadRequest)
 		return
 	}
-	payload := autoinstallPreviewPayload{Title: title, Values: values, YAML: data, Digest: fmt.Sprintf("%x", sha256.Sum256(data)), Expires: time.Now().Add(autoinstallPreviewLifetime).Unix()}
+	payload := autoinstallPreviewPayload{Title: title, Values: values, Digest: fmt.Sprintf("%x", sha256.Sum256(data)), Expires: time.Now().Add(autoinstallPreviewLifetime).Unix()}
 	token, err := signAutoinstallPreview(payload, requestInfo(r).Token)
 	if err != nil {
 		http.Error(w, "Не удалось создать предпросмотр Autoinstall", http.StatusServiceUnavailable)
 		return
 	}
 	s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{Title: title, Values: values, YAML: string(data), Token: token})
-}
-
-func signAutoinstallPreview(payload autoinstallPreviewPayload, session string) (string, error) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	mac := hmac.New(sha256.New, []byte(session))
-	_, _ = mac.Write(data)
-	token := base64.RawURLEncoding.EncodeToString(data) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	if len(token) > maxAutoinstallPreviewToken {
-		return "", fmt.Errorf("preview exceeds size limit")
-	}
-	return token, nil
-}
-
-func verifyAutoinstallPreview(token, session string) (autoinstallPreviewPayload, bool) {
-	var payload autoinstallPreviewPayload
-	if len(token) > maxAutoinstallPreviewToken {
-		return payload, false
-	}
-	parts := strings.Split(token, ".")
-	if len(parts) != 2 {
-		return payload, false
-	}
-	data, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return payload, false
-	}
-	signature, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return payload, false
-	}
-	mac := hmac.New(sha256.New, []byte(session))
-	_, _ = mac.Write(data)
-	if !hmac.Equal(signature, mac.Sum(nil)) || json.Unmarshal(data, &payload) != nil {
-		return payload, false
-	}
-	now := time.Now().Unix()
-	if payload.Expires <= now || payload.Expires > now+int64(autoinstallPreviewLifetime/time.Second) || !safeMenuText(payload.Title, 80) {
-		return payload, false
-	}
-	rendered, err := autoinstall.Render(payload.Values)
-	if err != nil || !bytes.Equal(rendered, payload.YAML) || fmt.Sprintf("%x", sha256.Sum256(rendered)) != payload.Digest {
-		return payload, false
-	}
-	return payload, true
-}
-
-func matchesAutoinstallPreview(payload autoinstallPreviewPayload, title string, form autoinstall.Form) bool {
-	// Match Compile's normalization without computing a second randomly salted hash.
-	values := autoinstall.Values{Locale: strings.TrimSpace(form.Locale), Keyboard: strings.TrimSpace(form.Keyboard), TimeZone: strings.TrimSpace(form.TimeZone), Hostname: strings.TrimSpace(form.Hostname), Username: strings.TrimSpace(form.Username), DiskMode: strings.TrimSpace(form.DiskMode), DiskSerial: form.DiskSerial, PasswordHash: payload.Values.PasswordHash}
-	if strings.TrimSpace(title) != payload.Title || !reflect.DeepEqual(values, payload.Values) || len(form.Password) == 0 || len(form.Password) > 1024 {
-		return false
-	}
-	hash, err := yescrypt.Hash([]byte(form.Password), []byte(payload.Values.PasswordHash))
-	return err == nil && hmac.Equal(hash, []byte(payload.Values.PasswordHash))
 }
 
 func downloadAutoinstall(w http.ResponseWriter, data []byte) {
@@ -143,7 +119,8 @@ func (s *Server) ubuntuAutoinstallPreviewDownload(w http.ResponseWriter, r *http
 		http.Error(w, "Предпросмотр истёк или поля изменились. Создайте новый предпросмотр.", http.StatusBadRequest)
 		return
 	}
-	downloadAutoinstall(w, payload.YAML)
+	data, _ := autoinstall.Render(payload.Values)
+	downloadAutoinstall(w, data)
 }
 
 func (s *Server) ubuntuAutoinstallSave(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +129,16 @@ func (s *Server) ubuntuAutoinstallSave(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Предпросмотр истёк или поля изменились. Создайте новый предпросмотр.", http.StatusBadRequest)
 		return
 	}
-	file, err := s.Store.CreateUbuntuAutoinstall(r.Context(), UbuntuAutoinstallFile{Title: payload.Title, Values: payload.Values, UserData: payload.YAML, SHA256: payload.Digest, State: "validated"})
+	if err := s.validateUbuntuSource(r.Context(), payload.Values); err != nil {
+		http.Error(w, "Выбранный набор приложений недоступен в ISO", http.StatusBadRequest)
+		return
+	}
+	data, err := autoinstall.Render(payload.Values)
+	if err != nil {
+		http.Error(w, "Предпросмотр недействителен", http.StatusBadRequest)
+		return
+	}
+	file, err := s.Store.CreateUbuntuAutoinstall(r.Context(), UbuntuAutoinstallFile{Title: payload.Title, Values: payload.Values, UserData: data, SHA256: payload.Digest, State: "validated"})
 	if err != nil {
 		http.Error(w, "Не удалось сохранить файл Autoinstall", http.StatusServiceUnavailable)
 		return

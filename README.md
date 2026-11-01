@@ -46,7 +46,7 @@ Start with the [server installation guide](docs/installation.md) ([offline insta
 | Windows 10 WinPE | [EN](docs/en/windows-winpe-pxe.md) | [RU](docs/windows-winpe-pxe.md) |
 | Windows 11 WinPE | [EN](docs/en/windows11-winpe-pxe.md) | [RU](docs/windows11-winpe-pxe.md) |
 | WinPE driver test report | [EN](docs/en/winpe-driver-test-2026-10-19.md) | [RU](docs/winpe-driver-test-2026-10-19.md) |
-| Architecture and acceptance plan | [EN](docs/en/pxe-platform-design.md) | [RU](docs/superpowers/specs/2026-10-15-pxe-platform-design.md) |
+| Architecture and acceptance plan | [EN](docs/en/omb-design.md) | [RU](docs/superpowers/specs/2026-10-15-omb-design.md) |
 | Brand: mark, files and usage rules | — | [RU](docs/brand/README.md) |
 
 Implementation plans and stage specifications in `docs/superpowers` are kept in Russian.
@@ -64,7 +64,7 @@ scripts/fetch-ipxe_test.sh
 
 ## Names
 
-The product was called PXE Platform until 29 October 2026. The repository now targets OMB technical names (`omb-control`, `omb-agent`, `/etc/omb`, …). The existing test stand has been migrated, including a verified restore rehearsal and server reboot. Initial UEFI Secure Boot loading with drivers and XML was confirmed by the user. Full client regression testing is planned after the main development work; see the [migration report](docs/research/2026-10-31-omb-technical-migration.md) and [plan](docs/superpowers/plans/2026-10-31-omb-technical-migration.md). Historical plans and test reports retain their original names, paths and outcomes.
+The source code, installation files and existing test stand use OMB technical names (`omb-control`, `omb-agent`, `/etc/omb`, …). Migration included a verified restore rehearsal and server reboot. Initial UEFI Secure Boot loading with drivers and XML was confirmed by the user. Full client regression testing is planned after the main development work; see the [migration report](docs/research/2026-10-31-omb-technical-migration.md) and [name audit](docs/research/2026-11-01-omb-name-audit.md). Historical plans and test reports retain the identifiers and outcomes recorded at the time; the standalone migration tool reads the previous formats.
 
 ## License
 

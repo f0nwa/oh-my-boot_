@@ -20,6 +20,9 @@ type Form struct {
 	RealName, KeyboardVariant, KeyboardToggle, SourceID, PostInstallScript, Shutdown string
 	Drivers, Codecs                                                                  bool
 	Packages                                                                         []string
+	Network                                                                          NetworkValues
+	SSH                                                                              SSHValues
+	MirrorMode, MirrorURL                                                            string
 }
 
 // Values contains normalized configuration suitable for immutable storage.
@@ -30,6 +33,9 @@ type Values struct {
 	RealName, KeyboardVariant, KeyboardToggle, SourceID, PostInstallScript, Shutdown string
 	Drivers, Codecs                                                                  bool
 	Packages                                                                         []string
+	Network                                                                          NetworkValues
+	SSH                                                                              SSHValues
+	MirrorMode, MirrorURL                                                            string
 }
 
 var (
@@ -84,6 +90,9 @@ func Normalize(form Form) (Values, error) {
 	values.Shutdown = strings.TrimSpace(form.Shutdown)
 	values.Drivers, values.Codecs = form.Drivers, form.Codecs
 	values.Packages = uniqueStrings(form.Packages)
+	values.Network = normalizeNetwork(form.Network)
+	values.SSH = normalizeSSH(form.SSH)
+	values.MirrorMode, values.MirrorURL = strings.TrimSpace(form.MirrorMode), strings.TrimSpace(form.MirrorURL)
 	if err := validateFields(values); err != nil {
 		return Values{}, err
 	}
@@ -106,6 +115,15 @@ func validateFields(v Values) error {
 		return errors.New("locale: required, at most 64 bytes, using letters, digits, _, ., @ or -")
 	}
 	if err := validateDesktop(v); err != nil {
+		return err
+	}
+	if err := validateNetwork(v.Network); err != nil {
+		return err
+	}
+	if err := validateRepository(v); err != nil {
+		return err
+	}
+	if err := validateSSH(v.SSH); err != nil {
 		return err
 	}
 	if !hostnamePattern.MatchString(v.Hostname) {
@@ -169,19 +187,25 @@ type storage struct {
 	Layout layout `yaml:"layout"`
 }
 type config struct {
-	Version      int             `yaml:"version"`
-	Interactive  []string        `yaml:"interactive-sections,omitempty"`
-	Storage      *storage        `yaml:"storage,omitempty"`
-	Identity     identity        `yaml:"identity"`
-	Locale       string          `yaml:"locale"`
-	Keyboard     keyboard        `yaml:"keyboard"`
-	TimeZone     string          `yaml:"timezone"`
-	Source       *desktopSource  `yaml:"source,omitempty"`
-	Drivers      *desktopInstall `yaml:"drivers,omitempty"`
-	Codecs       *desktopInstall `yaml:"codecs,omitempty"`
-	Packages     []string        `yaml:"packages,omitempty"`
-	LateCommands [][]string      `yaml:"late-commands,omitempty"`
-	Shutdown     string          `yaml:"shutdown,omitempty"`
+	Version          int             `yaml:"version"`
+	Interactive      []string        `yaml:"interactive-sections,omitempty"`
+	Storage          *storage        `yaml:"storage,omitempty"`
+	Identity         identity        `yaml:"identity"`
+	Locale           string          `yaml:"locale"`
+	Keyboard         keyboard        `yaml:"keyboard"`
+	TimeZone         string          `yaml:"timezone"`
+	Source           *desktopSource  `yaml:"source,omitempty"`
+	Drivers          *desktopInstall `yaml:"drivers,omitempty"`
+	Codecs           *desktopInstall `yaml:"codecs,omitempty"`
+	Packages         []string        `yaml:"packages,omitempty"`
+	LateCommands     [][]string      `yaml:"late-commands,omitempty"`
+	Shutdown         string          `yaml:"shutdown,omitempty"`
+	Network          map[string]any  `yaml:"network,omitempty"`
+	APT              map[string]any  `yaml:"apt,omitempty"`
+	SSH              *SSHValues      `yaml:"ssh,omitempty"`
+	RefreshInstaller *struct {
+		Update bool `yaml:"update"`
+	} `yaml:"refresh-installer,omitempty"`
 }
 type document struct {
 	Autoinstall config `yaml:"autoinstall"`
@@ -202,6 +226,17 @@ func Render(values Values) ([]byte, error) {
 		ai.Storage = &storage{Layout: layout{Name: "direct", Match: diskMatch{Serial: values.DiskSerial}}}
 	}
 	applyDesktop(&ai, values)
+	ai.Network = networkConfig(values.Network)
+	ai.APT = repositoryConfig(values)
+	if values.SSH.InstallServer {
+		ssh := values.SSH
+		ai.SSH = &ssh
+	}
+	if values.MirrorMode == "offline" {
+		ai.RefreshInstaller = &struct {
+			Update bool `yaml:"update"`
+		}{false}
+	}
 	encoded, err := yaml.Marshal(document{Autoinstall: ai})
 	if err != nil {
 		return nil, errors.New("user-data: could not encode configuration")

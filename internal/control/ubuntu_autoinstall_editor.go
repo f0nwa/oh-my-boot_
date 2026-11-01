@@ -11,11 +11,19 @@ import (
 )
 
 type ubuntuAutoinstallEditorView struct {
-	Title  string
-	Values autoinstall.Values
-	YAML   string
-	Token  string
-	File   *UbuntuAutoinstallFile
+	Title                                                                string
+	Values                                                               autoinstall.Values
+	YAML                                                                 string
+	Token                                                                string
+	File                                                                 *UbuntuAutoinstallFile
+	Form                                                                 autoinstall.Form
+	HasForm, CanSave, UnknownSource                                      bool
+	Section, Tab, Message, PackagesText, DNSText, KeysText, SourceDigest string
+	Sections                                                             []ubuntuEditorSection
+	Issues                                                               []ubuntuEditorIssue
+	Summary                                                              []ubuntuSummaryItem
+	Sources                                                              []autoinstall.SourceOption
+	Keyboards                                                            []ubuntuKeyboardRow
 }
 
 func autoinstallForm(r *http.Request) autoinstall.Form {
@@ -60,14 +68,29 @@ func (s *Server) ubuntuAutoinstallNew(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderUbuntuAutoinstall(w http.ResponseWriter, r *http.Request, view *ubuntuAutoinstallEditorView) {
+	s.prepareUbuntuView(r, view)
 	w.Header().Set("Cache-Control", "no-store")
 	render(w, "ubuntu_autoinstall_editor", pageData{Info: requestInfo(r), UbuntuEditor: view})
 }
 
 func (s *Server) ubuntuAutoinstallPreview(w http.ResponseWriter, r *http.Request) {
 	title := strings.TrimSpace(r.FormValue("title"))
+	if r.FormValue("section") != "" || r.FormValue("tab") != "" {
+		view := &ubuntuAutoinstallEditorView{Title: title, Form: autoinstallForm(r), HasForm: true}
+		if payload, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token); ok {
+			view.Token = r.FormValue("preview_token")
+			if matchesAutoinstallPreview(payload, title, autoinstallForm(r)) {
+				data, _ := autoinstall.Render(payload.Values)
+				view.YAML = string(data)
+				view.Values = payload.Values
+				view.CanSave = true
+			}
+		}
+		s.renderUbuntuAutoinstall(w, r, view)
+		return
+	}
 	if !safeMenuText(title, 80) {
-		http.Error(w, "Название файла обязательно, до 80 символов", http.StatusBadRequest)
+		s.ubuntuFormError(w, r, title, autoinstallForm(r), fmt.Errorf("title: required"))
 		return
 	}
 	form := autoinstallForm(r)
@@ -92,18 +115,17 @@ func (s *Server) ubuntuAutoinstallPreview(w http.ResponseWriter, r *http.Request
 		err = s.validateUbuntuSource(r.Context(), values)
 	}
 	if err != nil {
-		// Generator errors contain field names and fixed diagnostics, never input.
-		field, _, _ := strings.Cut(err.Error(), ":")
-		http.Error(w, fmt.Sprintf("Недопустимое значение поля %s", field), http.StatusBadRequest)
+		s.ubuntuFormError(w, r, title, form, err)
 		return
 	}
+
 	payload := autoinstallPreviewPayload{Title: title, Values: values, Digest: fmt.Sprintf("%x", sha256.Sum256(data)), Expires: time.Now().Add(autoinstallPreviewLifetime).Unix()}
 	token, err := signAutoinstallPreview(payload, requestInfo(r).Token)
 	if err != nil {
 		http.Error(w, "Не удалось создать предпросмотр Autoinstall", http.StatusServiceUnavailable)
 		return
 	}
-	s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{Title: title, Values: values, YAML: string(data), Token: token})
+	s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{Title: title, Values: values, YAML: string(data), Token: token, CanSave: true})
 }
 
 func downloadAutoinstall(w http.ResponseWriter, data []byte) {

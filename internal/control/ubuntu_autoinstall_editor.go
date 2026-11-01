@@ -2,6 +2,8 @@ package control
 
 import (
 	"crypto/sha256"
+	_ "embed"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"omb/internal/autoinstall"
@@ -11,6 +13,7 @@ import (
 )
 
 type ubuntuAutoinstallEditorView struct {
+	Status                                                               int
 	Title                                                                string
 	Values                                                               autoinstall.Values
 	YAML                                                                 string
@@ -70,7 +73,35 @@ func (s *Server) ubuntuAutoinstallNew(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderUbuntuAutoinstall(w http.ResponseWriter, r *http.Request, view *ubuntuAutoinstallEditorView) {
 	s.prepareUbuntuView(r, view)
 	w.Header().Set("Cache-Control", "no-store")
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if view.Status != 0 {
+			w.WriteHeader(view.Status)
+		}
+		_ = json.NewEncoder(w).Encode(ubuntuPreviewResponse{Token: view.Token, YAML: view.YAML, Summary: view.Summary, Issues: view.Issues, Ready: view.CanSave})
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if view.Status != 0 {
+		w.WriteHeader(view.Status)
+	}
 	render(w, "ubuntu_autoinstall_editor", pageData{Info: requestInfo(r), UbuntuEditor: view})
+}
+
+type ubuntuPreviewResponse struct {
+	Token   string              `json:"token"`
+	YAML    string              `json:"yaml"`
+	Summary []ubuntuSummaryItem `json:"summary"`
+	Issues  []ubuntuEditorIssue `json:"issues"`
+	Ready   bool                `json:"ready"`
+}
+
+//go:embed ubuntu_autoinstall_editor.js
+var ubuntuAutoinstallEditorJS []byte
+
+func ubuntuAutoinstallEditorScript(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	_, _ = w.Write(ubuntuAutoinstallEditorJS)
 }
 
 func (s *Server) ubuntuAutoinstallPreview(w http.ResponseWriter, r *http.Request) {
@@ -148,11 +179,11 @@ func (s *Server) ubuntuAutoinstallPreviewDownload(w http.ResponseWriter, r *http
 func (s *Server) ubuntuAutoinstallSave(w http.ResponseWriter, r *http.Request) {
 	payload, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token)
 	if !ok || !matchesAutoinstallPreview(payload, r.FormValue("title"), autoinstallForm(r)) {
-		http.Error(w, "Предпросмотр истёк или поля изменились. Создайте новый предпросмотр.", http.StatusBadRequest)
+		s.ubuntuFormError(w, r, r.FormValue("title"), autoinstallForm(r), fmt.Errorf("password: preview expired or fields changed"))
 		return
 	}
 	if err := s.validateUbuntuSource(r.Context(), payload.Values); err != nil {
-		http.Error(w, "Выбранный набор приложений недоступен в ISO", http.StatusBadRequest)
+		s.ubuntuFormError(w, r, r.FormValue("title"), autoinstallForm(r), fmt.Errorf("source: selected source unavailable"))
 		return
 	}
 	data, err := autoinstall.Render(payload.Values)

@@ -93,6 +93,9 @@ func Normalize(form Form) (Values, error) {
 	values.Network = normalizeNetwork(form.Network)
 	values.SSH = normalizeSSH(form.SSH)
 	values.MirrorMode, values.MirrorURL = strings.TrimSpace(form.MirrorMode), strings.TrimSpace(form.MirrorURL)
+	if values.MirrorMode != "custom" {
+		values.MirrorURL = ""
+	}
 	if err := validateFields(values); err != nil {
 		return Values{}, err
 	}

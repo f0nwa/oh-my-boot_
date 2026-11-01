@@ -176,12 +176,16 @@ func (s *Server) prepareUbuntuView(r *http.Request, v *ubuntuAutoinstallEditorVi
 func (s *Server) ubuntuFormError(w http.ResponseWriter, r *http.Request, title string, form autoinstall.Form, err error) {
 	field, _, _ := strings.Cut(err.Error(), ":")
 	section := ubuntuSection(field)
-	v := &ubuntuAutoinstallEditorView{Title: title, Form: form, HasForm: true, Section: section, Message: fmt.Sprintf("Недопустимое значение поля %s", field), Issues: []ubuntuEditorIssue{{Section: section, Field: field, Message: fmt.Sprintf("Недопустимое значение поля %s", field), Severity: "error"}}}
+	labels := map[string]string{"title": "Название", "locale": "Локаль", "keyboard": "Раскладки", "keyboard variant": "Вариант раскладки", "keyboard toggle": "Переключение раскладок", "timezone": "Часовой пояс IANA", "hostname": "Имя компьютера", "username": "Имя пользователя", "password": "Пароль для установки", "realname": "Полное имя", "disk mode": "Разметка", "disk serial": "Точный серийный номер диска", "source": "Набор приложений", "packages": "Дополнительные пакеты", "mirror": "Источник пакетов", "network": "Сеть установленной системы", "network mac": "MAC-адрес интерфейса", "network address": "IPv4-адрес с префиксом", "network gateway": "Шлюз IPv4", "network dns": "DNS", "ssh": "SSH-сервер", "ssh keys": "Публичные SSH-ключи — по одному в строке", "script": "Скрипт в установленной системе от root", "shutdown": "После установки"}
+	label := labels[field]
+	if label == "" {
+		label = "Файл и источник"
+	}
+	message := fmt.Sprintf(translate(requestInfo(r).User.Language, "Проверьте поле «%s»."), translate(requestInfo(r).User.Language, label))
+	v := &ubuntuAutoinstallEditorView{Title: title, Form: form, HasForm: true, Section: section, Message: message, Issues: []ubuntuEditorIssue{{Section: section, Field: field, Message: message, Severity: "error"}}}
 	if _, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token); ok {
 		v.Token = r.FormValue("preview_token")
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusBadRequest)
+	v.Status = http.StatusBadRequest
 	s.renderUbuntuAutoinstall(w, r, v)
 }

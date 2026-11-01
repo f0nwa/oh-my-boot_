@@ -27,3 +27,13 @@ func TestStaticDesktopNetwork(t *testing.T) {
 		}
 	}
 }
+
+func TestDesktopClearsDisabledFormSections(t *testing.T) {
+	f := validForm()
+	f.Network = NetworkValues{MAC: "52:54:00:12:34:56", Address: "192.0.2.10/24", Gateway: "192.0.2.1"}
+	f.MirrorURL = "http://old.example/ubuntu"
+	v, _, err := Compile(f)
+	if err != nil || v.Network.MAC != "" || v.MirrorURL != "" {
+		t.Fatalf("inactive fields prevent changing back to defaults: %v", err)
+	}
+}

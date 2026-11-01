@@ -239,6 +239,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /answers/editor", s.protect("view", s.answerEditorPost))
 	mux.HandleFunc("POST /answers/editor/save", s.protect("images", s.answerEditorSave))
 	mux.HandleFunc("GET /assets/answer_editor.js", answerEditorScript)
+	mux.HandleFunc("GET /assets/ubuntu_autoinstall_editor.js", ubuntuAutoinstallEditorScript)
 	mux.HandleFunc("POST /answers/upload", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
 	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))

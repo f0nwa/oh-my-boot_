@@ -12,6 +12,9 @@ type NetworkValues struct {
 }
 
 func normalizeNetwork(n NetworkValues) NetworkValues {
+	if n.Mode == "" {
+		return NetworkValues{}
+	}
 	n.DNS = uniqueStrings(n.DNS)
 	if mac, e := net.ParseMAC(n.MAC); e == nil {
 		n.MAC = mac.String()

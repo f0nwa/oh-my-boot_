@@ -12,7 +12,7 @@
 {{range .Issues}}<p class="notice">{{.Message}} {{.Field}}</p>{{end}}
 <pre id="autoinstall-yaml">{{.YAML}}</pre>
 {{else}}
-<form id="ubuntu-editor" class="ed ai-editor" method="post" action="/ubuntu-autoinstall/preview" novalidate data-expired="{{t "Предпросмотр недоступен. Повторите проверку или войдите заново."}}">
+<form id="ubuntu-editor" class="ed ai-editor" method="post" action="/ubuntu-autoinstall/preview" novalidate data-download="{{t "Скачать user-data"}}" data-checked="{{t "Проверен конструктором"}}" data-stale="{{t "Предпросмотр устарел. Проверяем изменения…"}}" data-invalid="{{t "Исправьте поля на вкладке «Проверка»."}}" data-expired="{{t "Предпросмотр недоступен. Повторите проверку или войдите заново."}}">
 <input type="hidden" name="csrf" value="{{$info.CSRF}}">
 <input type="hidden" name="active_section" value="{{.Section}}"><input type="hidden" name="active_tab" value="{{.Tab}}">
 {{if .Token}}<input type="hidden" name="preview_token" value="{{.Token}}">{{end}}
@@ -75,9 +75,10 @@
 <aside class="ed-side"><div class="step"><div class="ed-tabs">{{range list "summary" "yaml" "issues"}}<button type="submit" name="tab" value="{{.}}" data-ai-tab="{{.}}" formnovalidate>{{if eq . "summary"}}{{t "Что получится"}}{{else if eq . "yaml"}}YAML{{else}}{{t "Проверка"}}{{end}}</button>{{end}}</div>
 <div data-ai-tab-panel="summary"{{if ne .Tab "summary"}} hidden{{end}}><dl id="ai-summary">{{range .Summary}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl></div>
 <div data-ai-tab-panel="yaml"{{if ne .Tab "yaml"}} hidden{{end}}><pre id="autoinstall-yaml">{{.YAML}}</pre></div>
-<div data-ai-tab-panel="issues"{{if ne .Tab "issues"}} hidden{{end}}><ul id="ai-issues">{{range .Issues}}<li class="{{if eq .Severity "error"}}danger-text{{end}}">{{.Message}} {{.Field}}</li>{{end}}</ul></div>
+<div data-ai-tab-panel="issues"{{if ne .Tab "issues"}} hidden{{end}}><ul id="ai-issues">{{range .Issues}}<li data-field="{{.Field}}" class="{{if eq .Severity "error"}}danger-text{{end}}">{{.Message}}{{if ne .Severity "error"}} {{.Field}}{{end}}</li>{{end}}</ul></div>
 <p class="hint" id="ai-preview-state" aria-live="polite">{{if .CanSave}}{{t "Проверен конструктором"}}{{else}}{{t "Создайте предпросмотр перед сохранением."}}{{end}}</p>
 </div></aside>
 </form>
-{{if .CanSave}}<form id="ai-preview-download" method="post" action="/ubuntu-autoinstall/preview/download"><input type="hidden" name="csrf" value="{{$info.CSRF}}"><input type="hidden" name="preview_token" value="{{.Token}}"><button class="btn">{{t "Скачать user-data"}}</button></form>{{end}}
+<div id="ai-download">{{if .CanSave}}<form id="ai-preview-download" method="post" action="/ubuntu-autoinstall/preview/download"><input type="hidden" name="csrf" value="{{$info.CSRF}}"><input type="hidden" name="preview_token" value="{{.Token}}"><button class="btn">{{t "Скачать user-data"}}</button></form>{{end}}</div>
+<script defer src="/assets/ubuntu_autoinstall_editor.js"></script>
 {{end}}{{end}}{{template "bottom" .}}{{end}}

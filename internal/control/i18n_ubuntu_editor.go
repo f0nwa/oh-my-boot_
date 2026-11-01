@@ -1,6 +1,9 @@
 package control
 
 var ubuntuEditorMessages = map[string]string{
+	"Проверьте поле «%s».":                       "Check the %s field.",
+	"Предпросмотр устарел. Проверяем изменения…": "Preview is stale. Checking changes…",
+	"Исправьте поля на вкладке «Проверка».":      "Correct the fields on the Validation tab.",
 	"Проверка":                   "Validation",
 	"Конструктор Ubuntu Desktop": "Ubuntu Desktop answer editor",
 	"Настройте рабочий компьютер, проверьте YAML и сохраните сценарий установки.": "Configure a workstation, review the YAML and save an installation scenario.",

@@ -1,0 +1,69 @@
+#cloud-config
+autoinstall:
+    version: 1
+    storage:
+        layout:
+            name: direct
+            match:
+                serial: DESKTOP-123
+    identity:
+        hostname: desktop-lab
+        username: operator
+        password: $y$j9T$HGeb2qzEwdKY1tOTbnwU5.$y.1WdhBxQuF3Pf8pMzSfRGJlB4ViePsqxfU.x9ereHD
+        realname: Desktop User
+    locale: en_US.UTF-8
+    keyboard:
+        layout: us,ru
+        variant: ','
+        toggle: alt_shift_toggle
+    timezone: Europe/Moscow
+    source:
+        id: ubuntu-desktop
+    drivers:
+        install: true
+    codecs:
+        install: true
+    packages:
+        - curl
+        - vim
+    late-commands:
+        - - curtin
+          - in-target
+          - --
+          - /bin/sh
+          - -eu
+          - -c
+          - |
+            printf '%s\n' desktop > /etc/omb-workstation
+    shutdown: poweroff
+    network:
+        ethernets:
+            omb0:
+                addresses:
+                    - 192.0.2.10/24
+                dhcp4: false
+                match:
+                    macaddress: "52:54:00:12:34:56"
+                nameservers:
+                    addresses:
+                        - 192.0.2.53
+                routes:
+                    - to: default
+                      via: 192.0.2.1
+        renderer: NetworkManager
+        version: 2
+    apt:
+        fallback: abort
+        geoip: false
+        mirror-selection:
+            primary:
+                - uri: http://repo.example/ubuntu
+        security:
+            - arches:
+                - default
+              uri: http://repo.example/ubuntu
+    ssh:
+        install-server: true
+        allow-pw: false
+        authorized-keys:
+            - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDtqJ7zOtqQtYqOo0CpvDXNlMhV3HeJDpjrASKGLWdop

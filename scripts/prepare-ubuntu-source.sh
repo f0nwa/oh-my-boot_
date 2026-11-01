@@ -22,7 +22,7 @@ cleanup() {
   rc=$?
   trap - EXIT
   if [ "$mounted" = true ]; then
-    if ! umount -- "$mountpoint"; then echo 'failed to unmount temporary ISO; directory preserved' >&2; exit 1; fi
+    if ! umount -- "$mountpoint"; then printf 'failed to unmount temporary ISO; directory preserved at %s\n' "$mountpoint" >&2; exit 1; fi
   fi
   rm -rf -- "$mountpoint"
   if [ -n "$stage" ]; then rm -rf -- "$stage"; fi

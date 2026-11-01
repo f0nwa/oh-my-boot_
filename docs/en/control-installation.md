@@ -145,9 +145,19 @@ Answer files are under Library → Answer files. A Windows XML belongs to a prof
 
 ## Ubuntu Autoinstall
 
-In Library → Answer files, use Create Ubuntu file in the Ubuntu Autoinstall block. The same action is available while creating an Ubuntu installation. The constructor offers interactive storage setup or erasure by exact disk serial number.
+In Library → Answer files, use Create Ubuntu file in the Ubuntu Autoinstall block. The same action is available when creating an Ubuntu installation. The editor targets Ubuntu Desktop and has eight sections: source, language, user, disk, hardware, software and repository, networking and SSH, and completion.
 
-Saved files are immutable; create a copy for a new variant. Select a validated file in an installation and publish through the menu draft. Without an answer file the installation stays manual. Boot serves a matching NoCloud `user-data` and `meta-data` pair under `/assets/ubuntu-autoinstall/…`. File availability alone does not prove OS installation completion.
+Settings include the user's full name, up to four keyboard layouts with variants and a switching shortcut, an application source from the prepared ISO, third-party drivers and codecs, up to 128 APT packages, an Ubuntu mirror, static IPv4 matched by exact MAC address, an optional SSH server with public keys, and a script up to 16 KiB. Defaults use DHCP, disable SSH, and leave partitioning interactive. Automatic partitioning wipes only the disk with the exact serial number; a missing match never falls back to the first disk.
+
+Sections are on the left; the right panel contains Result, exact YAML, and Validation. The main workflow works without JavaScript. JavaScript updates the preview after edits and enables saving only after the current input is checked. A password is required for the first preview, after the ten-minute preview expires, and for a new copy. A valid preview allows edits and saving without entering the password again. The page never returns the plaintext password, and the library stores only its hash.
+
+Application sources come from the same ISO served by Boot; prepare metadata using the [Ubuntu guide](ubuntu-desktop-pxe.md#source-preparation). Without it, only ISO defaults are available. An unavailable explicit source blocks saving or publication. Changing the ISO never rewrites saved files.
+
+Extra packages, the SSH server, drivers and codecs need a package archive accessible from the installing machine. A custom HTTP(S) mirror must serve both the primary and security archives; it may be local. Offline mode skips mirror selection and installer refresh and excludes these extra components. A custom script can still access the network itself. Static networking is applied after the installer receives its answers; initial PXE boot continues to use DHCP.
+
+The script runs as root inside the installed system using `/bin/sh -eu`, before reboot. A non-zero exit stops the installation. It is not a graphical first-login script. Completion can restart or power off the machine.
+
+Saved files are immutable; create a copy for a new variant. Select a checked file in an installation and publish through the menu draft. Without an answer file the installation stays manual. Boot serves matching NoCloud `user-data` and `meta-data` under `/assets/ubuntu-autoinstall/…`. Checked by the editor means the structure and settings were validated; completed installation, desktop login, hardware drivers and Secure Boot require separate client verification.
 
 ## Storage availability and recovery
 

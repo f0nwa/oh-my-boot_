@@ -14,7 +14,24 @@ OMB_BOOT_UBUNTU_ISO=/var/lib/omb-images/iso/ubuntu-desktop-amd64.iso
 
 Replace this example with a real file. Boot needs read access through all parent directories. For a local Images source, add `omb-images` to the Boot unit's supplementary groups. For SMB, configure managed storage first.
 
-From the same ISO, copy `casper/vmlinuz` and `casper/initrd` to `/srv/omb/tftp/ubuntu/vmlinuz` and `/srv/omb/tftp/ubuntu/initrd`, and the Ubuntu shim `EFI/boot/bootx64.efi` to `/srv/omb/tftp/ubuntu/bootx64.efi`. Compare source and copy SHA-256 values; Boot must be able to read the files. `/etc/omb/control.env` must contain the client-accessible address:
+Finish active installations and stop Boot before preparing the source. From the current OMB repository root, run as root with your real ISO path:
+
+~~~sh
+systemctl stop omb-boot.service
+scripts/prepare-ubuntu-source.sh --iso /var/lib/omb-images/iso/ubuntu-desktop-amd64.iso --assets /srv/omb/tftp
+~~~
+
+The script mounts the ISO read-only, copies its kernel, initrd, Ubuntu shim and `casper/install-sources.yaml` into a new `ubuntu/` tree, then writes `manifest.json` with ISO and file SHA-256 values. The previous tree is retained alongside it as `.ubuntu-backup.*`; the script prints its location. Failure preserves or restores the previous tree. A failed unmount preserves its temporary directory; do not remove files through an active mount.
+
+At startup Boot verifies the manifest against the configured ISO, then checks file identity, size and mtime. Replacing the ISO or its boot files requires preparation and a Boot restart. Missing metadata still permits manual boot and the ISO-default answer scenario, but disables explicit application source choices. Metadata errors do not stop unrelated Boot functions.
+
+After successful preparation:
+
+~~~sh
+systemctl start omb-boot.service
+~~~
+
+`/etc/omb/control.env` must contain the client-accessible address:
 
 ~~~ini
 OMB_CONTROL_BOOT_BASE_URL=http://10.30.0.10:8080

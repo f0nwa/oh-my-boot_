@@ -1,0 +1,21 @@
+#cloud-config
+autoinstall:
+    version: 1
+    interactive-sections:
+        - storage
+    identity:
+        hostname: offline-desktop
+        username: operator
+        password: $y$j9T$HGeb2qzEwdKY1tOTbnwU5.$y.1WdhBxQuF3Pf8pMzSfRGJlB4ViePsqxfU.x9ereHD
+    locale: en_US.UTF-8
+    keyboard:
+        layout: us
+    timezone: UTC
+    shutdown: reboot
+    apt:
+        fallback: offline-install
+        geoip: false
+        mirror-selection:
+            primary: []
+    refresh-installer:
+        update: false

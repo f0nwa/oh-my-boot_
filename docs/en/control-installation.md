@@ -147,6 +147,8 @@ Answer files are under Library → Answer files. A Windows XML belongs to a prof
 
 In Library → Answer files, use Create Ubuntu file in the Ubuntu Autoinstall block. The same action is available when creating an Ubuntu installation. The editor targets Ubuntu Desktop and has eight sections: source, language, user, disk, hardware, software and repository, networking and SSH, and completion.
 
+The extra package list accepts package names and rejects the removal suffix `-`; names such as `g++` remain valid.
+
 Settings include the user's full name, up to four keyboard layouts with variants and a switching shortcut, an application source from the prepared ISO, third-party drivers and codecs, up to 128 APT packages, an Ubuntu mirror, static IPv4 matched by exact MAC address, an optional SSH server with public keys, and a script up to 16 KiB. Defaults use DHCP, disable SSH, and leave partitioning interactive. Automatic partitioning wipes only the disk with the exact serial number; a missing match never falls back to the first disk.
 
 Sections are on the left; the right panel contains Result, exact YAML, and Validation. The main workflow works without JavaScript. JavaScript updates the preview after edits and enables saving only after the current input is checked. A password is required for the first preview, after the ten-minute preview expires, and for a new copy. A valid preview allows edits and saving without entering the password again. The page never returns the plaintext password, and the library stores only its hash.

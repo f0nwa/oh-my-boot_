@@ -84,6 +84,9 @@ func Normalize(form Form) (Values, error) {
 	}
 	values.RealName = strings.TrimSpace(form.RealName)
 	values.KeyboardVariant = strings.TrimSpace(form.KeyboardVariant)
+	if count := strings.Count(values.Keyboard, ","); values.KeyboardVariant == "" && count > 0 && count < 4 {
+		values.KeyboardVariant = strings.Repeat(",", count)
+	}
 	values.KeyboardToggle = strings.TrimSpace(form.KeyboardToggle)
 	values.SourceID = strings.TrimSpace(form.SourceID)
 	values.PostInstallScript = form.PostInstallScript

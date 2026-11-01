@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func sourceFixture(t *testing.T) (string, string) {
@@ -84,5 +85,29 @@ func TestUbuntuSourceLocalAPI(t *testing.T) {
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/ubuntu/source", nil))
 	if res.Code != 200 {
 		t.Fatalf("API %d %s", res.Code, res.Body.String())
+	}
+}
+
+func TestUbuntuSourceReadCannotReplaceVerifiedSnapshot(t *testing.T) {
+	iso, assets := sourceFixture(t)
+	s := NewUbuntuSource(iso, assets)
+	if _, err := s.Catalog(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(assets, "ubuntu", "install-sources.yaml")
+	verified := s.info[path]
+	changed := []byte("- id: ubuntu-desktop-changed\n  name: Changed\n")
+	if err := os.WriteFile(path, changed, 0644); err != nil {
+		t.Fatal(err)
+	}
+	later := verified.ModTime().Add(time.Second)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.read(path, 64*1024); err == nil {
+		t.Fatal("read replaced a previously verified snapshot")
+	}
+	if _, err := s.Catalog(); err == nil {
+		t.Fatal("mutated catalog accepted under old manifest")
 	}
 }

@@ -27,7 +27,25 @@ func ParseInstallSources(data []byte) ([]SourceOption, error) {
 		Name    any    `yaml:"name"`
 		Default bool   `yaml:"default"`
 	}
-	if e := yaml.Unmarshal(data, &rows); e != nil || len(rows) == 0 || len(rows) > 32 {
+	var doc yaml.Node
+	if e := yaml.Unmarshal(data, &doc); e != nil || len(doc.Content) != 1 {
+		return nil, errors.New("source: invalid metadata")
+	}
+	node := doc.Content[0]
+	if node.Kind == yaml.MappingNode {
+		var catalog struct {
+			Version int       `yaml:"version"`
+			Sources yaml.Node `yaml:"sources"`
+		}
+		if node.Decode(&catalog) != nil || catalog.Version < 1 {
+			return nil, errors.New("source: invalid catalog version")
+		}
+		node = &catalog.Sources
+	}
+	if node.Kind != yaml.SequenceNode {
+		return nil, errors.New("source: invalid metadata")
+	}
+	if e := node.Decode(&rows); e != nil || len(rows) == 0 || len(rows) > 32 {
 		return nil, errors.New("source: invalid metadata")
 	}
 	out := []SourceOption{}

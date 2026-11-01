@@ -36,6 +36,9 @@ func (s *UbuntuSource) read(path string, limit int64) ([]byte, error) {
 	if e != nil || !info.Mode().IsRegular() || info.Size() > limit {
 		return nil, errUbuntuSource
 	}
+	if old := s.info[path]; old != nil && !sameUbuntuSourceInfo(old, info) {
+		return nil, errUbuntuSource
+	}
 	f, e := os.Open(path)
 	if e != nil {
 		return nil, errUbuntuSource
@@ -49,7 +52,11 @@ func (s *UbuntuSource) read(path string, limit int64) ([]byte, error) {
 	if e != nil || int64(len(data)) > limit {
 		return nil, errUbuntuSource
 	}
-	s.info[path] = opened
+	after, e := f.Stat()
+	if e != nil || !sameUbuntuSourceInfo(opened, after) {
+		return nil, errUbuntuSource
+	}
+	s.info[path] = after
 	return data, nil
 }
 func (s *UbuntuSource) hash(path, want string, limit int64) error {
@@ -100,7 +107,7 @@ func (s *UbuntuSource) load() error {
 	if s.info[s.isoPath].Size() != m.ISOSize {
 		return errUbuntuSource
 	}
-	for _, n := range []string{"vmlinuz", "initrd", "bootx64.efi", "install-sources.yaml"} {
+	for _, n := range []string{"vmlinuz", "initrd", "bootx64.efi"} {
 		want := m.Files[n]
 		if !validSHA256(want) {
 			return errUbuntuSource
@@ -113,12 +120,18 @@ func (s *UbuntuSource) load() error {
 	if e != nil {
 		return e
 	}
+	want := m.Files["install-sources.yaml"]
+	digest := sha256.Sum256(data)
+	if !validSHA256(want) || hex.EncodeToString(digest[:]) != want {
+		return errUbuntuSource
+	}
 	options, e := autoinstall.ParseInstallSources(data)
 	if e != nil {
 		return errUbuntuSource
 	}
 	s.catalog = autoinstall.SourceCatalog{ISOSHA256: m.ISOSHA256, Sources: options}
-	return nil
+	_, e = s.Catalog()
+	return e
 }
 func (s *UbuntuSource) Catalog() (autoinstall.SourceCatalog, error) {
 	if s == nil || s.err != nil {
@@ -133,4 +146,8 @@ func (s *UbuntuSource) Catalog() (autoinstall.SourceCatalog, error) {
 	result := s.catalog
 	result.Sources = append([]autoinstall.SourceOption(nil), result.Sources...)
 	return result, nil
+}
+
+func sameUbuntuSourceInfo(a, b os.FileInfo) bool {
+	return os.SameFile(a, b) && a.Mode() == b.Mode() && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
 }

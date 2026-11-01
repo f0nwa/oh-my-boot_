@@ -26,6 +26,7 @@ autoinstall:
     packages:
         - curl
         - vim
+        - g++
     late-commands:
         - - curtin
           - in-target
@@ -53,6 +54,8 @@ autoinstall:
         renderer: NetworkManager
         version: 2
     apt:
+        conf: |
+            APT::Cmd::Pattern-Only "true";
         fallback: abort
         geoip: false
         mirror-selection:

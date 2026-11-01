@@ -92,3 +92,49 @@ func TestDesktopScriptFailsOnError(t *testing.T) {
 		t.Fatalf("script did not fail early: %s %v", output, err)
 	}
 }
+
+func TestDesktopDefaultVariantsAlignWithLayouts(t *testing.T) {
+	for _, layout := range []string{"us,ru", "us,ru,de", "us,ru,de,fr"} {
+		f := validForm()
+		f.Keyboard = layout
+		v, data, err := Compile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := strings.Repeat(",", strings.Count(layout, ","))
+		if v.KeyboardVariant != want {
+			t.Fatalf("variants %q, want %q", v.KeyboardVariant, want)
+		}
+		var doc map[string]any
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			t.Fatal(err)
+		}
+		kbd := doc["autoinstall"].(map[string]any)["keyboard"].(map[string]any)
+		if kbd["variant"] != want {
+			t.Fatal("installer variant positions missing")
+		}
+	}
+}
+func TestDesktopPackagesRejectAPTActionSuffix(t *testing.T) {
+	for _, name := range []string{"nano-", "ubuntu-desktop-", "nano-:amd64", "g++-"} {
+		f := validForm()
+		f.Packages = []string{name}
+		if _, _, err := Compile(f); err == nil {
+			t.Fatalf("accepted APT removal selector %q", name)
+		}
+	}
+}
+func TestDesktopPackageNamesSuppressImplicitAPTRegex(t *testing.T) {
+	f := validForm()
+	f.Packages = []string{"python3.12", "g++"}
+	_, data, err := Compile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	yaml.Unmarshal(data, &doc)
+	apt := doc["autoinstall"].(map[string]any)["apt"].(map[string]any)
+	if apt["conf"] != "APT::Cmd::Pattern-Only \"true\";\n" {
+		t.Fatalf("unprotected package lookup: %#v", apt)
+	}
+}

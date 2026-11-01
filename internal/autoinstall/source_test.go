@@ -28,3 +28,11 @@ func TestSourceRejectsCorruptMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceVersionedMappingCatalog(t *testing.T) {
+	data := []byte("version: 1\nsources:\n  - id: ubuntu-desktop\n    name:\n      en: Ubuntu Desktop\n    default: true\nkernel:\n  default: linux-generic\n")
+	sources, err := ParseInstallSources(data)
+	if err != nil || len(sources) != 1 || sources[0].Name != "Ubuntu Desktop" {
+		t.Fatalf("versioned source catalog rejected: %#v %v", sources, err)
+	}
+}

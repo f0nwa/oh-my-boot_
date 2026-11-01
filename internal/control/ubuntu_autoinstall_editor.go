@@ -50,9 +50,6 @@ func autoinstallForm(r *http.Request) autoinstall.Form {
 		}
 		layout = strings.Join(layouts, ",")
 		variant = strings.Join(kept, ",")
-		if strings.Trim(variant, ",") == "" {
-			variant = ""
-		}
 	}
 	lines := func(name string) []string {
 		var out []string

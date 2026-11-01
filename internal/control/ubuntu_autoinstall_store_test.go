@@ -245,6 +245,7 @@ func TestUbuntuExtendedValuesPreserveStoredBytes(t *testing.T) {
 	file.Values.RealName = "Рабочая станция"
 	file.Values.Packages = []string{"curl", "vim"}
 	file.Values.Keyboard = "us,ru"
+	file.Values.KeyboardVariant = ","
 	file.Values.KeyboardToggle = "alt_shift_toggle"
 	data, err := autoinstall.Render(file.Values)
 	if err != nil {

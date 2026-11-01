@@ -39,4 +39,19 @@ if bash "$repo/scripts/prepare-ubuntu-source.sh" --iso "$work/desktop.iso" --ass
 fi
 cmp "$work/manifest-before" "$work/assets/ubuntu/manifest.json"
 test "$(wc -l < "$work/unmount.log" | tr -d ' ')" = 2
-printf 'source preparation: success and failure preserve existing assets\n'
+# Force publication to fail after the old tree has already moved aside.
+cp "$work/assets/ubuntu/initrd" "$work/media/casper/initrd"
+export REAL_MV
+REAL_MV=$(command -v mv)
+cat > "$work/bin/mv" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "${2:-}" == */.ubuntu-stage.* ]]; then exit 1; fi
+exec "$REAL_MV" "$@"
+MOCK
+chmod +x "$work/bin/mv"
+if bash "$repo/scripts/prepare-ubuntu-source.sh" --iso "$work/desktop.iso" --assets "$work/assets" >/dev/null 2>&1; then
+  echo 'publication failure was ignored' >&2; exit 1
+fi
+cmp "$work/manifest-before" "$work/assets/ubuntu/manifest.json"
+test "$(cat "$work/assets/ubuntu/initrd")" = initrd
+printf 'source preparation: success, incomplete source and failed publication preserve assets\n'

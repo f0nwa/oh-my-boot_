@@ -41,7 +41,7 @@ func validateDesktop(v Values) error {
 		}
 		seen[l] = true
 	}
-	if v.KeyboardVariant != "" {
+	{
 		variants := strings.Split(v.KeyboardVariant, ",")
 		if len(variants) != len(layouts) {
 			return errors.New("keyboard variant: one position per layout required")
@@ -67,7 +67,7 @@ func validateDesktop(v Values) error {
 		return errors.New("packages: at most 128 packages")
 	}
 	for _, p := range v.Packages {
-		if len(p) > 128 || !packagePattern.MatchString(p) {
+		if len(p) > 128 || !packagePattern.MatchString(p) || strings.HasSuffix(strings.SplitN(p, ":", 2)[0], "-") {
 			return errors.New("packages: invalid package name")
 		}
 	}

@@ -3,6 +3,7 @@ package autoinstall
 import (
 	"errors"
 	"net/url"
+	"strings"
 )
 
 func needsArchive(v Values) bool {
@@ -28,7 +29,7 @@ func validateRepository(v Values) error {
 	}
 	return nil
 }
-func repositoryConfig(v Values) map[string]any {
+func baseRepositoryConfig(v Values) map[string]any {
 	switch v.MirrorMode {
 	case "offline":
 		return map[string]any{"geoip": false, "mirror-selection": map[string]any{"primary": []any{}}, "fallback": "offline-install"}
@@ -40,4 +41,20 @@ func repositoryConfig(v Values) map[string]any {
 		}
 		return nil
 	}
+}
+
+// APT normally treats a missing dotted/plus name as an implicit regexp.
+// Pattern-Only keeps valid package names but disables that fallback.
+func repositoryConfig(v Values) map[string]any {
+	result := baseRepositoryConfig(v)
+	for _, name := range v.Packages {
+		if strings.ContainsAny(name, ".+") {
+			if result == nil {
+				result = map[string]any{}
+			}
+			result["conf"] = "APT::Cmd::Pattern-Only \"true\";\n"
+			break
+		}
+	}
+	return result
 }

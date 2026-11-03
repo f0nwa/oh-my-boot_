@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"omb/internal/winpe"
 	"os"
 	"path/filepath"
 	"strings"
@@ -163,5 +164,58 @@ func TestDriverWIMCheckRejectsCorruptedOutput(t *testing.T) {
 	}
 	if err := m.CheckConfig(context.Background(), req, result); err == nil {
 		t.Fatal("accepted corrupted derived WIM")
+	}
+}
+
+func TestDriverWIMSupportsStrelecNativeStartup(t *testing.T) {
+	m, hash := setupDriverBuild(t)
+	native := []byte("net use Z: \\\\demo\\share /user:demo demo\r\nZ:\\SSTR\\MInst\\Portable\\x64\\Files_11_x64.exe\r\nexit\r\n")
+	template := []byte("net use Y: \\\\10.30.0.10\\ombisos __OMB_ISO_PASSWORD__ /user:omb-iso\r\n")
+	base, err := winpe.RenderStrelecNetwork(native, template, strings.Repeat("A", 32), 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(m.ProfileRoot, "17", "omb-setup.cmd"), base, 0644); err != nil {
+		t.Fatal(err)
+	}
+	req := DriverBuildRequest{ConfigID: 9, ProfileID: 17, PackageINFs: []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}}}
+	result, err := m.PrepareConfig(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.CheckConfig(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	script, err := os.ReadFile(filepath.Join(m.ConfigRoot, "9", "omb-setup.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(script, []byte("drvload")) || !bytes.Contains(script, []byte("Files_11_x64.exe")) || bytes.Contains(script, []byte("setup.exe")) {
+		t.Fatal("invalid service driver script")
+	}
+	original, _ := os.ReadFile(filepath.Join(m.ProfileRoot, "17", "omb-setup.cmd"))
+	if !bytes.Equal(original, base) {
+		t.Fatal("source startup was modified")
+	}
+}
+
+func TestPublishedDriverConfigKeepsItsFrozenStartupAfterRecipeChange(t *testing.T) {
+	m, hash := setupDriverBuild(t)
+	req := DriverBuildRequest{ConfigID: 12, ProfileID: 17, PackageINFs: []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}}}
+	result, err := m.PrepareConfig(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(m.ProfileRoot, "17", "omb-setup.cmd"), []byte("updated source startup"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.CheckConfig(context.Background(), req, result); err != nil {
+		t.Fatalf("published config depends on a newer startup recipe: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(m.ConfigRoot, "12", "omb-setup.cmd"), []byte("tampered frozen script"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.CheckConfig(context.Background(), req, result); err == nil {
+		t.Fatal("accepted tampered published script")
 	}
 }

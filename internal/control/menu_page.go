@@ -538,13 +538,13 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		if !selected[p.ID] {
 			continue
 		}
-		if p.State != "ready" || (p.InstallFile != "install.wim" && p.InstallFile != "install.esd") {
+		if !profileBootable(p) {
 			return fmt.Errorf("профиль %d не подготовлен", p.ID)
 		}
 		if problem := windowsProfileSourceProblem(catalog, p); problem != nil {
 			return problem
 		}
-		if err := s.WindowsISO.CheckWindowsISO(ctx, agent.WindowsISORequest{ID: p.ID, StorageRoot: p.StorageRoot, RelativePath: p.Path, Size: p.Size, Modified: p.Modified}); err != nil {
+		if err := s.WindowsISO.CheckWindowsISO(ctx, agent.WindowsISORequest{ID: p.ID, BootMode: p.BootMode, StorageRoot: p.StorageRoot, RelativePath: p.Path, Size: p.Size, Modified: p.Modified}); err != nil {
 			return fmt.Errorf("файлы профиля %d недоступны", p.ID)
 		}
 		delete(selected, p.ID)

@@ -258,7 +258,7 @@ func validWindowsAnswerAsset(name string) bool {
 
 func privateWinPEScript(name string) bool {
 	parts := strings.Split(name, "/")
-	if len(parts) != 3 || parts[0] != "windows-profiles" || parts[2] != "omb-setup.cmd" {
+	if len(parts) != 3 || (parts[0] != "windows-profiles" && parts[0] != "windows-driver-configs") || parts[2] != "omb-setup.cmd" {
 		return false
 	}
 	id, err := strconv.ParseUint(parts[1], 10, 63)

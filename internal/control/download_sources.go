@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"omb/internal/agent"
 	"path"
 	"strconv"
 	"strings"
@@ -18,15 +19,17 @@ func isoKindHint(name string) (kind, problem string) {
 		return "ARM64", "ARM64 пока не поддерживается"
 	case strings.HasPrefix(name, "ubuntu"):
 		return "Ubuntu", "Для Ubuntu выберите системный источник в разделе «Загрузки»"
-	case strings.Contains(name, "strelec") || strings.HasPrefix(name, "winpe"):
-		return "WinPE", "Сервисные образы WinPE пока не поддерживаются"
+	case strings.Contains(name, "strelec"):
+		return "WinPE Strelec", ""
+	case strings.HasPrefix(name, "winpe"):
+		return "WinPE", "Для этого образа WinPE пока нет сценария загрузки"
 	default:
 		return "ISO", ""
 	}
 }
 
 func (c bootProfileChoice) Selectable() bool {
-	return c.State == "ready" || c.Kind == BootProfileWindowsISO && (c.State == "pending" || c.State == "error")
+	return c.State == "ready" || isISOBootKind(c.Kind) && (c.State == "pending" || c.State == "error")
 }
 
 func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile, windows []WindowsProfile, discover bool) ([]bootProfileChoice, error) {
@@ -37,7 +40,7 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		choice.Value = strconv.FormatInt(choice.ID, 10)
 		choice.DefaultTitle = choice.Title
 		for _, w := range windows {
-			if w.ID == choice.WindowsProfileID && choice.Kind == BootProfileWindowsISO {
+			if w.ID == choice.WindowsProfileID && isISOBootKind(choice.Kind) {
 				existing[fmt.Sprintf("%d:%s", w.StorageID, w.Path)] = true
 				if _, problem := isoKindHint(w.Path); problem != "" {
 					choice.State, choice.Error = "unsupported", problem
@@ -56,7 +59,8 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		if existing[fmt.Sprintf("%d:%s", image.StorageID, image.Path)] {
 			continue
 		}
-		choice := bootProfileChoice{BootProfile: BootProfile{Kind: BootProfileWindowsISO, Title: path.Base(image.Path)}, DefaultTitle: "Windows x64", Value: fmt.Sprintf("iso:%d:%s", image.StorageID, image.Path), Path: image.Path, State: "pending"}
+		kind, title := isoSourceKind(image.Path)
+		choice := bootProfileChoice{BootProfile: BootProfile{Kind: kind, Title: path.Base(image.Path)}, DefaultTitle: title, Value: fmt.Sprintf("iso:%d:%s", image.StorageID, image.Path), Path: image.Path, State: "pending"}
 		for _, storage := range catalog.Storages {
 			if storage.ID == image.StorageID {
 				choice.StorageName = storage.Name
@@ -96,21 +100,22 @@ func (s *Server) resolveDownloadSource(r *http.Request, sources InstallationMenu
 		if err != nil {
 			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Каталог ISO недоступен")
 		}
-		selected, err := SelectWindowsISO(catalog, sid, parts[2], "Windows x64", "")
+		kind, title := isoSourceKind(parts[2])
+		selected, err := SelectWindowsISO(catalog, sid, parts[2], title, "")
 		if err != nil {
 			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Исходный ISO недоступен")
 		}
 		for _, p := range profiles {
 			if p.StorageID == sid && p.Path == parts[2] {
 				for _, shared := range sources.BootProfiles {
-					if shared.WindowsProfileID == p.ID && shared.Kind == BootProfileWindowsISO {
+					if shared.WindowsProfileID == p.ID && isISOBootKind(shared.Kind) {
 						return shared, p, nil, nil
 					}
 				}
 				return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Источник загрузки недоступен")
 			}
 		}
-		return BootProfile{Kind: BootProfileWindowsISO, Title: "Windows x64"}, WindowsProfile{}, &selected, nil
+		return BootProfile{Kind: kind, Title: title}, WindowsProfile{}, &selected, nil
 	}
 	id, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
@@ -123,11 +128,11 @@ func (s *Server) resolveDownloadSource(r *http.Request, sources InstallationMenu
 			}
 			var windows WindowsProfile
 			for _, p := range profiles {
-				if p.ID == choice.WindowsProfileID && choice.Kind == BootProfileWindowsISO {
+				if p.ID == choice.WindowsProfileID && isISOBootKind(choice.Kind) {
 					windows = p
 				}
 			}
-			if choice.Kind == BootProfileWindowsISO {
+			if isISOBootKind(choice.Kind) {
 				if _, problem := isoKindHint(windows.Path); problem != "" {
 					return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("%s", problem)
 				}
@@ -136,4 +141,17 @@ func (s *Server) resolveDownloadSource(r *http.Request, sources InstallationMenu
 		}
 	}
 	return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Выберите источник загрузки")
+}
+
+func isoBootMode(name string) string {
+	if strings.Contains(strings.ToLower(path.Base(name)), "strelec") {
+		return agent.ISOStrelecMode
+	}
+	return ""
+}
+func isoSourceKind(name string) (string, string) {
+	if isoBootMode(name) == agent.ISOStrelecMode {
+		return BootProfileWinPEISO, "Strelec x64"
+	}
+	return BootProfileWindowsISO, "Windows x64"
 }

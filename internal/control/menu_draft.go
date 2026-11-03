@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"omb/internal/agent"
 	"regexp"
 	"sort"
 	"strconv"
@@ -78,7 +79,7 @@ func unknownMenuItemError(key string) error {
 }
 
 func profileBootable(p WindowsProfile) bool {
-	return p.State == "ready" && (p.InstallFile == "install.wim" || p.InstallFile == "install.esd")
+	return p.State == "ready" && ((p.BootMode == agent.ISOStrelecMode && p.InstallFile == "") || (p.BootMode == "" && (p.InstallFile == "install.wim" || p.InstallFile == "install.esd")))
 }
 
 func windowsMenuProfile(installation Installation, profileID int64, base string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
@@ -190,7 +191,12 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 						}
 					}
 				}
-			case BootProfileWindowsISO:
+			case BootProfileWindowsISO, BootProfileWinPEISO:
+				for _, iso := range profiles {
+					if iso.ID == profile.WindowsProfileID && (profile.Kind == BootProfileWinPEISO) != (iso.BootMode == agent.ISOStrelecMode) {
+						return menuProfile{}, "", fmt.Errorf("ISO boot mode differs from the selected source")
+					}
+				}
 				var err error
 				entry, _, err = windowsMenuProfile(installation, profile.WindowsProfileID, base, profiles, answers, configs)
 				if err != nil {

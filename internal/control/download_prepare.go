@@ -98,7 +98,7 @@ func (s *Server) prepareDownloadISO(ctx context.Context, profile WindowsProfile,
 			return s.saveDownloadISOError(ctx, profile.ID, "unavailable", capitalizeFirst(problem.Error()))
 		}
 	}
-	request := agent.WindowsISORequest{ID: profile.ID, StorageRoot: profile.StorageRoot, RelativePath: profile.Path, Size: profile.Size, Modified: profile.Modified}
+	request := agent.WindowsISORequest{ID: profile.ID, BootMode: profile.BootMode, StorageRoot: profile.StorageRoot, RelativePath: profile.Path, Size: profile.Size, Modified: profile.Modified}
 	if profileBootable(profile) && (s.WindowsISO == nil || s.WindowsISO.CheckWindowsISO(ctx, request) == nil) {
 		return nil
 	}
@@ -118,7 +118,7 @@ func (s *Server) prepareDownloadISO(ctx context.Context, profile WindowsProfile,
 		_ = s.Store.Audit(finalCtx, actor, "windows-profile.prepare", "error", fmt.Sprintf("id=%d", profile.ID))
 		return s.saveDownloadISOError(finalCtx, profile.ID, "error", message)
 	}
-	if result.InstallFile != "install.wim" && result.InstallFile != "install.esd" {
+	if (profile.BootMode == agent.ISOStrelecMode && result.InstallFile != "") || (profile.BootMode == "" && result.InstallFile != "install.wim" && result.InstallFile != "install.esd") {
 		return s.saveDownloadISOError(finalCtx, profile.ID, "error", "В ISO не найден установочный образ Windows")
 	}
 	if err := s.Store.SetWindowsProfileResult(finalCtx, profile.ID, "ready", result.InstallFile, ""); err != nil {

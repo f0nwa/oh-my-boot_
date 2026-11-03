@@ -316,7 +316,7 @@ func (s *Server) newEditorView(r *http.Request, form url.Values) *editorView {
 	v := &editorView{Form: form, Section: "language", CanSave: Allowed(info.User.Role, "images"), Folder: "Windows", Presets: editorPresets}
 	if profiles, err := s.Store.WindowsProfiles(r.Context()); err == nil {
 		for _, p := range profiles {
-			if p.State == "ready" {
+			if p.State == "ready" && p.BootMode == "" {
 				v.Profiles = append(v.Profiles, p)
 			}
 		}
@@ -818,7 +818,7 @@ func (s *Server) answerEditorSave(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusNotFound, "Профиль ISO не найден")
 		return
 	}
-	if profile.State != "ready" {
+	if profile.State != "ready" || profile.BootMode != "" {
 		fail(http.StatusConflict, "Сначала подготовьте профиль ISO")
 		return
 	}

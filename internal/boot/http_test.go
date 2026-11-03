@@ -358,3 +358,36 @@ func TestGenericAssetOpenRejectsSubstitutionAfterResolution(t *testing.T) {
 		})
 	}
 }
+
+func TestWinPEDriverStartupIsLimitedToPXESubnet(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "windows-driver-configs", "17")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "omb-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		remote string
+		status int
+	}{{"10.30.0.7:12345", http.StatusOK}, {"192.168.10.55:12345", http.StatusNotFound}} {
+		req := httptest.NewRequest(http.MethodGet, "/assets/windows-driver-configs/17/omb-setup.cmd", nil)
+		req.RemoteAddr = tc.remote
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		if res.Code != tc.status {
+			t.Fatalf("remote=%s status=%d want=%d", tc.remote, res.Code, tc.status)
+		}
+		if tc.status == http.StatusOK && res.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("startup script can be cached")
+		}
+		if tc.status != http.StatusOK && strings.Contains(res.Body.String(), "limited-secret") {
+			t.Fatal("driver script leaked outside PXE subnet")
+		}
+	}
+}

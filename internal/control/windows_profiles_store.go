@@ -14,10 +14,10 @@ func (s Store) CreateWindowsProfile(ctx context.Context, source WindowsProfileSo
 	}
 	defer tx.Rollback(ctx)
 	err = tx.QueryRow(ctx,
-		`INSERT INTO windows_profiles (storage_id,path,storage_root,size_bytes,modified_at,title,folder,state)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')
+		`INSERT INTO windows_profiles (storage_id,path,storage_root,size_bytes,modified_at,title,folder,state,boot_mode)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8)
 		 RETURNING id,state`,
-		source.StorageID, source.Path, source.StorageRoot, source.Size, source.Modified, source.Title, source.Folder,
+		source.StorageID, source.Path, source.StorageRoot, source.Size, source.Modified, source.Title, source.Folder, source.BootMode,
 	).Scan(&profile.ID, &profile.State)
 	if err != nil {
 		return WindowsProfile{}, err
@@ -33,7 +33,7 @@ func (s Store) CreateWindowsProfile(ctx context.Context, source WindowsProfileSo
 
 func (s Store) WindowsProfiles(ctx context.Context) ([]WindowsProfile, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id,storage_id,path,storage_root,size_bytes,modified_at,title,folder,install_file,state,last_error
+		`SELECT id,storage_id,path,storage_root,size_bytes,modified_at,title,folder,install_file,state,last_error,boot_mode
 		 FROM windows_profiles ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func (s Store) WindowsProfiles(ctx context.Context) ([]WindowsProfile, error) {
 	profiles := []WindowsProfile{}
 	for rows.Next() {
 		var p WindowsProfile
-		if err := rows.Scan(&p.ID, &p.StorageID, &p.Path, &p.StorageRoot, &p.Size, &p.Modified, &p.Title, &p.Folder, &p.InstallFile, &p.State, &p.Error); err != nil {
+		if err := rows.Scan(&p.ID, &p.StorageID, &p.Path, &p.StorageRoot, &p.Size, &p.Modified, &p.Title, &p.Folder, &p.InstallFile, &p.State, &p.Error, &p.BootMode); err != nil {
 			return nil, err
 		}
 		profiles = append(profiles, p)
@@ -53,9 +53,9 @@ func (s Store) WindowsProfiles(ctx context.Context) ([]WindowsProfile, error) {
 func (s Store) WindowsProfile(ctx context.Context, id int64) (WindowsProfile, error) {
 	var p WindowsProfile
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id,storage_id,path,storage_root,size_bytes,modified_at,title,folder,install_file,state,last_error
+		`SELECT id,storage_id,path,storage_root,size_bytes,modified_at,title,folder,install_file,state,last_error,boot_mode
 		 FROM windows_profiles WHERE id=$1`, id,
-	).Scan(&p.ID, &p.StorageID, &p.Path, &p.StorageRoot, &p.Size, &p.Modified, &p.Title, &p.Folder, &p.InstallFile, &p.State, &p.Error)
+	).Scan(&p.ID, &p.StorageID, &p.Path, &p.StorageRoot, &p.Size, &p.Modified, &p.Title, &p.Folder, &p.InstallFile, &p.State, &p.Error, &p.BootMode)
 	return p, err
 }
 

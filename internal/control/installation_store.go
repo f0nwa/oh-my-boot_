@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"omb/internal/agent"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -117,7 +118,7 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 			return Installation{}, err
 		}
 	}
-	if profile.Kind == BootProfileWindowsISO {
+	if isISOBootKind(profile.Kind) {
 		if _, err := tx.Exec(ctx, `INSERT INTO windows_installation_options(installation_id,answer_id,driver_config_id) VALUES($1,NULLIF($2,0),NULLIF($3,0)) ON CONFLICT(installation_id) DO UPDATE SET answer_id=EXCLUDED.answer_id,driver_config_id=EXCLUDED.driver_config_id`, item.ID, item.AnswerID, item.DriverConfigID); err != nil {
 			return Installation{}, err
 		}
@@ -130,7 +131,11 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 
 func createWindowsBootProfile(ctx context.Context, tx pgx.Tx, profile WindowsProfile) error {
 	var id int64
-	if err := tx.QueryRow(ctx, `INSERT INTO boot_profiles(kind,title) VALUES('windows_iso',$1) RETURNING id`, profile.Title).Scan(&id); err != nil {
+	kind := BootProfileWindowsISO
+	if profile.BootMode == agent.ISOStrelecMode {
+		kind = BootProfileWinPEISO
+	}
+	if err := tx.QueryRow(ctx, `INSERT INTO boot_profiles(kind,title) VALUES($1,$2) RETURNING id`, kind, profile.Title).Scan(&id); err != nil {
 		return err
 	}
 	_, err := tx.Exec(ctx, `INSERT INTO windows_boot_profiles(boot_profile_id,windows_profile_id) VALUES($1,$2)`, id, profile.ID)

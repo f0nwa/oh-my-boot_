@@ -4,6 +4,7 @@ import "fmt"
 
 const (
 	BootProfileWindowsISO    = "windows_iso"
+	BootProfileWinPEISO      = "winpe_iso"
 	BootProfileUbuntuBuiltin = "ubuntu_builtin"
 )
 
@@ -18,7 +19,7 @@ type BootProfile struct {
 
 // Installation is a persistent choice using one shared profile. Zero optional
 // IDs mean manual installation; a driver configuration includes its own XML.
-// AutoinstallID is Ubuntu-only and its binding never changes after creation.
+// AutoinstallID is Ubuntu-only; published menu items retain their own bindings.
 type Installation struct {
 	ID             int64
 	BootProfileID  int64
@@ -88,7 +89,10 @@ func ValidateInstallation(item Installation, profile BootProfile, answers []Wind
 		if profile.WindowsProfileID != 0 || item.AnswerID != 0 || item.DriverConfigID != 0 {
 			return fmt.Errorf("Ubuntu does not support Windows options")
 		}
-	case BootProfileWindowsISO:
+	case BootProfileWindowsISO, BootProfileWinPEISO:
+		if profile.Kind == BootProfileWinPEISO && item.AnswerID != 0 {
+			return fmt.Errorf("service WinPE does not support installer answers")
+		}
 		if item.AutoinstallID != 0 {
 			return fmt.Errorf("Windows does not support Ubuntu Autoinstall files")
 		}
@@ -101,6 +105,9 @@ func ValidateInstallation(item Installation, profile BootProfile, answers []Wind
 		if item.DriverConfigID > 0 {
 			for _, config := range configs {
 				if config.ID == item.DriverConfigID && config.ProfileID == profile.WindowsProfileID {
+					if profile.Kind == BootProfileWinPEISO && config.AnswerID != 0 {
+						return fmt.Errorf("service WinPE driver configuration cannot contain installer answers")
+					}
 					if config.AnswerID > 0 && !installationAnswerBelongs(config.AnswerID, profile.WindowsProfileID, answers) {
 						return fmt.Errorf("driver configuration answer does not belong to the selected Windows profile")
 					}
@@ -122,4 +129,8 @@ func installationAnswerBelongs(id, profileID int64, answers []WindowsAnswerVaria
 		}
 	}
 	return false
+}
+
+func isISOBootKind(kind string) bool {
+	return kind == BootProfileWindowsISO || kind == BootProfileWinPEISO
 }

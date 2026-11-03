@@ -58,7 +58,7 @@ func (s *Server) usbPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, p := range data.WindowsProfiles {
-		if p.State == "ready" {
+		if p.State == "ready" && p.BootMode == "" {
 			view.Profiles = append(view.Profiles, usbProfile{ID: p.ID, Title: p.Title, Path: p.Path, Cached: cached[p.ID]})
 		}
 	}
@@ -100,7 +100,7 @@ func (s *Server) ueficaUSBDownload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, p := range profiles {
-			ready = ready || (p.ID == id && p.State == "ready")
+			ready = ready || (p.ID == id && p.State == "ready" && p.BootMode == "")
 		}
 	}
 	if !ready {

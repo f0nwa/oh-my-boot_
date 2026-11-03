@@ -107,7 +107,7 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 				row.Kind = profile.Kind
 				row.Image = profile.Title
 				for _, windows := range profiles {
-					if profile.Kind == BootProfileWindowsISO && windows.ID == profile.WindowsProfileID {
+					if isISOBootKind(profile.Kind) && windows.ID == profile.WindowsProfileID {
 						row.Image = windows.Title
 						switch windows.State {
 						case "pending":
@@ -400,7 +400,7 @@ func menuUsage(active MenuDraft, configs []DriverConfig, source InstallationMenu
 				continue
 			}
 			for _, profile := range source.BootProfiles {
-				if profile.ID == installation.BootProfileID && profile.Kind == BootProfileWindowsISO {
+				if profile.ID == installation.BootProfileID && isISOBootKind(profile.Kind) {
 					profileUse[profile.WindowsProfileID]++
 				}
 			}

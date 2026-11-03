@@ -42,14 +42,19 @@ func SelectDriverConfig(form url.Values, profiles []WindowsProfile, answers []Wi
 		return result, fmt.Errorf("title and menu folder must be ASCII")
 	}
 	parentReady := false
+	service := false
 	for _, profile := range profiles {
-		if profile.ID == profileID && profile.State == "ready" && (profile.InstallFile == "install.wim" || profile.InstallFile == "install.esd") {
+		if profile.ID == profileID && profileBootable(profile) {
 			parentReady = true
+			service = profile.BootMode == agent.ISOStrelecMode
 			break
 		}
 	}
 	if !parentReady {
 		return result, fmt.Errorf("Windows ISO profile is not ready")
+	}
+	if service && answerID != 0 {
+		return result, fmt.Errorf("service WinPE does not support installer answers")
 	}
 	if answerID > 0 {
 		answerReady := false

@@ -359,6 +359,25 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 		// A failed telemetry request must never prevent boot file downloads.
 		choiceReport = "imgfetch --name omb-choice " + base + "/boot/choice?id=" + raw + " && imgfree omb-choice || echo -n\n"
 	}
+	if profile.kind == BootProfileWinPEISO {
+		prefix := base + "/assets/windows-profiles/" + fmt.Sprintf("%d", profile.windowsISOID) + "/"
+		startup, wim := prefix+"omb-setup.cmd", prefix+"boot.wim"
+		if profile.driverConfigID > 0 {
+			startup = base + "/assets/windows-driver-configs/" + fmt.Sprintf("%d", profile.driverConfigID) + "/omb-setup.cmd"
+			wim = base + "/assets/windows-driver-wims/" + profile.driverWIMKey + "/boot.wim"
+		}
+		files := []windowsInitrdFile{{name: "pecmdmain.ini", url: prefix + "pecmdmain.ini"}, {name: "network_pxe.cmd", url: startup}}
+		for _, name := range []string{"bootmgr", "bootx64.efi", "BCD", "boot.sdi"} {
+			files = append(files, windowsInitrdFile{name: name, url: prefix + name})
+		}
+		out.WriteString(":" + profile.id + "\n" + choiceReport +
+			"kernel " + base + "/assets/windows/wimboot\n" +
+			windowsInjectedFiles(profile.id, files...) +
+			"initrd " + wim + " boot.wim\n" +
+			"boot || goto " + profile.id + "_failed\n" +
+			":" + profile.id + "_failed\necho Service WinPE boot failed\nsleep 5\ngoto local\n")
+		return
+	}
 	if profile.driverConfigID > 0 {
 		configID := fmt.Sprintf("%d", profile.driverConfigID)
 		profileID := fmt.Sprintf("%d", profile.windowsISOID)

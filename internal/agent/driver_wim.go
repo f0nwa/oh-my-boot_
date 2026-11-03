@@ -128,14 +128,6 @@ func (m *DriverManager) CheckConfig(ctx context.Context, req DriverBuildRequest,
 	if err != nil || actualWIM != result.WIMSHA256 {
 		return fmt.Errorf("derived WinPE WIM differs")
 	}
-	script, err := m.driverScript(req)
-	if err != nil {
-		return err
-	}
-	scriptSum := sha256.Sum256(script)
-	if hex.EncodeToString(scriptSum[:]) != result.ScriptSHA256 {
-		return fmt.Errorf("WinPE startup script differs")
-	}
 	final := filepath.Join(m.ConfigRoot, strconv.FormatInt(req.ConfigID, 10))
 	stored, err := os.ReadFile(filepath.Join(final, "build.json"))
 	if err != nil {
@@ -149,7 +141,13 @@ func (m *DriverManager) CheckConfig(ctx context.Context, req DriverBuildRequest,
 		return fmt.Errorf("driver configuration differs")
 	}
 	actual, err := os.ReadFile(filepath.Join(final, "omb-setup.cmd"))
-	if err != nil || !bytes.Equal(actual, script) {
+	if err != nil {
+		return fmt.Errorf("published WinPE script is unavailable")
+	}
+	// Published configurations freeze their script as well as their WIM. Check
+	// those bytes against the manifest and caller snapshot, not a newer recipe.
+	scriptSum := sha256.Sum256(actual)
+	if hex.EncodeToString(scriptSum[:]) != result.ScriptSHA256 {
 		return fmt.Errorf("published WinPE script differs")
 	}
 	return ctx.Err()

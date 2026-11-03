@@ -16,7 +16,10 @@ import (
 	"omb/internal/winpe"
 )
 
+const ISOStrelecMode = "strelec"
+
 type WindowsISORequest struct {
+	BootMode     string    `json:"boot_mode,omitempty"`
 	ID           int64     `json:"id"`
 	StorageRoot  string    `json:"storage_root"`
 	RelativePath string    `json:"relative_path"`
@@ -58,14 +61,15 @@ func (CommandWindowsISOMounter) Unmount(ctx context.Context, target string) erro
 }
 
 type WindowsISORuntime struct {
-	SourceRoot string
-	LocalRoot  string
-	MountRoot  string
-	AssetRoot  string
-	Template   []byte
-	Winpeshl   []byte
-	Password   string
-	Mounter    WindowsISOMounter
+	SourceRoot  string
+	LocalRoot   string
+	MountRoot   string
+	AssetRoot   string
+	Template    []byte
+	Winpeshl    []byte
+	Password    string
+	Mounter     WindowsISOMounter
+	WIMCommands DriverCommandRunner
 }
 
 func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequest) (WindowsISOResult, error) {
@@ -101,7 +105,12 @@ func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequ
 			return WindowsISOResult{}, err
 		}
 	}
-	installFile, err := prepareWindowsISOAssets(target, runtime.AssetRoot, req.ID, runtime.Template, runtime.Winpeshl, runtime.Password)
+	var installFile string
+	if req.BootMode == ISOStrelecMode {
+		err = prepareStrelecISOAssets(ctx, target, runtime.AssetRoot, req.ID, runtime.Template, runtime.Password, runtime.WIMCommands)
+	} else {
+		installFile, err = prepareWindowsISOAssets(target, runtime.AssetRoot, req.ID, runtime.Template, runtime.Winpeshl, runtime.Password)
+	}
 	if err != nil {
 		if newMount {
 			_ = runtime.Mounter.Unmount(ctx, target)
@@ -119,7 +128,7 @@ const LocalISORoot = "/var/lib/omb-images"
 // must be one SMB mount directly under allowedRoot, or localRoot or a
 // directory inside it.
 func resolveWindowsISOSource(allowedRoot string, req WindowsISORequest, localRoot ...string) (string, error) {
-	if req.ID <= 0 || req.Size <= 0 || !filepath.IsAbs(req.StorageRoot) || req.RelativePath == "" || path.IsAbs(req.RelativePath) || path.Clean(req.RelativePath) != req.RelativePath || strings.ContainsAny(req.RelativePath, "\\\x00") || !strings.EqualFold(path.Ext(req.RelativePath), ".iso") {
+	if (req.BootMode != "" && req.BootMode != ISOStrelecMode) || req.ID <= 0 || req.Size <= 0 || !filepath.IsAbs(req.StorageRoot) || req.RelativePath == "" || path.IsAbs(req.RelativePath) || path.Clean(req.RelativePath) != req.RelativePath || strings.ContainsAny(req.RelativePath, "\\\x00") || !strings.EqualFold(path.Ext(req.RelativePath), ".iso") {
 		return "", fmt.Errorf("invalid Windows ISO source")
 	}
 	allowed, err := filepath.EvalSymlinks(allowedRoot)

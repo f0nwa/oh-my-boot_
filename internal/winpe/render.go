@@ -97,26 +97,59 @@ func renderAnswerStartup(base []byte, profileID int64, peImage bool) ([]byte, er
 	return nil, fmt.Errorf("prepared Windows Setup command is missing")
 }
 
-// RenderDriverStartup adds selected INF loads before WinPE initializes the
-// network. The original SMB mapping and Setup command remain in the script.
+// RenderDriverStartup adds selected INF loads before the prepared environment
+// connects its media. Both Windows Setup and native Strelec startup are supported.
 func RenderDriverStartup(base []byte, infPaths []string) ([]byte, error) {
 	needle := []byte("\r\nwpeinit\r\n")
-	if len(infPaths) == 0 || len(infPaths) > 128 || bytes.Count(base, needle) != 1 || bytes.Contains(base, []byte(":driver_failed")) {
+	initialize := "wpeinit\r\n"
+	service := bytes.Contains(base, []byte("\r\n:omb_strelec_connect\r\n"))
+	if service {
+		// Strelec has already started its native driver/service setup. Refresh
+		// networking after loading our additional drivers, before the SMB retry.
+		needle = []byte("\r\nwpeutil WaitForNetwork >nul 2>&1\r\n")
+		initialize = "wpeutil InitializeNetwork\r\nwpeutil WaitForNetwork >nul 2>&1\r\n"
+	}
+	if len(infPaths) == 0 || len(infPaths) > 128 || bytes.Count(base, needle) != 1 || bytes.Contains(base, []byte(":driver_failed")) || bytes.Contains(base, []byte("set OMB_DRIVER_LOG=")) {
 		return nil, fmt.Errorf("invalid WinPE startup script or driver selection")
+	}
+	if service {
+		var err error
+		base, err = renderStrelecApplications(base)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var added strings.Builder
 	added.WriteString("\r\nset OMB_DRIVER_LOG=X:\\omb-driver.log\r\necho OMB: loading WinPE drivers...\r\n")
+	if service {
+		added.WriteString("set OMB_DRIVER_ERRORS=0\r\necho OMB: selected WinPE drivers >%OMB_DRIVER_LOG%\r\n")
+	}
 	for _, name := range infPaths {
 		if !safeDriverBatchPath(name) {
 			return nil, fmt.Errorf("INF path cannot be used in WinPE startup")
 		}
 		windowsPath := strings.ReplaceAll(name, "/", `\`)
+		if service {
+			added.WriteString("echo INF: " + windowsPath + " >>%OMB_DRIVER_LOG%\r\n")
+		}
 		added.WriteString(`drvload "X:\Windows\System32\` + windowsPath + "\" >>%OMB_DRIVER_LOG% 2>&1\r\n")
-		added.WriteString("if errorlevel 1 goto driver_failed\r\n")
+		if service {
+			// A shared recovery entry can contain drivers for several machines.
+			// A failed/non-applicable storage driver must not skip the NIC driver
+			// or prevent an already working native NIC from connecting media.
+			added.WriteString("set OMB_DRIVER_EXIT=%errorlevel%\r\necho Drvload exit code: %OMB_DRIVER_EXIT% >>%OMB_DRIVER_LOG%\r\nif not \"%OMB_DRIVER_EXIT%\"==\"0\" set OMB_DRIVER_ERRORS=1\r\n")
+		} else {
+			added.WriteString("if errorlevel 1 goto driver_failed\r\n")
+		}
 	}
-	added.WriteString("wpeinit\r\n")
+	if service {
+		added.WriteString("if \"%OMB_DRIVER_ERRORS%\"==\"1\" echo OMB: some selected drivers were not loaded. See X:\\omb-driver.log. Continuing network initialization.\r\n")
+	}
+	added.WriteString(initialize)
 	out := bytes.Replace(base, needle, []byte(added.String()), 1)
-	out = append(out, []byte("\r\n:driver_failed\r\necho OMB: a selected WinPE driver failed to load.\r\ntype %OMB_DRIVER_LOG%\r\ncmd /k\r\n")...)
+	if !service {
+		out = append(out, []byte("\r\n:driver_failed\r\necho OMB: a selected WinPE driver failed to load.\r\ntype %OMB_DRIVER_LOG%\r\ncmd /k\r\n")...)
+	}
 	return out, nil
 }
 

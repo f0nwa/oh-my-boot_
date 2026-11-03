@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS menu_versions (
 CREATE UNIQUE INDEX IF NOT EXISTS menu_versions_one_active_idx ON menu_versions (active) WHERE active;
 
 CREATE TABLE IF NOT EXISTS windows_profiles (
+ boot_mode TEXT NOT NULL DEFAULT '' CHECK (boot_mode IN ('','strelec')),
  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  storage_id BIGINT NOT NULL CHECK (storage_id > 0),
  path TEXT NOT NULL,
@@ -130,7 +131,7 @@ CREATE INDEX IF NOT EXISTS winpe_driver_configs_profile_idx ON winpe_driver_conf
 
 CREATE TABLE IF NOT EXISTS boot_profiles (
  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
- kind TEXT NOT NULL CHECK (kind IN ('windows_iso','ubuntu_builtin')),
+ kind TEXT NOT NULL CHECK (kind IN ('windows_iso','winpe_iso','ubuntu_builtin')),
  title TEXT NOT NULL CHECK (btrim(title) <> '')
 );
 CREATE UNIQUE INDEX IF NOT EXISTS boot_profiles_one_ubuntu_idx ON boot_profiles (kind) WHERE kind='ubuntu_builtin';

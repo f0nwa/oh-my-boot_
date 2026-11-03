@@ -94,7 +94,7 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Профиль ISO не найден", http.StatusNotFound)
 		return
 	}
-	if profile.State != "ready" {
+	if profile.State != "ready" || profile.BootMode != "" {
 		http.Error(w, "Сначала подготовьте профиль ISO", http.StatusConflict)
 		return
 	}

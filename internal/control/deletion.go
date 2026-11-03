@@ -302,7 +302,7 @@ func (c installationComponent) matches(item Installation, profiles []BootProfile
 		return item.DriverConfigID == c.driverConfigID
 	}
 	for _, p := range profiles {
-		if p.ID == item.BootProfileID && p.WindowsProfileID == c.profileID && p.Kind == BootProfileWindowsISO {
+		if p.ID == item.BootProfileID && p.WindowsProfileID == c.profileID && isISOBootKind(p.Kind) {
 			return true
 		}
 	}

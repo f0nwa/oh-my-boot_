@@ -17,15 +17,17 @@
     var profile = checked("boot_profile_id");
     var id = profile ? profile.dataset.windowsProfile : "";
     var windows = !!profile && profile.dataset.kind === "windows_iso";
+    var winpe = windows || !!profile && profile.dataset.kind === "winpe_iso";
     ["windows-drivers", "windows-answers"].forEach(function (id) {
       var group = document.getElementById(id);
-      group.hidden = !windows;
-      group.disabled = !windows;
+      var available = id === "windows-drivers" ? winpe : windows;
+      group.hidden = !available;
+      group.disabled = !available;
     });
     var ubuntu = document.getElementById("ubuntu-autoinstall");
     ubuntu.hidden = !profile || profile.dataset.kind !== "ubuntu_builtin";
     ubuntu.disabled = ubuntu.hidden;
-    ["summary-build-label", "summary-build"].forEach(function (id) { document.getElementById(id).hidden = !windows; });
+    ["summary-build-label", "summary-build"].forEach(function (id) { document.getElementById(id).hidden = !winpe; });
     form.querySelectorAll('input[name="answer_id"][data-profile]').forEach(function (input) {
       var own = windows && input.dataset.profile === id;
       input.closest("label").hidden = !own;
@@ -38,7 +40,7 @@
       var base = answer && answer.value !== "0" ? answer : profile;
       title.value = base ? base.dataset.title : "";
     }
-    var drivers = windows && form.querySelectorAll('input[name="package"]:checked, input[name="inf"]:checked').length > 0;
+    var drivers = winpe && form.querySelectorAll('input[name="package"]:checked, input[name="inf"]:checked').length > 0;
     var wipes = (answer && answer.dataset.wipes === "true") || (autoinstall && autoinstall.dataset.wipes === "true");
     text("preview-title", (title.value || "Windows 11 x64"));
     text("preview-folder", folder.value ? " / " + folder.value.split("/").join(" / ") : "");

@@ -552,7 +552,7 @@ func (s *Server) libraryData(r *http.Request) pageData {
 			if sources, e := s.installationMenuSources(r.Context()); e == nil {
 				byID := map[int64]int64{}
 				for _, p := range sources.BootProfiles {
-					if p.Kind == BootProfileWindowsISO {
+					if isISOBootKind(p.Kind) {
 						byID[p.ID] = p.WindowsProfileID
 					}
 				}
@@ -571,7 +571,7 @@ func (s *Server) libraryData(r *http.Request) pageData {
 				row := imageRow{Image: image, StorageName: names[image.StorageID], Kind: kind, Problem: problem}
 				if p, ok := byPath[fmt.Sprintf("%d:%s", image.StorageID, image.Path)]; ok {
 					row.Downloads = uses[p.ID]
-					if profileBootable(p) {
+					if profileBootable(p) && p.BootMode == "" {
 						row.USBProfileID = p.ID
 					}
 					if len(row.Downloads) == 0 {

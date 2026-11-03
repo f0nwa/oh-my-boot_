@@ -81,7 +81,7 @@ func (s *Server) bootProfileChoices(ctx context.Context, shared []BootProfile, w
 			if ubuntuProblem != nil {
 				choice.State, choice.Error = "unavailable", ubuntuProblem.Error()
 			}
-		case BootProfileWindowsISO:
+		case BootProfileWindowsISO, BootProfileWinPEISO:
 			for _, source := range windows {
 				if source.ID == profile.WindowsProfileID {
 					choice.State, choice.Error, choice.Path = source.State, source.Error, source.Path
@@ -177,7 +177,9 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 		for _, profile := range data.BootProfileChoices {
 			if (selected != "" && selected == profile.Value) || (selected == "" && profile.Selectable()) {
 				data.Form.Set("boot_profile_id", profile.Value)
-				if profile.Kind == BootProfileWindowsISO {
+				if profile.Kind == BootProfileWinPEISO {
+					data.Form.Set("folder", "Tools")
+				} else if profile.Kind == BootProfileWindowsISO {
 					data.Form.Set("folder", "Windows")
 				} else {
 					data.Form.Set("folder", "Linux")
@@ -241,6 +243,10 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
+	}
+	if shared.Kind == BootProfileWinPEISO && ((r.FormValue("answer_id") != "" && r.FormValue("answer_id") != "0") || (r.FormValue("autoinstall_id") != "" && r.FormValue("autoinstall_id") != "0")) {
+		http.Error(w, "Сервисная WinPE не использует параметры установщика Windows", http.StatusBadRequest)
+		return
 	}
 	if shared.Kind == BootProfileUbuntuBuiltin && ((r.FormValue("answer_id") != "" && r.FormValue("answer_id") != "0") || len(r.Form["package"]) > 0 || len(r.Form["inf"]) > 0) {
 		http.Error(w, "Ubuntu не поддерживает компоненты Windows", http.StatusBadRequest)
@@ -358,7 +364,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, p := range bootProfiles {
-			if p.Kind == BootProfileWindowsISO && p.WindowsProfileID == profile.ID {
+			if isISOBootKind(p.Kind) && p.WindowsProfileID == profile.ID {
 				shared = p
 				item.BootProfileID = p.ID
 			}
@@ -375,7 +381,9 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Не удалось прочитать конфигурации драйверов", http.StatusServiceUnavailable)
 			return
 		}
-		for _, other := range existing {
+		// Prefer the latest preparation; historical startup recipes stay frozen.
+		for i := len(existing) - 1; i >= 0; i-- {
+			other := existing[i]
 			if sameDriverSelection(other, *selectedConfig) {
 				if other.State == "ready" {
 					if _, _, e := windowsMenuProfile(Installation{DriverConfigID: other.ID}, other.ProfileID, "", profiles, answers, existing); e != nil {

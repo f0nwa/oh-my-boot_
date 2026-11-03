@@ -131,7 +131,7 @@ A reset ends that user's previous sessions. Roles are `admin`, `operator` and `o
 
 ## Boot entries and menu
 
-Upload source ISO images, answer files and drivers in Library. Under Boot entries, choose New boot entry, a Windows ISO or the Ubuntu system source, a title and folder. The image and selected drivers are prepared automatically. The application creates one internal source record per image and reuses it; there is no separate Create profile step.
+Upload source ISO images, answer files and drivers in Library. Under Boot entries, choose New boot entry, a Windows ISO, Strelec x64 or the Ubuntu system source, a title and folder. The image and selected drivers are prepared automatically. The application creates one internal source record per image and reuses it; there is no separate Create profile step. Strelec starts its native recovery environment and applications from the ISO; Windows Setup options are hidden for this source.
 
 A preparation failure retains the saved entry: its row shows the cause and Retry preparation. Edit changes its title, folder, answer file and drivers while keeping the entry ID. Create another entry to use a different source image. Component changes appear in the draft even when the title stays the same. Published versions retain their own component references, so restoring a version uses its previous components as long as the files are still available.
 
@@ -141,9 +141,13 @@ Restoring a version through Menu → Versions also checks dependencies. If an IS
 
 ### Updating an existing server
 
-Before starting the new Control, back up `omb_control`, stop `omb-control`, and apply [2026-11-03-download-components.sql](../../deploy/sql/2026-11-03-download-components.sql) as the database owner. Then install the new binary and start the service. The migration captures components for existing draft items and menu versions, preserving IDs, order and published scripts. Re-running it does not rewrite captured components. `deploy/sql/control.sql` defines the clean-install schema. Ubuntu Autoinstall files remain immutable; an entry's binding to an answer file is now editable.
+Before starting the new Control, back up `omb_control`, stop `omb-control`, and apply [2026-11-03-download-components.sql](../../deploy/sql/2026-11-03-download-components.sql) and [2026-11-03-strelec-pxe.sql](../../deploy/sql/2026-11-03-strelec-pxe.sql) as the database owner. Update Control, Agent and `omb-winiso-prepare` together, then start the services. The first migration captures components for existing draft items and menu versions, preserving IDs, order and published scripts; the second adds the recovery ISO mode. Re-running them does not rewrite captured components. `deploy/sql/control.sql` defines the clean-install schema. Ubuntu Autoinstall files remain immutable; an entry's binding to an answer file is now editable.
 
 ## WinPE driver catalog
+
+Strelec uses the same packages and individual INF choices under **WinPE drivers**. Open **Boot entries → Edit**, select the package or INF, and save. OMB prepares a derived WIM and loads the selected drivers before network initialization and the SSTR share connection. Publish the menu draft afterwards. Installer XML and Ubuntu Autoinstall do not apply to recovery WinPE. Deploy matching Control, Agent and Boot binaries for this capability; no additional database migration is needed.
+
+Recovery WinPE attempts every selected INF. A nonzero driver result is recorded in `X:\omb-driver.log` and does not skip the remaining drivers or SSTR connection; one shared entry may be used on different hardware. After connecting the share, OMB extracts the native components and starts MInst with the native Strelec profile to create shortcuts. Network and application stages are recorded in `X:\omb-strelec.log`. Device and network operation still require client validation. Windows installer entries retain their strict driver failure behavior.
 
 Library → Drivers accepts directories containing INF files and their supporting files, or a ZIP with the same structure. A boot entry selects specific INFs when created or edited. Its derived driver WIM is used by that entry; the source ISO remains on storage.
 

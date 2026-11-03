@@ -25,7 +25,11 @@ func (s *downloadsStore) CreateWindowsProfile(_ context.Context, source WindowsP
 	s.sourceCreates++
 	p := WindowsProfile{ID: 80, WindowsProfileSource: source, State: "pending"}
 	s.profiles = append(s.profiles, p)
-	s.bootProfiles = append(s.bootProfiles, BootProfile{ID: 81, Kind: BootProfileWindowsISO, WindowsProfileID: p.ID, Title: source.Title})
+	kind := BootProfileWindowsISO
+	if source.BootMode == agent.ISOStrelecMode {
+		kind = BootProfileWinPEISO
+	}
+	s.bootProfiles = append(s.bootProfiles, BootProfile{ID: 81, Kind: kind, WindowsProfileID: p.ID, Title: source.Title})
 	return p, nil
 }
 func (s *downloadsStore) WindowsProfile(_ context.Context, id int64) (WindowsProfile, error) {
@@ -74,6 +78,9 @@ func (p *downloadPreparer) PrepareWindowsISO(_ context.Context, req agent.Window
 	}
 	if len(p.store.installations) == 0 {
 		return agent.WindowsISOResult{}, errors.New("download must be saved before preparation")
+	}
+	if req.BootMode == agent.ISOStrelecMode {
+		return agent.WindowsISOResult{}, p.err
 	}
 	return agent.WindowsISOResult{InstallFile: "install.wim"}, p.err
 }

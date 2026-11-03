@@ -50,10 +50,10 @@ func (m *WindowsISOManager) Check(ctx context.Context, req WindowsISORequest) er
 	if !mounted {
 		return fmt.Errorf("Windows ISO is not mounted")
 	}
-	if _, err := inspectMountedWindowsISO(target); err != nil {
+	if _, err := inspectMountedISO(target, req.BootMode); err != nil {
 		return err
 	}
-	return m.checkWindowsISOAssets(id)
+	return m.checkWindowsISOAssets(id, req.BootMode)
 }
 
 func (m *WindowsISOManager) Prepare(ctx context.Context, req WindowsISORequest) (WindowsISOResult, error) {
@@ -91,18 +91,18 @@ func (m *WindowsISOManager) Prepare(ctx context.Context, req WindowsISORequest) 
 	if err := m.Systemctl.Run(ctx, "enable", "--now", unit); err != nil {
 		return WindowsISOResult{}, err
 	}
-	installFile, err := inspectMountedWindowsISO(filepath.Join(m.MountRoot, id))
+	installFile, err := inspectMountedISO(filepath.Join(m.MountRoot, id), req.BootMode)
 	if err != nil {
 		return WindowsISOResult{}, err
 	}
-	if err := m.checkWindowsISOAssets(id); err != nil {
+	if err := m.checkWindowsISOAssets(id, req.BootMode); err != nil {
 		return WindowsISOResult{}, err
 	}
 	return WindowsISOResult{InstallFile: installFile}, nil
 }
 
-func (m *WindowsISOManager) checkWindowsISOAssets(id string) error {
-	for _, name := range []string{"boot.wim", "winpeshl.ini", "omb-setup.cmd"} {
+func (m *WindowsISOManager) checkWindowsISOAssets(id, mode string) error {
+	for _, name := range isoAssetFiles(mode) {
 		if err := requireRegularISOFile(filepath.Join(m.AssetRoot, id), name); err != nil {
 			return err
 		}
@@ -118,5 +118,5 @@ func sameStoredWindowsISORequest(content []byte, req WindowsISORequest) bool {
 	if err := json.Unmarshal(content, &stored); err != nil {
 		return false
 	}
-	return stored.ID == req.ID && stored.StorageRoot == req.StorageRoot && stored.RelativePath == req.RelativePath && stored.Size == req.Size && stored.Modified.Equal(req.Modified)
+	return stored.BootMode == req.BootMode && stored.ID == req.ID && stored.StorageRoot == req.StorageRoot && stored.RelativePath == req.RelativePath && stored.Size == req.Size && stored.Modified.Equal(req.Modified)
 }

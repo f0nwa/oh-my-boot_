@@ -133,6 +133,15 @@ func controlMux(p *Publisher, events EventReader, transfers *Transfers, assets *
 func ControlHandlerWithUbuntuSource(p *Publisher, events EventReader, transfers *Transfers, journal *Journal, assets *AutoinstallAssets, source *UbuntuSource) http.Handler {
 	mux := controlMux(p, events, transfers, assets)
 	handleJournal(mux, journal)
+	mux.HandleFunc("GET /ubuntu/location", func(w http.ResponseWriter, r *http.Request) {
+		if source == nil || source.ISOPath() == "" {
+			http.Error(w, "Ubuntu ISO location unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(map[string]string{"path": source.ISOPath()})
+	})
 	mux.HandleFunc("GET /ubuntu/source", func(w http.ResponseWriter, r *http.Request) {
 		catalog, err := source.Catalog()
 		if err != nil {

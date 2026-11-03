@@ -476,6 +476,14 @@ func (c *BootClient) UbuntuSource(ctx context.Context) (autoinstall.SourceCatalo
 	return catalog, err
 }
 
+func (c *BootClient) UbuntuISOPath(ctx context.Context) (string, error) {
+	var location struct {
+		Path string `json:"path"`
+	}
+	err := localCall(ctx, c.http, http.MethodGet, "/ubuntu/location", nil, &location)
+	return location.Path, err
+}
+
 func (c *AgentClient) SetBootDrivers(ctx context.Context, rules []network.BootDriverRule) error {
 	if rules == nil {
 		rules = []network.BootDriverRule{}

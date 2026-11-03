@@ -31,6 +31,14 @@ func NewUbuntuSource(isoPath, assetDir string) *UbuntuSource {
 	s.err = s.load()
 	return s
 }
+
+func (s *UbuntuSource) ISOPath() string {
+	if s == nil {
+		return ""
+	}
+	return s.isoPath
+}
+
 func (s *UbuntuSource) read(path string, limit int64) ([]byte, error) {
 	info, e := os.Lstat(path)
 	if e != nil || !info.Mode().IsRegular() || info.Size() > limit {

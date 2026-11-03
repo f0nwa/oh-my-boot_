@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"omb/internal/boot"
+	"omb/internal/images"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -251,16 +253,29 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 	rows := installationRows(profiles, answers, configs, draft, active, sources)
 	storageNames := map[int64]string{}
 	storageStates := map[int64]string{}
+	storageRoots := []images.Storage{}
 	catalogAvailable := false
-	if s.Images != nil && len(profiles) > 0 {
+	needsCatalog := len(profiles) > 0
+	for _, row := range rows {
+		if row.Kind == BootProfileUbuntuBuiltin {
+			needsCatalog = true
+			break
+		}
+	}
+	if s.Images != nil && needsCatalog {
 		// A catalog outage must not hide saved paths or prevent editing.
 		if catalog, err := s.Images.Catalog(ctx); err == nil {
 			catalogAvailable = true
+			storageRoots = catalog.Storages
 			for _, storage := range catalog.Storages {
 				storageNames[storage.ID] = storage.Name
 				storageStates[storage.ID] = storage.State
 			}
 		}
+	}
+	ubuntuISOPath := ""
+	if s.Boot != nil {
+		ubuntuISOPath, _ = s.Boot.UbuntuISOPath(ctx)
 	}
 	checked := false
 	var problem error
@@ -281,7 +296,17 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 		if rows[i].Kind != BootProfileUbuntuBuiltin {
 			continue
 		}
-		rows[i].SourcePath = strings.TrimRight(s.BootBaseURL, "/") + "/images/ubuntu-desktop.iso"
+		if ubuntuISOPath != "" {
+			rows[i].SourcePath = ubuntuISOPath
+			for _, storage := range storageRoots {
+				if relative, ok := storageRelativePath(storage.Root, ubuntuISOPath); ok {
+					rows[i].StorageID = storage.ID
+					rows[i].StorageName = storage.Name
+					rows[i].SourcePath = relative
+					break
+				}
+			}
+		}
 		if !checked {
 			problem = s.checkUbuntuReadiness(ctx)
 			checked = true
@@ -291,6 +316,17 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 		}
 	}
 	return rows
+}
+
+func storageRelativePath(root, source string) (string, bool) {
+	if !filepath.IsAbs(root) || !filepath.IsAbs(source) {
+		return "", false
+	}
+	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(source))
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return filepath.ToSlash(relative), true
 }
 
 func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {

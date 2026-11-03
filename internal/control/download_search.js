@@ -7,6 +7,12 @@
   var error = document.getElementById('download-search-error');
   if (!form || !results || !filters || !error) return;
 
+  document.addEventListener('click', function (event) {
+    document.querySelectorAll('.download-delete[open]').forEach(function (menu) {
+      if (!menu.contains(event.target)) menu.open = false;
+    });
+  });
+
   var input = form.elements.q;
   var timer, pending, sequence = 0;
 

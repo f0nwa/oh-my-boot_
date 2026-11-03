@@ -224,8 +224,6 @@ td small{display:block}
 .row-off td{color:var(--text-2)}
 
 /* Menu editor: structure, machine screen, selected item */
-.menu-autoboot{padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-.menu-autoboot h2{margin-top:0}
 .menu-autoboot input[type=number]{max-width:120px}
 .menu-editor{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;justify-content:space-between;margin-bottom:22px}
 .menu-tree{flex:1 1 240px;max-width:300px;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:8px;display:flex;flex-direction:column;gap:6px}

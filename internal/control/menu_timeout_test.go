@@ -47,7 +47,7 @@ func TestMenuTimerSettings(t *testing.T) {
 	s, _ := draftServer(t, store)
 	form := url.Values{"local_timer": {"on"}, "local_timeout": {"30"}}
 	res := menuPost(t, s, "/menu/local-timer", form)
-	if res.Code != http.StatusSeeOther || !store.draft.LocalTimerOn() || store.draft.LocalTimeoutSeconds() != 30 {
+	if res.Code != http.StatusSeeOther || !strings.Contains(res.Header().Get("Location"), "item=autoboot") || !store.draft.LocalTimerOn() || store.draft.LocalTimeoutSeconds() != 30 {
 		t.Fatalf("status=%d location=%q draft=%+v", res.Code, res.Header().Get("Location"), store.draft)
 	}
 	form.Del("local_timer")
@@ -68,13 +68,23 @@ func TestMenuTimerSettings(t *testing.T) {
 	}
 }
 
+func TestAutobootInvalidTimerKeepsSettingsVisible(t *testing.T) {
+	store := newDraftStore(t, "operator", nil)
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready"}
+	s, _ := draftServer(t, store)
+	res := menuPost(t, s, "/menu/local-timer?item=autoboot", url.Values{"local_timer": {"on"}, "local_timeout": {"0"}})
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), `name="local_timeout"`) {
+		t.Fatalf("invalid timer did not keep settings visible: status=%d", res.Code)
+	}
+}
+
 func TestLocalDiskItemShowsTimerAndGreysOutWhenOff(t *testing.T) {
 	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", LocalTimeout: 25, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}}}
 	s, _ := draftServer(t, store)
 	get := func() string {
 		res := httptest.NewRecorder()
-		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=local", nil))
+		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=autoboot", nil))
 		return res.Body.String()
 	}
 	localTreeLine := func(body string) string {
@@ -85,7 +95,7 @@ func TestLocalDiskItemShowsTimerAndGreysOutWhenOff(t *testing.T) {
 		return body[strings.LastIndex(body[:end], `<div class="tree-line`):end]
 	}
 	body := get()
-	if !strings.Contains(body, `action="/menu/local-timer"`) || !strings.Contains(body, `name="local_timeout"`) || !strings.Contains(body, `value="25"`) || strings.Contains(localTreeLine(body), "tree-off") {
+	if !strings.Contains(body, `action="/menu/local-timer?item=autoboot"`) || !strings.Contains(body, `name="local_timeout"`) || !strings.Contains(body, `value="25"`) || strings.Contains(localTreeLine(body), "tree-off") {
 		t.Fatal("the local disk item has no timer settings or is greyed out while on")
 	}
 	if strings.Contains(body, `action="/menu/settings"`) {
@@ -161,8 +171,8 @@ func TestTimerSettingsShowSelectedInstallation(t *testing.T) {
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", DefaultInstallationID: 1017, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}}}
 	s, _ := draftServer(t, store)
 	res := httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=local", nil))
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `<strong>Windows 11</strong>`) || !strings.Contains(res.Body.String(), `action="/menu/items/local/default"`) {
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=autoboot", nil))
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `<strong>Windows 11</strong>`) || !strings.Contains(res.Body.String(), `name="local_timeout"`) {
 		t.Fatalf("settings status=%d: %s", res.Code, res.Body.String())
 	}
 }
@@ -185,19 +195,22 @@ func TestSetDefaultFromItemAndLocalDisk(t *testing.T) {
 	}
 }
 
-func TestMenuAutobootControlsAreGlobalAndItemHasDefaultAction(t *testing.T) {
+func TestMenuAutobootIsOpenedFromTree(t *testing.T) {
 	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}})
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}}}
 	s, _ := draftServer(t, store)
-	for _, path := range []string{"/menu", "/menu?item=install_1017"} {
+	for _, path := range []string{"/menu", "/menu?item=install_1017", "/menu?item=autoboot"} {
 		res := httptest.NewRecorder()
 		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, path, nil))
 		body := res.Body.String()
-		if res.Code != http.StatusOK || !strings.Contains(body, `action="/menu/local-timer"`) || strings.Contains(body, `name="default_installation_id"`) {
-			t.Fatalf("missing global controls at %s", path)
+		if res.Code != http.StatusOK || !strings.Contains(body, `href="/menu?item=autoboot"`) || strings.Contains(body, `name="default_installation_id"`) {
+			t.Fatalf("missing tree link at %s", path)
 		}
-		if strings.Index(body, `action="/menu/local-timer"`) > strings.Index(body, `class="menu-editor"`) {
-			t.Fatal("timer is inside editor")
+		if strings.Contains(body, `name="local_timeout"`) != strings.Contains(path, "item=autoboot") {
+			t.Fatalf("incorrect timer visibility at %s", path)
+		}
+		if strings.Contains(path, "item=autoboot") && strings.Index(body, `name="local_timeout"`) < strings.Index(body, `<aside class="inspector"`) {
+			t.Fatal("timer is not in inspector")
 		}
 		if strings.Contains(path, "install_1017") && !strings.Contains(body, `action="/menu/items/install_1017/default"`) {
 			t.Fatal("no default action")

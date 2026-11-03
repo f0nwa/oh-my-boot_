@@ -65,7 +65,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	data.Info.Draft = summarizeChanges(data.Changes)
 	data.Info.Draft.Active = data.ActiveVersion
 	key, screen := r.URL.Query().Get("item"), r.URL.Query().Get("screen")
-	if !menuItemKey.MatchString(key) && key != "diagnostics" && key != "local" {
+	if !menuItemKey.MatchString(key) && key != "diagnostics" && key != "local" && key != "autoboot" {
 		key = ""
 	}
 	if !menuScreenLabel.MatchString(screen) {

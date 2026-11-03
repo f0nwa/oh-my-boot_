@@ -314,10 +314,10 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 		changes = append(changes, MenuChange{Kind: "settings", Label: "Сообщение Diagnostics", Before: active.Message, After: draft.Message})
 	}
 	if active.DefaultInstallationID != draft.DefaultInstallationID {
-		changes = append(changes, MenuChange{Kind: "settings", Label: "Загрузка по таймеру", Before: fmt.Sprint(active.DefaultInstallationID), After: fmt.Sprint(draft.DefaultInstallationID)})
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Загрузка по таймеру", Before: menuDefaultName(active), After: menuDefaultName(draft)})
 	}
 	if active.localTimer() != draft.localTimer() {
-		changes = append(changes, MenuChange{Kind: "settings", Label: "Автозагрузка с диска", Before: menuTimerName(active.localTimer()), After: menuTimerName(draft.localTimer())})
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Таймер автозагрузки", Before: menuTimerName(active.localTimer()), After: menuTimerName(draft.localTimer())})
 	}
 	activeByKey := map[string]MenuDraftItem{}
 	for _, item := range active.Items {
@@ -361,6 +361,18 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 		changes = append(changes, MenuChange{Kind: "order", Label: "Порядок пунктов", Before: menuOrderNames(activeOrder, activeByKey), After: menuOrderNames(draftOrder, draftByKey)})
 	}
 	return changes
+}
+
+func menuDefaultName(d MenuDraft) string {
+	if d.DefaultInstallationID == 0 {
+		return "Локальный диск"
+	}
+	for _, item := range d.Items {
+		if item.InstallationID == d.DefaultInstallationID && item.Title != "" {
+			return item.Title
+		}
+	}
+	return fmt.Sprintf("install_%d", d.DefaultInstallationID)
 }
 
 func menuVisibility(on bool) string {

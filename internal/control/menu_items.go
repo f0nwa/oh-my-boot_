@@ -29,7 +29,7 @@ func (s *Server) editDraft(w http.ResponseWriter, r *http.Request, action, messa
 	target := "/menu?message=" + strings.ReplaceAll(message, " ", "+")
 	if r.FormValue("return") == "/installations" {
 		target = "/installations?message=" + strings.ReplaceAll(message, " ", "+")
-	} else if action == "menu.draft.local_timer" {
+	} else if action == "menu.draft.default" && r.PathValue("key") == "local" {
 		target += "&item=local"
 	} else if action == "menu.draft.diagnostics" {
 		target += "&item=diagnostics"
@@ -123,27 +123,35 @@ func (s *Server) menuDiagnostics(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// menuLocalTimer sets whether the main screen boots the local disk by itself
-// and after how many seconds; it is edited on the "Boot local disk" item.
+// menuLocalTimer controls automatic boot for the menu.
 func (s *Server) menuLocalTimer(w http.ResponseWriter, r *http.Request) {
-	s.editDraft(w, r, "menu.draft.local_timer", "Таймер загрузки с диска сохранён", func(d *MenuDraft) error {
+	s.editDraft(w, r, "menu.draft.local_timer", "Таймер автозагрузки сохранён", func(d *MenuDraft) error {
 		timerOn := r.FormValue("local_timer") == "on"
 		seconds, err := strconv.Atoi(strings.TrimSpace(r.FormValue("local_timeout")))
 		valid := err == nil && seconds >= 1 && seconds <= maxLocalTimeout
 		if timerOn && !valid {
-			return draftError("Время до загрузки с диска — от 1 до 3600 секунд")
+			return draftError("Время автозагрузки — от 1 до 3600 секунд")
 		}
 		if valid {
 			d.LocalTimeout = seconds
 		}
 		d.NoLocalTimer = !timerOn
-		if raw := r.FormValue("default_installation_id"); raw != "" {
-			id, err := strconv.ParseInt(raw, 10, 64)
-			if err != nil || id < 0 || (id > 0 && draftItemIndex(d, "install_"+raw) < 0) {
-				return draftError("Выберите загрузку из меню")
-			}
-			d.DefaultInstallationID = id
+		return nil
+	})
+}
+
+func (s *Server) menuSetDefault(w http.ResponseWriter, r *http.Request) {
+	s.editDraft(w, r, "menu.draft.default", "Загрузка по умолчанию сохранена", func(d *MenuDraft) error {
+		key := r.PathValue("key")
+		if key == "local" {
+			d.DefaultInstallationID = 0
+			return nil
 		}
+		i := draftItemIndex(d, key)
+		if i < 0 {
+			return errItemNotInMenu
+		}
+		d.DefaultInstallationID = d.Items[i].InstallationID
 		return nil
 	})
 }

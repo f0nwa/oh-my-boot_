@@ -215,6 +215,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /menu/publish", s.protect("menu", withPageErrors(s.menuPage, s.menuPublish)))
 	mux.HandleFunc("POST /menu/rollback", s.protect("menu", withPageErrors(s.menuPage, s.menuRollback)))
 	mux.HandleFunc("POST /menu/local-timer", s.protect("menu", withPageErrors(s.menuPage, s.menuLocalTimer)))
+	mux.HandleFunc("POST /menu/items/{key}/default", s.protect("menu", withPageErrors(s.menuPage, s.menuSetDefault)))
 	mux.HandleFunc("POST /menu/diagnostics", s.protect("menu", withPageErrors(s.menuPage, s.menuDiagnostics)))
 	mux.HandleFunc("POST /menu/discard", s.protect("menu", withPageErrors(s.menuPage, s.menuDiscard)))
 	mux.HandleFunc("POST /menu/items/{key}/restore", s.protect("menu", withPageErrors(s.menuPage, s.installationAdd)))

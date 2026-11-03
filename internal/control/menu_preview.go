@@ -192,7 +192,7 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 	case "diagnostics":
 		preview.Builtin = "Диагностический пункт показывает сообщение и загружает машину с локального диска. Здесь можно изменить его подпись и сообщение."
 	case "local":
-		preview.Builtin = "Загрузка с локального диска — всегда последний пункт главного экрана. Здесь задаётся, загружается ли он сам, если ничего не выбрано."
+		preview.Builtin = "Загрузка операционной системы с локального диска компьютера."
 	}
 	added := map[string]bool{}
 	for _, change := range changes {
@@ -279,10 +279,18 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 		titles[line.Text]++
 	}
 	broken := map[string]bool{}
+	shortcut := ""
 	for _, row := range rows {
 		broken[menuDraftItemKey(row.Item)] = !row.Available
+		if draft.LocalTimerOn() && row.Item.InstallationID == draft.DefaultInstallationID && row.Folder != "" {
+			shortcut = menuDraftItemKey(row.Item)
+		}
 	}
 	for _, line := range treeLines {
+		// The root shortcut is an iPXE detail; the editable item stays in its folder.
+		if shortcut != "" && line.Key == shortcut && line.Parent == screens[0].Label {
+			continue
+		}
 		out := previewLine{Text: line.Text, Key: line.Key, Parent: line.Parent, Pad: strings.Repeat("  ", line.Depth), Folder: line.Folder, Fixed: line.Fixed, Added: added[line.Key], Broken: broken[line.Key], Selected: key != "" && line.Key == key, ShowKey: !line.Folder && titles[line.Text] > 1}
 		out.Movable = menuItemKey.MatchString(line.Key)
 		out.Off = line.Key == "local" && !draft.LocalTimerOn() || line.Key == "diagnostics" && !draft.DiagnosticsOn()

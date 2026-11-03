@@ -14,7 +14,7 @@ func TestMenuChangesNameTheEditedSettingsAndValues(t *testing.T) {
 		"Пункт Diagnostics":            {"Показан", "Скрыт"},
 		"Название Diagnostics":         {"Diagnostics", "Checks"},
 		"Сообщение Diagnostics":        {"Ready", "Done"},
-		"Автозагрузка с диска":         {"10 с", "Выключена"},
+		"Таймер автозагрузки":          {"10 с", "Выключена"},
 		"Название пункта install_1001": {"Windows 10", "Win 10"},
 		"Каталог пункта install_1001":  {"Windows", "Lab"},
 		"Порядок пунктов":              {"Windows 10 → Windows 11", "Windows 11 → Win 10"},
@@ -64,7 +64,7 @@ func TestEnglishMenuChangesTranslateValues(t *testing.T) {
 		res := httptest.NewRecorder()
 		render(res, page, data)
 		body := res.Body.String()
-		for _, want := range []string{"Diagnostics item", "Shown", "Hidden", "Automatic local disk boot", "10 s", "20 s"} {
+		for _, want := range []string{"Diagnostics item", "Shown", "Hidden", "Automatic boot timer", "10 s", "20 s"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: English change list lacks %q", page, want)
 			}

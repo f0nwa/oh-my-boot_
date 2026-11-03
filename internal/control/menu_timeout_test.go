@@ -41,13 +41,13 @@ func TestLocalDiskTimerSecondsAndOff(t *testing.T) {
 	}
 }
 
-func TestLocalDiskTimerIsSetOnItsMenuItem(t *testing.T) {
+func TestMenuTimerSettings(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready"}
 	s, _ := draftServer(t, store)
 	form := url.Values{"local_timer": {"on"}, "local_timeout": {"30"}}
 	res := menuPost(t, s, "/menu/local-timer", form)
-	if res.Code != http.StatusSeeOther || !strings.Contains(res.Header().Get("Location"), "item=local") || !store.draft.LocalTimerOn() || store.draft.LocalTimeoutSeconds() != 30 {
+	if res.Code != http.StatusSeeOther || !store.draft.LocalTimerOn() || store.draft.LocalTimeoutSeconds() != 30 {
 		t.Fatalf("status=%d location=%q draft=%+v", res.Code, res.Header().Get("Location"), store.draft)
 	}
 	form.Del("local_timer")
@@ -130,7 +130,10 @@ func TestTimerCanBootInstallationInFolder(t *testing.T) {
 	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}})
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}}}
 	s, _ := draftServer(t, store)
-	form := url.Values{"local_timer": {"on"}, "local_timeout": {"30"}, "default_installation_id": {"1017"}}
+	form := url.Values{"local_timer": {"on"}, "local_timeout": {"30"}}
+	if res := menuPost(t, s, "/menu/items/install_1017/default", url.Values{}); res.Code != http.StatusSeeOther {
+		t.Fatalf("select default: status=%d", res.Code)
+	}
 	if res := menuPost(t, s, "/menu/local-timer", form); res.Code != http.StatusSeeOther {
 		t.Fatalf("status=%d", res.Code)
 	}
@@ -159,7 +162,57 @@ func TestTimerSettingsShowSelectedInstallation(t *testing.T) {
 	s, _ := draftServer(t, store)
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=local", nil))
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `value="1017" selected`) {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `<strong>Windows 11</strong>`) || !strings.Contains(res.Body.String(), `action="/menu/items/local/default"`) {
 		t.Fatalf("settings status=%d: %s", res.Code, res.Body.String())
+	}
+}
+
+func TestSetDefaultFromItemAndLocalDisk(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows"}, {InstallationID: 2031, Title: "Other"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", DefaultInstallationID: 1017, NoLocalTimer: true, LocalTimeout: 45, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows"}, {InstallationID: 2031, Title: "Other"}}}
+	s, _ := draftServer(t, store)
+	for _, c := range []struct {
+		key  string
+		want int64
+	}{{"install_2031", 2031}, {"local", 0}} {
+		res := menuPost(t, s, "/menu/items/"+c.key+"/default", url.Values{})
+		if res.Code != http.StatusSeeOther || store.draft.DefaultInstallationID != c.want || !store.draft.NoLocalTimer || store.draft.LocalTimeout != 45 {
+			t.Fatalf("key=%s status=%d draft=%+v", c.key, res.Code, store.draft)
+		}
+	}
+	if res := menuPost(t, s, "/menu/items/install_99999/default", url.Values{}); res.Code != http.StatusBadRequest {
+		t.Fatalf("unknown item status=%d", res.Code)
+	}
+}
+
+func TestMenuAutobootControlsAreGlobalAndItemHasDefaultAction(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}}}
+	s, _ := draftServer(t, store)
+	for _, path := range []string{"/menu", "/menu?item=install_1017"} {
+		res := httptest.NewRecorder()
+		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, path, nil))
+		body := res.Body.String()
+		if res.Code != http.StatusOK || !strings.Contains(body, `action="/menu/local-timer"`) || strings.Contains(body, `name="default_installation_id"`) {
+			t.Fatalf("missing global controls at %s", path)
+		}
+		if strings.Index(body, `action="/menu/local-timer"`) > strings.Index(body, `class="menu-editor"`) {
+			t.Fatal("timer is inside editor")
+		}
+		if strings.Contains(path, "install_1017") && !strings.Contains(body, `action="/menu/items/install_1017/default"`) {
+			t.Fatal("no default action")
+		}
+	}
+}
+
+func TestDefaultInFolderHasOneStructureItemAndRootShortcut(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", DefaultInstallationID: 1017, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}}}
+	s, _ := draftServer(t, store)
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu", nil))
+	body := res.Body.String()
+	if res.Code != http.StatusOK || strings.Count(body, `data-key="install_1017"`) != 1 || !strings.Contains(body, `class="screen-text">Windows 11</span>`) {
+		t.Fatalf("incorrect structure or shortcut: status=%d", res.Code)
 	}
 }

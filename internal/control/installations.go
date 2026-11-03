@@ -28,6 +28,8 @@ type installationRow struct {
 	Kind                               string
 	SourcePath, StorageName            string
 	StorageID                          int64
+	StorageWarning                     string
+	StorageUnavailable                 bool
 	CanDelete                          bool
 	AnswerWipesDisk                    *bool
 	// Status is in_menu, pending_add, pending_remove, not_in_menu,
@@ -242,16 +244,19 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 	return out
 }
 
-// installationRows attaches live Ubuntu readiness to its persisted choices.
+// installationRows attaches current source availability to persisted choices.
 func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, draft, active MenuDraft, sources InstallationMenuSources) []installationRow {
 	rows := installationRows(profiles, answers, configs, draft, active, sources)
 	storageNames := map[int64]string{}
+	storageStates := map[int64]string{}
+	catalogAvailable := false
 	if s.Images != nil && len(profiles) > 0 {
-		// Catalog availability only improves labels; saved paths remain visible
-		// and editable when the Images service is unavailable.
+		// A catalog outage must not hide saved paths or prevent editing.
 		if catalog, err := s.Images.Catalog(ctx); err == nil {
+			catalogAvailable = true
 			for _, storage := range catalog.Storages {
 				storageNames[storage.ID] = storage.Name
+				storageStates[storage.ID] = storage.State
 			}
 		}
 	}
@@ -259,6 +264,18 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 	var problem error
 	for i := range rows {
 		rows[i].StorageName = storageNames[rows[i].StorageID]
+		if isISOBootKind(rows[i].Kind) && rows[i].StorageID > 0 {
+			switch state, found := storageStates[rows[i].StorageID]; {
+			case !catalogAvailable:
+				rows[i].StorageWarning = "Не удалось проверить хранилище ISO"
+			case !found:
+				rows[i].StorageWarning = "Хранилище ISO не найдено"
+			case state == "unavailable":
+				rows[i].StorageWarning, rows[i].StorageUnavailable = "Хранилище ISO недоступно", true
+			case state == "scanning":
+				rows[i].StorageWarning = "Проверяется хранилище ISO"
+			}
+		}
 		if rows[i].Kind != BootProfileUbuntuBuiltin {
 			continue
 		}
@@ -314,7 +331,10 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 		row.Used, row.LastUsed = use[row.Key].Count, use[row.Key].Last
 		data.InstallCounts["all"]++
 		data.InstallCounts[row.Group()]++
-		if data.Tab == "" || data.Tab == row.Group() {
+		if row.StorageWarning != "" && row.Group() != "attention" {
+			data.InstallCounts["attention"]++
+		}
+		if data.Tab == "" || data.Tab == row.Group() || (data.Tab == "attention" && row.StorageWarning != "") {
 			data.Installations = append(data.Installations, row)
 		}
 	}

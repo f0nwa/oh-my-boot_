@@ -1193,4 +1193,9 @@ var englishMessages = map[string]string{
 	"Загрузчик получен":           "Boot loader received",
 	"Ошибка загрузчика":           "Boot loader failed",
 	"Загрузка файлов":             "Loading files",
+
+	"Хранилище ISO недоступно":           "ISO storage is unavailable",
+	"Хранилище ISO не найдено":           "ISO storage was not found",
+	"Не удалось проверить хранилище ISO": "Could not check ISO storage",
+	"Проверяется хранилище ISO":          "Checking ISO storage",
 }

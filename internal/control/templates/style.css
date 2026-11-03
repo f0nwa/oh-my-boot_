@@ -219,6 +219,7 @@ tr.dragging{opacity:.5;background:var(--chip)}
 .chip-label{color:var(--muted);font-size:11px}
 .chip-danger{background:var(--draft-bg);color:var(--accent-ink)}.chip-danger .chip-label{color:var(--accent-ink)}
 .status{display:flex;align-items:center}
+.storage-warning{color:var(--accent-ink)}.storage-warning.unavailable{color:var(--bad)}
 td small{display:block}
 .row-off td{color:var(--text-2)}
 

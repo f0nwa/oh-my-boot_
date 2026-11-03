@@ -458,9 +458,11 @@ button[disabled]{opacity:.45;cursor:default}
 .download-actions>form{display:flex;justify-content:center;width:154px;flex:none}
 .download-actions>.download-delete{min-width:64px}
 .download-actions .download-delete{position:relative;margin:0;white-space:normal}
+.download-actions .download-delete[open]{z-index:6}
 .download-delete>summary{display:inline-flex;align-items:center;justify-content:center;list-style:none;border:1px solid var(--line-strong);border-radius:6px;white-space:nowrap;color:var(--text-2);font-weight:500}
 .download-delete>summary::-webkit-details-marker{display:none}
 .download-delete>summary:hover,.download-delete[open]>summary{background:var(--chip);color:var(--text)}
-.download-delete-panel{width:260px;max-width:65vw;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.download-delete-panel{position:absolute;right:0;top:calc(100% + 4px);z-index:7;width:260px;max-width:65vw;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.installs tr:last-child .download-delete-panel{top:auto;bottom:calc(100% + 4px)}
 .download-delete-panel p{margin:0 0 8px;font-size:12px}
 .download-delete-panel .danger-text{color:var(--bad)}

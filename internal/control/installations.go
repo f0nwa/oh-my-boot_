@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"net/http"
 	"omb/internal/boot"
@@ -10,6 +11,15 @@ import (
 	"strings"
 	"time"
 )
+
+//go:embed download_search.js
+var downloadSearchJS []byte
+
+func downloadSearchScript(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(downloadSearchJS)
+}
 
 // installationRow shows an installation, its shared source and its menu placement.
 type installationRow struct {

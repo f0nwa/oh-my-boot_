@@ -1101,6 +1101,7 @@ var englishMessages = map[string]string{
 	"Профиль загрузки":                                              "Boot profile",
 	"Источник":                                                      "Source",
 	"источник":                                                      "source",
+	"Поиск не обновлён. Нажмите Enter, чтобы повторить.":            "Could not update results. Press Enter to try the search again",
 	"Название, ISO или хранилище":                                   "Title, ISO or storage",
 	"Подтвердите удаление загрузки":                                 "Confirm boot entry deletion",
 	"Загрузка не найдена":                                           "Boot entry not found",

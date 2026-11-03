@@ -178,6 +178,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/apple-touch-icon.png", brandFile)
 	mux.HandleFunc("GET /{$}", s.protect("view", s.nowPage))
 	mux.HandleFunc("GET /installations", s.protect("view", s.installationsPage))
+	mux.HandleFunc("GET /assets/download-search.js", downloadSearchScript)
 	mux.HandleFunc("GET /assets/now.js", nowScript)
 	mux.HandleFunc("GET /search", s.protect("view", s.searchPage))
 	mux.HandleFunc("GET /assets/search.js", searchScript)

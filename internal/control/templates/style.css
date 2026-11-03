@@ -242,6 +242,7 @@ td small{display:block}
 .tree-line.dragging{opacity:.5}
 .tree-add{margin-top:2px;border-style:dashed;color:var(--text-2)}
 .screen-frame{flex:999 1 520px;min-width:0;max-width:1080px;margin:0}
+.new-install-side .screen-frame{flex:none}
 .screen-caption{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;padding:0 2px 8px}
 /* The machine screen stays dark in both themes: it is the machine's screen, not the interface. */
 /* The machine's screen as iPXE's framebuffer console draws it on UEFI with

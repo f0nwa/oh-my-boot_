@@ -12,7 +12,7 @@
 {{range .Issues}}<p class="notice">{{.Message}} {{.Field}}</p>{{end}}
 <pre id="autoinstall-yaml">{{.YAML}}</pre>
 {{else}}
-<form id="ubuntu-editor" class="ed ai-editor" method="post" action="/ubuntu-autoinstall/preview" novalidate data-download="{{t "Скачать user-data"}}" data-checked="{{t "Проверен конструктором"}}" data-stale="{{t "Предпросмотр устарел. Проверяем изменения…"}}" data-invalid="{{t "Исправьте поля на вкладке «Проверка»."}}" data-expired="{{t "Предпросмотр недоступен. Повторите проверку или войдите заново."}}">
+<form id="ubuntu-editor" class="ed ai-editor" method="post" action="/ubuntu-autoinstall/preview" novalidate data-download="{{t "Скачать user-data"}}" data-checked="{{t "Проверен конструктором"}}" data-stale="{{t "Предпросмотр устарел. Проверяем изменения…"}}" data-invalid="{{t "Исправьте поля на вкладке «Проверка»."}}" data-expired="{{t "Предпросмотр недоступен. Повторите проверку или войдите заново."}}" data-password-accepted="{{t "Пароль принят. В предпросмотре сохранён только хеш, поле очищено."}}">
 <input type="hidden" name="csrf" value="{{$info.CSRF}}">
 <input type="hidden" name="active_section" value="{{.Section}}"><input type="hidden" name="active_tab" value="{{.Tab}}">
 {{if .Token}}<input type="hidden" name="preview_token" value="{{.Token}}">{{end}}
@@ -22,11 +22,14 @@
 <label for="ai-title">{{t "Название"}}</label><input id="ai-title" name="title" value="{{.Title}}" maxlength="80" required>
 <label for="ai-source">{{t "Набор приложений"}}</label><select id="ai-source" name="source_id"><option value=""{{if eq .Form.SourceID ""}} selected{{end}}>{{t "Как в ISO"}}</option>{{range .Sources}}<option value="{{.ID}}"{{if eq .ID $v.Form.SourceID}} selected{{end}}>{{.Name}}</option>{{end}}{{if .UnknownSource}}<option value="{{.Form.SourceID}}" selected>{{.Form.SourceID}} · {{t "Недоступен"}}</option>{{end}}</select>
 {{if .SourceDigest}}<p class="hint mono">ISO SHA-256: {{.SourceDigest}}</p>{{end}}
-<p class="hint">{{t "Сохранение файла не меняет меню. Выберите файл при создании установки и опубликуйте черновик."}}</p>
+<p class="hint">{{t "Сохранение файла не меняет меню. Выберите файл при создании загрузки и опубликуйте черновик."}}</p>
 </fieldset>
 <fieldset class="step ed-section" data-ai-panel="language"{{if ne .Section "language"}} hidden{{end}}><legend>{{t "Язык и регион"}}</legend>
-<label for="ai-locale">{{t "Локаль"}}</label><input id="ai-locale" type="text" name="locale" value="{{.Form.Locale}}" placeholder="ru_RU.UTF-8" required>
-<label for="ai-timezone">{{t "Часовой пояс IANA"}}</label><input id="ai-timezone" type="text" name="timezone" value="{{.Form.TimeZone}}" placeholder="Europe/Moscow" required>
+<label for="ai-locale">{{t "Локаль"}}</label><input id="ai-locale" type="text" name="locale" value="{{.Form.Locale}}" placeholder="ru_RU.UTF-8" list="ai-locale-options" required>
+<datalist id="ai-locale-options"><option value="ru_RU.UTF-8"></option><option value="en_US.UTF-8"></option><option value="en_GB.UTF-8"></option><option value="de_DE.UTF-8"></option><option value="fr_FR.UTF-8"></option></datalist>
+<label for="ai-timezone">{{t "Часовой пояс IANA"}}</label><input id="ai-timezone" type="text" name="timezone" value="{{.Form.TimeZone}}" placeholder="Europe/Moscow" list="ai-timezone-options" required>
+<datalist id="ai-timezone-options"><option value="UTC"></option><option value="Europe/Moscow"></option><option value="Europe/Kaliningrad"></option><option value="Europe/Samara"></option><option value="Asia/Yekaterinburg"></option><option value="Asia/Omsk"></option><option value="Asia/Novosibirsk"></option><option value="Asia/Krasnoyarsk"></option><option value="Asia/Irkutsk"></option><option value="Asia/Yakutsk"></option><option value="Asia/Vladivostok"></option></datalist>
+<p class="hint">{{t "Начните вводить значение и выберите из списка или укажите своё."}}</p>
 <p class="hint">{{t "До четырёх раскладок. Первая используется по умолчанию."}}</p>{{range .Keyboards}}<div class="ed-row2"><div><label for="ai-layout-{{.Index}}">{{t "Раскладка"}} {{add1 .Index}}</label><input id="ai-layout-{{.Index}}" name="keyboard_layout" value="{{.Layout}}" placeholder="us"></div><div><label for="ai-variant-{{.Index}}">{{t "Вариант раскладки"}}</label><input id="ai-variant-{{.Index}}" name="keyboard_layout_variant" value="{{.Variant}}"></div></div>{{end}}
 <label for="ai-keyboard_toggle">{{t "Переключение раскладок"}}</label><select id="ai-keyboard_toggle" name="keyboard_toggle"><option value=""{{if eq .Form.KeyboardToggle ""}} selected{{end}}>{{t "Как в Ubuntu"}}</option><option value="alt_shift_toggle"{{if eq .Form.KeyboardToggle "alt_shift_toggle"}} selected{{end}}>{{t "Alt + Shift"}}</option><option value="ctrl_shift_toggle"{{if eq .Form.KeyboardToggle "ctrl_shift_toggle"}} selected{{end}}>{{t "Ctrl + Shift"}}</option><option value="win_space_toggle"{{if eq .Form.KeyboardToggle "win_space_toggle"}} selected{{end}}>{{t "Super + Space"}}</option></select>
 </fieldset>
@@ -34,18 +37,21 @@
 <label for="ai-realname">{{t "Полное имя"}}</label><input id="ai-realname" type="text" name="realname" value="{{.Form.RealName}}">
 <label for="ai-username">{{t "Имя пользователя"}}</label><input id="ai-username" type="text" name="username" value="{{.Form.Username}}" required>
 <label for="ai-hostname">{{t "Имя компьютера"}}</label><input id="ai-hostname" type="text" name="hostname" value="{{.Form.Hostname}}" required>
-<label for="ai-password">{{t "Пароль для установки"}}</label><input id="ai-password" type="password" name="password" maxlength="1024" autocomplete="new-password">
+<label for="ai-password">{{t "Пароль создаваемого пользователя"}}</label><input id="ai-password" type="password" name="password" maxlength="1024" autocomplete="new-password">
+<p class="hint" id="ai-password-state" aria-live="polite">{{if .CanSave}}{{t "Пароль принят. В предпросмотре сохранён только хеш, поле очищено."}}{{end}}</p>
 <p class="hint">{{t "Пароль нужен для первого предпросмотра. Действительный предпросмотр позволяет сохранять без повторного ввода."}}</p>
 <p class="hint">{{t "Хеш пароля доступен компьютерам PXE-сегмента. Используйте отдельный пароль и смените его после установки."}}</p>
 </fieldset>
 <fieldset class="step ed-section" data-ai-panel="disk"{{if ne .Section "disk"}} hidden{{end}}><legend>{{t "Целевой диск"}}</legend>
-<label for="ai-disk_mode">{{t "Разметка"}}</label><select id="ai-disk_mode" name="disk_mode"><option value="interactive"{{if eq .Form.DiskMode "interactive"}} selected{{end}}>{{t "Выбрать диск вручную в установщике"}}</option><option value="serial"{{if eq .Form.DiskMode "serial"}} selected{{end}}>{{t "Стереть диск по точному серийному номеру"}}</option></select>
+<label for="ai-disk_mode">{{t "Разметка"}}</label><select id="ai-disk_mode" name="disk_mode"><option value="interactive"{{if eq .Form.DiskMode "interactive"}} selected{{end}}>{{t "Выбрать диск вручную в установщике"}}</option><option value="default"{{if eq .Form.DiskMode "default"}} selected{{end}}>{{t "Стереть диск по умолчанию"}}</option><option value="serial"{{if eq .Form.DiskMode "serial"}} selected{{end}}>{{t "Стереть диск по точному серийному номеру"}}</option></select>
 <label for="ai-disk_serial">{{t "Точный серийный номер диска"}}</label><input id="ai-disk_serial" type="text" name="disk_serial" value="{{.Form.DiskSerial}}">
-<p class="hint">{{t "Для ручного режима оставьте серийный номер пустым. Для автоматического режима укажите один номер без шаблонов."}}</p>
+<p class="hint">{{t "Серийный номер нужен только для режима очистки по точному совпадению."}}</p>
+<p class="ed-warn" id="ai-default-disk-warning"{{if ne .Form.DiskMode "default"}} hidden{{end}}>{{t "Установщик сам выберет один диск и полностью сотрёт его содержимое."}}</p>
+<p class="ed-warn" id="ai-serial-disk-warning"{{if ne .Form.DiskMode "serial"}} hidden{{end}}>{{t "Будет стёрт только диск с точно совпадающим серийным номером."}}</p>
 </fieldset>
 <fieldset class="step ed-section" data-ai-panel="hardware"{{if ne .Section "hardware"}} hidden{{end}}><legend>{{t "Оборудование"}}</legend>
-<label class="check"><input type="checkbox" name="drivers" value="true"{{if .Form.Drivers}} checked{{end}}> {{t "Установить доступные сторонние драйверы"}}</label>
-<label class="check"><input type="checkbox" name="codecs" value="true"{{if .Form.Codecs}} checked{{end}}> {{t "Установить кодеки"}}</label>
+<label class="check"><input type="checkbox" name="drivers" value="true"{{if .Form.Drivers}} checked{{end}}><span>{{t "Установить доступные сторонние драйверы"}}</span></label>
+<label class="check"><input type="checkbox" name="codecs" value="true"{{if .Form.Codecs}} checked{{end}}><span>{{t "Установить кодеки"}}</span></label>
 <p class="hint">{{t "Доступность драйверов зависит от оборудования и выбранного ISO."}}</p>
 </fieldset>
 <fieldset class="step ed-section" data-ai-panel="software"{{if ne .Section "software"}} hidden{{end}}><legend>{{t "Программы и репозиторий"}}</legend>
@@ -68,7 +74,7 @@
 <fieldset class="step ed-section" data-ai-panel="finish"{{if ne .Section "finish"}} hidden{{end}}><legend>{{t "Завершение установки"}}</legend>
 <label for="ai-post_install_script">{{t "Скрипт в установленной системе от root"}}</label><textarea id="ai-post_install_script" class="mono" name="post_install_script" rows="12">{{.Form.PostInstallScript}}</textarea>
 <p class="hint">{{t "До 16 КиБ. Выполняется до первого запуска через /bin/sh; ошибка останавливает установку."}}</p>
-<label for="ai-shutdown">{{t "После установки"}}</label><select id="ai-shutdown" name="shutdown"><option value=""{{if eq .Form.Shutdown ""}} selected{{end}}>{{t "Перезагрузить компьютер"}}</option><option value="reboot"{{if eq .Form.Shutdown "reboot"}} selected{{end}}>{{t "Перезагрузить компьютер"}}</option><option value="poweroff"{{if eq .Form.Shutdown "poweroff"}} selected{{end}}>{{t "Выключить компьютер"}}</option></select>
+<label for="ai-shutdown">{{t "После установки"}}</label><select id="ai-shutdown" name="shutdown"><option value=""{{if eq .Form.Shutdown ""}} selected{{end}}>{{t "Как в Ubuntu — перезагрузка"}}</option><option value="reboot"{{if eq .Form.Shutdown "reboot"}} selected{{end}}>{{t "Перезагрузить компьютер"}}</option><option value="poweroff"{{if eq .Form.Shutdown "poweroff"}} selected{{end}}>{{t "Выключить компьютер"}}</option></select>
 </fieldset>
 <div class="ed-foot"><button class="btn" type="submit">{{t "Предпросмотр YAML"}}</button><button class="btn btn-primary" id="ai-save" type="submit" formaction="/ubuntu-autoinstall"{{if not .CanSave}} disabled{{end}}>{{t "Сохранить файл"}}</button></div>
 </div>

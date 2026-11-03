@@ -7,6 +7,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"omb/internal/network"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -47,6 +49,7 @@ type MenuVersion struct {
 // MenuVersionItem is a saved menu placement, independent of the script.
 type MenuVersionItem struct {
 	VersionID      int64
+	Components     *InstallationComponents
 	InstallationID int64
 	Position       int
 	Title          string
@@ -241,7 +244,7 @@ func (s Store) AuditSystem(ctx context.Context, action, result, detail string) e
 // menuVersionSelect reads metadata and placements in a single snapshot.
 const menuVersionSelect = `SELECT m.id,m.created_at,coalesce(u.username,'system'),m.title,m.diagnostic_label,m.diagnostic_message,m.script,m.sha256,m.active,
  NOT m.diagnostics_on,m.local_timeout,NOT m.local_timer,m.look,
- i.installation_id,i.position,i.title,i.folder FROM `
+ i.installation_id,i.position,i.title,i.folder,i.components FROM `
 
 func (s Store) MenuVersions(ctx context.Context) ([]MenuVersion, error) {
 	rows, err := s.Pool.Query(ctx, menuVersionSelect+`(SELECT * FROM menu_versions ORDER BY id DESC LIMIT 50) m
@@ -276,8 +279,9 @@ func readMenuVersions(rows pgx.Rows) ([]MenuVersion, error) {
 		var installationID *int64
 		var position *int
 		var title, folder *string
+		var components *InstallationComponents
 		if err := rows.Scan(&m.ID, &m.At, &m.Author, &m.Title, &m.Label, &m.Message, &m.Script, &m.SHA256, &m.Active,
-			&m.NoDiagnostics, &m.LocalTimeout, &m.NoLocalTimer, &m.Look, &installationID, &position, &title, &folder); err != nil {
+			&m.NoDiagnostics, &m.LocalTimeout, &m.NoLocalTimer, &m.Look, &installationID, &position, &title, &folder, &components); err != nil {
 			return nil, err
 		}
 		if len(versions) == 0 || versions[len(versions)-1].ID != m.ID {
@@ -286,7 +290,7 @@ func readMenuVersions(rows pgx.Rows) ([]MenuVersion, error) {
 		}
 		if installationID != nil {
 			last := &versions[len(versions)-1]
-			last.Items = append(last.Items, MenuVersionItem{VersionID: m.ID, InstallationID: *installationID, Position: *position, Title: *title, Folder: *folder})
+			last.Items = append(last.Items, MenuVersionItem{VersionID: m.ID, InstallationID: *installationID, Position: *position, Title: *title, Folder: *folder, Components: components})
 		}
 	}
 	return versions, rows.Err()
@@ -312,7 +316,7 @@ func (s Store) SaveActiveMenu(ctx context.Context, authorID int64, m MenuVersion
 		return err
 	}
 	for _, item := range m.Items {
-		if _, err := tx.Exec(ctx, `INSERT INTO menu_version_items (version_id,installation_id,position,title,folder) VALUES ($1,$2,$3,$4,$5)`, versionID, item.InstallationID, item.Position, item.Title, item.Folder); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO menu_version_items (version_id,installation_id,position,title,folder,components) VALUES ($1,$2,$3,$4,$5,$6)`, versionID, item.InstallationID, item.Position, item.Title, item.Folder, item.Components); err != nil {
 			return err
 		}
 	}
@@ -382,7 +386,7 @@ func (s Store) ChangeOwnPassword(ctx context.Context, id int64, sessionToken, cu
 
 // Machines returns the book of machines, most recently seen first.
 func (s Store) Machines(ctx context.Context) ([]MachineInfo, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT mac,first_seen,last_seen,last_ip,firmware,manufacturer,product,serial,uuid,detected_at,name,manufacturer_override,product_override,note,manual FROM machines ORDER BY last_seen DESC`)
+	rows, err := s.Pool.Query(ctx, `SELECT mac,first_seen,last_seen,last_ip,firmware,manufacturer,product,serial,uuid,detected_at,name,manufacturer_override,product_override,note,manual,network_driver FROM machines ORDER BY last_seen DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -390,7 +394,7 @@ func (s Store) Machines(ctx context.Context) ([]MachineInfo, error) {
 	var out []MachineInfo
 	for rows.Next() {
 		var m MachineInfo
-		if err := rows.Scan(&m.MAC, &m.FirstSeen, &m.LastSeen, &m.LastIP, &m.Firmware, &m.Manufacturer, &m.Product, &m.Serial, &m.UUID, &m.DetectedAt, &m.Name, &m.ManufacturerOverride, &m.ProductOverride, &m.Note, &m.Manual); err != nil {
+		if err := rows.Scan(&m.MAC, &m.FirstSeen, &m.LastSeen, &m.LastIP, &m.Firmware, &m.Manufacturer, &m.Product, &m.Serial, &m.UUID, &m.DetectedAt, &m.Name, &m.ManufacturerOverride, &m.ProductOverride, &m.Note, &m.Manual, &m.NetworkDriver); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -481,7 +485,7 @@ VALUES ($1,now(),now(),$2,$3,$4,$5,true,now()) ON CONFLICT (mac) DO NOTHING`, it
 
 // MacRules returns the MAC prefix rules.
 func (s Store) MacRules(ctx context.Context) ([]MacRule, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT prefix,title,manufacturer,note FROM mac_prefix_rules ORDER BY prefix`)
+	rows, err := s.Pool.Query(ctx, `SELECT prefix,title,manufacturer,note,network_driver FROM mac_prefix_rules ORDER BY prefix`)
 	if err != nil {
 		return nil, err
 	}
@@ -489,7 +493,7 @@ func (s Store) MacRules(ctx context.Context) ([]MacRule, error) {
 	var out []MacRule
 	for rows.Next() {
 		var r MacRule
-		if err := rows.Scan(&r.Prefix, &r.Title, &r.Manufacturer, &r.Note); err != nil {
+		if err := rows.Scan(&r.Prefix, &r.Title, &r.Manufacturer, &r.Note, &r.NetworkDriver); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -499,7 +503,7 @@ func (s Store) MacRules(ctx context.Context) ([]MacRule, error) {
 
 // AddMacRule adds a rule; false when the prefix already has one.
 func (s Store) AddMacRule(ctx context.Context, r MacRule) (bool, error) {
-	tag, err := s.Pool.Exec(ctx, `INSERT INTO mac_prefix_rules (prefix,title,manufacturer,note) VALUES ($1,$2,$3,$4) ON CONFLICT (prefix) DO NOTHING`, r.Prefix, r.Title, r.Manufacturer, r.Note)
+	tag, err := s.Pool.Exec(ctx, `INSERT INTO mac_prefix_rules (prefix,title,manufacturer,note,network_driver) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (prefix) DO NOTHING`, r.Prefix, r.Title, r.Manufacturer, r.Note, r.NetworkDriver)
 	if err != nil {
 		return false, err
 	}
@@ -508,7 +512,7 @@ func (s Store) AddMacRule(ctx context.Context, r MacRule) (bool, error) {
 
 // EditMacRule changes a rule's title, maker and note.
 func (s Store) EditMacRule(ctx context.Context, r MacRule) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE mac_prefix_rules SET title=$2,manufacturer=$3,note=$4,updated_at=now() WHERE prefix=$1`, r.Prefix, r.Title, r.Manufacturer, r.Note)
+	_, err := s.Pool.Exec(ctx, `UPDATE mac_prefix_rules SET title=$2,manufacturer=$3,note=$4,network_driver=$5,updated_at=now() WHERE prefix=$1`, r.Prefix, r.Title, r.Manufacturer, r.Note, r.NetworkDriver)
 	return err
 }
 
@@ -523,4 +527,33 @@ func (s Store) DeleteMacRule(ctx context.Context, prefix string) error {
 func (s Store) DeleteMachine(ctx context.Context, mac string) error {
 	_, err := s.Pool.Exec(ctx, `DELETE FROM machines WHERE mac=$1`, mac)
 	return err
+}
+
+func (s Store) SetMachineNetworkDriver(ctx context.Context, mac, driver string) error {
+	tag, err := s.Pool.Exec(ctx, `UPDATE machines SET network_driver=$2,updated_at=now() WHERE mac=$1`, mac, driver)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("machine not found")
+	}
+	return nil
+}
+
+// BootDriverRules reads one consistent snapshot of all explicit selections.
+func (s Store) BootDriverRules(ctx context.Context) ([]network.BootDriverRule, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT mac,network_driver FROM machines WHERE network_driver<>'' UNION ALL SELECT prefix,network_driver FROM mac_prefix_rules WHERE network_driver<>''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	rules := []network.BootDriverRule{}
+	for rows.Next() {
+		var rule network.BootDriverRule
+		if err := rows.Scan(&rule.Match, &rule.Driver); err != nil {
+			return nil, err
+		}
+		rules = append(rules, rule)
+	}
+	return rules, rows.Err()
 }

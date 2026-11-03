@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -48,11 +49,27 @@ func (s Store) Installations(ctx context.Context) ([]Installation, error) {
 }
 
 func (s Store) CreateInstallation(ctx context.Context, item Installation) (Installation, error) {
+	return s.saveInstallation(ctx, item, false)
+}
+func (s Store) UpdateInstallation(ctx context.Context, item Installation) error {
+	_, err := s.saveInstallation(ctx, item, true)
+	return err
+}
+func (s Store) saveInstallation(ctx context.Context, item Installation, update bool) (Installation, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Installation{}, err
 	}
 	defer tx.Rollback(ctx)
+	if update {
+		var sourceID int64
+		if err := tx.QueryRow(ctx, `SELECT boot_profile_id FROM installations WHERE id=$1 FOR UPDATE`, item.ID).Scan(&sourceID); err != nil {
+			return Installation{}, err
+		}
+		if sourceID != item.BootProfileID {
+			return Installation{}, fmt.Errorf("download source is immutable")
+		}
+	}
 	var profile BootProfile
 	err = tx.QueryRow(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0) FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id WHERE b.id=$1 FOR SHARE OF b`, item.BootProfileID).Scan(&profile.ID, &profile.Kind, &profile.Title, &profile.WindowsProfileID)
 	if err != nil {
@@ -91,11 +108,17 @@ func (s Store) CreateInstallation(ctx context.Context, item Installation) (Insta
 	if err := ValidateInstallation(item, profile, answers, configs, files); err != nil {
 		return Installation{}, err
 	}
-	if err := tx.QueryRow(ctx, `INSERT INTO installations(boot_profile_id,title,folder,autoinstall_id) VALUES($1,$2,$3,NULLIF($4,0)) RETURNING id`, item.BootProfileID, item.Title, item.Folder, item.AutoinstallID).Scan(&item.ID); err != nil {
-		return Installation{}, err
+	if update {
+		if _, err := tx.Exec(ctx, `UPDATE installations SET title=$2,folder=$3,autoinstall_id=NULLIF($4,0) WHERE id=$1`, item.ID, item.Title, item.Folder, item.AutoinstallID); err != nil {
+			return Installation{}, err
+		}
+	} else {
+		if err := tx.QueryRow(ctx, `INSERT INTO installations(boot_profile_id,title,folder,autoinstall_id) VALUES($1,$2,$3,NULLIF($4,0)) RETURNING id`, item.BootProfileID, item.Title, item.Folder, item.AutoinstallID).Scan(&item.ID); err != nil {
+			return Installation{}, err
+		}
 	}
 	if profile.Kind == BootProfileWindowsISO {
-		if _, err := tx.Exec(ctx, `INSERT INTO windows_installation_options(installation_id,answer_id,driver_config_id) VALUES($1,NULLIF($2,0),NULLIF($3,0))`, item.ID, item.AnswerID, item.DriverConfigID); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO windows_installation_options(installation_id,answer_id,driver_config_id) VALUES($1,NULLIF($2,0),NULLIF($3,0)) ON CONFLICT(installation_id) DO UPDATE SET answer_id=EXCLUDED.answer_id,driver_config_id=EXCLUDED.driver_config_id`, item.ID, item.AnswerID, item.DriverConfigID); err != nil {
 			return Installation{}, err
 		}
 	}

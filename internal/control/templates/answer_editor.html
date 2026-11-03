@@ -5,7 +5,7 @@
 
 {{define "answer_editor"}}{{template "top" .}}{{$v := .Editor}}
 <p class="crumbs"><a href="/answers">← {{t "Файлы ответов"}}</a></p>
-<div class="page-head"><div><h1>{{if $v.SourceID}}{{t "Правка файла ответов"}}{{else}}{{t "Редактор файла ответов"}}{{end}}</h1><p class="lead">{{t "Собирает autounattend.xml. В меню ничего не попадает само: сохранённый файл выбирают в новой установке."}}</p></div></div>
+<div class="page-head"><div><h1>{{if $v.SourceID}}{{t "Правка файла ответов"}}{{else}}{{t "Редактор файла ответов"}}{{end}}</h1><p class="lead">{{t "Собирает autounattend.xml. В меню ничего не попадает само: сохранённый файл выбирают в новой загрузке."}}</p></div></div>
 {{if .Message}}<div class="notice">{{.Message}}</div>{{end}}
 {{if $v.Error}}<div class="notice error" role="alert" id="ed-error">{{$v.Error}}</div>{{else}}<div class="notice error" role="alert" id="ed-error" hidden></div>{{end}}
 {{with $v.Report}}<div class="ed-banner"><span class="dot {{if .Exact}}{{if .Modified}}dot-accent{{else}}dot-ok{{end}}{{else}}dot-accent{{end}}"></span><div>

@@ -45,9 +45,9 @@ flowchart TD
 
 ## 2. Стенд коллеги: Debian shim → сетевой GRUB
 
-В [переписке](../../ChatExport_%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%20%D0%9F%D0%B8%D0%BB%D0%B8%D0%BD/messages.html#message535165) указаны пакеты `shim-signed` и `grub-efi-amd64-signed`. [Список файлов на стенде](../../ChatExport_%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%20%D0%9F%D0%B8%D0%BB%D0%B8%D0%BD/photos/photo_535172_0.jpg) содержит `bootx64.efi`, `grubx64.efi`, `grub/grub.cfg`, ядро и `initrd` в каталоге TFTP. [Конфигурация меню](../../ChatExport_%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%20%D0%9F%D0%B8%D0%BB%D0%B8%D0%BD/messages.html#message535168) передаёт ядру `fetch=http://…/filesystem.squashfs`; отдельно показан [Caddy для HTTP](../../ChatExport_%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%20%D0%9F%D0%B8%D0%BB%D0%B8%D0%BD/messages.html#message535173). Значит, «только TFTP» относится к начальным файлам, а не к загрузке всей Live-системы. Официальный пример Debian использует именно подписанный shim и сетевой `grubnetx64.efi.signed`; документация `live-boot` описывает параметр `fetch=` для скачивания SquashFS. [Debian: Secure Boot и PXE](https://wiki.debian.org/SecureBoot/VirtualMachine), [Debian: `live-boot`](https://dyn.manpages.debian.org/bookworm/live-boot-doc/live-boot.7).
+В [локальной заметке о стенде](research/2026-10-28-debian-grub-stand.md#состав-и-настройка-стенда) сохранены сведения о пакетах `shim-signed` и `grub-efi-amd64-signed`, [снимок файлов](images/debian-grub-stand/tftp-files.jpg) и описание конфигураций GRUB и Caddy. В каталоге TFTP находились `bootx64.efi`, `grubx64.efi`, `grub/grub.cfg`, ядро и `initrd`; меню передавало ядру `fetch=http://…/filesystem.squashfs`, а Caddy отдавал SquashFS по HTTP. Значит, «только TFTP» относится к начальным файлам, а не к загрузке всей Live-системы. Официальный пример Debian использует именно подписанный shim и сетевой `grubnetx64.efi.signed`; документация `live-boot` описывает параметр `fetch=` для скачивания SquashFS. [Debian: Secure Boot и PXE](https://wiki.debian.org/SecureBoot/VirtualMachine), [Debian: `live-boot`](https://dyn.manpages.debian.org/bookworm/live-boot-doc/live-boot.7).
 
-Экспорт не содержит настройки DHCP с именем первого EFI-файла и проверки подписей этих двух файлов. Указанная цепочка следует из слов коллеги, состава каталога и результата загрузки; точные бинарные файлы нужно сверить на его стенде.
+Сохранённые материалы не содержат настройки DHCP с именем первого EFI-файла и проверки подписей этих двух файлов. Указанная цепочка следует из слов коллеги, состава каталога и результата загрузки; точные бинарные файлы нужно сверить на его стенде.
 
 ```mermaid
 flowchart TD
@@ -59,7 +59,7 @@ flowchart TD
     Q --> L[Debian Live]
 ```
 
-**Статус:** коллега показал [запущенный Debian Live с включённым Secure Boot](../../ChatExport_%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%20%D0%9F%D0%B8%D0%BB%D0%B8%D0%BD/photos/photo_535147_0.jpg) на Dell. Это подтверждает его стенд, но не совместимость со всеми Dell и Lenovo. [Проверку Lenovo с заводскими настройками](../../ChatExport_%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%20%D0%9F%D0%B8%D0%BB%D0%B8%D0%BD/messages.html#message535202) в экспорте только предложили; результата нет. Там же [установка Windows с SMB](../../ChatExport_%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%20%D0%9F%D0%B8%D0%BB%D0%B8%D0%BD/messages.html#message535196) описана как план, а не как успешный запуск через GRUB.
+**Статус:** коллега показал [запущенный Debian Live с включённым Secure Boot](images/debian-grub-stand/debian-live-secure-boot.jpg) на Dell. Это подтверждает его стенд, но не совместимость со всеми Dell и Lenovo. [Локальная заметка](research/2026-10-28-debian-grub-stand.md#результат-и-пределы-проверки) фиксирует, что успешной проверки Lenovo с заводскими настройками нет, а установка Windows с SMB обсуждалась как план, без результата запуска через GRUB.
 
 ## 3. Windows через GRUB или напрямую
 

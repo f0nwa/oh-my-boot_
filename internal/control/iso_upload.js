@@ -27,25 +27,39 @@
   const submit = form.querySelector('[type="submit"]');
   const cancel = document.getElementById('iso-upload-cancel');
   let request = null;
+  let foldersRequest = null;
+  let foldersReady = false;
+  const folderField = document.getElementById('iso-folder-field');
   // Cancel and the progress bar only make sense while a transfer runs.
-  const busy = on => { submit.disabled = on; cancel.hidden = !on; progress.parentElement.hidden = !on; };
+  const busy = on => { submit.disabled = on || !foldersReady; storage.disabled = on; folder.disabled = on; cancel.hidden = !on; progress.parentElement.hidden = !on; };
 
   async function loadFolders() {
+    if (foldersRequest) foldersRequest.abort();
+    const controller = new AbortController();
+    foldersRequest = controller;
+    foldersReady = false;
+    submit.disabled = true;
+    folderField.hidden = true;
     folder.replaceChildren();
     status.textContent = tr('Читаю папки…');
     if (!storage.value) { status.textContent = ''; return; }
     try {
-      const response = await fetch(`/images/storages/${storage.value}/folders`, {credentials: 'same-origin'});
+      const response = await fetch(`/images/storages/${storage.value}/folders`, {credentials: 'same-origin', signal: controller.signal});
       if (!response.ok) throw new Error(tr('Не удалось прочитать папки хранилища'));
       const folders = await response.json();
+      if (foldersRequest !== controller) return;
+      if (!Array.isArray(folders) || !folders.length) throw new Error(tr('Не удалось прочитать папки хранилища'));
       folders.forEach(path => {
         const option = document.createElement('option');
         option.value = path;
         option.textContent = path || tr('(корневая папка)');
         folder.append(option);
       });
+      folderField.hidden = folders.length < 2;
+      foldersReady = true;
+      submit.disabled = false;
       status.textContent = '';
-    } catch (error) { status.textContent = error.message; }
+    } catch (error) { if (foldersRequest === controller && error.name !== 'AbortError') status.textContent = error.message; }
   }
 
   storage.addEventListener('change', loadFolders);
@@ -53,7 +67,7 @@
   form.addEventListener('submit', event => {
     event.preventDefault();
     const iso = file.files[0];
-    if (!iso || !storage.value || !folder.options.length || request) return;
+    if (!iso || !storage.value || !foldersReady || !folder.options.length || request) return;
     if (!/\.iso$/i.test(iso.name) || iso.size <= 0 || iso.size > 32 * 1024 ** 3) {
       status.textContent = tr('Выберите ISO размером до 32 ГБ.');
       return;

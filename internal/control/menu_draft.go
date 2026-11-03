@@ -12,6 +12,7 @@ import (
 // MenuDraftItem places an installation in the menu with its own title/folder.
 type MenuDraftItem struct {
 	InstallationID int64
+	Components     *InstallationComponents
 	Folder         string
 	Title          string
 }
@@ -184,6 +185,9 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 							return menuProfile{}, "", fmt.Errorf("Ubuntu Autoinstall file %d has an invalid digest", file.ID)
 						}
 						entry.autoinstallID, entry.autoinstallSHA256 = file.ID, file.SHA256
+						if file.DiskMode == "default" || file.DiskMode == "serial" {
+							entry.hint = "!! WIPES DISK"
+						}
 					}
 				}
 			case BootProfileWindowsISO:
@@ -205,6 +209,14 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 }
 
 func resolveDraftItem(item MenuDraftItem, base string, sources InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
+	if item.Components != nil {
+		sources.Installations = append([]Installation(nil), sources.Installations...)
+		for i := range sources.Installations {
+			if sources.Installations[i].ID == item.InstallationID {
+				sources.Installations[i] = item.Components.apply(sources.Installations[i])
+			}
+		}
+	}
 	return menuProfileForInstallation(item.InstallationID, base, sources, profiles, answers, configs)
 }
 
@@ -264,7 +276,7 @@ func draftFromVersion(v MenuVersion) MenuDraft {
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Position < items[j].Position })
 	d.Items = make([]MenuDraftItem, 0, len(items))
 	for _, item := range items {
-		d.Items = append(d.Items, MenuDraftItem{InstallationID: item.InstallationID, Title: item.Title, Folder: item.Folder})
+		d.Items = append(d.Items, MenuDraftItem{InstallationID: item.InstallationID, Title: item.Title, Folder: item.Folder, Components: item.Components})
 	}
 	return d
 }
@@ -320,6 +332,9 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 			continue
 		}
 		draftOrder = append(draftOrder, menuDraftItemKey(item))
+		if !sameInstallationComponents(old.Components, item.Components) {
+			changes = append(changes, MenuChange{Kind: "change", Key: menuDraftItemKey(item), Title: menuItemName(item), Label: "Состав загрузки", Before: "Прежний", After: "Изменён"})
+		}
 		if old.Title != item.Title {
 			changes = append(changes, MenuChange{Kind: "change", Key: menuDraftItemKey(item), Title: menuItemName(item), Label: "Название пункта", Before: menuTitleName(old.Title), After: menuTitleName(item.Title)})
 		}

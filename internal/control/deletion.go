@@ -52,7 +52,7 @@ func (s *Server) activeMenuContains(r *http.Request, component installationCompo
 			}
 			for _, placement := range version.Items {
 				for _, item := range source.Installations {
-					if item.ID == placement.InstallationID && component.matches(item, source.BootProfiles) {
+					if item.ID == placement.InstallationID && component.matches(placement.Components.apply(item), source.BootProfiles) {
 						return true, nil
 					}
 				}
@@ -96,12 +96,12 @@ func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	source, err := s.installationMenuSources(r.Context())
 	if err != nil {
-		http.Error(w, "Не удалось проверить установки", http.StatusServiceUnavailable)
+		http.Error(w, "Не удалось проверить загрузки", http.StatusServiceUnavailable)
 		return
 	}
 	for _, item := range source.Installations {
 		if (installationComponent{driverConfigID: id}).matches(item, source.BootProfiles) {
-			s.rejectDeletion(w, r, "driver-config.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется установкой № %d", item.ID))
+			s.rejectDeletion(w, r, "driver-config.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется загрузкой № %d", item.ID))
 			return
 		}
 	}
@@ -172,12 +172,12 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	source, err := s.installationMenuSources(r.Context())
 	if err != nil {
-		http.Error(w, "Не удалось проверить установки", http.StatusServiceUnavailable)
+		http.Error(w, "Не удалось проверить загрузки", http.StatusServiceUnavailable)
 		return
 	}
 	for _, item := range source.Installations {
 		if (installationComponent{answerID: id}).matches(item, source.BootProfiles) {
-			s.rejectDeletion(w, r, "windows-answer.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется установкой № %d", item.ID))
+			s.rejectDeletion(w, r, "windows-answer.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется загрузкой № %d", item.ID))
 			return
 		}
 	}
@@ -239,12 +239,12 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	source, err := s.installationMenuSources(r.Context())
 	if err != nil {
-		http.Error(w, "Не удалось проверить установки", http.StatusServiceUnavailable)
+		http.Error(w, "Не удалось проверить загрузки", http.StatusServiceUnavailable)
 		return
 	}
 	for _, item := range source.Installations {
 		if (installationComponent{profileID: id}).matches(item, source.BootProfiles) {
-			s.rejectDeletion(w, r, "windows-profile.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется установкой № %d", item.ID))
+			s.rejectDeletion(w, r, "windows-profile.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется загрузкой № %d", item.ID))
 			return
 		}
 	}

@@ -10,7 +10,7 @@ import (
 
 func TestAgentSMBEndpointAcceptsMountAndRemoveWithoutEchoingPassword(t *testing.T) {
 	base := t.TempDir()
-	applier, err := NewApplier(filepath.Join(base, "dnsmasq.conf"), filepath.Join(base, "network.json"), &fakeRunner{})
+	applier, err := NewApplier(filepath.Join(base, "dnsmasq.conf"), filepath.Join(base, "network.json"), filepath.Join(base, "dhcp", "hosts"), &fakeRunner{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestAgentSMBEndpointAcceptsMountAndRemoveWithoutEchoingPassword(t *testing.
 
 func TestAgentSMBEndpointRejectsExtraFields(t *testing.T) {
 	base := t.TempDir()
-	applier, err := NewApplier(filepath.Join(base, "dnsmasq.conf"), filepath.Join(base, "network.json"), &fakeRunner{})
+	applier, err := NewApplier(filepath.Join(base, "dnsmasq.conf"), filepath.Join(base, "network.json"), filepath.Join(base, "dhcp", "hosts"), &fakeRunner{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestAgentSMBEndpointRejectsExtraFields(t *testing.T) {
 
 func TestAgentSMBEnableUploadRequiresExistingStorageAndAcceptsMatchingSource(t *testing.T) {
 	base := t.TempDir()
-	applier, err := NewApplier(filepath.Join(base, "dnsmasq.conf"), filepath.Join(base, "network.json"), &fakeRunner{})
+	applier, err := NewApplier(filepath.Join(base, "dnsmasq.conf"), filepath.Join(base, "network.json"), filepath.Join(base, "dhcp", "hosts"), &fakeRunner{})
 	if err != nil {
 		t.Fatal(err)
 	}

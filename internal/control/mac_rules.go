@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"sort"
@@ -16,11 +17,12 @@ import (
 
 // MacRule is one prefix rule.
 type MacRule struct {
-	Prefix       string // aa:bb:cc … aa:bb:cc:dd:ee
-	Title        string
-	Manufacturer string // the network card's maker, instead of the IEEE entry
-	Note         string
-	Machines     int // machines in the list that fit, for the page
+	NetworkDriver string
+	Prefix        string // aa:bb:cc … aa:bb:cc:dd:ee
+	Title         string
+	Manufacturer  string // the network card's maker, instead of the IEEE entry
+	Note          string
+	Machines      int // machines in the list that fit, for the page
 }
 
 // MacRuleBook stores prefix rules. It is optional, like MachineBook.
@@ -108,6 +110,10 @@ func parseMACPrefix(v string) (string, bool) {
 // parseMacRule reads the title, maker and note of a rule form.
 func parseMacRule(r *http.Request) (MacRule, string) {
 	var rule MacRule
+	rule.NetworkDriver = r.PostFormValue("network_driver")
+	if rule.NetworkDriver != "" && rule.NetworkDriver != "ipxe" && rule.NetworkDriver != "snp" {
+		return rule, "Недопустимый сетевой драйвер"
+	}
 	var ok [3]bool
 	rule.Title, ok[0] = cleanMachineText(r.PostFormValue("title"), 80)
 	rule.Manufacturer, ok[1] = cleanMachineText(r.PostFormValue("manufacturer"), 120)
@@ -147,8 +153,26 @@ func (s *Server) macRuleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rule.Prefix = prefix
-	added, err := book.AddMacRule(r.Context(), rule)
-	if err != nil {
+	if !validNetworkDriverSelection(prefix, rule.NetworkDriver) {
+		http.Error(w, "Недопустимый сетевой драйвер", http.StatusBadRequest)
+		return
+	}
+	var added bool
+	saved, err := s.mutateBootDrivers(r.Context(), func() error {
+		var err error
+		added, err = book.AddMacRule(r.Context(), rule)
+		if err == nil && !added {
+			return errMacRuleExists
+		}
+		return err
+	})
+	result, message := driverMutationResult(saved, err, "Правило добавлено")
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "mac_rule.add", result, prefix)
+	if errors.Is(err, errMacRuleExists) {
+		http.Error(w, "Правило для этого префикса уже есть", http.StatusConflict)
+		return
+	}
+	if !saved {
 		http.Error(w, "Не удалось сохранить правило", http.StatusServiceUnavailable)
 		return
 	}
@@ -156,8 +180,7 @@ func (s *Server) macRuleAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Правило для этого префикса уже есть", http.StatusConflict)
 		return
 	}
-	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "mac_rule.add", "ok", prefix)
-	http.Redirect(w, r, rulesReturn("Правило добавлено", prefix), http.StatusSeeOther)
+	http.Redirect(w, r, rulesReturnContext(r, message, prefix), http.StatusSeeOther)
 }
 
 // macRuleEdit changes a rule's title, maker and note; the prefix stays.
@@ -174,12 +197,18 @@ func (s *Server) macRuleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rule.Prefix = prefix
-	if err := book.EditMacRule(r.Context(), rule); err != nil {
+	if !validNetworkDriverSelection(prefix, rule.NetworkDriver) {
+		http.Error(w, "Недопустимый сетевой драйвер", http.StatusBadRequest)
+		return
+	}
+	saved, err := s.mutateBootDrivers(r.Context(), func() error { return book.EditMacRule(r.Context(), rule) })
+	result, message := driverMutationResult(saved, err, "Правило сохранено")
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "mac_rule.edit", result, prefix)
+	if !saved {
 		http.Error(w, "Не удалось сохранить правило", http.StatusServiceUnavailable)
 		return
 	}
-	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "mac_rule.edit", "ok", prefix)
-	http.Redirect(w, r, rulesReturn("Правило сохранено", prefix), http.StatusSeeOther)
+	http.Redirect(w, r, rulesReturnContext(r, message, prefix), http.StatusSeeOther)
 }
 
 // macRuleDelete removes a rule; machines go back to the IEEE name.
@@ -190,10 +219,26 @@ func (s *Server) macRuleDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный префикс", http.StatusBadRequest)
 		return
 	}
-	if err := book.DeleteMacRule(r.Context(), prefix); err != nil {
+	saved, err := s.mutateBootDrivers(r.Context(), func() error { return book.DeleteMacRule(r.Context(), prefix) })
+	result, message := driverMutationResult(saved, err, "Правило удалено")
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "mac_rule.delete", result, prefix)
+	if !saved {
 		http.Error(w, "Не удалось удалить правило", http.StatusServiceUnavailable)
 		return
 	}
-	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "mac_rule.delete", "ok", prefix)
-	http.Redirect(w, r, rulesReturn("Правило удалено", ""), http.StatusSeeOther)
+	http.Redirect(w, r, rulesReturnContext(r, message, ""), http.StatusSeeOther)
+}
+
+var errMacRuleExists = errors.New("MAC prefix rule already exists")
+
+func rulesReturnContext(r *http.Request, message, prefix string) string {
+	target, _ := url.Parse(rulesReturn(message, prefix))
+	q := target.Query()
+	for _, key := range []string{"q", "sort"} {
+		if value := r.PostFormValue(key); value != "" {
+			q.Set(key, value)
+		}
+	}
+	target.RawQuery = q.Encode()
+	return target.String()
 }

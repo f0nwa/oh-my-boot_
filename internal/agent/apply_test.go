@@ -13,10 +13,12 @@ import (
 )
 
 type fakeRunner struct {
-	tested   string
-	restarts int
-	stops    int
-	failOnce bool
+	reloads   int
+	reloadErr error
+	tested    string
+	restarts  int
+	stops     int
+	failOnce  bool
 }
 
 func (f *fakeRunner) Test(_ context.Context, path string) error {
@@ -57,7 +59,7 @@ func TestApplyRestoresPreviousConfigAfterRestartFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := &fakeRunner{failOnce: true}
-	applier, err := NewApplier(configPath, filepath.Join(dir, "state.json"), runner)
+	applier, err := NewApplier(configPath, filepath.Join(dir, "state.json"), filepath.Join(dir, "dhcp", "hosts"), runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +81,7 @@ func TestApplyRestoresPreviousConfigAfterRestartFailure(t *testing.T) {
 func TestApplyRejectsInvalidConfigBeforeRunner(t *testing.T) {
 	dir := t.TempDir()
 	runner := &fakeRunner{}
-	applier, err := NewApplier(filepath.Join(dir, "dnsmasq.conf"), filepath.Join(dir, "state.json"), runner)
+	applier, err := NewApplier(filepath.Join(dir, "dnsmasq.conf"), filepath.Join(dir, "state.json"), filepath.Join(dir, "dhcp", "hosts"), runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +99,7 @@ func TestApplyFirstFailureLeavesServiceStopped(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "dnsmasq.conf")
 	runner := &fakeRunner{failOnce: true}
-	applier, err := NewApplier(configPath, filepath.Join(dir, "state.json"), runner)
+	applier, err := NewApplier(configPath, filepath.Join(dir, "state.json"), filepath.Join(dir, "dhcp", "hosts"), runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +123,7 @@ func TestNewApplierRestoresSavedServiceAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := &fakeRunner{}
-	applier, err := NewApplier(configPath, statePath, runner)
+	applier, err := NewApplier(configPath, statePath, filepath.Join(dir, "dhcp", "hosts"), runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,3 +131,5 @@ func TestNewApplierRestoresSavedServiceAfterRestart(t *testing.T) {
 		t.Fatalf("saved service was not restored: status=%+v restarts=%d tested=%q", applier.Status(), runner.restarts, runner.tested)
 	}
 }
+
+func (f *fakeRunner) Reload(context.Context) error { f.reloads++; return f.reloadErr }

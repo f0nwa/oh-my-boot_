@@ -138,6 +138,9 @@ func validateFields(v Values) error {
 	if !usernamePattern.MatchString(v.Username) {
 		return errors.New("username: required Linux account name of at most 32 bytes")
 	}
+	if v.Username == "root" {
+		return errors.New("username: root is reserved; choose a regular user")
+	}
 	if !timezonePattern.MatchString(v.TimeZone) || v.TimeZone == "Local" {
 		return errors.New("timezone: required IANA time zone of at most 64 bytes")
 	}
@@ -149,12 +152,16 @@ func validateFields(v Values) error {
 		if v.DiskSerial != "" {
 			return errors.New("disk serial: must be empty in interactive mode")
 		}
+	case "default":
+		if v.DiskSerial != "" {
+			return errors.New("disk serial: must be empty in default mode")
+		}
 	case "serial":
 		if len(v.DiskSerial) == 0 || len(v.DiskSerial) > 128 || strings.TrimSpace(v.DiskSerial) != v.DiskSerial || !validText(v.DiskSerial) || strings.ContainsAny(v.DiskSerial, "*?[]") {
 			return errors.New("disk serial: exact value of 1 to 128 bytes required, without glob or control characters or surrounding whitespace")
 		}
 	default:
-		return errors.New("disk mode: must be interactive or serial")
+		return errors.New("disk mode: must be interactive, default or serial")
 	}
 	return nil
 }
@@ -186,8 +193,8 @@ type diskMatch struct {
 	Serial string `yaml:"serial"`
 }
 type layout struct {
-	Name  string    `yaml:"name"`
-	Match diskMatch `yaml:"match"`
+	Name  string     `yaml:"name"`
+	Match *diskMatch `yaml:"match,omitempty"`
 }
 type storage struct {
 	Layout layout `yaml:"layout"`
@@ -229,7 +236,10 @@ func Render(values Values) ([]byte, error) {
 	if values.DiskMode == "interactive" {
 		ai.Interactive = []string{"storage"}
 	} else {
-		ai.Storage = &storage{Layout: layout{Name: "direct", Match: diskMatch{Serial: values.DiskSerial}}}
+		ai.Storage = &storage{Layout: layout{Name: "direct"}}
+		if values.DiskMode == "serial" {
+			ai.Storage.Layout.Match = &diskMatch{Serial: values.DiskSerial}
+		}
 	}
 	applyDesktop(&ai, values)
 	ai.Network = networkConfig(values.Network)

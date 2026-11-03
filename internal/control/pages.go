@@ -17,11 +17,15 @@ import (
 )
 
 type imageRow struct {
-	Image       images.Image
-	StorageName string
-	CanPrepare  bool
-	HasProfile  bool
-	Unsupported bool
+	Image                          images.Image
+	StorageName                    string
+	Kind, Problem                  string
+	USBProfileID, CleanupProfileID int64
+	Downloads                      []imageDownload
+}
+type imageDownload struct {
+	ID    int64
+	Title string
 }
 
 type menuVersionRow struct {
@@ -63,6 +67,7 @@ type pageData struct {
 	PackageChoices        []packageChoice
 	BootProfileChoices    []bootProfileChoice
 	SelectedBootKind      string
+	EditInstallationID    int64
 	Form                  url.Values
 	Query                 string
 	Tab                   string
@@ -72,12 +77,10 @@ type pageData struct {
 	Now                   *nowView
 	Preview               *menuPreview
 	InstallCounts         map[string]int
-	ProfileSizes          map[int64]int64
 	SearchResults         []searchResult
 	SessionIndex          int
 	DHCPEvents            []agent.DHCPEvent
 	DHCPError             string
-	ProfileUse            map[int64]int
 	AnswerUse             map[int64]int
 	ActiveVersion         int64
 	ImageError            string

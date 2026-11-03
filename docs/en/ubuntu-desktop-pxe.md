@@ -41,7 +41,7 @@ Restart the relevant services after changing env files. Run `systemctl daemon-re
 
 ## Installations and Autoinstall
 
-Create an Ubuntu installation. Boot is manual without an answer file. For automation, create or select an immutable file under **Library → Answer files → Ubuntu Autoinstall**. The constructor supports interactive storage or disk erasure by exact serial number. Add the installation to the menu draft and publish it.
+Create an Ubuntu installation. Boot is manual without an answer file. For automation, create or select an immutable file under **Library → Answer files → Ubuntu Autoinstall**. The constructor supports interactive storage, installer-selected disk erasure with a data-loss warning, or erasure of only the disk with an exact serial number. Add the installation to the menu draft and publish it.
 
 Check delivery of the matching NoCloud `user-data` and `meta-data` pair and installer behavior on a disposable VM disk. Successful file delivery does not confirm OS installation completion. See the [Control guide](control-installation.md#ubuntu-autoinstall) for data access and constructor behavior.
 

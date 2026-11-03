@@ -63,34 +63,11 @@ func SelectDriverConfig(form url.Values, profiles []WindowsProfile, answers []Wi
 			return result, fmt.Errorf("answer scenario is not ready for this ISO")
 		}
 	}
-	choices := form["inf"]
-	if len(choices) == 0 || len(choices) > 128 {
-		return result, fmt.Errorf("select 1–128 INF files")
+	selected, err := selectDriverINFs(form["inf"], packages)
+	if err != nil {
+		return result, err
 	}
-	seen := map[string]bool{}
-	for _, choice := range choices {
-		parts := strings.SplitN(choice, ":", 2)
-		if len(parts) != 2 || !validAnswerHash(parts[0]) || parts[1] == "" || seen[choice] {
-			return result, fmt.Errorf("invalid INF selection")
-		}
-		seen[choice] = true
-		found := false
-		for _, pkg := range packages {
-			if pkg.SHA256 != parts[0] {
-				continue
-			}
-			for _, inf := range pkg.Inventory.INFs {
-				if inf.Path == parts[1] && inf.Architecture == "amd64" {
-					found = true
-					break
-				}
-			}
-		}
-		if !found {
-			return result, fmt.Errorf("selected INF is unavailable or not x64")
-		}
-		result.PackageINFs = append(result.PackageINFs, agent.SelectedINF{PackageSHA256: parts[0], INFPath: parts[1]})
-	}
+	result.PackageINFs = selected
 	result.ProfileID, result.AnswerID, result.Title, result.Folder, result.State = profileID, answerID, title, folder, "pending"
 	return result, nil
 }
@@ -193,4 +170,37 @@ func (s *Server) driverConfigPrepare(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.Audit(finalCtx, requestInfo(r).User.ID, "driver-config.prepare", "ok", fmt.Sprintf("id=%d wim=%s", id, result.WIMKey))
 	http.Redirect(w, r, safeReturnPath(r.FormValue("return"))+"?message="+url.QueryEscape("Конфигурация подготовлена"), http.StatusSeeOther)
+}
+
+// selectDriverINFs validates a configuration before its source is prepared.
+func selectDriverINFs(choices []string, packages []DriverPackage) ([]agent.SelectedINF, error) {
+	var selected []agent.SelectedINF
+	if len(choices) == 0 || len(choices) > 128 {
+		return nil, fmt.Errorf("select 1–128 INF files")
+	}
+	seen := map[string]bool{}
+	for _, choice := range choices {
+		parts := strings.SplitN(choice, ":", 2)
+		if len(parts) != 2 || !validAnswerHash(parts[0]) || parts[1] == "" || seen[choice] {
+			return nil, fmt.Errorf("invalid INF selection")
+		}
+		seen[choice] = true
+		found := false
+		for _, pkg := range packages {
+			if pkg.SHA256 != parts[0] {
+				continue
+			}
+			for _, inf := range pkg.Inventory.INFs {
+				if inf.Path == parts[1] && inf.Architecture == "amd64" {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("selected INF is unavailable or not x64")
+		}
+		selected = append(selected, agent.SelectedINF{PackageSHA256: parts[0], INFPath: parts[1]})
+	}
+	return selected, nil
 }

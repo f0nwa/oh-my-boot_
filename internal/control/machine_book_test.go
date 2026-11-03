@@ -156,3 +156,10 @@ func TestMachinePageNamesAndEditsAMachine(t *testing.T) {
 		t.Fatalf("admin delete: %d", res.Code)
 	}
 }
+
+func (b *bookStore) SetMachineNetworkDriver(_ context.Context, mac, driver string) error {
+	m := b.machines[mac]
+	m.NetworkDriver = driver
+	b.machines[mac] = m
+	return nil
+}

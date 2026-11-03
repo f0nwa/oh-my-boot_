@@ -129,29 +129,35 @@ unset omb_admin_password
 
 A reset ends that user's previous sessions. Roles are `admin`, `operator` and `observer`. Users choose RU/EN and a theme in My account. The technical rename requires a new sign-in; existing password hashes were preserved.
 
-## Installations and menu
+## Boot entries and menu
 
-Prepare a boot profile, answer files and drivers in Library. Create separate Windows or Ubuntu choices on the Installations page; multiple installations can share one boot profile.
+Upload source ISO images, answer files and drivers in Library. Under Boot entries, choose New boot entry, a Windows ISO or the Ubuntu system source, a title and folder. The image and selected drivers are prepared automatically. The application creates one internal source record per image and reuses it; there is no separate Create profile step.
 
-Select installations, titles and folders on the Menu page. Clients do not see the draft before publication. Control validates dependencies, creates a version and sends the matching snapshot to Boot. Saving a draft alone does not change the client menu.
+A preparation failure retains the saved entry: its row shows the cause and Retry preparation. Edit changes its title, folder, answer file and drivers while keeping the entry ID. Create another entry to use a different source image. Component changes appear in the draft even when the title stays the same. Published versions retain their own component references, so restoring a version uses its previous components as long as the files are still available.
+
+Review boot entries, titles and folders on the Menu page. Clients do not see the draft before publication. Control validates dependencies, creates a version and sends the matching snapshot to Boot. Saving a draft alone does not change the client menu.
 
 Restoring a version through Menu → Versions also checks dependencies. If an ISO, profile or prepared file is unavailable, the current active menu stays in place. Menu restoration does not restore deleted ISOs or NAS data.
 
+### Updating an existing server
+
+Before starting the new Control, back up `omb_control`, stop `omb-control`, and apply [2026-11-03-download-components.sql](../../deploy/sql/2026-11-03-download-components.sql) as the database owner. Then install the new binary and start the service. The migration captures components for existing draft items and menu versions, preserving IDs, order and published scripts. Re-running it does not rewrite captured components. `deploy/sql/control.sql` defines the clean-install schema. Ubuntu Autoinstall files remain immutable; an entry's binding to an answer file is now editable.
+
 ## WinPE driver catalog
 
-Library → Drivers accepts directories containing INF files and their supporting files, or a ZIP with the same structure. An installation selects specific INFs. Its derived driver WIM is used by that installation; the source ISO remains on storage.
+Library → Drivers accepts directories containing INF files and their supporting files, or a ZIP with the same structure. A boot entry selects specific INFs when created or edited. Its derived driver WIM is used by that entry; the source ISO remains on storage.
 
-Answer files are under Library → Answer files. A Windows XML belongs to a profile. Publish a choice only after its files have been prepared and checked. Dependencies prevent deletion of profiles or files that are still used.
+Answer files are under Library → Answer files. A Windows XML belongs to a source image. Publish a choice only after its files have been prepared and checked. Dependencies prevent deletion of images or files that are still used.
 
 ## Ubuntu Autoinstall
 
-In Library → Answer files, use Create Ubuntu file in the Ubuntu Autoinstall block. The same action is available when creating an Ubuntu installation. The editor targets Ubuntu Desktop and has eight sections: source, language, user, disk, hardware, software and repository, networking and SSH, and completion.
+In Library → Answer files, use Create Ubuntu file in the Ubuntu Autoinstall block. The same action is available when creating an Ubuntu boot entry. The editor targets Ubuntu Desktop and has eight sections: source, language, user, disk, hardware, software and repository, networking and SSH, and completion.
 
 The extra package list accepts package names and rejects the removal suffix `-`; names such as `g++` remain valid.
 
-Settings include the user's full name, up to four keyboard layouts with variants and a switching shortcut, an application source from the prepared ISO, third-party drivers and codecs, up to 128 APT packages, an Ubuntu mirror, static IPv4 matched by exact MAC address, an optional SSH server with public keys, and a script up to 16 KiB. Defaults use DHCP, disable SSH, and leave partitioning interactive. Automatic partitioning wipes only the disk with the exact serial number; a missing match never falls back to the first disk.
+Settings include the user's full name, up to four keyboard layouts with variants and a switching shortcut, an application source from the prepared ISO, third-party drivers and codecs, up to 128 APT packages, an Ubuntu mirror, static IPv4 matched by exact MAC address, an optional SSH server with public keys, and a script up to 16 KiB. The name `root` is reserved, so the editor requires a regular user. Defaults use DHCP, disable SSH, and leave partitioning interactive. Three disk modes are available: interactive partitioning, wiping the disk selected by the installer, or wiping only the disk with an exact serial number. Installer-selected mode erases all data on that disk. Exact-serial mode never falls back to the first disk when the number does not match.
 
-Sections are on the left; the right panel contains Result, exact YAML, and Validation. The main workflow works without JavaScript. JavaScript updates the preview after edits and enables saving only after the current input is checked. A password is required for the first preview, after the ten-minute preview expires, and for a new copy. A valid preview allows edits and saving without entering the password again. The page never returns the plaintext password, and the library stores only its hash.
+Sections are on the left; the right panel contains Result, exact YAML, and Validation. The main workflow works without JavaScript. JavaScript updates the preview after edits and enables saving only after the current input is checked. The password for the user being created is required for the first preview, after the ten-minute preview expires, and for a new copy. A valid preview allows edits and saving without entering the password again. A successful preview clears the password field. The page never returns the plaintext password, and the library stores only its hash.
 
 Application sources come from the same ISO served by Boot; prepare metadata using the [Ubuntu guide](ubuntu-desktop-pxe.md#source-preparation). Without it, only ISO defaults are available. An unavailable explicit source blocks saving or publication. Changing the ISO never rewrites saved files.
 
@@ -160,6 +166,22 @@ Extra packages, the SSH server, drivers and codecs need a package archive access
 The script runs as root inside the installed system using `/bin/sh -eu`, before reboot. A non-zero exit stops the installation. It is not a graphical first-login script. Completion can restart or power off the machine.
 
 Saved files are immutable; create a copy for a new variant. Select a checked file in an installation and publish through the menu draft. Without an answer file the installation stays manual. Boot serves matching NoCloud `user-data` and `meta-data` under `/assets/ubuntu-autoinstall/…`. Checked by the editor means the structure and settings were validated; completed installation, desktop login, hardware drivers and Secure Boot require separate client verification.
+
+## UEFI network driver
+
+On **PXE network**, an administrator selects the **Default UEFI driver**: iPXE or **firmware** (SNP). SNP uses the signed `snponly-shim.efi` → `snponly.efi` chain; iPXE uses `ipxe-shim.efi` → `ipxe.efi`. Changing the global default follows the existing network preview and confirmation flow and restarts dnsmasq. A missing value in an older `network.json` means iPXE.
+
+**Use firmware network settings** opens the menu using the IP configuration already obtained by UEFI, without configuring the network again in iPXE. It applies only with full OMB DHCP and the firmware (SNP) driver selected for the client, including machine and prefix overrides. If loading the menu fails, iPXE performs ordinary DHCP configuration and attempts normal network boot. This can help with repeated PXE boot failures after leaving Windows Setup. The setting defaults to off; its JSON field is `reuse_firmware_network`. It passes through network preview and confirmation and survives Agent restart. ProxyDHCP and GRUB retain the preference without applying it. BIOS and clients using the native iPXE driver do not use it. The menu URL must fit the DHCP suboption; use percent encoding for spaces and special URL characters.
+
+A saved machine and each MAC-prefix rule offer **inherit**, **iPXE** and **firmware**. Prefixes contain the first 3–5 MAC bytes. Administrators and operators can change the selection; observers can see the effective driver and its source. Save a new machine's name/model or add it to the list before selecting its driver. Ordinary edits and CSV import preserve the driver.
+
+Priority is an explicit machine choice, then the longest matching prefix with an explicit choice, then the global default. Inherit skips that rule, so an empty longer prefix does not cancel a shorter prefix's choice. Explicit iPXE on a machine overrides prefix SNP and a global SNP default. BIOS receives `undionly.kpxe`. In `grub-test` mode, UEFI receives GRUB; stored driver choices take effect after switching back to iPXE.
+
+Individual changes are stored in PostgreSQL. Control sends a complete snapshot; Agent atomically replaces `/var/lib/omb-dhcp/hosts` (file mode `0644`, directory mode `0755`) and signals dnsmasq with SIGHUP without restarting DHCP/TFTP. Saving an unchanged choice also triggers a reread. Applying the network configuration preserves the hosts file. Agent's `-hosts-path` flag allows a different hosts file path for testing.
+
+When Agent is unavailable, the page reports **Setting saved but not applied: Agent is unavailable**, and the audit result is `apply_error`. The database keeps the setting. The next individual rule change or Control startup retries the complete snapshot; after recovering Agent, save the choice again or restart Control. Restarting Agent alone does not request a snapshot from Control.
+
+For an update, back up binaries, configuration, the Agent unit and the Control database, apply only `deploy/sql/2026-11-02-network-driver-selection.sql`, then update Agent and Control together with the new unit. Use canonical `control.sql` for clean installations. Replace temporary manual MAC rules by regenerating the network configuration. Follow the [acceptance plan](../superpowers/plans/2026-11-02-network-driver-selection.md) for rollout and real client boot checks. WinPE error `0x80074005` remains a separate issue.
 
 ## Storage availability and recovery
 

@@ -16,6 +16,7 @@ import (
 type Runner interface {
 	Test(context.Context, string) error
 	Restart(context.Context) error
+	Reload(context.Context) error
 	Stop(context.Context) error
 }
 
@@ -29,17 +30,37 @@ type Applier struct {
 	mu         sync.Mutex
 	configPath string
 	statePath  string
+	hostsPath  string
 	runner     Runner
 	status     Status
 	current    network.Config
 }
 
 // NewApplier restores the last successful config after an interrupted apply.
-func NewApplier(configPath, statePath string, runner Runner) (*Applier, error) {
-	if runner == nil || !filepath.IsAbs(configPath) || !filepath.IsAbs(statePath) {
+func NewApplier(configPath, statePath, hostsPath string, runner Runner) (*Applier, error) {
+	if runner == nil || !filepath.IsAbs(configPath) || !filepath.IsAbs(statePath) || !filepath.IsAbs(hostsPath) {
 		return nil, fmt.Errorf("runner and absolute paths are required")
 	}
-	a := &Applier{configPath: configPath, statePath: statePath, runner: runner}
+	a := &Applier{configPath: configPath, statePath: statePath, hostsPath: hostsPath, runner: runner}
+
+	if err := os.MkdirAll(filepath.Dir(hostsPath), 0o755); err != nil {
+		return nil, fmt.Errorf("create DHCP hosts directory: %w", err)
+	}
+	if err := os.Chmod(filepath.Dir(hostsPath), 0o755); err != nil {
+		return nil, err
+	}
+	// Preserve an existing snapshot across Agent restarts.
+	hosts, err := os.OpenFile(hostsPath, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("initialize DHCP hosts: %w", err)
+	}
+	if err := hosts.Chmod(0o644); err != nil {
+		hosts.Close()
+		return nil, err
+	}
+	if err := hosts.Close(); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(statePath)
 	if os.IsNotExist(err) {
 		return a, nil
@@ -51,7 +72,7 @@ func NewApplier(configPath, statePath string, runner Runner) (*Applier, error) {
 	if err := json.Unmarshal(data, &previous); err != nil {
 		return nil, fmt.Errorf("parse agent state: %w", err)
 	}
-	config, err := network.RenderDnsmasq(previous)
+	config, err := network.RenderDnsmasqWithHosts(previous, hostsPath)
 	if err != nil {
 		return nil, fmt.Errorf("invalid saved agent state: %w", err)
 	}
@@ -93,7 +114,7 @@ func (a *Applier) Status() Status {
 func (a *Applier) Apply(ctx context.Context, c network.Config) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	content, err := network.RenderDnsmasq(c)
+	content, err := network.RenderDnsmasqWithHosts(c, a.hostsPath)
 	if err != nil {
 		return err
 	}
@@ -176,4 +197,24 @@ func writeCandidate(path string, content []byte, mode os.FileMode) (string, erro
 		return "", err
 	}
 	return file.Name(), nil
+}
+
+// UpdateBootDrivers replaces the complete snapshot, then asks dnsmasq to reread it.
+func (a *Applier) UpdateBootDrivers(ctx context.Context, rules []network.BootDriverRule) error {
+	content, err := network.RenderDHCPHosts(rules)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := writeAtomic(a.hostsPath, content, 0o644); err != nil {
+		return fmt.Errorf("write DHCP hosts: %w", err)
+	}
+	if err := a.runner.Reload(ctx); err != nil {
+		return fmt.Errorf("reload DHCP hosts: %w", err)
+	}
+	return nil
 }

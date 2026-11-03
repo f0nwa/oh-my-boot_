@@ -16,10 +16,11 @@ Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an i
 ## What works
 
 - **Boot menu** for BIOS and UEFI clients, with folders, a draft that clients do not see until it is published, version history and rollback.
-- **Images:** an ISO catalog across local folders and SMB shares, upload from the browser, prepared Windows x64 profiles. Source ISOs stay on their storage; Windows clients receive WinPE startup files over HTTP and installation media over a read-only SMB share.
+- **Images:** an ISO catalog across local folders and SMB shares, browser uploads, automatic Windows x64 media preparation when saving a boot entry. Source ISOs stay on their storage; Windows clients receive WinPE startup files over HTTP and installation media over a read-only SMB share.
 - **Windows installs:** several independent `autounattend.xml` scenarios per ISO next to the manual installer, an answer file editor in the admin page, and WinPE driver packages imported from a folder or ZIP and built into separate menu entries.
-- **Ubuntu Autoinstall:** immutable generated files with interactive storage or exact-serial disk erasure, selected per installation; see the [operations guide](docs/en/control-installation.md#ubuntu-autoinstall).
-- **Unified installations** for Windows and Ubuntu Desktop: multiple independent choices can share a boot profile, with their own names, menu folders and selection counts.
+- **Ubuntu Autoinstall:** immutable generated files with interactive storage, a warning for installer-selected disk erasure, or exact-serial disk erasure, selected per installation; see the [operations guide](docs/en/control-installation.md#ubuntu-autoinstall).
+- **Boot entries** for Windows and Ubuntu Desktop: choose a source image, title, menu folder, answer file and drivers. Preparation runs automatically; edit and retry from the same entry. Published menu versions retain their own component snapshots.
+- **UEFI network drivers:** signed iPXE or firmware SNP, with a global default, per-machine choices and MAC-prefix overrides applied without restarting DHCP.
 - **Machines:** every machine that reached the menu, with its model and maker, editable names, CSV import and export, and MAC-prefix rules.
 - **Secure Boot:** a signed iPXE chain, a hint when firmware rejects the loader, an SCCM script and a WinPE USB stick (**Library → USB media**) that turn on the Microsoft UEFI CA key on Lenovo, Dell and HP laptops ([Secure Boot guide](docs/en/secure-boot.md)).
 - **Admin page** in Russian and English, with a light, dark or system theme chosen by each user.
@@ -27,6 +28,8 @@ Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an i
 ## Tested so far
 
 Test VMs reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and the Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 profile also reached its installer and disk in SeaBIOS; a Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements stopped installation on that VM. A Windows 11 installation with a user-supplied answer file completed and booted from disk, and a newly uploaded Windows 11 26H2 ISO reached disk selection. A Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI and, in SeaBIOS, WinPE with network, both disks and the mounted installer. Physical PXE clients and driver entries on real laptops remain to be checked. These detailed firmware results predate the unified-installations build. After the OMB transition, the user confirmed UEFI Secure Boot loading with XML and drivers; the full repeat client run is deferred until the main development work is complete. Strelec support depends on examining a supplied ISO.
+
+Network driver selection was verified on a UEFI VM: inherited firmware SNP and an explicit iPXE override both reached the menu. The deployed build’s physical Dell Secure Boot check is deferred; see the [acceptance report](docs/research/2026-11-02-network-driver-selection-acceptance.md).
 
 Use the [current Control guide](docs/en/control-installation.md#installations-and-menu) for installation and operation. Completed transition reports are available through [project history](docs/project-history.md); current recovery instructions are in the [recovery guide](docs/recovery.md).
 

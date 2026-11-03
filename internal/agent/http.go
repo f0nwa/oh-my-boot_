@@ -28,6 +28,28 @@ func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *Windows
 
 func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *WindowsISOManager, driverManager *DriverManager) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /network/boot-drivers", func(w http.ResponseWriter, r *http.Request) {
+		var rules []network.BootDriverRule
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&rules); err != nil || rules == nil {
+			http.Error(w, "invalid boot driver request", http.StatusBadRequest)
+			return
+		}
+		if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid boot driver request", http.StatusBadRequest)
+			return
+		}
+		if err := network.ValidateBootDriverRules(rules); err != nil {
+			http.Error(w, "invalid boot driver rules", http.StatusBadRequest)
+			return
+		}
+		if err := applier.UpdateBootDrivers(r.Context(), rules); err != nil {
+			http.Error(w, "boot driver apply failed", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /winpe-drivers/config-key/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if driverManager == nil {
 			http.Error(w, "driver configuration unavailable", http.StatusServiceUnavailable)

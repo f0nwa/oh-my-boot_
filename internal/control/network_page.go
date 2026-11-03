@@ -15,7 +15,8 @@ func networkForm(r *http.Request) network.Config {
 	return network.Config{
 		Mode: r.FormValue("mode"), Interface: r.FormValue("interface"), ServerIP: r.FormValue("server_ip"), Subnet: r.FormValue("subnet"),
 		DHCPStart: r.FormValue("dhcp_start"), DHCPEnd: r.FormValue("dhcp_end"), BootURL: r.FormValue("boot_url"), TFTPRoot: r.FormValue("tftp_root"),
-		UEFILoader: r.FormValue("uefi_loader"),
+		UEFILoader: r.FormValue("uefi_loader"), DefaultDriver: r.FormValue("default_driver"),
+		ReuseFirmwareNetwork: r.FormValue("reuse_firmware_network") == "true",
 	}
 }
 
@@ -86,7 +87,7 @@ func (s *Server) networkApply(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		result = "error"
 	}
-	_ = s.Store.Audit(r.Context(), info.User.ID, "network.apply", result, fmt.Sprintf("mode=%s interface=%s subnet=%s", c.Mode, c.Interface, c.Subnet))
+	_ = s.Store.Audit(r.Context(), info.User.ID, "network.apply", result, fmt.Sprintf("mode=%s interface=%s subnet=%s reuse_firmware_network=%t", c.Mode, c.Interface, c.Subnet, c.ReuseFirmwareNetwork))
 	active, readErr := s.Agent.Config(r.Context())
 	data := pageData{Info: info, Network: active, HasNetwork: readErr == nil}
 	if err != nil {

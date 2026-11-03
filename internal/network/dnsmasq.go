@@ -3,11 +3,20 @@ package network
 import (
 	"fmt"
 	"net/netip"
+	"path/filepath"
 	"strings"
 )
 
 // RenderDnsmasq produces a complete PXE-only dnsmasq configuration.
 func RenderDnsmasq(c Config) (string, error) {
+	return RenderDnsmasqWithHosts(c, "/var/lib/omb-dhcp/hosts")
+}
+
+// RenderDnsmasqWithHosts lets Agent use its configured hosts file in tests.
+func RenderDnsmasqWithHosts(c Config, hostsPath string) (string, error) {
+	if !filepath.IsAbs(hostsPath) || strings.ContainsAny(hostsPath, "\n\r,") {
+		return "", fmt.Errorf("DHCP hosts file must be an absolute path without separators")
+	}
 	if err := Validate(c); err != nil {
 		return "", err
 	}
@@ -17,6 +26,7 @@ func RenderDnsmasq(c Config) (string, error) {
 	fmt.Fprintf(&b, "interface=%s\n", c.Interface)
 	fmt.Fprintln(&b, "bind-interfaces")
 	fmt.Fprintln(&b, "dhcp-no-override")
+	fmt.Fprintf(&b, "dhcp-hostsfile=%s\n", hostsPath)
 	fmt.Fprintln(&b, "enable-tftp")
 	fmt.Fprintf(&b, "tftp-root=%s\n", c.TFTPRoot)
 	fmt.Fprintln(&b, "dhcp-match=set:ipxe,175")
@@ -28,16 +38,58 @@ func RenderDnsmasq(c Config) (string, error) {
 	}
 	if c.Mode == "full" {
 		fmt.Fprintf(&b, "dhcp-range=%s,%s,12h\n", c.DHCPStart, c.DHCPEnd)
-		fmt.Fprintf(&b, "dhcp-boot=tag:!ipxe,tag:efi64,%s,,%s\n", uefiBootFile, c.ServerIP)
+		renderUEFIDriverOffers(&b, c, uefiBootFile)
 		fmt.Fprintf(&b, "dhcp-boot=tag:!ipxe,tag:!efi64,ipxeboot/x86_64/undionly.kpxe,,%s\n", c.ServerIP)
 	} else {
 		prefix, _ := netip.ParsePrefix(c.Subnet)
 		fmt.Fprintf(&b, "dhcp-range=%s,proxy\n", prefix.Addr())
 		fmt.Fprintf(&b, "pxe-service=tag:!ipxe,X86PC,PXE,ipxeboot/x86_64/undionly.kpxe,%s\n", c.ServerIP)
-		fmt.Fprintf(&b, "pxe-service=tag:!ipxe,BC_EFI,PXE,%s,%s\n", uefiBootFile, c.ServerIP)
-		fmt.Fprintf(&b, "pxe-service=tag:!ipxe,X86-64_EFI,PXE,%s,%s\n", uefiBootFile, c.ServerIP)
+		renderUEFIDriverOffers(&b, c, uefiBootFile)
 	}
 	// Keep the iPXE rule last: dnsmasq applies the last matching boot rule.
 	fmt.Fprintf(&b, "dhcp-boot=tag:ipxe,%s,,%s\n", c.BootURL, c.ServerIP)
 	return b.String(), nil
+}
+
+func renderUEFIDriverOffers(b *strings.Builder, c Config, bootFile string) {
+	offer := func(tags, file string) {
+		if c.Mode == "full" {
+			fmt.Fprintf(b, "dhcp-boot=tag:!ipxe,tag:efi64,%s%s,,%s\n", tags, file, c.ServerIP)
+			if c.ReuseFirmwareNetwork && file == "ipxeboot/x86_64-sb/snponly-shim.efi" {
+				// Use exactly the boot-file predicates, including exclusions for
+				// more specific rules. Existing iPXE clients never get scriptlet.
+				fmt.Fprintf(b, "dhcp-option-force=tag:!ipxe,tag:efi64,%sencap:175,81,\"%s\"\n", tags, firmwareNetworkScript(c.BootURL))
+			}
+		} else {
+			for _, arch := range []string{"BC_EFI", "X86-64_EFI"} {
+				fmt.Fprintf(b, "pxe-service=tag:!ipxe,%s%s,PXE,%s,%s\n", tags, arch, file, c.ServerIP)
+			}
+		}
+	}
+	if c.UEFILoader == "grub-test" {
+		offer("", bootFile)
+		return
+	}
+	excluded := ""
+	for _, level := range []string{"machine", "p5", "p4", "p3"} {
+		for _, driver := range []string{"snp", "ipxe"} {
+			file := "ipxeboot/x86_64-sb/ipxe-shim.efi"
+			if driver == "snp" {
+				file = "ipxeboot/x86_64-sb/snponly-shim.efi"
+			}
+			offer("tag:omb-driver-"+level+"-"+driver+","+excluded, file)
+		}
+		excluded += "tag:!omb-driver-" + level + "-snp,tag:!omb-driver-" + level + "-ipxe,"
+	}
+	if c.DefaultDriver == "snp" {
+		bootFile = "ipxeboot/x86_64-sb/snponly-shim.efi"
+	}
+	offer(excluded, bootFile)
+}
+
+func firmwareNetworkScript(bootURL string) string {
+	// autoboot runs netboot/ifconf directly; it does not re-enter the
+	// startup scriptlet. It therefore provides the ordinary DHCP fallback
+	// without retrying this scriptlet recursively.
+	return "chain " + bootURL + " || autoboot"
 }

@@ -151,7 +151,7 @@ func TestMacRulesOnTheMachinesPage(t *testing.T) {
 	if res := menuPost(t, s, "/machine-rules/00:1b:21/delete", url.Values{}); res.Code != http.StatusSeeOther || len(store.rules) != 2 {
 		t.Fatalf("admin delete: %d", res.Code)
 	}
-	want := []string{"mac_rule.add ok 00:1b:21", "mac_rule.edit ok 00:1b:21", "mac_rule.delete ok 00:1b:21"}
+	want := []string{"mac_rule.add ok 00:1b:21", "mac_rule.add error 00:1b:21", "mac_rule.edit ok 00:1b:21", "mac_rule.delete ok 00:1b:21"}
 	var got []string
 	for _, a := range store.audits {
 		if strings.HasPrefix(a, "mac_rule.") {

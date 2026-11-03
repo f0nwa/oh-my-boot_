@@ -1,8 +1,8 @@
 # Images: OMB ISO catalog and storage
 
-[Русская версия](../images-installation.md). For installations and menu publishing, use the [Control guide](control-installation.md#installations-and-menu).
+[Русская версия](../images-installation.md). For boot entries and menu publishing, use the [Control guide](control-installation.md#boot-entries-and-menu).
 
-Images stores its catalog in `omb_images` and serves a local API at `/run/omb-images/images.sock`. Finding an ISO does not create a boot entry: prepare a profile, create an installation, then publish the menu.
+Images stores its catalog in `omb_images` and serves a local API at `/run/omb-images/images.sock`. Finding an ISO does not create a menu entry: create a boot entry from the image, then publish the menu. Preparation runs automatically when the entry is saved.
 
 ## First installation
 
@@ -67,15 +67,17 @@ In the library, select writable storage, an existing folder and an ISO up to 32 
 
 SMB uses `/mnt/omb-smb/<key>` for reading and `/mnt/omb-smb-upload/<key>` for writing. The NAS account must permit writes. Local uploads use `/var/lib/omb-images/iso`; the `omb-images` group and service unit must permit writing there. Free space refers to the selected storage filesystem.
 
-## Windows profiles, XML and drivers
+## Windows images, XML and drivers
 
-Create a profile from a Windows x64 ISO in the library and choose **Prepare**. Agent checks the source, mounts it read-only and prepares boot files under `/srv/omb/tftp/windows-profiles/<ID>/`. The full ISO stays on its storage. Clients read the installation media through the separate `ombisos` share using `omb-iso`; NAS credentials are not sent to WinPE.
+Under **Boot entries**, create an entry from a Windows x64 ISO. Preparation starts automatically after saving. Agent checks the source, mounts it read-only and prepares boot files under `/srv/omb/tftp/windows-profiles/<ID>/`. The full ISO stays on its storage. Clients read the installation media through the separate `ombisos` share using `omb-iso`; NAS credentials are not sent to WinPE.
 
 Preparation requires `omb-winiso-prepare`, the [profile unit](../../deploy/systemd/omb-winiso@.service), [templates](../../deploy/boot-assets/windows-profiles/) under `/usr/share/omb/windows-profiles`, [Samba configuration](../../deploy/samba/smb.conf) and `/etc/omb/omb-iso-password`. Mount and configuration directories are `/mnt/omb-iso/profiles` and `/etc/omb/winiso`. Install these through the [server bundle](offline-installation.md); installing Images alone does not supply them. Local source ISOs for Windows must be inside `/var/lib/omb-images` or on managed SMB storage.
 
-Upload a checked Windows XML under **Library → Answer files**, and INF files with their dependencies under **Library → Drivers**. Create an installation selecting the profile, XML and INF files, wait for preparation, then publish it. The source ISO stays unchanged. See the [WinPE driver catalog](control-installation.md#winpe-driver-catalog).
+Upload a checked Windows XML under **Library → Answer files**, and INF files with their dependencies under **Library → Drivers**. When creating or editing a boot entry, select the ISO, XML and INF files, wait for preparation, then publish the menu. The source ISO stays unchanged. See the [WinPE driver catalog](control-installation.md#winpe-driver-catalog).
 
 XML may contain passwords and keys. Boot files are intended for the trusted PXE subnet. Access restrictions for driver configuration scripts still need fixing; see the [stand report](../research/2026-10-31-omb-technical-migration.md#существующая-проблема-доступа).
+
+The folder selector appears only when storage has subfolders; otherwise uploads go to its root. The catalog lists every ISO, but finding a file does not guarantee boot support. The type is a file-name hint; Windows media contents are checked during preparation. An arbitrary Ubuntu ISO does not replace the Ubuntu system source. Recovery WinPE images including Strelec, and ARM64, are not supported by this workflow and are not offered as Windows sources.
 
 ## Diagnostics
 

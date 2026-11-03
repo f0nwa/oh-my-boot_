@@ -3,8 +3,10 @@ set OMB_ISO_PASSWORD=__OMB_ISO_PASSWORD__
 echo OMB: initializing network...
 wpeinit
 if errorlevel 1 goto failed
-wpeutil WaitForNetwork
-if errorlevel 1 goto failed
+wpeutil WaitForNetwork >"%SystemRoot%\System32\omb-network-wait.log" 2>&1
+set OMB_WAIT_ERROR=%errorlevel%
+>>"%SystemRoot%\System32\omb-network-wait.log" echo WaitForNetwork exit code: %OMB_WAIT_ERROR%
+if not "%OMB_WAIT_ERROR%"=="0" echo OMB: network is not ready yet; waiting for installation media...
 
 echo OMB: connecting installation media...
 set /a OMB_ATTEMPT=0 >nul

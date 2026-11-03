@@ -11,6 +11,7 @@ import (
 
 	"omb/internal/agent"
 	"omb/internal/drivers"
+	"omb/internal/images"
 )
 
 type newInstallStore struct {
@@ -27,6 +28,7 @@ func (s *newInstallStore) DriverPackages(context.Context) ([]DriverPackage, erro
 func (s *newInstallStore) CreateDriverConfig(_ context.Context, c DriverConfig) (DriverConfig, error) {
 	c.ID = 40 + int64(len(s.created))
 	s.created = append(s.created, c)
+	s.configs = append(s.configs, c)
 	return c, nil
 }
 
@@ -45,13 +47,16 @@ func (s *newInstallStore) CreateInstallation(_ context.Context, item Installatio
 func newInstallServer(t *testing.T) (*Server, *newInstallStore) {
 	t.Helper()
 	base := newDraftStore(t, "operator", nil)
-	base.profiles = append(base.profiles, WindowsProfile{ID: 1, WindowsProfileSource: WindowsProfileSource{Title: "Windows 10 x64"}, State: "ready", InstallFile: "install.wim"})
+	base.profiles = append(base.profiles, WindowsProfile{ID: 1, WindowsProfileSource: WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "win10.iso", Size: 12, Modified: base.profiles[0].Modified, Title: "Windows 10 x64"}, State: "ready", InstallFile: "install.wim"})
 	store := &newInstallStore{draftStore: base, packages: []DriverPackage{{SHA256: strings.Repeat("a", 64), Inventory: drivers.Inventory{INFs: []drivers.INF{
 		{Path: "NetKVM/netkvm.inf", Architecture: "amd64"}, {Path: "vioscsi/vioscsi.inf", Architecture: "amd64"}, {Path: "x86/old.inf", Architecture: "x86"},
 	}}}}}
 	s, _ := draftServer(t, store.draftStore)
 	store.bootProfiles = []BootProfile{{ID: 50, Kind: BootProfileWindowsISO, WindowsProfileID: 1, Title: "Windows 10 x64"}, {ID: 51, Kind: BootProfileWindowsISO, WindowsProfileID: 17, Title: "Windows 11"}, {ID: 52, Kind: BootProfileUbuntuBuiltin, Title: "Ubuntu Desktop"}}
 	s.Store = store
+	for _, p := range store.profiles {
+		s.Images.(*fakeImagesAPI).catalog.Images = append(s.Images.(*fakeImagesAPI).catalog.Images, images.Image{StorageID: p.StorageID, Path: p.Path, Size: p.Size, Modified: p.Modified, Present: true})
+	}
 	s.UbuntuReadiness = HTTPUbuntuReadiness{BaseURL: ubuntuBootResources(t, "")}
 	return s, store
 }
@@ -242,4 +247,22 @@ func TestNewInstallationRequiresRoleAndCSRF(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (s *newInstallStore) SetDriverConfigResult(_ context.Context, id int64, state string, result agent.DriverBuildResult, problem string) error {
+	for i := range s.configs {
+		if s.configs[i].ID == id {
+			s.configs[i].State, s.configs[i].Build, s.configs[i].Error = state, result, problem
+		}
+	}
+	return nil
+}
+
+func (s *newInstallStore) SetWindowsProfileResult(_ context.Context, id int64, state, install, problem string) error {
+	for i := range s.profiles {
+		if s.profiles[i].ID == id {
+			s.profiles[i].State, s.profiles[i].InstallFile, s.profiles[i].Error = state, install, problem
+		}
+	}
+	return nil
 }

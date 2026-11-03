@@ -85,12 +85,12 @@ func TestHomeIsNowAndInstallationsMoved(t *testing.T) {
 	s := libraryServer()
 	s.Store = authOnlyStore{user: User{ID: 2, Role: "operator", Enabled: true}}
 	body := libraryGet(t, s, "/")
-	for _, want := range []string{`id="live"`, "<h1>Загрузки</h1>", `class="service-strip"`, "DSM", `src="/assets/now.js"`, `href="/" class="active"`} {
+	for _, want := range []string{`id="live"`, "<h1>Сейчас</h1>", `class="service-strip"`, "DSM", `src="/assets/now.js"`, `href="/" class="active"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("home lacks %q: %s", want, body)
 		}
 	}
-	if body := libraryGet(t, s, "/installations"); !strings.Contains(body, "<h1>Установки</h1>") || !strings.Contains(body, `href="/installations" class="active"`) {
+	if body := libraryGet(t, s, "/installations"); !strings.Contains(body, "<h1>Загрузки</h1>") || !strings.Contains(body, `href="/installations" class="active"`) {
 		t.Fatalf("installations page: %s", body)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/no-such-page", nil)

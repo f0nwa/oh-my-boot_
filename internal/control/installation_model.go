@@ -29,6 +29,33 @@ type Installation struct {
 	AutoinstallID  int64
 }
 
+// InstallationComponents freezes the optional components of a published entry.
+// Its source is fixed by Installation.BootProfileID and never changes on edit.
+type InstallationComponents struct {
+	// Remember the entry's title/folder separately from menu-only overrides.
+	Title          string `json:"title"`
+	Folder         string `json:"folder"`
+	AnswerID       int64  `json:"answer_id"`
+	DriverConfigID int64  `json:"driver_config_id"`
+	AutoinstallID  int64  `json:"autoinstall_id"`
+}
+
+func installationComponents(item Installation) *InstallationComponents {
+	return &InstallationComponents{Title: item.Title, Folder: item.Folder, AnswerID: item.AnswerID, DriverConfigID: item.DriverConfigID, AutoinstallID: item.AutoinstallID}
+}
+func (c *InstallationComponents) apply(item Installation) Installation {
+	if c != nil {
+		item.AnswerID, item.DriverConfigID, item.AutoinstallID = c.AnswerID, c.DriverConfigID, c.AutoinstallID
+	}
+	return item
+}
+func sameInstallationComponents(a, b *InstallationComponents) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.AnswerID == b.AnswerID && a.DriverConfigID == b.DriverConfigID && a.AutoinstallID == b.AutoinstallID
+}
+
 // ValidateInstallation checks the type and ownership of the chosen components.
 // Resource readiness is checked separately before creation and publication.
 func ValidateInstallation(item Installation, profile BootProfile, answers []WindowsAnswerVariant, configs []DriverConfig, files []UbuntuAutoinstallSummary) error {

@@ -3,6 +3,7 @@
   if (!form) return;
   const save = document.getElementById('ai-save');
   const state = document.getElementById('ai-preview-state');
+  const passwordState = document.getElementById('ai-password-state');
   const yaml = document.getElementById('autoinstall-yaml');
   let revision = 0;
   let pending;
@@ -76,15 +77,24 @@
       if (result.token) tokenField().value = result.token;
       save.disabled = !response.ok || !result.ready;
       state.textContent = !save.disabled ? form.dataset.checked : form.dataset.invalid;
-      if (!save.disabled) form.elements.password.value = '';
+      if (!save.disabled) {
+        form.elements.password.value = '';
+        passwordState.textContent = form.dataset.passwordAccepted;
+      }
       download(!save.disabled, result.token);
     } catch (error) {
       if (error.name === 'AbortError' || current !== revision) return;
       save.disabled = true; state.textContent = form.dataset.expired; download(false, '');
     }
   }
-  form.addEventListener('input', () => { invalidatePreview(); timer = setTimeout(preview, 350); });
-  form.addEventListener('change', () => { invalidatePreview(); timer = setTimeout(preview, 350); });
+  function updateDiskWarnings() {
+    const mode = form.elements.disk_mode.value;
+    document.getElementById('ai-default-disk-warning').hidden = mode !== 'default';
+    document.getElementById('ai-serial-disk-warning').hidden = mode !== 'serial';
+  }
+  updateDiskWarnings();
+  form.addEventListener('input', () => { updateDiskWarnings(); invalidatePreview(); timer = setTimeout(preview, 350); });
+  form.addEventListener('change', () => { updateDiskWarnings(); invalidatePreview(); timer = setTimeout(preview, 350); });
   form.addEventListener('submit', event => {
     if (event.submitter?.id === 'ai-save') { if (save.disabled) event.preventDefault(); return; }
     event.preventDefault(); invalidatePreview(); preview();

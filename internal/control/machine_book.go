@@ -14,6 +14,7 @@ import (
 // MachineInfo is one machine in the book of machines: what the logs and the
 // machine itself reported, and what people wrote about it.
 type MachineInfo struct {
+	NetworkDriver         string
 	MAC                   string
 	FirstSeen, LastSeen   time.Time
 	LastIP, Firmware      string
@@ -63,6 +64,7 @@ type MachineBook interface {
 	ApplyMachineImport(context.Context, []machineImportChange) error
 	EditMachine(context.Context, string, MachineEdit) error
 	DeleteMachine(context.Context, string) error
+	SetMachineNetworkDriver(context.Context, string, string) error
 }
 
 // Maker is the machine's maker: what a person wrote, else SMBIOS.

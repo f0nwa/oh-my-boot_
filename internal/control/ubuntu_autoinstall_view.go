@@ -122,10 +122,14 @@ func (s *Server) prepareUbuntuView(r *http.Request, v *ubuntuAutoinstallEditorVi
 	add("Локаль", v.Form.Locale)
 	add("Раскладки", v.Form.Keyboard)
 	add("Часовой пояс IANA", v.Form.TimeZone)
-	if v.Form.DiskMode == "serial" {
+	switch v.Form.DiskMode {
+	case "serial":
 		add("Очистка диска", v.Form.DiskSerial)
 		v.Issues = append(v.Issues, ubuntuEditorIssue{Section: "disk", Message: "Автоматическая разметка стирает диск с серийным номером:", Field: v.Form.DiskSerial, Severity: "warning"})
-	} else {
+	case "default":
+		add("Целевой диск", "Диск по умолчанию (выбор установщика)")
+		v.Issues = append(v.Issues, ubuntuEditorIssue{Section: "disk", Message: "Автоматическая разметка стирает диск, выбранный установщиком. Проверьте целевой диск перед публикацией.", Severity: "warning"})
+	default:
 		add("Целевой диск", "Выбрать диск вручную в установщике")
 	}
 	if v.Form.Network.Mode == "static" {
@@ -176,7 +180,7 @@ func (s *Server) prepareUbuntuView(r *http.Request, v *ubuntuAutoinstallEditorVi
 func (s *Server) ubuntuFormError(w http.ResponseWriter, r *http.Request, title string, form autoinstall.Form, err error) {
 	field, _, _ := strings.Cut(err.Error(), ":")
 	section := ubuntuSection(field)
-	labels := map[string]string{"title": "Название", "locale": "Локаль", "keyboard": "Раскладки", "keyboard variant": "Вариант раскладки", "keyboard toggle": "Переключение раскладок", "timezone": "Часовой пояс IANA", "hostname": "Имя компьютера", "username": "Имя пользователя", "password": "Пароль для установки", "realname": "Полное имя", "disk mode": "Разметка", "disk serial": "Точный серийный номер диска", "source": "Набор приложений", "packages": "Дополнительные пакеты", "mirror": "Источник пакетов", "network": "Сеть установленной системы", "network mac": "MAC-адрес интерфейса", "network address": "IPv4-адрес с префиксом", "network gateway": "Шлюз IPv4", "network dns": "DNS", "ssh": "SSH-сервер", "ssh keys": "Публичные SSH-ключи — по одному в строке", "script": "Скрипт в установленной системе от root", "shutdown": "После установки"}
+	labels := map[string]string{"title": "Название", "locale": "Локаль", "keyboard": "Раскладки", "keyboard variant": "Вариант раскладки", "keyboard toggle": "Переключение раскладок", "timezone": "Часовой пояс IANA", "hostname": "Имя компьютера", "username": "Имя пользователя", "password": "Пароль создаваемого пользователя", "realname": "Полное имя", "disk mode": "Разметка", "disk serial": "Точный серийный номер диска", "source": "Набор приложений", "packages": "Дополнительные пакеты", "mirror": "Источник пакетов", "network": "Сеть установленной системы", "network mac": "MAC-адрес интерфейса", "network address": "IPv4-адрес с префиксом", "network gateway": "Шлюз IPv4", "network dns": "DNS", "ssh": "SSH-сервер", "ssh keys": "Публичные SSH-ключи — по одному в строке", "script": "Скрипт в установленной системе от root", "shutdown": "После установки"}
 	label := labels[field]
 	if label == "" {
 		label = "Файл и источник"

@@ -183,3 +183,41 @@ func TestCompileNormalizesNonsecretFields(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCompileRejectsRootUsername(t *testing.T) {
+	form := validForm()
+	form.Username = "root"
+	if _, _, err := Compile(form); err == nil || !strings.HasPrefix(err.Error(), "username:") {
+		t.Fatalf("root username accepted or misreported: %v", err)
+	}
+}
+
+func TestCompileDefaultDiskUsesInstallerChoice(t *testing.T) {
+	form := validForm()
+	form.DiskMode = "default"
+	_, data, err := Compile(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	ai := doc["autoinstall"].(map[string]any)
+	layout := ai["storage"].(map[string]any)["layout"].(map[string]any)
+	if layout["name"] != "direct" {
+		t.Fatalf("unexpected default disk layout: %#v", layout)
+	}
+	if _, exists := layout["match"]; exists {
+		t.Fatalf("default disk constrained by a match: %#v", layout)
+	}
+}
+
+func TestCompileDefaultDiskRejectsStaleSerial(t *testing.T) {
+	form := validForm()
+	form.DiskMode = "default"
+	form.DiskSerial = "DISK123"
+	if _, _, err := Compile(form); err == nil {
+		t.Fatal("default disk accepted a stale serial")
+	}
+}

@@ -67,7 +67,7 @@ func TestNavigationGroupsLibraryAndSystemPages(t *testing.T) {
 	for _, group := range groups {
 		titles = append(titles, group.Title)
 	}
-	if strings.Join(titles, ",") != "Сейчас,Установки,Меню,Библиотека,Журнал,Система" {
+	if strings.Join(titles, ",") != "Сейчас,Загрузки,Меню,Библиотека,Журнал,Система" {
 		t.Fatalf("sections=%v", titles)
 	}
 	tabs := subnav(groups)
@@ -78,7 +78,7 @@ func TestNavigationGroupsLibraryAndSystemPages(t *testing.T) {
 		t.Fatalf("installations has no tabs: %+v", tabs)
 	}
 	for _, group := range navigation("admin", "/installations/new") {
-		if group.Active != (group.Title == "Установки") {
+		if group.Active != (group.Title == "Загрузки") {
 			t.Fatalf("active section for /installations/new: %+v", group)
 		}
 	}

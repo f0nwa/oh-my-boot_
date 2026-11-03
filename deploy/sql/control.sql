@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS machines (
     manufacturer_override TEXT NOT NULL DEFAULT '',
     product_override TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
+    network_driver TEXT NOT NULL DEFAULT '' CHECK (network_driver IN ('', 'ipxe', 'snp')),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS machines_last_seen_idx ON machines (last_seen DESC);
@@ -101,6 +102,7 @@ CREATE TABLE IF NOT EXISTS mac_prefix_rules (
     title TEXT NOT NULL CHECK (title <> ''),
     manufacturer TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
+    network_driver TEXT NOT NULL DEFAULT '' CHECK (network_driver IN ('', 'ipxe', 'snp')),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -145,10 +147,10 @@ CREATE TABLE IF NOT EXISTS ubuntu_autoinstall_files (
  user_data BYTEA NOT NULL CHECK (octet_length(user_data) > 0 AND octet_length(user_data) < 65536),
  sha256 CHAR(64) NOT NULL UNIQUE CHECK (sha256 ~ '^[0-9a-f]{64}$'),
  state TEXT NOT NULL CHECK (state = 'validated'),
- disk_mode TEXT NOT NULL CHECK (disk_mode IN ('interactive','serial')),
+ disk_mode TEXT NOT NULL CONSTRAINT ubuntu_autoinstall_files_disk_mode_check CHECK (disk_mode IN ('interactive','default','serial')),
  disk_serial TEXT NOT NULL DEFAULT '',
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
- CHECK ((disk_mode = 'interactive' AND disk_serial = '') OR (disk_mode = 'serial' AND octet_length(disk_serial) BETWEEN 1 AND 128)),
+ CONSTRAINT ubuntu_autoinstall_files_disk_serial_check CHECK ((disk_mode IN ('interactive','default') AND disk_serial = '') OR (disk_mode = 'serial' AND octet_length(disk_serial) BETWEEN 1 AND 128)),
  CHECK ("values"->>'DiskMode' = disk_mode AND "values"->>'DiskSerial' = disk_serial)
 );
 
@@ -172,7 +174,8 @@ CREATE TABLE IF NOT EXISTS menu_draft_items (
  position INT PRIMARY KEY CHECK (position >= 0),
  installation_id BIGINT NOT NULL UNIQUE REFERENCES installations(id) ON DELETE RESTRICT,
  folder TEXT NOT NULL DEFAULT '',
- title TEXT NOT NULL DEFAULT ''
+ title TEXT NOT NULL DEFAULT '',
+ components JSONB
 );
 
 CREATE TABLE IF NOT EXISTS menu_version_items (
@@ -181,6 +184,7 @@ CREATE TABLE IF NOT EXISTS menu_version_items (
  position INT NOT NULL CHECK (position >= 0),
  title TEXT NOT NULL DEFAULT '',
  folder TEXT NOT NULL DEFAULT '',
+ components JSONB,
  PRIMARY KEY (version_id,position),
  UNIQUE (version_id,installation_id)
 );
@@ -195,13 +199,6 @@ $$;
 DROP TRIGGER IF EXISTS ubuntu_autoinstall_immutable ON ubuntu_autoinstall_files;
 CREATE TRIGGER ubuntu_autoinstall_immutable BEFORE UPDATE ON ubuntu_autoinstall_files FOR EACH ROW EXECUTE FUNCTION reject_ubuntu_autoinstall_update();
 
-CREATE OR REPLACE FUNCTION reject_autoinstall_binding_update() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
- IF NEW.autoinstall_id IS DISTINCT FROM OLD.autoinstall_id THEN
-  RAISE EXCEPTION 'Installation Autoinstall bindings are immutable';
- END IF;
- RETURN NEW;
-END;
-$$;
+-- Boot-entry bindings are editable; menu items retain their own component snapshot.
 DROP TRIGGER IF EXISTS installation_autoinstall_immutable ON installations;
-CREATE TRIGGER installation_autoinstall_immutable BEFORE UPDATE OF autoinstall_id ON installations FOR EACH ROW EXECUTE FUNCTION reject_autoinstall_binding_update();
+DROP FUNCTION IF EXISTS reject_autoinstall_binding_update();

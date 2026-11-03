@@ -53,3 +53,67 @@ func TestUbuntuEditorEnglishAndEscaping(t *testing.T) {
 		t.Fatal("unescaped input")
 	}
 }
+
+func TestUbuntuEditorRegionalFieldsOfferCommonChoices(t *testing.T) {
+	s, _ := autoinstallServer(t)
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/ubuntu-autoinstall/new", nil))
+	body := res.Body.String()
+	for _, want := range []string{`list="ai-locale-options"`, `<option value="ru_RU.UTF-8">`, `list="ai-timezone-options"`, `<option value="Europe/Moscow">`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("regional choice %q missing: %s", want, body)
+		}
+	}
+}
+
+func TestUbuntuEditorPasswordFeedbackExplainsClearedField(t *testing.T) {
+	s, _ := autoinstallServer(t)
+	res := constructorPost(t, s, "/ubuntu-autoinstall/preview", constructorForm())
+	body := res.Body.String()
+	for _, want := range []string{"Пароль создаваемого пользователя", "Пароль принят. В предпросмотре сохранён только хеш, поле очищено."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("password feedback %q missing: %s", want, body)
+		}
+	}
+	if strings.Contains(body, constructorPassword) {
+		t.Fatal("password feedback leaked plaintext")
+	}
+}
+
+func TestUbuntuEditorShutdownHasOneExplicitRebootChoice(t *testing.T) {
+	s, _ := autoinstallServer(t)
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/ubuntu-autoinstall/new", nil))
+	body := res.Body.String()
+	if count := strings.Count(body, ">Перезагрузить компьютер</option>"); count != 1 {
+		t.Fatalf("explicit reboot choices=%d, want 1: %s", count, body)
+	}
+	if !strings.Contains(body, "Как в Ubuntu — перезагрузка") {
+		t.Fatal("default shutdown behavior is unclear")
+	}
+}
+
+func TestUbuntuEditorOffersDefaultDiskWithWarning(t *testing.T) {
+	s, _ := autoinstallServer(t)
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/ubuntu-autoinstall/new", nil))
+	body := res.Body.String()
+	for _, want := range []string{`value="default"`, "Стереть диск по умолчанию", "Установщик сам выберет один диск и полностью сотрёт его содержимое."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("default disk choice or warning %q missing: %s", want, body)
+		}
+	}
+}
+
+func TestUbuntuEditorDefaultDiskSummaryWarnsAboutInstallerChoice(t *testing.T) {
+	s, _ := autoinstallServer(t)
+	form := constructorForm()
+	form.Set("disk_mode", "default")
+	res := constructorPost(t, s, "/ubuntu-autoinstall/preview", form)
+	body := res.Body.String()
+	for _, want := range []string{"Диск по умолчанию (выбор установщика)", "Автоматическая разметка стирает диск, выбранный установщиком. Проверьте целевой диск перед публикацией."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("default disk summary or warning %q missing: %s", want, body)
+		}
+	}
+}

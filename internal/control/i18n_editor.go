@@ -6,7 +6,7 @@ var editorMessages = map[string]string{
 	"+ ещё строка":           "+ another row",
 	"Правка файла ответов":   "Edit answer file",
 	"Редактор файла ответов": "Answer file editor",
-	"Собирает autounattend.xml. В меню ничего не попадает само: сохранённый файл выбирают в новой установке.": "Builds autounattend.xml. Nothing goes into the menu by itself: pick the saved file in a new installation.",
+	"Собирает autounattend.xml. В меню ничего не попадает само: сохранённый файл выбирают в новой загрузке.": "Builds autounattend.xml. Nothing goes into the menu by itself: pick the saved file in a new installation.",
 	"Открыт": "Opened",
 	"файл сделан редактором, но после этого его правили вручную. Ручные правки при сохранении пропадут: редактор соберёт файл по своим настройкам.": "the file was made by the editor but edited by hand since. Saving drops the manual edits: the editor builds the file from its own settings.",
 	"файл сделан редактором и открыт без потерь.": "the file was made by the editor and opened with nothing lost.",

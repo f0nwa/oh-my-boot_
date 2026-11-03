@@ -20,8 +20,9 @@ func main() {
 	config := flag.String("config-path", "/etc/omb/dnsmasq.conf", "managed dnsmasq config")
 	state := flag.String("state-path", "/var/lib/omb-agent/network.json", "last successful network config")
 	recoveryConfig := flag.String("storage-recovery-config", "/etc/omb/storage-recovery.json", "storage recovery settings")
+	hosts := flag.String("hosts-path", "/var/lib/omb-dhcp/hosts", "managed dnsmasq DHCP hosts")
 	flag.Parse()
-	applier, err := agent.NewApplier(*config, *state, agent.SystemRunner{})
+	applier, err := agent.NewApplier(*config, *state, *hosts, agent.SystemRunner{})
 	if err != nil {
 		log.Fatal(err)
 	}

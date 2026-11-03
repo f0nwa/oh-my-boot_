@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,6 +41,7 @@ type Storage interface {
 	BootProfiles(context.Context) ([]BootProfile, error)
 	Installations(context.Context) ([]Installation, error)
 	CreateInstallation(context.Context, Installation) (Installation, error)
+	UpdateInstallation(context.Context, Installation) error
 	CreateUbuntuAutoinstall(context.Context, UbuntuAutoinstallFile) (UbuntuAutoinstallFile, error)
 	UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstallSummary, error)
 	UbuntuAutoinstall(context.Context, int64) (UbuntuAutoinstallFile, error)
@@ -121,6 +121,8 @@ type MenuReader interface {
 }
 
 type Server struct {
+	BootDrivers       BootDriverSync
+	driverMu          sync.Mutex
 	Store             Storage
 	Boot              *BootClient
 	DeletionMenu      MenuReader
@@ -180,10 +182,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/search.js", searchScript)
 	mux.HandleFunc("GET /installations/new", s.protect("images", s.installationNewPage))
 	mux.HandleFunc("POST /installations", s.protect("images", withPageErrors(s.installationNewPage, s.installationCreate)))
+	mux.HandleFunc("GET /installations/{id}/edit", s.protect("images", s.installationNewPage))
+	mux.HandleFunc("POST /installations/{id}", s.protect("images", withPageErrors(s.installationNewPage, s.installationCreate)))
+	mux.HandleFunc("POST /installations/{id}/prepare", s.protect("images", withPageErrors(s.installationsPage, s.installationPrepare)))
 	mux.HandleFunc("GET /assets/installation-form.js", installationFormScript)
 	mux.HandleFunc("POST /installations/{key}/add", s.protect("menu", withPageErrors(s.installationsPage, s.installationAdd)))
 	mux.HandleFunc("GET /events", s.protect("view", s.eventsPage))
 	mux.HandleFunc("GET /events/machines/{mac}", s.protect("view", s.machinePage))
+	mux.HandleFunc("POST /events/machines/{mac}/network-driver", s.protect("images", withPageErrors(s.machinePage, s.machineNetworkDriver)))
 	mux.HandleFunc("POST /events/machines/{mac}/edit", s.protect("images", withPageErrors(s.machinePage, s.machineEdit)))
 	mux.HandleFunc("POST /events/machines/{mac}/delete", s.protect("delete", withPageErrors(s.machinePage, s.machineDelete)))
 	mux.HandleFunc("POST /events/retention", s.protect("delete", withPageErrors(s.eventsPage, s.journalRetention)))
@@ -250,8 +256,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
 	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
-	mux.HandleFunc("POST /images/windows-profiles", s.protect("images", withPageErrors(s.imagesPage, s.windowsProfileCreate)))
-	mux.HandleFunc("POST /images/windows-profiles/{id}/prepare", s.protect("images", withPageErrors(s.imagesPage, s.windowsProfilePrepare)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsProfileDelete)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("delete", withPageErrors(s.answersPage, s.windowsAnswerDelete)))
@@ -540,35 +544,41 @@ func (s *Server) libraryData(r *http.Request) pageData {
 			data.ImageError = "Сервис образов недоступен"
 		} else {
 			data.Storages = catalog.Storages
-			names := make(map[int64]string, len(catalog.Storages))
-			ready := make(map[int64]bool, len(catalog.Storages))
-			smb := make(map[int64]bool, len(catalog.Storages))
+			names := map[int64]string{}
 			for _, storage := range catalog.Storages {
 				names[storage.ID] = storage.Name
-				ready[storage.ID] = storage.State == "ready"
-				// The Agent mounts profile ISOs from SMB storages and from
-				// local ones under its local ISO root.
-				smb[storage.ID] = storage.Kind == "smb" || (storage.Kind == "local" && localISOStorage(storage.Root))
+			}
+			uses := map[int64][]imageDownload{}
+			if sources, e := s.installationMenuSources(r.Context()); e == nil {
+				byID := map[int64]int64{}
+				for _, p := range sources.BootProfiles {
+					if p.Kind == BootProfileWindowsISO {
+						byID[p.ID] = p.WindowsProfileID
+					}
+				}
+				for _, item := range sources.Installations {
+					if id := byID[item.BootProfileID]; id > 0 {
+						uses[id] = append(uses[id], imageDownload{ID: item.ID, Title: item.Title})
+					}
+				}
+			}
+			byPath := map[string]WindowsProfile{}
+			for _, p := range profiles {
+				byPath[fmt.Sprintf("%d:%s", p.StorageID, p.Path)] = p
 			}
 			for _, image := range catalog.Images {
-				unsupported := strings.Contains(strings.ToLower(path.Base(image.Path)), "arm64")
-				canPrepare := image.Present && ready[image.StorageID] && smb[image.StorageID] && !unsupported
-				hasProfile := false
-				for _, profile := range profiles {
-					if profile.StorageID == image.StorageID && profile.Path == image.Path {
-						canPrepare, hasProfile = false, true
-						break
+				kind, problem := isoKindHint(image.Path)
+				row := imageRow{Image: image, StorageName: names[image.StorageID], Kind: kind, Problem: problem}
+				if p, ok := byPath[fmt.Sprintf("%d:%s", image.StorageID, image.Path)]; ok {
+					row.Downloads = uses[p.ID]
+					if profileBootable(p) {
+						row.USBProfileID = p.ID
+					}
+					if len(row.Downloads) == 0 {
+						row.CleanupProfileID = p.ID
 					}
 				}
-				data.ISOImages = append(data.ISOImages, imageRow{Image: image, StorageName: names[image.StorageID], CanPrepare: canPrepare, Unsupported: unsupported, HasProfile: hasProfile})
-				for _, profile := range profiles {
-					if profile.StorageID == image.StorageID && profile.Path == image.Path {
-						if data.ProfileSizes == nil {
-							data.ProfileSizes = map[int64]int64{}
-						}
-						data.ProfileSizes[profile.ID] = image.Size
-					}
-				}
+				data.ISOImages = append(data.ISOImages, row)
 			}
 		}
 	}
@@ -576,7 +586,7 @@ func (s *Server) libraryData(r *http.Request) pageData {
 	if configs, err := s.Store.DriverConfigs(r.Context()); err == nil {
 		if _, active, err := s.currentDraft(r.Context()); err == nil {
 			if sources, err := s.installationMenuSources(r.Context()); err == nil {
-				data.ProfileUse, data.AnswerUse = menuUsage(active, configs, sources)
+				_, data.AnswerUse = menuUsage(active, configs, sources)
 			}
 		}
 	}

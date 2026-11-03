@@ -78,7 +78,7 @@ func TestObserverSeesNoInstallationButtons(t *testing.T) {
 	store := newDraftStore(t, "observer", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/installations")
-	if strings.Contains(body, "Новая установка") || strings.Contains(body, `action="/installations/`) || strings.Contains(body, `action="/drivers/configs/`) {
+	if strings.Contains(body, "Новая загрузка") || strings.Contains(body, `action="/installations/`) || strings.Contains(body, `action="/drivers/configs/`) {
 		t.Fatalf("observer page: %s", body)
 	}
 }

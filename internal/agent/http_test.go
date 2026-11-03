@@ -14,7 +14,7 @@ import (
 func TestHandlerConfigShowsOnlySuccessfulApply(t *testing.T) {
 	dir := t.TempDir()
 	runner := &fakeRunner{}
-	a, err := NewApplier(filepath.Join(dir, "dnsmasq.conf"), filepath.Join(dir, "state.json"), runner)
+	a, err := NewApplier(filepath.Join(dir, "dnsmasq.conf"), filepath.Join(dir, "state.json"), filepath.Join(dir, "dhcp", "hosts"), runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestHandlerConfigShowsOnlySuccessfulApply(t *testing.T) {
 func TestHandlerRejectsMalformedApplyAndReportsStatus(t *testing.T) {
 	dir := t.TempDir()
 	runner := &fakeRunner{}
-	a, err := NewApplier(filepath.Join(dir, "dnsmasq.conf"), filepath.Join(dir, "state.json"), runner)
+	a, err := NewApplier(filepath.Join(dir, "dnsmasq.conf"), filepath.Join(dir, "state.json"), filepath.Join(dir, "dhcp", "hosts"), runner)
 	if err != nil {
 		t.Fatal(err)
 	}

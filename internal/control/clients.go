@@ -475,3 +475,16 @@ func (c *BootClient) UbuntuSource(ctx context.Context) (autoinstall.SourceCatalo
 	err := localCall(ctx, c.http, http.MethodGet, "/ubuntu/source", nil, &catalog)
 	return catalog, err
 }
+
+func (c *AgentClient) SetBootDrivers(ctx context.Context, rules []network.BootDriverRule) error {
+	if rules == nil {
+		rules = []network.BootDriverRule{}
+	}
+	payload, err := json.Marshal(rules)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return localCall(ctx, c.http, http.MethodPut, "/network/boot-drivers", payload, nil)
+}

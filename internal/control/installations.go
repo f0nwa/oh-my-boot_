@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path"
 	"omb/internal/boot"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -42,7 +42,7 @@ func (r installationRow) Group() string {
 	switch r.Status {
 	case "in_menu":
 		return "menu"
-	case "pending_add", "pending_remove":
+	case "pending_add", "pending_remove", "pending_change":
 		return "draft"
 	case "not_in_menu":
 		return "off"
@@ -109,6 +109,16 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 				for _, windows := range profiles {
 					if profile.Kind == BootProfileWindowsISO && windows.ID == profile.WindowsProfileID {
 						row.Image = windows.Title
+						switch windows.State {
+						case "pending":
+							row.Status = "needs_prepare"
+						case "preparing":
+							row.Status = "preparing"
+						case "error":
+							row.Status, row.Error = "error", windows.Error
+						case "unavailable":
+							row.Status, row.Error = "unavailable", windows.Error
+						}
 					}
 				}
 				if profile.Kind == BootProfileUbuntuBuiltin {
@@ -119,7 +129,11 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 		answerID := installation.AnswerID
 		for _, config := range configs {
 			if config.ID == installation.DriverConfigID {
-				row.ConfigID, row.Drivers, row.Error = config.ID, driverSummary(config), config.Error
+				row.ConfigID, row.Drivers = config.ID, driverSummary(config)
+				if row.Status != "" {
+					continue
+				}
+				row.Error = config.Error
 				answerID = config.AnswerID
 				switch config.State {
 				case "pending":
@@ -138,7 +152,7 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 		}
 		for _, file := range source.Autoinstalls {
 			if file.ID == installation.AutoinstallID {
-				wipes := file.DiskMode == "serial"
+				wipes := file.DiskMode == "default" || file.DiskMode == "serial"
 				row.Answer, row.AnswerWipesDisk = file.Title, &wipes
 			}
 		}
@@ -197,6 +211,9 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 			switch {
 			case draftHas && activeHas:
 				row.Status = "in_menu"
+				if item.Title != published.Title || item.Folder != published.Folder || !sameInstallationComponents(item.Components, published.Components) {
+					row.Status = "pending_change"
+				}
 			case draftHas:
 				row.Status = "pending_add"
 			case activeHas:
@@ -285,7 +302,7 @@ func (s *Server) installationAdd(w http.ResponseWriter, r *http.Request) {
 		s.installationAddByID(w, r, id)
 		return
 	}
-	http.Error(w, "Неверная установка", http.StatusBadRequest)
+	http.Error(w, "Неверная загрузка", http.StatusBadRequest)
 }
 
 func (s *Server) installationAddByID(w http.ResponseWriter, r *http.Request, id int64) {
@@ -303,7 +320,7 @@ func (s *Server) installationAddByID(w http.ResponseWriter, r *http.Request, id 
 	}
 	_, _, err = menuProfileForInstallation(id, "", sources, profiles, answers, configs)
 	if err != nil {
-		http.Error(w, "Установка не готова: "+err.Error(), http.StatusConflict)
+		http.Error(w, "Загрузка не готова: "+err.Error(), http.StatusConflict)
 		return
 	}
 	var installation Installation
@@ -319,30 +336,40 @@ func (s *Server) installationAddByID(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	if draft.InstallationIndex(id) < 0 {
-		draft.Items = insertDraftItem(draft.Items, active.Items, MenuDraftItem{InstallationID: id, Title: installation.Title, Folder: installation.Folder})
+		draft.Items = insertDraftItem(draft.Items, active.Items, MenuDraftItem{InstallationID: id, Title: installation.Title, Folder: installation.Folder, Components: installationComponents(installation)})
 		if err := s.Store.SaveMenuDraft(r.Context(), draft); err != nil {
 			http.Error(w, "Не удалось сохранить черновик меню", http.StatusServiceUnavailable)
 			return
 		}
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.add", "ok", fmt.Sprintf("install_%d", id))
-	target := "/installations?message=Установка+добавлена+в+меню"
+	target := "/installations?message=Загрузка+добавлена+в+меню"
 	if strings.HasPrefix(r.URL.Path, "/menu/") {
 		target = "/menu?message=Пункт+возвращён+в+меню"
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
-// insertDraftItem adds item to the draft. An item still in the published menu
-// gets back its published title, folder and place, so re-adding undoes a
-// removal instead of creating new changes.
+// insertDraftItem restores the published position and menu-only placement
+// overrides, while retaining edits to the saved entry and its components.
 func insertDraftItem(items, published []MenuDraftItem, item MenuDraftItem) []MenuDraftItem {
 	at := -1
 	for i, old := range published {
 		if menuDraftItemKey(old) != menuDraftItemKey(item) {
 			continue
 		}
-		item = old
+		// A menu-only rename/folder override survives undoing removal unless
+		// the saved entry itself was edited since that menu was published.
+		if old.Components == nil {
+			item.Title, item.Folder, item.Components = old.Title, old.Folder, nil
+		} else {
+			if item.Components == nil || item.Components.Title == old.Components.Title {
+				item.Title = old.Title
+			}
+			if item.Components == nil || item.Components.Folder == old.Components.Folder {
+				item.Folder = old.Folder
+			}
+		}
 		for _, later := range published[i+1:] {
 			for j, current := range items {
 				if menuDraftItemKey(current) == menuDraftItemKey(later) && (at < 0 || j < at) {
@@ -377,6 +404,7 @@ func menuUsage(active MenuDraft, configs []DriverConfig, source InstallationMenu
 					profileUse[profile.WindowsProfileID]++
 				}
 			}
+			installation = item.Components.apply(installation)
 			answerID := installation.AnswerID
 			for _, config := range configs {
 				if config.ID == installation.DriverConfigID {

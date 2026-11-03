@@ -99,7 +99,7 @@ func TestUbuntuReadinessShownInListAndFormAndBlocksCreation(t *testing.T) {
 		if !strings.Contains(body, "initrd") || !strings.Contains(body, "недоступ") {
 			t.Fatalf("%s lacks unavailable initrd reason", path)
 		}
-		if strings.Contains(path, "/new") && !strings.Contains(body, `value="52" data-kind="ubuntu_builtin" data-windows-profile="0" data-title="Ubuntu Desktop" required disabled`) {
+		if strings.Contains(path, "/new") && !strings.Contains(body, `value="52" data-kind="ubuntu_builtin" data-windows-profile="0" data-title="Ubuntu Desktop" data-prepare="true" required disabled`) {
 			t.Fatal("unavailable profile remains enabled")
 		}
 	}

@@ -18,7 +18,7 @@ func TestRenderDnsmasqFullOffersLeasesAndArchitectureBootFiles(t *testing.T) {
 		"dhcp-range=192.0.2.100,192.0.2.150,12h",
 		"dhcp-match=set:ipxe,175",
 		"dhcp-match=set:efi64,option:client-arch,7",
-		"dhcp-boot=tag:!ipxe,tag:efi64,ipxeboot/x86_64-sb/ipxe-shim.efi,,192.0.2.10",
+		"dhcp-boot=tag:!ipxe,tag:efi64,tag:!omb-driver-machine-snp,tag:!omb-driver-machine-ipxe,tag:!omb-driver-p5-snp,tag:!omb-driver-p5-ipxe,tag:!omb-driver-p4-snp,tag:!omb-driver-p4-ipxe,tag:!omb-driver-p3-snp,tag:!omb-driver-p3-ipxe,ipxeboot/x86_64-sb/ipxe-shim.efi,,192.0.2.10",
 		"dhcp-boot=tag:!ipxe,tag:!efi64,ipxeboot/x86_64/undionly.kpxe,,192.0.2.10",
 		"dhcp-boot=tag:ipxe,http://192.0.2.10:8080/boot/menu.ipxe,,192.0.2.10",
 	} {
@@ -38,7 +38,7 @@ func TestRenderDnsmasqProxyNeverAllocatesLeases(t *testing.T) {
 	for _, line := range []string{
 		"dhcp-range=192.0.2.0,proxy",
 		"pxe-service=tag:!ipxe,X86PC,PXE,ipxeboot/x86_64/undionly.kpxe,192.0.2.10",
-		"pxe-service=tag:!ipxe,X86-64_EFI,PXE,ipxeboot/x86_64-sb/ipxe-shim.efi,192.0.2.10",
+		"pxe-service=tag:!ipxe,tag:!omb-driver-machine-snp,tag:!omb-driver-machine-ipxe,tag:!omb-driver-p5-snp,tag:!omb-driver-p5-ipxe,tag:!omb-driver-p4-snp,tag:!omb-driver-p4-ipxe,tag:!omb-driver-p3-snp,tag:!omb-driver-p3-ipxe,X86-64_EFI,PXE,ipxeboot/x86_64-sb/ipxe-shim.efi,192.0.2.10",
 		"dhcp-boot=tag:ipxe,http://192.0.2.10:8080/boot/menu.ipxe,,192.0.2.10",
 	} {
 		if !strings.Contains(text, line+"\n") {

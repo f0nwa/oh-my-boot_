@@ -351,6 +351,7 @@ func TestUbuntuConstructorPostgreSQL(t *testing.T) {
 	}
 	s := &Server{Store: store}
 	form := constructorForm()
+	form.Set("disk_mode", "default")
 	token, data := constructorPreview(t, s, form)
 	form.Set("preview_token", token)
 	res := constructorPost(t, s, "/ubuntu-autoinstall", form)

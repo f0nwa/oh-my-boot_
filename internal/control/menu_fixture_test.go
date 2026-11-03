@@ -30,7 +30,7 @@ func buildTestMenuFromDraft(d MenuDraft, base string, profiles []WindowsProfile,
 func versionItems(d MenuDraft) []MenuVersionItem {
 	items := make([]MenuVersionItem, 0, len(d.Items))
 	for i, item := range d.Items {
-		items = append(items, MenuVersionItem{InstallationID: item.InstallationID, Position: i, Title: item.Title, Folder: item.Folder})
+		items = append(items, MenuVersionItem{InstallationID: item.InstallationID, Position: i, Title: item.Title, Folder: item.Folder, Components: item.Components})
 	}
 	return items
 }

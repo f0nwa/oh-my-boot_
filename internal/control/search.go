@@ -101,7 +101,7 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 					if inDraft[row.Key] {
 						href = "/menu?item=" + row.Key
 					}
-					add(searchResult{Kind: "Установка", Title: row.Title, Sub: row.Key, Href: href})
+					add(searchResult{Kind: "Загрузка", Title: row.Title, Sub: row.Key, Href: href})
 				}
 			}
 		}

@@ -35,7 +35,11 @@ func fakeBoot(t *testing.T) (*BootClient, *[]string) {
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/menu":
-			_, _ = w.Write([]byte("#!ipxe\n"))
+			if len(published) > 0 {
+				_, _ = w.Write([]byte(published[len(published)-1]))
+			} else {
+				_, _ = w.Write([]byte("#!ipxe\n"))
+			}
 		case "/publish":
 			body, _ := io.ReadAll(r.Body)
 			published = append(published, string(body))

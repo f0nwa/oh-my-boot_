@@ -144,18 +144,20 @@ func TestUbuntuAutoinstallStore(t *testing.T) {
 			t.Fatalf("accepted invalid binding %+v", item)
 		}
 	}
-	for _, query := range []string{`UPDATE installations SET autoinstall_id=NULL WHERE id=$1`, `UPDATE installations SET autoinstall_id=$2 WHERE id=$1`} {
-		args := []any{items[0].ID}
-		if strings.Contains(query, "$2") {
-			args = append(args, other.ID)
-		}
-		if _, err := store.Pool.Exec(ctx, query, args...); err == nil {
-			t.Fatal("changed immutable binding")
+	// Boot-entry bindings can change; immutable answer-file bytes remain protected.
+	for _, id := range []int64{0, other.ID, saved.ID} {
+		item := items[0]
+		item.AutoinstallID = id
+		if err := store.UpdateInstallation(ctx, item); err != nil {
+			t.Fatalf("edit answer binding: %v", err)
 		}
 	}
-	if _, err := store.Pool.Exec(ctx, `UPDATE installations SET autoinstall_id=$2 WHERE id=$1`, items[3].ID, saved.ID); err == nil {
-		t.Fatal("changed manual binding")
+	item := items[3]
+	item.AutoinstallID = saved.ID
+	if err := store.UpdateInstallation(ctx, item); err != nil {
+		t.Fatalf("edit manual binding: %v", err)
 	}
+
 	if _, err := store.Pool.Exec(ctx, `DELETE FROM ubuntu_autoinstall_files WHERE id=$1`, saved.ID); err == nil {
 		t.Fatal("deleted referenced file")
 	}

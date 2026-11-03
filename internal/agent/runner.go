@@ -43,3 +43,7 @@ func run(ctx context.Context, binary string, args ...string) error {
 	}
 	return nil
 }
+
+func (r SystemRunner) Reload(ctx context.Context) error {
+	return run(ctx, r.systemctl(), "kill", "--signal=SIGHUP", "omb-dnsmasq.service")
+}

@@ -196,6 +196,7 @@ tr.dragging{opacity:.5;background:var(--chip)}
 .choice-body{flex:1;display:flex;flex-direction:column;min-width:0}
 .choice-title{font-weight:500}.choice-note{color:var(--muted)}
 .choice-off{opacity:.55;cursor:default}
+.new-install .choice-off{opacity:1;color:var(--muted)}
 .choice-danger{border-color:var(--draft-line);background:var(--draft-bg)}.choice-danger small{color:var(--accent-ink)}
 .step-more{clear:both;margin:10px 0 0}
 .step-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
@@ -439,5 +440,7 @@ button[disabled]{opacity:.45;cursor:default}
 .ai-editor .ed-main input:not([type=checkbox]),.ai-editor .ed-main select,.ai-editor textarea{max-width:none;width:100%}
 .ai-editor .ed-toc-item{width:100%}.ai-editor pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:65vh;overflow:auto;font-size:11px}
 .ai-editor .ed-tabs button{flex:1;padding:8px 5px;min-width:0}.ai-editor dd{overflow-wrap:anywhere;margin:0 0 10px}
+.ai-editor .check span{flex:1;min-width:0;overflow-wrap:anywhere}
+.ai-editor .ed-section legend{float:none}
 .ai-editor [hidden]{display:none!important}
 @media(max-width:700px){.ai-editor .ed-row2{grid-template-columns:1fr}.ai-editor .ed-foot{position:static}.ai-editor .ed-foot button{flex:1}}

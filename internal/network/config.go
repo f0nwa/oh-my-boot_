@@ -8,24 +8,30 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 var interfaceName = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 
 type Config struct {
-	Mode       string `json:"mode"`
-	Interface  string `json:"interface"`
-	ServerIP   string `json:"server_ip"`
-	Subnet     string `json:"subnet"`
-	DHCPStart  string `json:"dhcp_start"`
-	DHCPEnd    string `json:"dhcp_end"`
-	BootURL    string `json:"boot_url"`
-	TFTPRoot   string `json:"tftp_root"`
-	UEFILoader string `json:"uefi_loader,omitempty"`
+	ReuseFirmwareNetwork bool   `json:"reuse_firmware_network,omitempty"`
+	DefaultDriver        string `json:"default_driver,omitempty"`
+	Mode                 string `json:"mode"`
+	Interface            string `json:"interface"`
+	ServerIP             string `json:"server_ip"`
+	Subnet               string `json:"subnet"`
+	DHCPStart            string `json:"dhcp_start"`
+	DHCPEnd              string `json:"dhcp_end"`
+	BootURL              string `json:"boot_url"`
+	TFTPRoot             string `json:"tftp_root"`
+	UEFILoader           string `json:"uefi_loader,omitempty"`
 }
 
 // Validate rejects settings that could enable DHCP on the wrong network.
 func Validate(c Config) error {
+	if c.DefaultDriver != "" && c.DefaultDriver != "ipxe" && c.DefaultDriver != "snp" {
+		return fmt.Errorf("default driver must be ipxe or snp")
+	}
 	if c.UEFILoader != "" && c.UEFILoader != "ipxe" && c.UEFILoader != "grub-test" {
 		return fmt.Errorf("UEFI loader must be ipxe or grub-test")
 	}
@@ -50,6 +56,14 @@ func Validate(c Config) error {
 	u, err := url.Parse(c.BootURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" || strings.ContainsAny(c.BootURL, "\n\r") {
 		return fmt.Errorf("invalid HTTP boot URL")
+	}
+	if c.ReuseFirmwareNetwork {
+		// DHCP suboptions have an 8-bit length; the enclosing option also
+		// needs two bytes for the suboption header. The URL must stay one
+		// literal iPXE token inside a quoted dnsmasq string.
+		if len(firmwareNetworkScript(c.BootURL)) > 253 || strings.ContainsAny(c.BootURL, "\"\\$") || strings.ContainsFunc(c.BootURL, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+			return fmt.Errorf("boot URL is too long or contains characters unsafe for firmware network startup; use a shorter, percent-encoded URL")
+		}
 	}
 	if !filepath.IsAbs(c.TFTPRoot) || strings.ContainsAny(c.TFTPRoot, "\n\r,") {
 		return fmt.Errorf("TFTP root must be an absolute path without separators")

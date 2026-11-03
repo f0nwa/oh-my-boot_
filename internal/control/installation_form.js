@@ -33,19 +33,24 @@
       if (!own && input.checked) form.querySelector('input[name="answer_id"][value="0"]').checked = true;
     });
     var answer = windows ? checked("answer_id") : null;
+    var autoinstall = !windows && !ubuntu.disabled ? document.getElementById("i-autoinstall").selectedOptions[0] : null;
     if (!titleEdited) {
       var base = answer && answer.value !== "0" ? answer : profile;
       title.value = base ? base.dataset.title : "";
     }
     var drivers = windows && form.querySelectorAll('input[name="package"]:checked, input[name="inf"]:checked').length > 0;
-    var wipes = answer && answer.dataset.wipes === "true";
+    var wipes = (answer && answer.dataset.wipes === "true") || (autoinstall && autoinstall.dataset.wipes === "true");
     text("preview-title", (title.value || "Windows 11 x64"));
     text("preview-folder", folder.value ? " / " + folder.value.split("/").join(" / ") : "");
     text("preview-hint", wipes ? "!! WIPES DISK" : (drivers ? (en ? "drivers" : "драйверы") : ""));
     document.getElementById("preview-hint").classList.toggle("danger", !!wipes);
-    text("summary-build", drivers ? (en ? "needed, a few minutes" : "нужна, несколько минут") : (en ? "not needed" : "не нужна"));
+    text("summary-build", (drivers || profile && profile.dataset.prepare === "true") ? (en ? "needed, a few minutes" : "нужна, несколько минут") : (en ? "not needed" : "не нужна"));
   }
   form.addEventListener("change", update);
   form.addEventListener("input", update);
+  form.addEventListener("submit", function () {
+    var button = form.querySelector('button[type="submit"], button.btn-primary');
+    if (button) { button.disabled = true; button.textContent = en ? "Preparing…" : "Подготавливается…"; }
+  });
   update();
 })();

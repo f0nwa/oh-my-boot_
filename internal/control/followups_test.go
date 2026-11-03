@@ -18,7 +18,7 @@ func TestImagesPageIsOneTableWithUsage(t *testing.T) {
 	api := s.Images.(*fakeImagesAPI)
 	api.catalog.Images = append(api.catalog.Images, images.Image{StorageID: store.profiles[0].StorageID, Path: "new.iso", Present: true})
 	body := libraryGet(t, s, "/images")
-	if strings.Count(body, "<table") != 1 || !strings.Contains(body, "new.iso") || !strings.Contains(body, "Не подготовлен") || !strings.Contains(body, "В меню: 2") || !strings.Contains(body, `href="/installations?q=Windows%2011"`) {
+	if strings.Count(body, "<table") != 1 || !strings.Contains(body, "new.iso") || !strings.Contains(body, "В библиотеке") || !strings.Contains(body, `href="/installations/1017/edit"`) || !strings.Contains(body, `href="/installations/2031/edit"`) {
 		t.Fatalf("images page: %s", body)
 	}
 }

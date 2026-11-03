@@ -3,8 +3,6 @@ package control
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -50,27 +48,6 @@ type recordingWindowsISOAPI struct {
 	req agent.WindowsISORequest
 }
 
-type cancelingWindowsISOAPI struct {
-	cancel context.CancelFunc
-}
-
-func (a cancelingWindowsISOAPI) PrepareWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error) {
-	a.cancel()
-	return agent.WindowsISOResult{InstallFile: "install.wim"}, nil
-}
-func (a cancelingWindowsISOAPI) CheckWindowsISO(context.Context, agent.WindowsISORequest) error {
-	return nil
-}
-
-type contextCheckingProfileStore struct{ *recordingWindowsProfileStore }
-
-func (s contextCheckingProfileStore) SetWindowsProfileResult(ctx context.Context, id int64, state, installFile, lastError string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return s.recordingWindowsProfileStore.SetWindowsProfileResult(ctx, id, state, installFile, lastError)
-}
-
 func (a *recordingWindowsISOAPI) PrepareWindowsISO(_ context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
 	a.req = req
 	return agent.WindowsISOResult{InstallFile: "install.wim"}, nil
@@ -80,56 +57,17 @@ func (a *recordingWindowsISOAPI) CheckWindowsISO(_ context.Context, req agent.Wi
 	return nil
 }
 
-func TestWindowsProfilePrepareUsesSavedSourceFingerprint(t *testing.T) {
-	modified := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
-	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "Win10/RU-RU.ISO", Size: 7304607744, Modified: modified, Title: "Windows 10 x64", Folder: "Windows"}
-	store := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 17, WindowsProfileSource: source, State: "pending"}}
-	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Root: source.StorageRoot, State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: source.Path, Size: source.Size, Modified: source.Modified, Present: true}}}}
-	preparer := &recordingWindowsISOAPI{}
-	s := &Server{Store: store, Images: api, WindowsISO: preparer}
-	form := url.Values{"csrf": {CSRFToken("test-token")}}
-	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles/17/prepare", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
-	res := httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusSeeOther || store.state != "ready" || store.install != "install.wim" || preparer.req.ID != 17 || preparer.req.Size != source.Size || !preparer.req.Modified.Equal(modified) {
-		t.Fatalf("status=%d stored=%s/%s agent=%+v body=%s", res.Code, store.state, store.install, preparer.req, res.Body.String())
-	}
-}
-
-func TestWindowsProfilePreparePersistsResultAfterBrowserDisconnect(t *testing.T) {
-	modified := time.Date(2026, 10, 18, 20, 53, 51, 0, time.UTC)
-	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "Windows11.ISO", Size: 8748939264, Modified: modified, Title: "Windows 11 26H2", Folder: "Windows"}
-	record := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 3, WindowsProfileSource: source, State: "pending"}}
-	store := contextCheckingProfileStore{record}
-	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Root: source.StorageRoot, State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: source.Path, Size: source.Size, Modified: source.Modified, Present: true}}}}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	s := &Server{Store: store, Images: api, WindowsISO: cancelingWindowsISOAPI{cancel: cancel}}
-	form := url.Values{"csrf": {CSRFToken("test-token")}}
-	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles/3/prepare", strings.NewReader(form.Encode())).WithContext(ctx)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
-	res := httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, req)
-	if record.state != "ready" || record.install != "install.wim" {
-		t.Fatalf("status=%d stored=%s/%s body=%s", res.Code, record.state, record.install, res.Body.String())
-	}
-}
-
-func TestImagesPageOffersCatalogISOAsWindowsProfile(t *testing.T) {
-	store := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 10 x64", Path: "Win10/RU-RU.ISO"}, State: "pending"}}
+func TestImagesPageListsCatalogFilesWithoutProfileForms(t *testing.T) {
+	store := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
 	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Name: "NAS", Kind: "smb", State: "ready"}}, Images: []images.Image{{StorageID: 7, Path: "Win10/RU-RU.ISO", Present: true}, {StorageID: 7, Path: "Other.ISO", Present: true}}}}
-	s := &Server{Store: store, Images: api}
-	req := httptest.NewRequest(http.MethodGet, "/images", nil)
-	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
-	res := httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, req)
-	for _, want := range []string{`action="/images/windows-profiles"`, `name="storage_id" value="7"`, `name="path" value="Other.ISO"`, `action="/images/windows-profiles/17/prepare"`} {
-		if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), want) {
-			t.Fatalf("missing %s from Images page: status=%d body=%s", want, res.Code, res.Body.String())
+	body := libraryGet(t, &Server{Store: store, Images: api}, "/images")
+	for _, file := range []string{"Win10/RU-RU.ISO", "Other.ISO"} {
+		if !strings.Contains(body, file) {
+			t.Fatalf("missing file %s", file)
 		}
+	}
+	if strings.Contains(body, "Создать профиль") {
+		t.Fatal("ISO library still creates profiles")
 	}
 }
 
@@ -141,25 +79,6 @@ func TestSMBStorageRemovalIsBlockedWhileProfileReferencesIt(t *testing.T) {
 	res := submitSMB(t, s, "/images/smb/7/remove", smbForm())
 	if res.Code != http.StatusConflict || len(events) != 0 {
 		t.Fatalf("removed referenced storage: status=%d events=%v", res.Code, events)
-	}
-}
-
-func TestWindowsProfileCreateUsesCatalogRatherThanFormPath(t *testing.T) {
-	modified := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
-	store := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
-	api := &fakeImagesAPI{catalog: images.Catalog{
-		Storages: []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/omb-smb/key7", State: "ready"}},
-		Images:   []images.Image{{StorageID: 7, Path: "Win10/RU-RU.ISO", Size: 7304607744, Modified: modified, Present: true}},
-	}}
-	s := &Server{Store: store, Images: api}
-	form := url.Values{"storage_id": {"7"}, "path": {"Win10/RU-RU.ISO"}, "title": {"Windows 10 x64"}, "folder": {"Windows"}, "storage_root": {"/etc"}, "csrf": {CSRFToken("test-token")}}
-	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
-	res := httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusSeeOther || len(store.created) != 1 || store.created[0].StorageRoot != "/mnt/omb-smb/key7" {
-		t.Fatalf("status=%d created=%+v body=%s", res.Code, store.created, res.Body.String())
 	}
 }
 

@@ -31,7 +31,7 @@ var navLayout = []struct {
 	entries []navEntry
 }{
 	{"Сейчас", []navEntry{{label: "Сейчас", path: "/", action: "view"}}},
-	{"Установки", []navEntry{{label: "Установки", path: "/installations", action: "view"}}},
+	{"Загрузки", []navEntry{{label: "Загрузки", path: "/installations", action: "view"}}},
 	{"Меню", []navEntry{{label: "Меню загрузки", path: "/menu", action: "view"}}},
 	{"Библиотека", []navEntry{{label: "Образы ISO", path: "/images", action: "view"}, {label: "Драйверы", path: "/drivers", action: "view"}, {label: "Файлы ответов", path: "/answers", action: "view", also: []string{"/ubuntu-autoinstall"}}, {label: "USB-носители", path: "/usb", action: "view"}}},
 	{"Журнал", []navEntry{{label: "Журнал", path: "/events", action: "view"}}},

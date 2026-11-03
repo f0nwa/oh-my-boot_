@@ -321,7 +321,7 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный MAC-адрес", http.StatusBadRequest)
 		return
 	}
-	data := pageData{Info: requestInfo(r), MACFilter: mac}
+	data := pageData{Info: requestInfo(r), MACFilter: mac, Message: r.URL.Query().Get("message"), Error: pageError(r), Form: pageForm(r)}
 	var httpEvents []boot.Event
 	if s.Boot == nil {
 		data.EventError = "Служба Boot недоступна"
@@ -355,7 +355,13 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 		if !known {
 			info = MachineInfo{MAC: mac, Rule: rules.match(mac)}
 		}
-		data.Machine = &machineCard{MachineInfo: info, Known: known, Label: machineLabel(&info, mac)}
+		defaultDriver := ""
+		if s.Agent != nil {
+			if config, err := s.Agent.Config(r.Context()); err == nil {
+				defaultDriver = config.DefaultDriver
+			}
+		}
+		data.Machine = &machineCard{MachineInfo: info, Known: known, Label: machineLabel(&info, mac), EffectiveDriver: effectiveNetworkDriver(info, rules, defaultDriver)}
 	}
 	data.Sessions = machineSessionsWith(mac, httpEvents, dhcp, install, names, now)
 	if len(data.Machines) == 1 && len(data.Sessions) > 0 {
@@ -370,6 +376,7 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 
 // machineCard is the «Машина» block of a machine's page.
 type machineCard struct {
+	EffectiveDriver EffectiveNetworkDriver
 	MachineInfo
 	Known bool
 	Label string
@@ -431,11 +438,13 @@ func (s *Server) machineDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный MAC-адрес", http.StatusBadRequest)
 		return
 	}
-	if err := book.DeleteMachine(r.Context(), mac); err != nil {
+	saved, err := s.mutateBootDrivers(r.Context(), func() error { return book.DeleteMachine(r.Context(), mac) })
+	result, message := driverMutationResult(saved, err, "Машина удалена из списка")
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.delete", result, mac)
+	if !saved {
 		http.Error(w, "Не удалось удалить машину", http.StatusServiceUnavailable)
 		return
 	}
 	s.bookCache.forget(mac)
-	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.delete", "ok", mac)
-	http.Redirect(w, r, "/events?message="+url.QueryEscape("Машина удалена из списка"), http.StatusSeeOther)
+	http.Redirect(w, r, "/events?message="+url.QueryEscape(message), http.StatusSeeOther)
 }

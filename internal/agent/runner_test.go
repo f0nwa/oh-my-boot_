@@ -32,4 +32,12 @@ func TestSystemRunnerTargetsOnlyDedicatedPXEUnit(t *testing.T) {
 	if err != nil || !strings.Contains(string(got), "restart\nomb-dnsmasq\n") {
 		t.Fatalf("restarted wrong service: %q %v", got, err)
 	}
+	if err := runner.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err = os.ReadFile(logPath)
+	if err != nil || string(got) != "kill\n--signal=SIGHUP\nomb-dnsmasq.service\n" {
+		t.Fatalf("wrong reload: %q %v", got, err)
+	}
+
 }

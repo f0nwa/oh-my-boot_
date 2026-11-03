@@ -244,6 +244,7 @@ func TestInstallationModelMigration(t *testing.T) {
 	if _, err := store.Pool.Exec(ctx, string(newMigration)); err != nil {
 		t.Fatal(err)
 	}
+	applyDownloadComponentsMigration(t, store)
 	for table, before := range libraryBefore {
 		var after string
 		if err := store.Pool.QueryRow(ctx, "SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM "+table+" t").Scan(&after); err != nil || after != before {

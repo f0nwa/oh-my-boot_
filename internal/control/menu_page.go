@@ -301,7 +301,7 @@ func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 		if item.Folder != defaultMenuFolder {
 			folder = item.Folder
 		}
-		published.Items = append(published.Items, MenuVersionItem{InstallationID: item.InstallationID, Position: position, Title: entry.title, Folder: folder})
+		published.Items = append(published.Items, MenuVersionItem{InstallationID: item.InstallationID, Position: position, Title: entry.title, Folder: folder, Components: item.Components})
 	}
 	if s.publishMenu(w, r, published, "menu.publish") {
 		// Store the resolved published placements, so
@@ -365,7 +365,7 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 	s.menuMu.Lock()
 	defer s.menuMu.Unlock()
 	if err := s.verifyMenuVersion(r.Context(), m); err != nil {
-		http.Error(w, "Установка недоступна: "+err.Error(), http.StatusConflict)
+		http.Error(w, "Загрузка недоступна: "+err.Error(), http.StatusConflict)
 		return false
 	}
 	info := requestInfo(r)

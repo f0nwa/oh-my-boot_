@@ -72,7 +72,7 @@ func samplePageDataBase(lang string) pageData {
 			{ID: 1, Name: "Local", Kind: "local", Root: "/srv/iso", State: "scanning"},
 			{ID: 2, Name: "Mounted", Kind: "mounted", Root: "/mnt/iso", State: "other", Error: "Ожидает подключения"},
 		},
-		ISOImages:             []imageRow{{Image: images.Image{StorageID: 7, Path: "win10.iso", Size: 1, Present: true}, StorageName: "Upload", CanPrepare: true}, {Image: images.Image{StorageID: 7, Path: "arm64.iso", Present: false}, StorageName: "Upload", Unsupported: true}},
+		ISOImages:             []imageRow{{Image: images.Image{StorageID: 7, Path: "win10.iso", Size: 1, Present: true}, StorageName: "Upload"}, {Image: images.Image{StorageID: 7, Path: "arm64.iso", Present: false}, StorageName: "Upload", Problem: "ARM64 пока не поддерживается"}},
 		WindowsProfiles:       []WindowsProfile{profile, {ID: 3, WindowsProfileSource: WindowsProfileSource{Title: "Ready"}, State: "ready"}},
 		WindowsAnswerVariants: []WindowsAnswerVariant{answer, {ID: 5, ProfileID: 3, Title: "Ready", State: "ready", WipesDisk: &wipesTrue}, {ID: 6, ProfileID: 3, Title: "Safe", State: "ready", WipesDisk: &wipesFalse}},
 		DriverPackages:        []DriverPackage{{SHA256: "abc", Inventory: drivers.Inventory{Files: []drivers.File{{}}, INFs: []drivers.INF{{Path: "netkvm.inf", Architecture: "amd64", Class: "Net", HardwareIDs: []string{"PCI\\VEN_1AF4"}}}}}},

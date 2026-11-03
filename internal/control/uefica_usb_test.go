@@ -141,8 +141,10 @@ func TestUSBPageSelectionAndCache(t *testing.T) {
 }
 
 func TestImagesPageLinksToUSB(t *testing.T) {
-	s, _, _ := ueficaServer("observer")
-	body := libraryGet(t, s, "/images")
+	s, store, _ := ueficaServer("observer")
+ store.profiles[0].InstallFile="install.wim"
+ s.Images.(*fakeImagesAPI).catalog.Images=[]images.Image{{Path:"w11.iso",Present:true},{Path:"bad.iso",Present:true}}
+ body := libraryGet(t, s, "/images")
 	if !strings.Contains(body, `href="/usb?profile_id=17"`) || strings.Contains(body, `href="/usb?profile_id=18"`) || strings.Contains(body, "uefica-usb") {
 		t.Fatal("ISO page must link ready profiles to /usb and have no stick form")
 	}

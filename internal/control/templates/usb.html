@@ -1,5 +1,5 @@
 {{define "usb"}}{{template "top" .}}{{$v := .USB}}<div class="page-head"><div><h1>{{t "USB-носители"}}</h1><p class="lead">{{t "Загрузочные носители WinPE для машин, которые не загружаются по сети. Сейчас один: включить в BIOS ключ Microsoft UEFI CA (Lenovo, Dell, HP)."}}</p></div></div>
-{{if not $v.Profiles}}<p class="muted">{{t "Нет подготовленных образов ISO. Подготовьте профиль в «Образах ISO»: носитель собирается из его WinPE."}}</p>{{else}}
+{{if not $v.Profiles}}<p class="muted">{{t "Нет подготовленных образов ISO. Создайте загрузку Windows в разделе «Загрузки»: носитель собирается из её WinPE."}}</p>{{else}}
 <form id="usb" class="usb" method="post" action="/usb/uefica" data-cached="{{t "в кэше"}}" data-build="{{t "соберётся при скачивании, до минуты"}}"><input type="hidden" name="csrf" value="{{.Info.CSRF}}">
 <div class="usb-main">
 <fieldset class="step"><legend>1 · {{t "Образ WinPE"}}</legend><p class="hint usb-note">{{t "Носитель собирается из WinPE подготовленного ISO. Подойдёт любой: от образа зависит только язык WinPE, на машину это не влияет."}}</p>

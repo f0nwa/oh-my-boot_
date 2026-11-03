@@ -379,13 +379,15 @@ func (s *Server) machineTableDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный MAC-адрес", http.StatusBadRequest)
 		return
 	}
-	if err := book.DeleteMachine(r.Context(), mac); err != nil {
+	saved, err := s.mutateBootDrivers(r.Context(), func() error { return book.DeleteMachine(r.Context(), mac) })
+	result, message := driverMutationResult(saved, err, "Машина удалена из списка")
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.delete", result, mac)
+	if !saved {
 		http.Error(w, "Не удалось удалить машину", http.StatusServiceUnavailable)
 		return
 	}
 	s.bookCache.forget(mac)
-	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.delete", "ok", mac)
-	http.Redirect(w, r, machinesReturn(r, "Машина удалена из списка", ""), http.StatusSeeOther)
+	http.Redirect(w, r, machinesReturn(r, message, ""), http.StatusSeeOther)
 }
 
 //go:embed machines.js

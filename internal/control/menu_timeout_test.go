@@ -172,7 +172,7 @@ func TestTimerSettingsShowSelectedInstallation(t *testing.T) {
 	s, _ := draftServer(t, store)
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=autoboot", nil))
-	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `<strong>Windows 11</strong>`) || !strings.Contains(res.Body.String(), `name="local_timeout"`) {
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `value="1017" selected`) || !strings.Contains(res.Body.String(), `name="local_timeout"`) {
 		t.Fatalf("settings status=%d: %s", res.Code, res.Body.String())
 	}
 }
@@ -203,7 +203,7 @@ func TestMenuAutobootIsOpenedFromTree(t *testing.T) {
 		res := httptest.NewRecorder()
 		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, path, nil))
 		body := res.Body.String()
-		if res.Code != http.StatusOK || !strings.Contains(body, `href="/menu?item=autoboot"`) || strings.Contains(body, `name="default_installation_id"`) {
+		if res.Code != http.StatusOK || !strings.Contains(body, `href="/menu?item=autoboot"`) {
 			t.Fatalf("missing tree link at %s", path)
 		}
 		if strings.Contains(body, `name="local_timeout"`) != strings.Contains(path, "item=autoboot") {
@@ -215,6 +215,29 @@ func TestMenuAutobootIsOpenedFromTree(t *testing.T) {
 		if strings.Contains(path, "install_1017") && !strings.Contains(body, `action="/menu/items/install_1017/default"`) {
 			t.Fatal("no default action")
 		}
+	}
+}
+
+func TestAutobootDropdownChangesDefaultAndValidatesSelection(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}, {InstallationID: 2031, Title: "Other"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}, {InstallationID: 2031, Title: "Other"}}}
+	s, _ := draftServer(t, store)
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=autoboot", nil))
+	if body := res.Body.String(); res.Code != http.StatusOK || !strings.Contains(body, `name="default_installation_id"`) || !strings.Contains(body, `value="1017"`) || !strings.Contains(body, `Windows 11`) || !strings.Contains(body, `Windows`) {
+		t.Fatal("autoboot dropdown missing choices")
+	}
+	form := url.Values{"local_timer": {"on"}, "local_timeout": {"25"}, "default_installation_id": {"1017"}}
+	if res := menuPost(t, s, "/menu/local-timer?item=autoboot", form); res.Code != http.StatusSeeOther || store.draft.DefaultInstallationID != 1017 || store.draft.LocalTimeoutSeconds() != 25 {
+		t.Fatalf("selection not saved: status=%d draft=%+v", res.Code, store.draft)
+	}
+	form.Set("default_installation_id", "99999")
+	if res := menuPost(t, s, "/menu/local-timer?item=autoboot", form); res.Code != http.StatusBadRequest || store.draft.DefaultInstallationID != 1017 {
+		t.Fatalf("invalid selection accepted: status=%d", res.Code)
+	}
+	form.Set("default_installation_id", "0")
+	if res := menuPost(t, s, "/menu/local-timer?item=autoboot", form); res.Code != http.StatusSeeOther || store.draft.DefaultInstallationID != 0 {
+		t.Fatalf("local disk not saved: status=%d", res.Code)
 	}
 }
 

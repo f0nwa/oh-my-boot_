@@ -134,6 +134,13 @@ func (s *Server) menuLocalTimer(w http.ResponseWriter, r *http.Request) {
 		if timerOn && !valid {
 			return draftError("Время автозагрузки — от 1 до 3600 секунд")
 		}
+		if raw := r.FormValue("default_installation_id"); raw != "" {
+			id, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || id < 0 || (id > 0 && draftItemIndex(d, "install_"+raw) < 0) {
+				return draftError("Выберите загрузку из меню")
+			}
+			d.DefaultInstallationID = id
+		}
 		if valid {
 			d.LocalTimeout = seconds
 		}

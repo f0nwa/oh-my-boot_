@@ -285,7 +285,7 @@ var editorMessages = map[string]string{
 	"Пункт меню с этим файлом получит метку «WIPES DISK».": "A menu item with this file gets the “WIPES DISK” label.",
 	"Сохранить к образу":                                   "Save to image",
 	"Название пункта меню, латиницей":                      "Menu item title, Latin letters",
-	"Папка в меню":                                         "Menu folder",
+	"Каталог в меню":                                         "Menu directory",
 	"Сохранить как новый файл":                             "Save as a new file",
 	"Исходный файл и пункт меню с ним не меняются.":        "The original file and its menu item stay unchanged.",
 	"Нет готовых образов: сначала подготовьте ISO.":        "No images are ready: prepare an ISO first.",

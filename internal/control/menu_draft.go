@@ -26,9 +26,10 @@ type MenuDraft struct {
 	// LocalTimeout is how many seconds the main screen waits before booting
 	// the local disk; 0 means the default. NoLocalTimer makes the menu wait
 	// for a choice instead.
-	LocalTimeout int
-	NoLocalTimer bool
-	Items        []MenuDraftItem
+	LocalTimeout          int
+	NoLocalTimer          bool
+	DefaultInstallationID int64
+	Items                 []MenuDraftItem
 	// look names the menu design a published version was built with ("" for
 	// versions before the «Пульт» look); a draft always gets the current one.
 	look string
@@ -270,14 +271,14 @@ func BuildMenuFromDraft(d MenuDraft, baseURL string, profiles []WindowsProfile, 
 			return nil, err
 		}
 	}
-	return buildMenuTreeWithProfilesTimed(productMenuTitle, d.Label, d.Message, entries, folders, d.localTimer(), d.DiagnosticsOn())
+	return buildMenuTreeWithProfilesTimed(productMenuTitle, d.Label, d.Message, entries, folders, d.localTimer(), d.DiagnosticsOn(), d.DefaultInstallationID)
 }
 
 var menuItemKey = regexp.MustCompile(`^install_[1-9][0-9]*$`)
 
 // draftFromVersion restores saved placements/settings without parsing the script.
 func draftFromVersion(v MenuVersion) MenuDraft {
-	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, NoDiagnostics: v.NoDiagnostics, LocalTimeout: v.LocalTimeout, NoLocalTimer: v.NoLocalTimer, look: v.Look}
+	d := MenuDraft{Title: v.Title, Label: v.Label, Message: v.Message, NoDiagnostics: v.NoDiagnostics, LocalTimeout: v.LocalTimeout, NoLocalTimer: v.NoLocalTimer, DefaultInstallationID: v.DefaultInstallationID, look: v.Look}
 	items := append([]MenuVersionItem(nil), v.Items...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Position < items[j].Position })
 	d.Items = make([]MenuDraftItem, 0, len(items))
@@ -311,6 +312,9 @@ func diffMenuDraft(active, draft MenuDraft) []MenuChange {
 	}
 	if active.Message != draft.Message {
 		changes = append(changes, MenuChange{Kind: "settings", Label: "Сообщение Diagnostics", Before: active.Message, After: draft.Message})
+	}
+	if active.DefaultInstallationID != draft.DefaultInstallationID {
+		changes = append(changes, MenuChange{Kind: "settings", Label: "Загрузка по таймеру", Before: fmt.Sprint(active.DefaultInstallationID), After: fmt.Sprint(draft.DefaultInstallationID)})
 	}
 	if active.localTimer() != draft.localTimer() {
 		changes = append(changes, MenuChange{Kind: "settings", Label: "Автозагрузка с диска", Before: menuTimerName(active.localTimer()), After: menuTimerName(draft.localTimer())})

@@ -84,6 +84,9 @@ func (s Store) DeleteInstallation(ctx context.Context, id int64) error {
 	if active {
 		return errInstallationPublished
 	}
+	if _, err := tx.Exec(ctx, `UPDATE menu_draft SET default_installation_id=0 WHERE default_installation_id=$1`, id); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM menu_draft_items WHERE installation_id=$1`, id); err != nil {
 		return err
 	}

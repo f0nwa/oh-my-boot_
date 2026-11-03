@@ -29,19 +29,20 @@ type AuditEvent struct {
 	Detail string
 }
 type MenuVersion struct {
-	ID            int64
-	At            time.Time
-	Author        string
-	Title         string
-	Label         string
-	Message       string
-	Script        string
-	SHA256        string
-	Active        bool
-	NoDiagnostics bool
-	LocalTimeout  int
-	NoLocalTimer  bool
-	Look          string
+	ID                    int64
+	At                    time.Time
+	Author                string
+	Title                 string
+	Label                 string
+	Message               string
+	Script                string
+	SHA256                string
+	Active                bool
+	NoDiagnostics         bool
+	LocalTimeout          int
+	NoLocalTimer          bool
+	DefaultInstallationID int64
+	Look                  string
 	// Items is non-nil for structural versions, including empty menus.
 	Items []MenuVersionItem
 }
@@ -243,7 +244,7 @@ func (s Store) AuditSystem(ctx context.Context, action, result, detail string) e
 
 // menuVersionSelect reads metadata and placements in a single snapshot.
 const menuVersionSelect = `SELECT m.id,m.created_at,coalesce(u.username,'system'),m.title,m.diagnostic_label,m.diagnostic_message,m.script,m.sha256,m.active,
- NOT m.diagnostics_on,m.local_timeout,NOT m.local_timer,m.look,
+ NOT m.diagnostics_on,m.local_timeout,NOT m.local_timer,m.look,m.default_installation_id,
  i.installation_id,i.position,i.title,i.folder,i.components FROM `
 
 func (s Store) MenuVersions(ctx context.Context) ([]MenuVersion, error) {
@@ -281,7 +282,7 @@ func readMenuVersions(rows pgx.Rows) ([]MenuVersion, error) {
 		var title, folder *string
 		var components *InstallationComponents
 		if err := rows.Scan(&m.ID, &m.At, &m.Author, &m.Title, &m.Label, &m.Message, &m.Script, &m.SHA256, &m.Active,
-			&m.NoDiagnostics, &m.LocalTimeout, &m.NoLocalTimer, &m.Look, &installationID, &position, &title, &folder, &components); err != nil {
+			&m.NoDiagnostics, &m.LocalTimeout, &m.NoLocalTimer, &m.Look, &m.DefaultInstallationID, &installationID, &position, &title, &folder, &components); err != nil {
 			return nil, err
 		}
 		if len(versions) == 0 || versions[len(versions)-1].ID != m.ID {
@@ -311,8 +312,8 @@ func (s Store) SaveActiveMenu(ctx context.Context, authorID int64, m MenuVersion
 		timeout = defaultLocalTimeout
 	}
 	var versionID int64
-	if err := tx.QueryRow(ctx, `INSERT INTO menu_versions (author_id,title,diagnostic_label,diagnostic_message,script,sha256,active,diagnostics_on,local_timeout,local_timer,look)
- VALUES (NULLIF($1,0),$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10) RETURNING id`, authorID, m.Title, m.Label, m.Message, m.Script, m.SHA256, !m.NoDiagnostics, timeout, !m.NoLocalTimer, m.Look).Scan(&versionID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO menu_versions (author_id,title,diagnostic_label,diagnostic_message,script,sha256,active,diagnostics_on,local_timeout,local_timer,look,default_installation_id)
+ VALUES (NULLIF($1,0),$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11) RETURNING id`, authorID, m.Title, m.Label, m.Message, m.Script, m.SHA256, !m.NoDiagnostics, timeout, !m.NoLocalTimer, m.Look, m.DefaultInstallationID).Scan(&versionID); err != nil {
 		return err
 	}
 	for _, item := range m.Items {

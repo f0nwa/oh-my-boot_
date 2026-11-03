@@ -1,0 +1,2 @@
+ALTER TABLE menu_draft ADD COLUMN IF NOT EXISTS default_installation_id BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE menu_versions ADD COLUMN IF NOT EXISTS default_installation_id BIGINT NOT NULL DEFAULT 0;

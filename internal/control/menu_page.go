@@ -292,7 +292,7 @@ func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Меню не собрано: "+err.Error(), 400)
 		return
 	}
-	published := MenuVersion{Title: productMenuTitle, Label: draft.Label, Message: draft.Message, Script: string(script), NoDiagnostics: draft.NoDiagnostics, LocalTimeout: draft.LocalTimeout, NoLocalTimer: draft.NoLocalTimer, Look: menuLook, Items: make([]MenuVersionItem, 0, len(draft.Items))}
+	published := MenuVersion{Title: productMenuTitle, Label: draft.Label, Message: draft.Message, Script: string(script), NoDiagnostics: draft.NoDiagnostics, LocalTimeout: draft.LocalTimeout, NoLocalTimer: draft.NoLocalTimer, DefaultInstallationID: draft.DefaultInstallationID, Look: menuLook, Items: make([]MenuVersionItem, 0, len(draft.Items))}
 	for position, item := range draft.Items {
 		entry, folder, _ := resolveDraftItem(item, "", sources, profiles, answers, configs)
 		if item.Title != "" {

@@ -78,6 +78,9 @@ func (s *Server) menuItemRemove(w http.ResponseWriter, r *http.Request) {
 		if i < 0 {
 			return errItemNotInMenu
 		}
+		if d.DefaultInstallationID == d.Items[i].InstallationID {
+			d.DefaultInstallationID = 0
+		}
 		d.Items = append(d.Items[:i], d.Items[i+1:]...)
 		return nil
 	})
@@ -134,6 +137,13 @@ func (s *Server) menuLocalTimer(w http.ResponseWriter, r *http.Request) {
 			d.LocalTimeout = seconds
 		}
 		d.NoLocalTimer = !timerOn
+		if raw := r.FormValue("default_installation_id"); raw != "" {
+			id, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || id < 0 || (id > 0 && draftItemIndex(d, "install_"+raw) < 0) {
+				return draftError("Выберите загрузку из меню")
+			}
+			d.DefaultInstallationID = id
+		}
 		return nil
 	})
 }
@@ -199,6 +209,9 @@ func (d *MenuDraft) RemoveInstallation(id int64) error {
 	i := d.InstallationIndex(id)
 	if i < 0 {
 		return errItemNotInMenu
+	}
+	if d.DefaultInstallationID == d.Items[i].InstallationID {
+		d.DefaultInstallationID = 0
 	}
 	d.Items = append(d.Items[:i], d.Items[i+1:]...)
 	return nil

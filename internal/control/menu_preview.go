@@ -1,6 +1,9 @@
 package control
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // menuScreen is one screen of the iPXE menu: the root or a folder.
 type menuScreen struct {
@@ -250,8 +253,13 @@ func buildMenuPreview(draft MenuDraft, changes []MenuChange, rows []menuDraftRow
 		case item.Back:
 			row.Href = "/menu?screen=" + item.Target
 		case item.Target == "local" && screen.Label == screens[0].Label:
-			row.Hint = localDiskHint(string(script))
+			if draft.DefaultInstallationID == 0 {
+				row.Hint = localDiskHint(string(script))
+			}
 		case !item.Fixed:
+			if screen.Label == screens[0].Label && draft.LocalTimerOn() && item.Target == fmt.Sprintf("install_%d", draft.DefaultInstallationID) {
+				row.Hint = fmt.Sprintf("(%d)", draft.LocalTimeoutSeconds())
+			}
 			row.Danger = item.Hint == "!! WIPES DISK"
 		}
 		row.Selected = key != "" && item.Target == key

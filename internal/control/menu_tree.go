@@ -204,7 +204,7 @@ func buildMenuTreeWithProfiles(title, diagnosticLabel, diagnosticMessage string,
 	return buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage, profiles, folders, defaultLocalTimeout, true)
 }
 
-func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string, localTimer int, diagnosticsOn bool) ([]byte, error) {
+func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage string, profiles []menuProfile, folders map[string]string, localTimer int, diagnosticsOn bool, defaultIDs ...int64) ([]byte, error) {
 	if localTimer < 0 || localTimer > maxLocalTimeout {
 		return nil, fmt.Errorf("invalid wait before booting the local disk")
 	}
@@ -237,6 +237,19 @@ func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage st
 			}
 		}
 		node.profiles = append(node.profiles, profile)
+	}
+	defaultTarget := "local"
+	if localTimer > 0 && len(defaultIDs) > 0 && defaultIDs[0] > 0 {
+		target := fmt.Sprintf("install_%d", defaultIDs[0])
+		for _, profile := range profiles {
+			if profile.id == target {
+				defaultTarget = target
+				if folders[target] != "" {
+					root.profiles = append(root.profiles, profile)
+				}
+				break
+			}
+		}
 	}
 	metadata, err := json.Marshal(folders)
 	if err != nil {
@@ -278,7 +291,7 @@ func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage st
 		out.WriteString(menuDriverMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
 	}
 	out.WriteString(menuTheme)
-	writeMenuNode(&out, root, title, diagnosticLabel, localTimer, diagnosticsOn)
+	writeMenuNode(&out, root, title, diagnosticLabel, localTimer, diagnosticsOn, defaultTarget)
 	if diagnosticsOn {
 		out.WriteString(":diagnostics\n" + "echo " + diagnosticMessage + "\n" + "sleep 3\n" + "goto local\n")
 	}
@@ -289,7 +302,7 @@ func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage st
 	return []byte(out.String()), nil
 }
 
-func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLabel string, localTimer int, diagnosticsOn bool) {
+func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLabel string, localTimer int, diagnosticsOn bool, defaultTarget string) {
 	out.WriteString(":" + node.label + "\n")
 	menuTitle := title
 	if node.path != "" {
@@ -339,7 +352,7 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 		// Untouched, the machine goes on to its own disk: after Windows
 		// Setup reboots it must not wait in the menu.
 		if localTimer > 0 {
-			out.WriteString("choose --default local --timeout " + strconv.Itoa(localTimer*1000) + " target || goto local\n")
+			out.WriteString("choose --default " + defaultTarget + " --timeout " + strconv.Itoa(localTimer*1000) + " target || goto local\n")
 		} else {
 			out.WriteString("choose --default local target || goto local\n")
 		}
@@ -348,7 +361,7 @@ func writeMenuNode(out *strings.Builder, node *menuTreeNode, title, diagnosticLa
 	}
 	out.WriteString("goto ${target} || goto " + parentLabel + "\n")
 	for _, child := range node.children {
-		writeMenuNode(out, child, title, diagnosticLabel, localTimer, diagnosticsOn)
+		writeMenuNode(out, child, title, diagnosticLabel, localTimer, diagnosticsOn, defaultTarget)
 	}
 }
 

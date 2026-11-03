@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS menu_versions (
  diagnostics_on BOOLEAN NOT NULL DEFAULT true,
  local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600),
  local_timer BOOLEAN NOT NULL DEFAULT true,
+ default_installation_id BIGINT NOT NULL DEFAULT 0,
  look TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS menu_versions_one_active_idx ON menu_versions (active) WHERE active;
@@ -76,7 +77,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'ru' C
 ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system' CHECK (theme IN ('system','light','dark'));
 
 ALTER TABLE windows_answer_variants ADD COLUMN IF NOT EXISTS wipes_disk BOOLEAN;
-CREATE TABLE IF NOT EXISTS menu_draft (id SMALLINT PRIMARY KEY CHECK (id = 1), title TEXT NOT NULL, label TEXT NOT NULL, message TEXT NOT NULL, local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600), local_timer BOOLEAN NOT NULL DEFAULT true, diagnostics_on BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS menu_draft (id SMALLINT PRIMARY KEY CHECK (id = 1), title TEXT NOT NULL, label TEXT NOT NULL, message TEXT NOT NULL, local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600), local_timer BOOLEAN NOT NULL DEFAULT true, diagnostics_on BOOLEAN NOT NULL DEFAULT true, default_installation_id BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
 
 CREATE TABLE IF NOT EXISTS machines (
     mac TEXT PRIMARY KEY CHECK (mac ~ '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$'),

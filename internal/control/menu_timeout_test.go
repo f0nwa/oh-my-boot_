@@ -125,3 +125,41 @@ func TestLocalDiskHintUsesCorrectUnits(t *testing.T) {
 		}
 	}
 }
+
+func TestTimerCanBootInstallationInFolder(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}}}
+	s, _ := draftServer(t, store)
+	form := url.Values{"local_timer": {"on"}, "local_timeout": {"30"}, "default_installation_id": {"1017"}}
+	if res := menuPost(t, s, "/menu/local-timer", form); res.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d", res.Code)
+	}
+	script, err := buildTestMenuFromDraft(*store.draft, testBootURL, store.profiles, store.answers, store.configs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(script), "item install_1017 Windows 11") || !strings.Contains(string(script), "choose --default install_1017 --timeout 30000 target") {
+		t.Fatalf("timer does not select installation: %s", script)
+	}
+}
+
+func TestTimerSelectionRemovedWithItem(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", DefaultInstallationID: 1017, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}}}
+	s, _ := draftServer(t, store)
+	res := menuPost(t, s, "/menu/items/install_1017/remove", url.Values{})
+	if res.Code != http.StatusSeeOther || store.draft.DefaultInstallationID != 0 {
+		t.Fatalf("status=%d draft=%+v", res.Code, store.draft)
+	}
+}
+
+func TestTimerSettingsShowSelectedInstallation(t *testing.T) {
+	store := newDraftStore(t, "operator", []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}})
+	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", DefaultInstallationID: 1017, Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11", Folder: "Windows"}}}
+	s, _ := draftServer(t, store)
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/menu?item=local", nil))
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `value="1017" selected`) {
+		t.Fatalf("settings status=%d: %s", res.Code, res.Body.String())
+	}
+}

@@ -40,7 +40,7 @@ func TestStructuredMenuStoreRoundTrip(t *testing.T) {
 		}
 		ids = append(ids, created.ID)
 	}
-	want := MenuDraft{Title: productMenuTitle, Label: "Tools", Message: "Choose", NoDiagnostics: true, LocalTimeout: 23, NoLocalTimer: true, Items: []MenuDraftItem{
+	want := MenuDraft{Title: productMenuTitle, Label: "Tools", Message: "Choose", NoDiagnostics: true, LocalTimeout: 23, NoLocalTimer: true, DefaultInstallationID: ids[2], Items: []MenuDraftItem{
 		{InstallationID: ids[2], Title: "Recovery", Folder: "Linux/Recovery"},
 		{InstallationID: ids[0], Title: "Windows Lab", Folder: "Windows"},
 		{InstallationID: ids[1], Title: "Ubuntu Lab", Folder: "Linux/Lab"},
@@ -52,7 +52,7 @@ func TestStructuredMenuStoreRoundTrip(t *testing.T) {
 	if err != nil || !ok || !reflect.DeepEqual(got, want) {
 		t.Fatalf("draft = %+v ok=%v err=%v; want %+v", got, ok, err, want)
 	}
-	version := MenuVersion{Title: want.Title, Label: want.Label, Message: want.Message, Script: "#!ipxe\n# structure deliberately absent\n", SHA256: "saved", NoDiagnostics: true, LocalTimeout: 23, NoLocalTimer: true, Look: menuLook, Items: []MenuVersionItem{
+	version := MenuVersion{Title: want.Title, Label: want.Label, Message: want.Message, Script: "#!ipxe\n# structure deliberately absent\n", SHA256: "saved", NoDiagnostics: true, LocalTimeout: 23, NoLocalTimer: true, DefaultInstallationID: ids[2], Look: menuLook, Items: []MenuVersionItem{
 		{InstallationID: ids[2], Position: 0, Title: "Recovery", Folder: "Linux/Recovery"},
 		{InstallationID: ids[0], Position: 1, Title: "Windows Lab", Folder: "Windows"},
 		{InstallationID: ids[1], Position: 2, Title: "Ubuntu Lab", Folder: "Linux/Lab"},

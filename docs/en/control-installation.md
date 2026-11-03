@@ -141,7 +141,7 @@ Restoring a version through Menu → Versions also checks dependencies. If an IS
 
 The entry list shows the source ISO path and storage name below its components; both can be searched. Ubuntu entries show the system ISO URL. If the ISO catalog is unavailable, the saved path remains visible and the storage ID replaces its name.
 
-Administrators can select **Delete** and confirm removal from the list and menu draft. For a published entry, first select **Remove** and publish the menu. The source ISO, prepared files, drivers and answer files remain in the library. Menu history is preserved, but versions containing the deleted entry can no longer be restored. **Remove** alone still allows the entry to be returned to the menu.
+Administrators can delete entries that are absent from both the published menu and its draft. For a published entry, first select **Remove from menu** and publish the changes. For an entry only in the draft, cancel its addition first. The source ISO, prepared files, drivers and answer files remain in the library. Menu history is preserved, but versions containing the deleted entry can no longer be restored. **Remove from menu** alone still allows the entry to be returned to the menu.
 
 ### Updating an existing server
 

@@ -1108,7 +1108,7 @@ var englishMessages = map[string]string{
 	"Не удалось удалить загрузку":                                   "Could not delete the boot entry",
 	"Загрузка удалена":                                              "Boot entry deleted",
 	"Сначала уберите загрузку из меню и опубликуйте изменения":      "Remove the boot entry from the menu and publish the changes first",
-	"Удалить загрузку из списка и черновика меню?":                  "Delete the boot entry from the list and menu draft?",
+	"Удалить загрузку из списка?":                                   "Delete the boot entry from the list?",
 	"ISO, подготовленные файлы, драйверы и файлы ответов останутся в библиотеке. Старые версии меню с этой загрузкой станут недоступны для восстановления.": "ISO images, prepared files, drivers and answer files will remain in the library. Older menu versions containing this entry will no longer be restorable.",
 	"Загрузки": "Boot entries",
 	"Каждая установка — один пункт меню загрузки: образ, драйверы и файл ответов.": "Each installation is one boot menu item: an image, drivers and an answer file.",

@@ -83,6 +83,40 @@ func TestObserverSeesNoInstallationButtons(t *testing.T) {
 	}
 }
 
+func TestDownloadDeletionAppearsOnlyOutsidePublishedAndDraftMenus(t *testing.T) {
+	for _, state := range []string{"ready", "error"} {
+		t.Run(state, func(t *testing.T) {
+			s, store := newInstallServer(t)
+			store.user.Role = "admin"
+			for i := range store.profiles {
+				if store.profiles[i].ID == 17 {
+					store.profiles[i].State = state
+				}
+			}
+			store.installations = []Installation{
+				{ID: 100, BootProfileID: 51, Title: "Published"},
+				{ID: 101, BootProfileID: 51, Title: "Draft only"},
+				{ID: 102, BootProfileID: 51, Title: "Pending removal"},
+				{ID: 103, BootProfileID: 51, Title: "Outside menu"},
+			}
+			store.draft = &MenuDraft{Title: "PXE", Items: []MenuDraftItem{{InstallationID: 100}, {InstallationID: 101}}}
+			store.versions = []MenuVersion{{Active: true, Title: "PXE", Items: []MenuVersionItem{{InstallationID: 100}, {InstallationID: 102}}}}
+			body := libraryGet(t, s, "/installations")
+			for _, id := range []string{"100", "101", "102"} {
+				if strings.Contains(body, `action="/installations/`+id+`/delete"`) {
+					t.Fatalf("entry %s can be deleted while in a menu", id)
+				}
+			}
+			if !strings.Contains(body, `action="/installations/103/delete"`) {
+				t.Fatal("entry outside both menus cannot be deleted")
+			}
+			if state == "ready" && !strings.Contains(body, "Убрать из меню") {
+				t.Fatal("published entry lacks a clear remove-from-menu action")
+			}
+		})
+	}
+}
+
 func TestInstallationUsageCountsChoicesPerItem(t *testing.T) {
 	t0 := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
 	events := []boot.Event{

@@ -261,10 +261,19 @@ func TestDownloadListShowsSourceAndSearchesIt(t *testing.T) {
 		t.Fatalf("create: %d", res.Code)
 	}
 	body := libraryGet(t, s, "/installations?q=Windows-new.iso")
-	for _, want := range []string{"Workstation", "Windows-new.iso", "NAS", `action="/installations/100/delete"`} {
+	for _, want := range []string{"Workstation", "Windows-new.iso", "NAS"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("source search missing %q", want)
 		}
+	}
+	if strings.Contains(body, `action="/installations/100/delete"`) {
+		t.Fatal("entry in draft can be deleted")
+	}
+	if res := menuPost(t, s, "/menu/items/install_100/remove", url.Values{}); res.Code != http.StatusSeeOther {
+		t.Fatalf("remove from draft: %d", res.Code)
+	}
+	if body := libraryGet(t, s, "/installations"); !strings.Contains(body, `action="/installations/100/delete"`) {
+		t.Fatal("entry outside menu cannot be deleted")
 	}
 	s.Images = offlineDownloadImages{ImagesAPI: s.Images}
 	body = libraryGet(t, s, "/installations")

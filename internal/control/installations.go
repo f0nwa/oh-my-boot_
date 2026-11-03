@@ -16,6 +16,9 @@ type installationRow struct {
 	Key, Title, Image, Drivers, Answer string
 	ID                                 int64
 	Kind                               string
+	SourcePath, StorageName            string
+	StorageID                          int64
+	Published                          bool
 	AnswerWipesDisk                    *bool
 	// Status is in_menu, pending_add, pending_remove, not_in_menu,
 	// needs_build, building, error or unavailable.
@@ -109,6 +112,7 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 				for _, windows := range profiles {
 					if isISOBootKind(profile.Kind) && windows.ID == profile.WindowsProfileID {
 						row.Image = windows.Title
+						row.SourcePath, row.StorageID = windows.Path, windows.StorageID
 						switch windows.State {
 						case "pending":
 							row.Status = "needs_prepare"
@@ -196,6 +200,7 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 		row := rows[key]
 		item, draftHas := inDraft[key]
 		published, activeHas := inActive[key]
+		row.Published = activeHas
 		if !draftHas && activeHas {
 			item = published
 		}
@@ -230,12 +235,24 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 // installationRows attaches live Ubuntu readiness to its persisted choices.
 func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, draft, active MenuDraft, sources InstallationMenuSources) []installationRow {
 	rows := installationRows(profiles, answers, configs, draft, active, sources)
+	storageNames := map[int64]string{}
+	if s.Images != nil && len(profiles) > 0 {
+		// Catalog availability only improves labels; saved paths remain visible
+		// and editable when the Images service is unavailable.
+		if catalog, err := s.Images.Catalog(ctx); err == nil {
+			for _, storage := range catalog.Storages {
+				storageNames[storage.ID] = storage.Name
+			}
+		}
+	}
 	checked := false
 	var problem error
 	for i := range rows {
+		rows[i].StorageName = storageNames[rows[i].StorageID]
 		if rows[i].Kind != BootProfileUbuntuBuiltin {
 			continue
 		}
+		rows[i].SourcePath = strings.TrimRight(s.BootBaseURL, "/") + "/images/ubuntu-desktop.iso"
 		if !checked {
 			problem = s.checkUbuntuReadiness(ctx)
 			checked = true
@@ -280,7 +297,7 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.InstallCounts = map[string]int{}
 	for _, row := range s.installationRows(r.Context(), profiles, answers, configs, draft, active, sources) {
-		haystack := strings.ToLower(row.Title + " " + row.Key + " " + row.Image + " " + row.Answer + " " + row.Drivers)
+		haystack := strings.ToLower(row.Title + " " + row.Key + " " + row.Image + " " + row.Answer + " " + row.Drivers + " " + row.SourcePath + " " + row.StorageName)
 		if data.Query != "" && !strings.Contains(haystack, strings.ToLower(data.Query)) {
 			continue
 		}

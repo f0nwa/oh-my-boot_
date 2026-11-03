@@ -181,7 +181,9 @@ CREATE TABLE IF NOT EXISTS menu_draft_items (
 
 CREATE TABLE IF NOT EXISTS menu_version_items (
  version_id BIGINT NOT NULL REFERENCES menu_versions(id) ON DELETE CASCADE,
- installation_id BIGINT NOT NULL REFERENCES installations(id) ON DELETE RESTRICT,
+ -- History retains the entry identity after explicit deletion. New versions
+ -- validate live entries transactionally in SaveActiveMenu.
+ installation_id BIGINT NOT NULL,
  position INT NOT NULL CHECK (position >= 0),
  title TEXT NOT NULL DEFAULT '',
  folder TEXT NOT NULL DEFAULT '',

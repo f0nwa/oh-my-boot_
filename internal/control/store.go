@@ -316,6 +316,12 @@ func (s Store) SaveActiveMenu(ctx context.Context, authorID int64, m MenuVersion
 		return err
 	}
 	for _, item := range m.Items {
+		// Historical references survive entry deletion. New publications still
+		// require live entries and lock them against concurrent deletion.
+		var id int64
+		if err := tx.QueryRow(ctx, `SELECT id FROM installations WHERE id=$1 FOR KEY SHARE`, item.InstallationID).Scan(&id); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `INSERT INTO menu_version_items (version_id,installation_id,position,title,folder,components) VALUES ($1,$2,$3,$4,$5,$6)`, versionID, item.InstallationID, item.Position, item.Title, item.Folder, item.Components); err != nil {
 			return err
 		}

@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -8,6 +9,8 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+
+	"omb/internal/boot"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -39,6 +42,15 @@ func (s *Server) activeMenuContains(r *http.Request, component installationCompo
 	versions, err := s.Store.MenuVersions(r.Context())
 	if err != nil {
 		return false, err
+	}
+	if len(versions) == 0 {
+		// A fresh Control has no published snapshot. Only Boot's exact initial
+		// diagnostics/local-disk menu proves that no saved entry is in use.
+		initial, err := boot.Menu(s.BootBaseURL)
+		if err == nil && bytes.Equal(live, initial) {
+			return false, nil
+		}
+		return false, fmt.Errorf("boot menu differs from initial menu")
 	}
 	for _, version := range versions {
 		if version.Active {
@@ -292,9 +304,12 @@ func (s *Server) rejectDeletion(w http.ResponseWriter, r *http.Request, action s
 }
 
 // Library components remain referenced even when their installations leave the menu.
-type installationComponent struct{ profileID, answerID, driverConfigID int64 }
+type installationComponent struct{ installationID, profileID, answerID, driverConfigID int64 }
 
 func (c installationComponent) matches(item Installation, profiles []BootProfile) bool {
+	if c.installationID > 0 {
+		return item.ID == c.installationID
+	}
 	if c.answerID > 0 {
 		return item.AnswerID == c.answerID
 	}

@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"omb/internal/agent"
 
@@ -55,6 +56,41 @@ func (s Store) CreateInstallation(ctx context.Context, item Installation) (Insta
 func (s Store) UpdateInstallation(ctx context.Context, item Installation) error {
 	_, err := s.saveInstallation(ctx, item, true)
 	return err
+}
+
+var errInstallationPublished = errors.New("boot entry is published")
+
+// DeleteInstallation removes the entry and its draft placement in one
+// transaction. Library components and historical menu snapshots stay intact.
+func (s Store) DeleteInstallation(ctx context.Context, id int64) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	// Serialize with SaveActiveMenu before locking the entry, so a concurrent
+	// publication cannot make it active between the check and the deletion.
+	if _, err := tx.Exec(ctx, `LOCK TABLE menu_versions IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	var existing int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM installations WHERE id=$1 FOR UPDATE`, id).Scan(&existing); err != nil {
+		return err
+	}
+	var active bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM menu_version_items i JOIN menu_versions v ON v.id=i.version_id WHERE v.active AND i.installation_id=$1)`, id).Scan(&active); err != nil {
+		return err
+	}
+	if active {
+		return errInstallationPublished
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM menu_draft_items WHERE installation_id=$1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM installations WHERE id=$1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 func (s Store) saveInstallation(ctx context.Context, item Installation, update bool) (Installation, error) {
 	tx, err := s.Pool.Begin(ctx)

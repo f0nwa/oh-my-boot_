@@ -444,3 +444,22 @@ button[disabled]{opacity:.45;cursor:default}
 .ai-editor .ed-section legend{float:none}
 .ai-editor [hidden]{display:none!important}
 @media(max-width:700px){.ai-editor .ed-row2{grid-template-columns:1fr}.ai-editor .ed-foot{position:static}.ai-editor .ed-foot button{flex:1}}
+
+/* Boot entries: one aligned action row and a wrapping source path. */
+.installs td:first-child{min-width:160px}
+.installs td:nth-child(2){min-width:240px}
+.installs td:nth-child(4)>small{display:block;max-width:28ch;overflow-wrap:anywhere}
+.installs .download-source{display:block;margin-top:6px;color:var(--muted);overflow-wrap:anywhere;white-space:normal;max-width:60ch}
+.installs .download-source .mono{color:var(--muted)}
+.download-actions{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px}
+.download-actions>.btn,.download-actions button,.download-actions summary{min-height:28px;margin:0;padding:0 8px;font-size:12px;line-height:26px}
+.download-actions>.btn{width:72px;flex:none}
+.download-actions>form{display:flex;justify-content:center;width:154px;flex:none}
+.download-actions>.download-delete{min-width:64px}
+.download-actions .download-delete{position:relative;margin:0;white-space:normal}
+.download-delete>summary{list-style:none;border:1px solid transparent;border-radius:6px;white-space:nowrap;color:var(--text-2)}
+.download-delete>summary::-webkit-details-marker{display:none}
+.download-delete>summary:hover,.download-delete[open]>summary{background:var(--chip);color:var(--text)}
+.download-delete-panel{width:260px;max-width:65vw;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.download-delete-panel p{margin:0 0 8px;font-size:12px}
+.download-delete-panel .danger-text{color:var(--bad)}

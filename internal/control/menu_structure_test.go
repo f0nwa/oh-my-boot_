@@ -133,13 +133,13 @@ func TestStructuredMenuStoreRoundTrip(t *testing.T) {
 	if err := store.SaveMenuDraft(ctx, MenuDraft{Title: productMenuTitle}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Pool.Exec(ctx, `DELETE FROM installations WHERE id=$1`, ids[0]); err == nil {
-		t.Fatal("deleted installation referenced by version")
+	if err := store.DeleteInstallation(ctx, ids[0]); err == nil {
+		t.Fatal("deleted installation referenced by active version")
 	}
 	if _, err := store.Pool.Exec(ctx, `DELETE FROM menu_versions`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Pool.Exec(ctx, `DELETE FROM installations WHERE id=$1`, ids[0]); err != nil {
+	if err := store.DeleteInstallation(ctx, ids[0]); err != nil {
 		t.Fatal(err)
 	}
 }

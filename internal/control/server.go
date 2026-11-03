@@ -42,6 +42,7 @@ type Storage interface {
 	Installations(context.Context) ([]Installation, error)
 	CreateInstallation(context.Context, Installation) (Installation, error)
 	UpdateInstallation(context.Context, Installation) error
+	DeleteInstallation(context.Context, int64) error
 	CreateUbuntuAutoinstall(context.Context, UbuntuAutoinstallFile) (UbuntuAutoinstallFile, error)
 	UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstallSummary, error)
 	UbuntuAutoinstall(context.Context, int64) (UbuntuAutoinstallFile, error)
@@ -185,6 +186,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /installations/{id}/edit", s.protect("images", s.installationNewPage))
 	mux.HandleFunc("POST /installations/{id}", s.protect("images", withPageErrors(s.installationNewPage, s.installationCreate)))
 	mux.HandleFunc("POST /installations/{id}/prepare", s.protect("images", withPageErrors(s.installationsPage, s.installationPrepare)))
+	mux.HandleFunc("POST /installations/{id}/delete", s.protect("delete", withPageErrors(s.installationsPage, s.installationDelete)))
 	mux.HandleFunc("GET /assets/installation-form.js", installationFormScript)
 	mux.HandleFunc("POST /installations/{key}/add", s.protect("menu", withPageErrors(s.installationsPage, s.installationAdd)))
 	mux.HandleFunc("GET /events", s.protect("view", s.eventsPage))

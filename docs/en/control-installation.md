@@ -139,9 +139,15 @@ Review boot entries, titles and folders on the Menu page. Clients do not see the
 
 Restoring a version through Menu → Versions also checks dependencies. If an ISO, profile or prepared file is unavailable, the current active menu stays in place. Menu restoration does not restore deleted ISOs or NAS data.
 
+The entry list shows the source ISO path and storage name below its components; both can be searched. Ubuntu entries show the system ISO URL. If the ISO catalog is unavailable, the saved path remains visible and the storage ID replaces its name.
+
+Administrators can select **Delete** and confirm removal from the list and menu draft. For a published entry, first select **Remove** and publish the menu. The source ISO, prepared files, drivers and answer files remain in the library. Menu history is preserved, but versions containing the deleted entry can no longer be restored. **Remove** alone still allows the entry to be returned to the menu.
+
 ### Updating an existing server
 
 Before starting the new Control, back up `omb_control`, stop `omb-control`, and apply [2026-11-03-download-components.sql](../../deploy/sql/2026-11-03-download-components.sql) and [2026-11-03-strelec-pxe.sql](../../deploy/sql/2026-11-03-strelec-pxe.sql) as the database owner. Update Control, Agent and `omb-winiso-prepare` together, then start the services. The first migration captures components for existing draft items and menu versions, preserving IDs, order and published scripts; the second adds the recovery ISO mode. Re-running them does not rewrite captured components. `deploy/sql/control.sql` defines the clean-install schema. Ubuntu Autoinstall files remain immutable; an entry's binding to an answer file is now editable.
+
+When updating a server that already has boot entries and Strelec support, also apply [2026-11-03-download-deletion.sql](../../deploy/sql/2026-11-03-download-deletion.sql) as the database owner before starting the new Control, after backing up the database and stopping Control. The migration preserves entries, drafts and history, allowing deletion of entries referenced only by old menu versions. Control protects the active menu. Re-running the migration is safe. This change only requires updating Control; Agent and Boot do not need an update.
 
 ## WinPE driver catalog
 

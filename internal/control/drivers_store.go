@@ -10,6 +10,7 @@ import (
 
 type DriverPackage struct {
 	SHA256    string
+	Author    string
 	Inventory drivers.Inventory
 	CreatedAt time.Time
 }

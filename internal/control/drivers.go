@@ -27,6 +27,10 @@ func (s *Server) driversPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать каталог драйверов", http.StatusServiceUnavailable)
 		return
 	}
+	authors := s.resourceAuthors(r.Context())
+	for i := range packages {
+		packages[i].Author = authors.Drivers[packages[i].SHA256]
+	}
 	profiles, err := s.Store.WindowsProfiles(r.Context())
 	if err != nil {
 		http.Error(w, "Профили ISO недоступны", http.StatusServiceUnavailable)

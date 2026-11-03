@@ -24,6 +24,8 @@ func downloadSearchScript(w http.ResponseWriter, _ *http.Request) {
 // installationRow shows an installation, its shared source and its menu placement.
 type installationRow struct {
 	Key, Title, Image, Drivers, Answer string
+	Author, AnswerAuthor, ImageAuthor  string
+	AnswerID                           int64
 	ID                                 int64
 	Kind                               string
 	SourcePath, StorageName            string
@@ -163,7 +165,7 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 		}
 		for _, answer := range answers {
 			if answer.ID == answerID {
-				row.Answer, row.AnswerWipesDisk = answer.Title, answer.WipesDisk
+				row.Answer, row.AnswerWipesDisk, row.AnswerID = answer.Title, answer.WipesDisk, answer.ID
 			}
 		}
 		for _, file := range source.Autoinstalls {
@@ -323,7 +325,27 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.InstallCounts = map[string]int{}
+	authors := s.resourceAuthors(r.Context())
+	profileByID := make(map[int64]WindowsProfile, len(profiles))
+	for _, profile := range profiles {
+		profileByID[profile.ID] = profile
+	}
+	bootByID := make(map[int64]int64, len(sources.BootProfiles))
+	for _, profile := range sources.BootProfiles {
+		bootByID[profile.ID] = profile.WindowsProfileID
+	}
+	installationByID := make(map[int64]Installation, len(sources.Installations))
+	for _, installation := range sources.Installations {
+		installationByID[installation.ID] = installation
+	}
 	for _, row := range s.installationRows(r.Context(), profiles, answers, configs, draft, active, sources) {
+		row.Author = authors.Installations[row.ID]
+		row.AnswerAuthor = authors.Answers[row.AnswerID]
+		if installation, ok := installationByID[row.ID]; ok {
+			if profile, ok := profileByID[bootByID[installation.BootProfileID]]; ok {
+				row.ImageAuthor = authors.Images[imageAuthorKey(profile.StorageID, profile.Path)]
+			}
+		}
 		haystack := strings.ToLower(row.Title + " " + row.Key + " " + row.Image + " " + row.Answer + " " + row.Drivers + " " + row.SourcePath + " " + row.StorageName)
 		if data.Query != "" && !strings.Contains(haystack, strings.ToLower(data.Query)) {
 			continue

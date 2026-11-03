@@ -18,7 +18,7 @@ import (
 
 type imageRow struct {
 	Image                          images.Image
-	StorageName                    string
+	StorageName, Author            string
 	Kind, Problem                  string
 	USBProfileID, CleanupProfileID int64
 	Downloads                      []imageDownload

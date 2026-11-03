@@ -521,6 +521,7 @@ func (s *Server) storagesPage(w http.ResponseWriter, r *http.Request) {
 // files for the library and storage pages.
 func (s *Server) libraryData(r *http.Request) pageData {
 	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
+	authors := s.resourceAuthors(r.Context())
 	profiles, err := s.Store.WindowsProfiles(r.Context())
 	if err != nil {
 		data.ImageError = "Не удалось прочитать профили Windows ISO"
@@ -532,6 +533,9 @@ func (s *Server) libraryData(r *http.Request) pageData {
 		data.ImageError = "Не удалось прочитать сценарии Windows"
 	} else {
 		data.WindowsAnswerVariants = answers
+		for i := range data.WindowsAnswerVariants {
+			data.WindowsAnswerVariants[i].Author = authors.Answers[data.WindowsAnswerVariants[i].ID]
+		}
 	}
 	files, err := s.Store.UbuntuAutoinstalls(r.Context())
 	if err != nil {
@@ -571,7 +575,7 @@ func (s *Server) libraryData(r *http.Request) pageData {
 			}
 			for _, image := range catalog.Images {
 				kind, problem := isoKindHint(image.Path)
-				row := imageRow{Image: image, StorageName: names[image.StorageID], Kind: kind, Problem: problem}
+				row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem}
 				if p, ok := byPath[fmt.Sprintf("%d:%s", image.StorageID, image.Path)]; ok {
 					row.Downloads = uses[p.ID]
 					if profileBootable(p) && p.BootMode == "" {

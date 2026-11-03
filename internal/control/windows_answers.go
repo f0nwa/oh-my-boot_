@@ -21,6 +21,7 @@ type WindowsAnswerVariant struct {
 	ID        int64
 	ProfileID int64
 	Title     string
+	Author    string
 	Folder    string
 	SHA256    string
 	Size      int64

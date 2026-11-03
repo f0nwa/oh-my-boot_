@@ -452,8 +452,7 @@ button[disabled]{opacity:.45;cursor:default}
 .installs .download-source{display:block;margin-top:6px;color:var(--muted);overflow-wrap:anywhere;white-space:normal;max-width:60ch}
 .installs .download-source .mono{color:var(--muted)}
 .download-actions{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px}
-.download-actions>.btn,.download-actions button,.download-actions summary{min-height:28px;margin:0;padding:0 8px;font-size:12px;line-height:26px}
-.download-actions>.btn{width:72px;flex:none}
+.download-actions button,.download-actions summary{min-height:28px;margin:0;padding:0 8px;font-size:12px;line-height:26px}
 .download-actions>form{display:flex;justify-content:center;width:154px;flex:none}
 .download-actions>.download-delete{min-width:64px}
 .download-actions .download-delete{position:relative;margin:0;white-space:normal}

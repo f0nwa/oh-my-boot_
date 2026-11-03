@@ -62,7 +62,7 @@ const nowMachineLimit = 50
 // booting right now.
 const liveWindow = 3 * time.Minute
 
-var trailLabels = []string{"DHCP", "TFTP", "iPXE", "Меню", "Выбор", "Файлы", "Установка"}
+var trailLabels = []string{"DHCP", "TFTP", "Загрузчик", "Меню", "Выбор", "Файлы", "Установка"}
 
 // machineTrail keeps explicit choice telemetry separate from file transfer.
 // A missing choice stays unknown even when the boot files have been served.

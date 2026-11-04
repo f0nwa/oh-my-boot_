@@ -20,6 +20,7 @@
 <div class="ed-main">
 <fieldset class="step ed-section" data-ai-panel="source"{{if ne .Section "source"}} hidden{{end}}><legend>{{t "Файл и источник"}}</legend>
 <label for="ai-title">{{t "Название"}}</label><input id="ai-title" name="title" value="{{.Title}}" maxlength="80" required>
+{{if .ISOProfiles}}<label for="ai-iso-source">{{t "Образ Ubuntu"}}</label><select id="ai-iso-source" name="iso_source_id"><option value="0"{{if not .ISOSelected}} selected{{end}}>{{t "Не выбран"}}</option>{{range .ISOProfiles}}<option value="{{.UbuntuSourceID}}"{{if eq .UbuntuSourceID $v.ISOSelected}} selected{{end}}>{{.Title}} · {{.UbuntuPath}}</option>{{end}}</select><button type="submit" name="section" value="source" formnovalidate class="secondary">{{t "Обновить доступные наборы"}}</button>{{end}}
 <label for="ai-source">{{t "Набор приложений"}}</label><select id="ai-source" name="source_id"><option value=""{{if eq .Form.SourceID ""}} selected{{end}}>{{t "Как в ISO"}}</option>{{range .Sources}}<option value="{{.ID}}"{{if eq .ID $v.Form.SourceID}} selected{{end}}>{{.Name}}</option>{{end}}{{if .UnknownSource}}<option value="{{.Form.SourceID}}" selected>{{.Form.SourceID}} · {{t "Недоступен"}}</option>{{end}}</select>
 {{if .SourceDigest}}<p class="hint mono">ISO SHA-256: {{.SourceDigest}}</p>{{end}}
 <p class="hint">{{t "Сохранение файла не меняет меню. Выберите файл при создании загрузки и опубликуйте черновик."}}</p>

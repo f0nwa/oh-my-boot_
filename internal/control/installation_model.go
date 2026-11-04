@@ -6,6 +6,7 @@ const (
 	BootProfileWindowsISO    = "windows_iso"
 	BootProfileWinPEISO      = "winpe_iso"
 	BootProfileUbuntuBuiltin = "ubuntu_builtin"
+	BootProfileUbuntuISO     = "ubuntu_iso"
 )
 
 // BootProfile identifies a shared boot source, independent of menu entries.
@@ -15,6 +16,11 @@ type BootProfile struct {
 	Kind             string
 	Title            string
 	WindowsProfileID int64
+	UbuntuSourceID   int64
+	UbuntuStorageID  int64
+	UbuntuPath       string
+	UbuntuSHA256     string
+	UbuntuState      string
 }
 
 // Installation is a persistent choice using one shared profile. Zero optional
@@ -73,7 +79,10 @@ func ValidateInstallation(item Installation, profile BootProfile, answers []Wind
 		return fmt.Errorf("choose either an answer or a driver configuration")
 	}
 	switch profile.Kind {
-	case BootProfileUbuntuBuiltin:
+	case BootProfileUbuntuBuiltin, BootProfileUbuntuISO:
+		if profile.Kind == BootProfileUbuntuISO && (profile.UbuntuSourceID <= 0 || profile.UbuntuStorageID <= 0 || profile.UbuntuPath == "" || !ubuntuSourceDigest.MatchString(profile.UbuntuSHA256)) {
+			return fmt.Errorf("Ubuntu source identity is invalid")
+		}
 		if item.AutoinstallID > 0 {
 			validated := false
 			for _, file := range files {

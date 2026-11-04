@@ -300,7 +300,7 @@ func TestUbuntuConstructorInstallationBinding(t *testing.T) {
 			t.Fatalf("installation status=%d: %s", res.Code, res.Body.String())
 		}
 	}
-	if len(store.installations) != 2 || store.installations[0].AutoinstallID != 1 || store.installations[1].AutoinstallID != 1 || len(*published) != 0 || len(store.draft.Items) != 2 {
+	if len(store.installations) != 2 || store.installations[0].AutoinstallID != 1 || store.installations[1].AutoinstallID != 1 || len(*published) != 0 || store.draft != nil {
 		t.Fatal("automation binding missing or published immediately")
 	}
 	for _, tc := range []struct{ profile, id string }{{"51", "1"}, {"52", "999"}, {"52", "bad"}, {"52", "-1"}} {

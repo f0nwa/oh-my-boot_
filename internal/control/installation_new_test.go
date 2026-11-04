@@ -71,15 +71,27 @@ func lastDraftKey(store *newInstallStore) string {
 func TestNewInstallationImageOnly(t *testing.T) {
 	s, store := newInstallServer(t)
 	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"50"}, "title": {"Windows 10 x64"}})
-	if res.Code != http.StatusSeeOther || lastDraftKey(store) != "install_100" {
+	if res.Code != http.StatusSeeOther || len(store.installations) != 1 || lastDraftKey(store) != "" {
 		t.Fatalf("status=%d draft=%+v body=%s", res.Code, store.draft, res.Body.String())
+	}
+}
+
+func TestUbuntuISOChoicesShowVerifiedFileAndHideUnverified(t *testing.T) {
+	s, _ := newInstallServer(t)
+	profiles := []BootProfile{
+		{ID: 61, Kind: BootProfileUbuntuISO, Title: "Ubuntu 24", UbuntuSourceID: 3, UbuntuStorageID: 7, UbuntuPath: "linux/ubuntu.iso", UbuntuSHA256: strings.Repeat("a", 64), UbuntuState: "verified"},
+		{ID: 62, Kind: BootProfileUbuntuISO, Title: "Unchecked", UbuntuSourceID: 4, UbuntuStorageID: 7, UbuntuPath: "unchecked.iso", UbuntuSHA256: strings.Repeat("b", 64), UbuntuState: "unverified"},
+	}
+	choices := s.bootProfileChoices(context.Background(), profiles, nil)
+	if len(choices) != 2 || !choices[0].Selectable() || choices[0].Path != "linux/ubuntu.iso" || choices[1].Selectable() {
+		t.Fatalf("choices=%+v", choices)
 	}
 }
 
 func TestNewInstallationWithAnswer(t *testing.T) {
 	s, store := newInstallServer(t)
 	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "answer_id": {"31"}, "title": {"Win11 Lab"}})
-	if res.Code != http.StatusSeeOther || lastDraftKey(store) != "install_100" || store.draft.Items[0].Title != "Win11 Lab" {
+	if res.Code != http.StatusSeeOther || len(store.installations) != 1 || store.installations[0].Title != "Win11 Lab" || lastDraftKey(store) != "" {
 		t.Fatalf("status=%d draft=%+v body=%s", res.Code, store.draft, res.Body.String())
 	}
 }
@@ -95,7 +107,7 @@ func TestNewInstallationRejectsForeignAnswer(t *testing.T) {
 func TestNewInstallationWithPackageCreatesConfig(t *testing.T) {
 	s, store := newInstallServer(t)
 	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "package": {strings.Repeat("a", 64)}, "title": {"Win11 VirtIO"}})
-	if res.Code != http.StatusSeeOther || len(store.created) != 1 || len(store.created[0].PackageINFs) != 2 || lastDraftKey(store) != "install_100" {
+	if res.Code != http.StatusSeeOther || len(store.created) != 1 || len(store.created[0].PackageINFs) != 2 || len(store.installations) != 1 || lastDraftKey(store) != "" {
 		t.Fatalf("status=%d created=%+v draft=%+v body=%s", res.Code, store.created, store.draft, res.Body.String())
 	}
 }
@@ -110,7 +122,7 @@ func TestNewInstallationAllowsTwoUbuntuChoicesWithoutPublishing(t *testing.T) {
 			t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 		}
 	}
-	if len(store.installations) != 2 || store.installations[0].BootProfileID != 52 || store.installations[1].BootProfileID != 52 || len(store.draft.Items) != 2 || store.draft.Items[0].InstallationID != 100 || store.draft.Items[1].InstallationID != 101 || len(*published) != 0 {
+	if len(store.installations) != 2 || store.installations[0].BootProfileID != 52 || store.installations[1].BootProfileID != 52 || lastDraftKey(store) != "" || len(*published) != 0 {
 		t.Fatalf("installations=%+v draft=%+v published=%v", store.installations, store.draft, *published)
 	}
 }
@@ -125,7 +137,7 @@ func TestNewInstallationWindowsXMLPersistsComponentsWithoutPublishing(t *testing
 			t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 		}
 	}
-	if len(store.installations) != 2 || store.installations[0].AnswerID != 31 || store.installations[1].AnswerID != 31 || store.draft.Items[0].InstallationID == store.draft.Items[1].InstallationID || len(*published) != 0 {
+	if len(store.installations) != 2 || store.installations[0].AnswerID != 31 || store.installations[1].AnswerID != 31 || lastDraftKey(store) != "" || len(*published) != 0 {
 		t.Fatalf("installations=%+v draft=%+v published=%v", store.installations, store.draft, *published)
 	}
 }

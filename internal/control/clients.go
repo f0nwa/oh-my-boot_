@@ -140,6 +140,31 @@ func (c *AgentClient) PrepareWindowsISO(ctx context.Context, req agent.WindowsIS
 	err = localCall(ctx, c.http, "POST", "/windows-iso/prepare", body, &result)
 	return result, err
 }
+
+func (c *AgentClient) InspectUbuntuISO(ctx context.Context, req agent.WindowsISORequest) (agent.UbuntuISOInspection, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return agent.UbuntuISOInspection{}, err
+	}
+	client := &http.Client{Transport: c.http.Transport, Timeout: 15 * time.Minute}
+	var result agent.UbuntuISOInspection
+	if err := localCall(ctx, client, http.MethodPost, "/ubuntu-iso/inspect", body, &result); err != nil {
+		return agent.UbuntuISOInspection{}, err
+	}
+	if !ubuntuSourceDigest.MatchString(result.SHA256) || len(result.Sources) == 0 {
+		return agent.UbuntuISOInspection{}, fmt.Errorf("invalid Ubuntu ISO inspection result")
+	}
+	return result, nil
+}
+
+func (c *AgentClient) PrepareUbuntuISO(ctx context.Context, req agent.UbuntuISORequest) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Transport: c.http.Transport, Timeout: 20 * time.Minute}
+	return localCall(ctx, client, http.MethodPost, "/ubuntu-iso/prepare", body, nil)
+}
 func (c *AgentClient) CheckWindowsISO(ctx context.Context, req agent.WindowsISORequest) error {
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -474,6 +499,42 @@ func (c *BootClient) UbuntuSource(ctx context.Context) (autoinstall.SourceCatalo
 	var catalog autoinstall.SourceCatalog
 	err := localCall(ctx, c.http, http.MethodGet, "/ubuntu/source", nil, &catalog)
 	return catalog, err
+}
+
+// UbuntuSourceFor verifies and reads the catalog of one immutable ISO source.
+func (c *BootClient) UbuntuSourceFor(ctx context.Context, id int64, digest string) (autoinstall.SourceCatalog, error) {
+	if id <= 0 || !ubuntuSourceDigest.MatchString(digest) {
+		return autoinstall.SourceCatalog{}, fmt.Errorf("invalid Ubuntu source identity")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+	client := &http.Client{Transport: c.http.Transport, Timeout: 15 * time.Minute}
+	var catalog autoinstall.SourceCatalog
+	endpoint := "/ubuntu/sources/" + strconv.FormatInt(id, 10) + "/" + digest
+	if err := localCall(ctx, client, http.MethodGet, endpoint, nil, &catalog); err != nil {
+		return autoinstall.SourceCatalog{}, err
+	}
+	if catalog.ISOSHA256 != digest {
+		return autoinstall.SourceCatalog{}, fmt.Errorf("Ubuntu source digest mismatch")
+	}
+	return catalog, nil
+}
+
+func (c *BootClient) UbuntuLegacySource(ctx context.Context) (int64, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+	client := &http.Client{Transport: c.http.Transport, Timeout: 15 * time.Minute}
+	var source struct {
+		ID     int64  `json:"id"`
+		SHA256 string `json:"sha256"`
+	}
+	if err := localCall(ctx, client, http.MethodGet, "/ubuntu/legacy", nil, &source); err != nil {
+		return 0, "", err
+	}
+	if source.ID <= 0 || !ubuntuSourceDigest.MatchString(source.SHA256) {
+		return 0, "", fmt.Errorf("invalid legacy Ubuntu source identity")
+	}
+	return source.ID, source.SHA256, nil
 }
 
 func (c *BootClient) UbuntuISOPath(ctx context.Context) (string, error) {

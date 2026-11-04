@@ -141,8 +141,24 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 						}
 					}
 				}
+				if profile.Kind == BootProfileUbuntuISO {
+					row.Image = profile.Title
+					row.SourcePath, row.StorageID = profile.UbuntuPath, profile.UbuntuStorageID
+					switch profile.UbuntuState {
+					case "unverified", "checking", "verified":
+						row.Status = "needs_prepare"
+					case "preparing":
+						row.Status = "preparing"
+					case "error":
+						row.Status, row.Error = "error", "Не удалось подготовить Ubuntu ISO. Проверьте образ, хранилище и службы Agent и Boot."
+					}
+				}
 				if profile.Kind == BootProfileUbuntuBuiltin {
-					row.Image = "Системный источник Ubuntu"
+					row.Image = profile.Title
+					if profile.UbuntuPath != "" {
+						row.Image = path.Base(profile.UbuntuPath)
+						row.SourcePath, row.StorageID = profile.UbuntuPath, profile.UbuntuStorageID
+					}
 				}
 			}
 		}
@@ -257,7 +273,7 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 	catalogAvailable := false
 	needsCatalog := len(profiles) > 0
 	for _, row := range rows {
-		if row.Kind == BootProfileUbuntuBuiltin {
+		if row.Kind == BootProfileUbuntuBuiltin || row.Kind == BootProfileUbuntuISO {
 			needsCatalog = true
 			break
 		}
@@ -281,7 +297,7 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 	var problem error
 	for i := range rows {
 		rows[i].StorageName = storageNames[rows[i].StorageID]
-		if isISOBootKind(rows[i].Kind) && rows[i].StorageID > 0 {
+		if (isISOBootKind(rows[i].Kind) || rows[i].Kind == BootProfileUbuntuISO) && rows[i].StorageID > 0 {
 			switch state, found := storageStates[rows[i].StorageID]; {
 			case !catalogAvailable:
 				rows[i].StorageWarning = "Не удалось проверить хранилище ISO"
@@ -441,7 +457,7 @@ func (s *Server) installationAddByID(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	if draft.InstallationIndex(id) < 0 {
-		draft.Items = insertDraftItem(draft.Items, active.Items, MenuDraftItem{InstallationID: id, Title: installation.Title, Folder: installation.Folder, Components: installationComponents(installation)})
+		draft.Items = insertDraftItem(draft.Items, active.Items, MenuDraftItem{InstallationID: id, Title: installation.Title, Folder: installation.Folder, Components: installationComponents(installation), InheritsTitle: true})
 		if err := s.Store.SaveMenuDraft(r.Context(), draft); err != nil {
 			http.Error(w, "Не удалось сохранить черновик меню", http.StatusServiceUnavailable)
 			return
@@ -466,9 +482,11 @@ func insertDraftItem(items, published []MenuDraftItem, item MenuDraftItem) []Men
 		// A menu-only rename/folder override survives undoing removal unless
 		// the saved entry itself was edited since that menu was published.
 		if old.Components == nil {
-			item.Title, item.Folder, item.Components = old.Title, old.Folder, nil
+			item.Title, item.Folder, item.Components, item.InheritsTitle = old.Title, old.Folder, nil, false
 		} else {
-			if item.Components == nil || item.Components.Title == old.Components.Title {
+			if old.Title != old.Components.Title {
+				item.Title, item.InheritsTitle = old.Title, false
+			} else if item.Components == nil || item.Components.Title == old.Components.Title {
 				item.Title = old.Title
 			}
 			if item.Components == nil || item.Components.Folder == old.Components.Folder {

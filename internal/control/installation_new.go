@@ -72,8 +72,23 @@ func (s *Server) bootProfileChoices(ctx context.Context, shared []BootProfile, w
 	for _, profile := range shared {
 		choice := bootProfileChoice{BootProfile: profile, State: "unavailable", Error: "Профиль загрузки недоступен"}
 		switch profile.Kind {
+		case BootProfileUbuntuISO:
+			choice.Path = profile.UbuntuPath
+			if profile.UbuntuSourceID > 0 && profile.UbuntuStorageID > 0 && profile.UbuntuPath != "" && ubuntuSourceDigest.MatchString(profile.UbuntuSHA256) {
+				switch profile.UbuntuState {
+				case "verified", "ready", "error":
+					choice.State, choice.Error = profile.UbuntuState, ""
+				case "preparing":
+					choice.Error = "Образ подготавливается"
+				default:
+					choice.Error = "Образ ещё не проверен"
+				}
+			}
 		case BootProfileUbuntuBuiltin:
-			choice.State, choice.Error, choice.Path = "ready", "", "Системный источник Ubuntu"
+			choice.State, choice.Error, choice.Path = "ready", "", profile.UbuntuPath
+			if choice.Path == "" {
+				choice.Path = profile.Title
+			}
 			if !ubuntuChecked {
 				ubuntuProblem = s.checkUbuntuReadiness(ctx)
 				ubuntuChecked = true
@@ -196,7 +211,7 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 	render(w, "installation_new", data)
 }
 
-// installationCreate saves an independent installation and adds it to the draft.
+// installationCreate saves an independent installation; adding it to a menu is separate.
 func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 	s.draftMu.Lock()
 	locked := true
@@ -248,7 +263,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Сервисная WinPE не использует параметры установщика Windows", http.StatusBadRequest)
 		return
 	}
-	if shared.Kind == BootProfileUbuntuBuiltin && ((r.FormValue("answer_id") != "" && r.FormValue("answer_id") != "0") || len(r.Form["package"]) > 0 || len(r.Form["inf"]) > 0) {
+	if (shared.Kind == BootProfileUbuntuBuiltin || shared.Kind == BootProfileUbuntuISO) && ((r.FormValue("answer_id") != "" && r.FormValue("answer_id") != "0") || len(r.Form["package"]) > 0 || len(r.Form["inf"]) > 0) {
 		http.Error(w, "Ubuntu не поддерживает компоненты Windows", http.StatusBadRequest)
 		return
 	}
@@ -261,7 +276,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 				found = true
 			}
 		}
-		if err != nil || autoinstallID <= 0 || shared.Kind != BootProfileUbuntuBuiltin || !found {
+		if err != nil || autoinstallID <= 0 || (shared.Kind != BootProfileUbuntuBuiltin && shared.Kind != BootProfileUbuntuISO) || !found {
 			http.Error(w, "Выберите проверенный файл Autoinstall только для Ubuntu", http.StatusBadRequest)
 			return
 		}
@@ -416,20 +431,23 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if editID > 0 && draft.InstallationIndex(editID) >= 0 {
-		err = draft.UpdateInstallation(editID, title, folder)
-	} else if editID == 0 {
-		err = draft.AddInstallation(item)
+		i := draft.InstallationIndex(editID)
+		menuTitle := draft.Items[i].Title
+		if draft.Items[i].InheritsTitle {
+			menuTitle = title
+		}
+		err = draft.UpdateInstallation(editID, menuTitle, folder)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	if i := draft.InstallationIndex(item.ID); i >= 0 {
+	if i := draft.InstallationIndex(item.ID); editID > 0 && i >= 0 {
 		draft.Items[i].Components = installationComponents(item)
-	}
-	if err := s.Store.SaveMenuDraft(r.Context(), draft); err != nil {
-		http.Error(w, "Не удалось сохранить черновик меню", http.StatusServiceUnavailable)
-		return
+		if err := s.Store.SaveMenuDraft(r.Context(), draft); err != nil {
+			http.Error(w, "Не удалось сохранить черновик меню", http.StatusServiceUnavailable)
+			return
+		}
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "installation.create", "ok", fmt.Sprintf("install_%d", item.ID))
 	// The menu lock is released before slow systemd/WIM work; a saved failed

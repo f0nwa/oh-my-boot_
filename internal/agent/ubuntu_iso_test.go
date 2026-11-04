@@ -1,0 +1,266 @@
+package agent
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"omb/internal/boot"
+)
+
+type recordingUbuntuISO struct{ calls int }
+
+type ubuntuInspectMounter struct {
+	info, sources string
+	unmounted     bool
+}
+
+func (m *ubuntuInspectMounter) IsMounted(context.Context, string) (bool, error) { return false, nil }
+func (m *ubuntuInspectMounter) Mount(_ context.Context, _ string, target string) error {
+	for name, data := range map[string]string{
+		".disk/info": m.info, "casper/install-sources.yaml": m.sources,
+		"casper/vmlinuz": "kernel", "casper/initrd": "initrd", "EFI/boot/bootx64.efi": "shim",
+	} {
+		file := filepath.Join(target, name)
+		if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(file, []byte(data), 0644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (m *ubuntuInspectMounter) Unmount(context.Context, string) error { m.unmounted = true; return nil }
+
+type preparedUbuntuRunner struct {
+	assetRoot string
+	calls     int
+	corrupt   bool
+}
+
+func (r *preparedUbuntuRunner) Run(_ context.Context, _ string, _ string, args ...string) ([]byte, error) {
+	r.calls++
+	values := map[string]string{}
+	for i := 0; i+1 < len(args); i += 2 {
+		values[args[i]] = args[i+1]
+	}
+	dir := filepath.Join(r.assetRoot, "ubuntu-sources", values["--source-id"], values["--sha256"])
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+	files := map[string]string{}
+	for _, name := range []string{"vmlinuz", "initrd", "bootx64.efi", "install-sources.yaml"} {
+		data := []byte("artifact")
+		if name == "install-sources.yaml" {
+			data = []byte("- id: ubuntu-desktop\n  name: Desktop\n")
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0644); err != nil {
+			return nil, err
+		}
+		files[name] = fmt.Sprintf("%x", sha256.Sum256(data))
+	}
+	info, err := os.Stat(values["--iso"])
+	if err != nil {
+		return nil, err
+	}
+	digest := values["--sha256"]
+	if r.corrupt {
+		digest = strings.Repeat("b", 64)
+	}
+	manifest, err := json.Marshal(map[string]any{"version": 1, "iso_sha256": digest, "iso_size": info.Size(), "files": files})
+	if err != nil {
+		return nil, err
+	}
+	return nil, os.WriteFile(filepath.Join(dir, "manifest.json"), manifest, 0644)
+}
+
+func (m *recordingUbuntuISO) Prepare(context.Context, UbuntuISORequest) error {
+	m.calls++
+	return nil
+}
+
+func (m *recordingUbuntuISO) Inspect(context.Context, WindowsISORequest) (UbuntuISOInspection, error) {
+	m.calls++
+	return UbuntuISOInspection{SHA256: strings.Repeat("a", 64)}, nil
+}
+
+func TestUbuntuISOManagerValidatesManagedSourceAndDigest(t *testing.T) {
+	base := t.TempDir()
+	storage := filepath.Join(base, "nas")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(storage, "ubuntu.iso")
+	contents := []byte("test Ubuntu ISO")
+	if err := os.WriteFile(file, contents, 0644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &UbuntuISOManager{SourceRoot: base}
+	req := UbuntuISORequest{WindowsISORequest: WindowsISORequest{ID: 8, StorageRoot: storage, RelativePath: "ubuntu.iso", Size: info.Size(), Modified: info.ModTime()}, SHA256: fmt.Sprintf("%x", sha256.Sum256(contents))}
+	expected, err := filepath.EvalSymlinks(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := manager.Validate(context.Background(), req); err != nil || got != expected {
+		t.Fatalf("valid source=%q err=%v", got, err)
+	}
+	bad := req
+	bad.SHA256 = strings.Repeat("b", 64)
+	if _, err := manager.Validate(context.Background(), bad); err == nil {
+		t.Fatal("accepted incorrect digest")
+	}
+	bad = req
+	bad.RelativePath = "../ubuntu.iso"
+	if _, err := manager.Validate(context.Background(), bad); err == nil {
+		t.Fatal("accepted path outside storage")
+	}
+	link := filepath.Join(storage, "link.iso")
+	if err := os.Symlink(file, link); err != nil {
+		t.Fatal(err)
+	}
+	bad = req
+	bad.RelativePath = "link.iso"
+	if _, err := manager.Validate(context.Background(), bad); err == nil {
+		t.Fatal("accepted symlink source")
+	}
+}
+
+func TestUbuntuISOInspectionRejectsUnsupportedMedia(t *testing.T) {
+	base := t.TempDir()
+	storage := filepath.Join(base, "nas")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(storage, "ubuntu.iso")
+	data := []byte("ISO bytes")
+	if err := os.WriteFile(file, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := WindowsISORequest{ID: 6, StorageRoot: storage, RelativePath: "ubuntu.iso", Size: info.Size(), Modified: info.ModTime()}
+	mount := &ubuntuInspectMounter{info: "Ubuntu 26.04 - Release amd64", sources: "- id: ubuntu-desktop\n  name: Desktop\n"}
+	manager := &UbuntuISOManager{SourceRoot: base, Mounter: mount}
+	result, err := manager.Inspect(context.Background(), req)
+	if err != nil || result.SHA256 != fmt.Sprintf("%x", sha256.Sum256(data)) || len(result.Sources) != 1 || !mount.unmounted {
+		t.Fatalf("valid Desktop ISO: result=%+v err=%v", result, err)
+	}
+	for _, wrong := range []struct{ info, sources string }{
+		{"Ubuntu Server - Release amd64", "- id: ubuntu-server\n  name: Server\n"},
+		{"Ubuntu Desktop - Release arm64", "- id: ubuntu-desktop\n  name: Desktop\n"},
+		{"Ubuntu Desktop - Release amd64", "invalid: ["},
+	} {
+		mount.info, mount.sources, mount.unmounted = wrong.info, wrong.sources, false
+		if _, err := manager.Inspect(context.Background(), req); err == nil || !mount.unmounted {
+			t.Fatalf("accepted unsupported ISO: info=%q err=%v", wrong.info, err)
+		}
+	}
+}
+
+func TestUbuntuISOManagerPreparesOnlyValidatedSource(t *testing.T) {
+	base := t.TempDir()
+	storage := filepath.Join(base, "nas")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(storage, "ubuntu.iso")
+	contents := []byte("test Ubuntu ISO")
+	if err := os.WriteFile(file, contents, 0644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &preparedUbuntuRunner{assetRoot: t.TempDir()}
+	registry := t.TempDir()
+	manager := &UbuntuISOManager{SourceRoot: base, AssetRoot: runner.assetRoot, ScriptPath: "/usr/local/libexec/omb-prepare-ubuntu-source", Runner: runner, RegistryRoot: registry}
+	req := UbuntuISORequest{WindowsISORequest: WindowsISORequest{ID: 8, StorageRoot: storage, RelativePath: "ubuntu.iso", Size: info.Size(), Modified: info.ModTime()}, SHA256: fmt.Sprintf("%x", sha256.Sum256(contents))}
+	if err := manager.Prepare(context.Background(), req); err != nil || runner.calls != 1 {
+		t.Fatalf("valid source: calls=%d err=%v", runner.calls, err)
+	}
+	if _, err := os.Stat(filepath.Join(registry, "8.json")); err != nil {
+		t.Fatalf("prepared source was not registered with Boot: %v", err)
+	}
+	t.Setenv("OMB_BOOT_UBUNTU_REGISTRY", registry)
+	publisher, err := boot.NewPublisher(filepath.Join(t.TempDir(), "menu.ipxe"), []byte("#!ipxe\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bootHandler, err := boot.NewDynamicHandlerWithISO(runner.assetRoot, publisher, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/images/ubuntu/8/"+req.SHA256+".iso", nil)
+	request.RemoteAddr = "10.30.0.20:1234"
+	bootHandler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Body.String() != string(contents) {
+		t.Fatalf("prepared ISO not available from Boot: status=%d", response.Code)
+	}
+	bad := req
+	bad.SHA256 = strings.Repeat("b", 64)
+	if err := manager.Prepare(context.Background(), bad); err == nil || runner.calls != 1 {
+		t.Fatalf("incorrect digest reached preparation: calls=%d err=%v", runner.calls, err)
+	}
+	runner.corrupt = true
+	if err := manager.Prepare(context.Background(), req); err == nil {
+		t.Fatal("accepted corrupt prepared manifest")
+	}
+}
+
+func TestUbuntuISOPrepareFailsClosedWithoutManager(t *testing.T) {
+	h := HandlerWithManagers(nil, nil, nil)
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/ubuntu-iso/prepare", strings.NewReader(`{}`)))
+	if res.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unconfigured Ubuntu manager status=%d", res.Code)
+	}
+}
+
+func TestUbuntuISORejectsUnsafeRequestBeforePreparation(t *testing.T) {
+	manager := &recordingUbuntuISO{}
+	h := HandlerWithUbuntuISO(http.NotFoundHandler(), manager)
+	for _, body := range []string{
+		`{"id":0,"storage_root":"/storage","relative_path":"x.iso","size":5,"modified":"2026-11-04T00:00:00Z","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
+		`{"id":1,"storage_root":"/storage","relative_path":"../x.iso","size":5,"modified":"2026-11-04T00:00:00Z","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
+		`{"id":1,"storage_root":"/storage","relative_path":"x.iso","size":5,"modified":"2026-11-04T00:00:00Z","sha256":"bad"}`,
+	} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/ubuntu-iso/prepare", strings.NewReader(body)))
+		if res.Code != http.StatusBadRequest || manager.calls != 0 {
+			t.Fatalf("unsafe request: status=%d calls=%d", res.Code, manager.calls)
+		}
+	}
+	res := httptest.NewRecorder()
+	body := `{"id":1,"storage_root":"/storage","relative_path":"x.iso","size":5,"modified":"2026-11-04T00:00:00Z","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/ubuntu-iso/prepare", strings.NewReader(body)))
+	if res.Code != http.StatusNoContent || manager.calls != 1 {
+		t.Fatalf("valid request: status=%d calls=%d", res.Code, manager.calls)
+	}
+}
+
+func TestUbuntuISOInspectionAPI(t *testing.T) {
+	manager := &recordingUbuntuISO{}
+	h := HandlerWithUbuntuISO(http.NotFoundHandler(), manager)
+	body := `{"id":6,"storage_root":"/storage","relative_path":"x.iso","size":5,"modified":"2026-11-04T00:00:00Z"}`
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/ubuntu-iso/inspect", strings.NewReader(body)))
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), strings.Repeat("a", 64)) || manager.calls != 1 {
+		t.Fatalf("inspection status=%d calls=%d", res.Code, manager.calls)
+	}
+}

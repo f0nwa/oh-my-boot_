@@ -27,6 +27,8 @@ type ubuntuAutoinstallEditorView struct {
 	Summary                                                              []ubuntuSummaryItem
 	Sources                                                              []autoinstall.SourceOption
 	Keyboards                                                            []ubuntuKeyboardRow
+	ISOProfiles                                                          []BootProfile
+	ISOSelected                                                          int64
 }
 
 func autoinstallForm(r *http.Request) autoinstall.Form {
@@ -107,7 +109,8 @@ func (s *Server) ubuntuAutoinstallPreview(w http.ResponseWriter, r *http.Request
 		view := &ubuntuAutoinstallEditorView{Title: title, Form: autoinstallForm(r), HasForm: true}
 		if payload, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token); ok {
 			view.Token = r.FormValue("preview_token")
-			if matchesAutoinstallPreview(payload, title, autoinstallForm(r)) {
+			id, digest, sourceErr := s.selectedUbuntuEditorSource(r)
+			if sourceErr == nil && payload.ISOID == id && payload.ISOSHA == digest && matchesAutoinstallPreview(payload, title, autoinstallForm(r)) {
 				data, _ := autoinstall.Render(payload.Values)
 				view.YAML = string(data)
 				view.Values = payload.Values
@@ -139,15 +142,19 @@ func (s *Server) ubuntuAutoinstallPreview(w http.ResponseWriter, r *http.Request
 			}
 		}
 	}
+	isoID, isoSHA, sourceErr := s.selectedUbuntuEditorSource(r)
+	if err == nil && sourceErr != nil {
+		err = sourceErr
+	}
 	if err == nil {
-		err = s.validateUbuntuSource(r.Context(), values)
+		err = s.validateUbuntuEditorSource(r.Context(), values, isoID, isoSHA)
 	}
 	if err != nil {
 		s.ubuntuFormError(w, r, title, form, err)
 		return
 	}
 
-	payload := autoinstallPreviewPayload{Title: title, Values: values, Digest: fmt.Sprintf("%x", sha256.Sum256(data)), Expires: time.Now().Add(autoinstallPreviewLifetime).Unix()}
+	payload := autoinstallPreviewPayload{Title: title, Values: values, Digest: fmt.Sprintf("%x", sha256.Sum256(data)), Expires: time.Now().Add(autoinstallPreviewLifetime).Unix(), ISOID: isoID, ISOSHA: isoSHA}
 	token, err := signAutoinstallPreview(payload, requestInfo(r).Token)
 	if err != nil {
 		http.Error(w, "Не удалось создать предпросмотр Autoinstall", http.StatusServiceUnavailable)
@@ -175,11 +182,12 @@ func (s *Server) ubuntuAutoinstallPreviewDownload(w http.ResponseWriter, r *http
 
 func (s *Server) ubuntuAutoinstallSave(w http.ResponseWriter, r *http.Request) {
 	payload, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token)
-	if !ok || !matchesAutoinstallPreview(payload, r.FormValue("title"), autoinstallForm(r)) {
+	isoID, isoSHA, sourceErr := s.selectedUbuntuEditorSource(r)
+	if !ok || sourceErr != nil || payload.ISOID != isoID || payload.ISOSHA != isoSHA || !matchesAutoinstallPreview(payload, r.FormValue("title"), autoinstallForm(r)) {
 		s.ubuntuFormError(w, r, r.FormValue("title"), autoinstallForm(r), fmt.Errorf("password: preview expired or fields changed"))
 		return
 	}
-	if err := s.validateUbuntuSource(r.Context(), payload.Values); err != nil {
+	if err := s.validateUbuntuEditorSource(r.Context(), payload.Values, isoID, isoSHA); err != nil {
 		s.ubuntuFormError(w, r, r.FormValue("title"), autoinstallForm(r), fmt.Errorf("source: selected source unavailable"))
 		return
 	}

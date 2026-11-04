@@ -30,7 +30,8 @@ type imageDownload struct {
 
 type menuVersionRow struct {
 	MenuVersion
-	Restorable bool
+	Restorable         bool
+	UnrestorableReason string
 }
 
 type pageData struct {

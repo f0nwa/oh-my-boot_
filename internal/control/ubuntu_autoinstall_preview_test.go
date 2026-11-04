@@ -71,6 +71,34 @@ func TestUbuntuSourceRecheckedOnSave(t *testing.T) {
 	}
 }
 
+func TestUbuntuPreviewIsBoundToSelectedISO(t *testing.T) {
+	s, store := autoinstallServer(t)
+	store.bootProfiles = []BootProfile{
+		{ID: 1, Kind: BootProfileUbuntuISO, UbuntuSourceID: 11, UbuntuSHA256: strings.Repeat("a", 64), UbuntuState: "ready"},
+		{ID: 2, Kind: BootProfileUbuntuISO, UbuntuSourceID: 12, UbuntuSHA256: strings.Repeat("b", 64), UbuntuState: "ready"},
+	}
+	s.UbuntuSource = multiUbuntuSourceStub{}
+	form := constructorForm()
+	form.Set("iso_source_id", "11")
+	form.Set("source_id", "ubuntu-desktop-alpha")
+	token, _ := constructorPreview(t, s, form)
+	form.Set("preview_token", token)
+	form.Set("password", "")
+	form.Set("iso_source_id", "12")
+	if res := constructorPost(t, s, "/ubuntu-autoinstall", form); res.Code != http.StatusBadRequest || len(store.files) != 0 {
+		t.Fatalf("saved preview with a different ISO: status=%d", res.Code)
+	}
+	form.Set("iso_source_id", "11")
+	if res := constructorPost(t, s, "/ubuntu-autoinstall", form); res.Code != http.StatusSeeOther || len(store.files) != 1 {
+		t.Fatalf("could not save preview for its selected ISO: status=%d", res.Code)
+	}
+	form = constructorForm()
+	form.Set("source_id", "ubuntu-desktop-alpha")
+	if res := constructorPost(t, s, "/ubuntu-autoinstall/preview", form); res.Code != http.StatusBadRequest {
+		t.Fatalf("accepted a specific application set without selecting an ISO: status=%d", res.Code)
+	}
+}
+
 func TestUbuntuPreviewMultipleDefaultKeyboardVariants(t *testing.T) {
 	s, store := autoinstallServer(t)
 	f := constructorForm()

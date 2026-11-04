@@ -88,6 +88,11 @@ type WindowsISOAPI interface {
 	CheckWindowsISO(context.Context, agent.WindowsISORequest) error
 }
 
+type UbuntuISOAPI interface {
+	InspectUbuntuISO(context.Context, agent.WindowsISORequest) (agent.UbuntuISOInspection, error)
+	PrepareUbuntuISO(context.Context, agent.UbuntuISORequest) error
+}
+
 type WindowsAnswerAPI interface {
 	PrepareWindowsAnswer(context.Context, agent.WindowsAnswerRequest) error
 	CheckWindowsAnswer(context.Context, agent.WindowsAnswerCheck) error
@@ -131,6 +136,7 @@ type Server struct {
 	Images            ImagesAPI
 	SMB               SMBMountAPI
 	WindowsISO        WindowsISOAPI
+	UbuntuISO         UbuntuISOAPI
 	UbuntuReadiness   UbuntuReadiness
 	UbuntuSource      UbuntuSourceAPI
 	WindowsAnswers    WindowsAnswerAPI
@@ -260,6 +266,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
 	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
+	mux.HandleFunc("POST /images/ubuntu/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectUbuntuISO)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsProfileDelete)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("delete", withPageErrors(s.answersPage, s.windowsAnswerDelete)))
@@ -557,16 +564,29 @@ func (s *Server) libraryData(r *http.Request) pageData {
 				names[storage.ID] = storage.Name
 			}
 			uses := map[int64][]imageDownload{}
+			ubuntuUses := map[string][]imageDownload{}
+			ubuntuVerified := map[string]bool{}
 			if sources, e := s.installationMenuSources(r.Context()); e == nil {
 				byID := map[int64]int64{}
+				ubuntuByID := map[int64]string{}
 				for _, p := range sources.BootProfiles {
 					if isISOBootKind(p.Kind) {
 						byID[p.ID] = p.WindowsProfileID
+					}
+					if (p.Kind == BootProfileUbuntuISO || p.Kind == BootProfileUbuntuBuiltin) && p.UbuntuStorageID > 0 && p.UbuntuPath != "" {
+						key := fmt.Sprintf("%d:%s", p.UbuntuStorageID, p.UbuntuPath)
+						ubuntuByID[p.ID] = key
+						if p.UbuntuState == "verified" || p.UbuntuState == "ready" {
+							ubuntuVerified[key] = true
+						}
 					}
 				}
 				for _, item := range sources.Installations {
 					if id := byID[item.BootProfileID]; id > 0 {
 						uses[id] = append(uses[id], imageDownload{ID: item.ID, Title: item.Title})
+					}
+					if key := ubuntuByID[item.BootProfileID]; key != "" {
+						ubuntuUses[key] = append(ubuntuUses[key], imageDownload{ID: item.ID, Title: item.Title})
 					}
 				}
 			}
@@ -576,9 +596,14 @@ func (s *Server) libraryData(r *http.Request) pageData {
 			}
 			for _, image := range catalog.Images {
 				kind, problem := isoKindHint(image.Path)
+				key := fmt.Sprintf("%d:%s", image.StorageID, image.Path)
+				if ubuntuVerified[key] {
+					kind, problem = "Ubuntu", ""
+				}
 				row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem}
-				if p, ok := byPath[fmt.Sprintf("%d:%s", image.StorageID, image.Path)]; ok {
-					row.Downloads = uses[p.ID]
+				row.Downloads = append(row.Downloads, ubuntuUses[key]...)
+				if p, ok := byPath[key]; ok {
+					row.Downloads = append(row.Downloads, uses[p.ID]...)
 					if profileBootable(p) && p.BootMode == "" {
 						row.USBProfileID = p.ID
 					}

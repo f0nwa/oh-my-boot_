@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -131,8 +133,51 @@ func controlMux(p *Publisher, events EventReader, transfers *Transfers, assets *
 
 // ControlHandlerWithUbuntuSource exposes verified source metadata only on the local control socket.
 func ControlHandlerWithUbuntuSource(p *Publisher, events EventReader, transfers *Transfers, journal *Journal, assets *AutoinstallAssets, source *UbuntuSource) http.Handler {
+	var registry *UbuntuRegistry
+	if source != nil {
+		registry = NewUbuntuRegistry(os.Getenv("OMB_BOOT_UBUNTU_REGISTRY"), filepath.Dir(source.assetDir))
+	}
+	return ControlHandlerWithUbuntuRegistry(p, events, transfers, journal, assets, source, registry)
+}
+
+func ControlHandlerWithUbuntuRegistry(p *Publisher, events EventReader, transfers *Transfers, journal *Journal, assets *AutoinstallAssets, source *UbuntuSource, registry *UbuntuRegistry) http.Handler {
 	mux := controlMux(p, events, transfers, assets)
 	handleJournal(mux, journal)
+	mux.HandleFunc("GET /ubuntu/legacy", func(w http.ResponseWriter, r *http.Request) {
+		if registry == nil {
+			http.Error(w, "legacy Ubuntu source unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		config, err := registry.legacy()
+		if err != nil {
+			http.Error(w, "legacy Ubuntu source unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(config)
+	})
+	mux.HandleFunc("GET /ubuntu/sources/{id}/{digest}", func(w http.ResponseWriter, r *http.Request) {
+		idText, digest := r.PathValue("id"), r.PathValue("digest")
+		if registry == nil || !canonicalPositiveID(idText) || !validSHA256(digest) {
+			http.Error(w, "Ubuntu source metadata unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, _ := strconv.ParseInt(idText, 10, 64)
+		verified, err := registry.source(id, digest)
+		if err != nil {
+			http.Error(w, "Ubuntu source metadata unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		catalog, err := verified.Catalog()
+		if err != nil {
+			http.Error(w, "Ubuntu source metadata unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(catalog)
+	})
 	mux.HandleFunc("GET /ubuntu/location", func(w http.ResponseWriter, r *http.Request) {
 		if source == nil || source.ISOPath() == "" {
 			http.Error(w, "Ubuntu ISO location unavailable", http.StatusServiceUnavailable)

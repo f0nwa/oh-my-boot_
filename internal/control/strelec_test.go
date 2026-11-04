@@ -41,6 +41,9 @@ func TestStrelecMenuInjectsNativePXEAndNeverWindowsSetup(t *testing.T) {
 	if res.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d", res.Code)
 	}
+	if res := menuPost(t, s, "/installations/100/add", url.Values{}); res.Code != http.StatusSeeOther {
+		t.Fatalf("add: %d", res.Code)
+	}
 	sources, err := s.installationMenuSources(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -76,6 +79,9 @@ func TestStrelecCanBePublishedAndRestoredWithSourceProtection(t *testing.T) {
 	s.Images.(*fakeImagesAPI).catalog.Images[1].Path = "Strelec.iso"
 	if res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"iso:7:Strelec.iso"}, "title": {"Strelec"}}); res.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d", res.Code)
+	}
+	if res := menuPost(t, s, "/installations/100/add", url.Values{}); res.Code != http.StatusSeeOther {
+		t.Fatalf("add: %d", res.Code)
 	}
 	if res := menuPost(t, s, "/menu/publish", url.Values{}); res.Code != http.StatusSeeOther {
 		t.Fatalf("publish: %d %s", res.Code, res.Body.String())
@@ -118,6 +124,9 @@ func TestStrelecDriversUseSameDownloadWorkflowAndDerivedMenu(t *testing.T) {
 			entry := store.installations[0]
 			if entry.DriverConfigID == 0 || builder.calls[0].ProfileID != 80 || builder.calls[0].AnswerID != 0 {
 				t.Fatal("wrong service driver binding")
+			}
+			if res := menuPost(t, s, "/installations/100/add", url.Values{}); res.Code != http.StatusSeeOther {
+				t.Fatalf("add: %d", res.Code)
 			}
 			sources, err := s.installationMenuSources(context.Background())
 			if err != nil {

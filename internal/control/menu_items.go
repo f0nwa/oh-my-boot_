@@ -95,6 +95,23 @@ func (s *Server) menuItemRename(w http.ResponseWriter, r *http.Request) {
 			return errItemNotInMenu
 		}
 		title, folder := strings.TrimSpace(r.FormValue("title")), strings.TrimSpace(r.FormValue("folder"))
+		inherits := r.FormValue("inherit_title") == "yes" || title == ""
+		if inherits {
+			items, err := s.Store.Installations(r.Context())
+			if err != nil {
+				return draftError("Не удалось прочитать загрузку")
+			}
+			found := false
+			for _, item := range items {
+				if item.ID == d.Items[i].InstallationID {
+					title, found = item.Title, true
+					break
+				}
+			}
+			if !found {
+				return draftError("Загрузка не найдена")
+			}
+		}
 		if title != "" && (!safeMenuText(title, 80) || !isASCII(title)) {
 			return draftError("Название в меню — только латиница, цифры и простые знаки, до 80 символов")
 		}
@@ -104,7 +121,7 @@ func (s *Server) menuItemRename(w http.ResponseWriter, r *http.Request) {
 		if validateMenuFolder(folder) != nil {
 			return draftError("Недопустимый каталог в меню")
 		}
-		d.Items[i].Title, d.Items[i].Folder = title, folder
+		d.Items[i].Title, d.Items[i].Folder, d.Items[i].InheritsTitle = title, folder, inherits
 		return nil
 	})
 }
@@ -218,7 +235,7 @@ func (d *MenuDraft) AddInstallation(item Installation) error {
 	if d.InstallationIndex(item.ID) >= 0 {
 		return draftError("installation is already in menu")
 	}
-	d.Items = append(d.Items, MenuDraftItem{InstallationID: item.ID, Title: item.Title, Folder: item.Folder})
+	d.Items = append(d.Items, MenuDraftItem{InstallationID: item.ID, Title: item.Title, Folder: item.Folder, InheritsTitle: true})
 	return nil
 }
 

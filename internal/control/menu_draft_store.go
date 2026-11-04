@@ -16,14 +16,14 @@ func (s Store) MenuDraft(ctx context.Context) (MenuDraft, bool, error) {
 	if err != nil {
 		return MenuDraft{}, false, err
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT installation_id,folder,title,components FROM menu_draft_items ORDER BY position`)
+	rows, err := s.Pool.Query(ctx, `SELECT d.installation_id,d.folder,COALESCE(d.title_override,i.title),d.components,d.title_override IS NULL FROM menu_draft_items d JOIN installations i ON i.id=d.installation_id ORDER BY d.position`)
 	if err != nil {
 		return MenuDraft{}, false, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item MenuDraftItem
-		if err := rows.Scan(&item.InstallationID, &item.Folder, &item.Title, &item.Components); err != nil {
+		if err := rows.Scan(&item.InstallationID, &item.Folder, &item.Title, &item.Components, &item.InheritsTitle); err != nil {
 			return MenuDraft{}, false, err
 		}
 		d.Items = append(d.Items, item)
@@ -47,7 +47,11 @@ func (s Store) SaveMenuDraft(ctx context.Context, d MenuDraft) error {
 		return err
 	}
 	for i, item := range d.Items {
-		if _, err := tx.Exec(ctx, `INSERT INTO menu_draft_items (position,installation_id,folder,title,components) VALUES ($1,$2,$3,$4,$5)`, i, item.InstallationID, item.Folder, item.Title, item.Components); err != nil {
+		var override *string
+		if !item.InheritsTitle && item.Title != "" {
+			override = &item.Title
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO menu_draft_items (position,installation_id,folder,title,components,title_override) VALUES ($1,$2,$3,$4,$5,$6)`, i, item.InstallationID, item.Folder, item.Title, item.Components, override); err != nil {
 			return err
 		}
 	}

@@ -18,7 +18,7 @@ func isoKindHint(name string) (kind, problem string) {
 	case strings.Contains(name, "arm64"):
 		return "ARM64", "ARM64 пока не поддерживается"
 	case strings.HasPrefix(name, "ubuntu"):
-		return "Ubuntu", "Для Ubuntu выберите системный источник в разделе «Загрузки»"
+		return "Ubuntu", "Проверьте ISO для Ubuntu в библиотеке образов"
 	case strings.Contains(name, "strelec"):
 		return "WinPE Strelec", ""
 	case strings.HasPrefix(name, "winpe"):
@@ -29,7 +29,7 @@ func isoKindHint(name string) (kind, problem string) {
 }
 
 func (c bootProfileChoice) Selectable() bool {
-	return c.State == "ready" || isISOBootKind(c.Kind) && (c.State == "pending" || c.State == "error")
+	return c.State == "ready" || isISOBootKind(c.Kind) && (c.State == "pending" || c.State == "error") || c.Kind == BootProfileUbuntuISO && (c.State == "verified" || c.State == "error")
 }
 
 func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile, windows []WindowsProfile, discover bool) ([]bootProfileChoice, error) {
@@ -39,6 +39,9 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		choice := &choices[i]
 		choice.Value = strconv.FormatInt(choice.ID, 10)
 		choice.DefaultTitle = choice.Title
+		if choice.Kind == BootProfileUbuntuISO {
+			existing[fmt.Sprintf("%d:%s", choice.UbuntuStorageID, choice.UbuntuPath)] = true
+		}
 		for _, w := range windows {
 			if w.ID == choice.WindowsProfileID && isISOBootKind(choice.Kind) {
 				existing[fmt.Sprintf("%d:%s", w.StorageID, w.Path)] = true
@@ -54,6 +57,17 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 	catalog, err := s.Images.Catalog(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Каталог ISO недоступен")
+	}
+	for i := range choices {
+		if choices[i].Kind != BootProfileUbuntuISO {
+			continue
+		}
+		for _, storage := range catalog.Storages {
+			if storage.ID == choices[i].UbuntuStorageID {
+				choices[i].StorageName = storage.Name
+				break
+			}
+		}
 	}
 	for _, image := range catalog.Images {
 		if existing[fmt.Sprintf("%d:%s", image.StorageID, image.Path)] {

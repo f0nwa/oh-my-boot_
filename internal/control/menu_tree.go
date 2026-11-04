@@ -23,6 +23,8 @@ type menuProfile struct {
 	base               string
 	autoinstallID      int64
 	autoinstallSHA256  string
+	ubuntuSourceID     int64
+	ubuntuSourceSHA256 string
 	windowsISOID       int64
 	answerID           int64
 	answerSHA256       string
@@ -429,12 +431,17 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
 		return
 	}
-	if profile.kind == BootProfileUbuntuBuiltin {
+	if profile.kind == BootProfileUbuntuBuiltin || profile.kind == BootProfileUbuntuISO {
 		seed := ""
 		if profile.autoinstallID > 0 {
 			seed = base + ubuntuAutoinstallSeedPath(profile.id, profile.autoinstallSHA256)
 		}
-		out.WriteString(strings.Replace(ubuntuBootScript(base, profile.id, seed), ":"+profile.id+"\n", ":"+profile.id+"\n"+choiceReport, 1))
+		script := ubuntuBootScript(base, profile.id, seed)
+		if profile.kind == BootProfileUbuntuISO {
+			sourcePath := fmt.Sprintf("%d/%s", profile.ubuntuSourceID, profile.ubuntuSourceSHA256)
+			script = ubuntuBootScriptAt(profile.id, seed, base+"/assets/ubuntu/"+sourcePath, base+"/images/ubuntu/"+sourcePath+".iso")
+		}
+		out.WriteString(strings.Replace(script, ":"+profile.id+"\n", ":"+profile.id+"\n"+choiceReport, 1))
 	}
 }
 

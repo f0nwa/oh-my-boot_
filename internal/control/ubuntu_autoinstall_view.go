@@ -72,10 +72,30 @@ func (s *Server) prepareUbuntuView(r *http.Request, v *ubuntuAutoinstallEditorVi
 	if v.Tab != "yaml" && v.Tab != "issues" {
 		v.Tab = "summary"
 	}
-	catalog, err := s.ubuntuSourceCatalog(r.Context())
+	profiles, _ := s.Store.BootProfiles(r.Context())
+	for _, profile := range profiles {
+		if profile.Kind == BootProfileUbuntuISO && profile.UbuntuState == "ready" {
+			v.ISOProfiles = append(v.ISOProfiles, profile)
+		}
+	}
+	isoID, isoSHA, sourceErr := s.selectedUbuntuEditorSource(r)
+	v.ISOSelected = isoID
+	var catalog autoinstall.SourceCatalog
+	var err error
+	if sourceErr != nil {
+		err = sourceErr
+	} else if isoID > 0 {
+		catalog, err = s.ubuntuSourceCatalogFor(r.Context(), isoID, isoSHA)
+	} else if len(v.ISOProfiles) == 0 {
+		catalog, err = s.ubuntuSourceCatalog(r.Context())
+	} else {
+		err = fmt.Errorf("ISO not selected")
+	}
 	if err == nil {
 		v.Sources = catalog.Sources
 		v.SourceDigest = catalog.ISOSHA256
+	} else if sourceErr == nil && isoID == 0 && len(v.ISOProfiles) > 0 {
+		v.Issues = append(v.Issues, ubuntuEditorIssue{Section: "source", Message: "Выберите ISO, чтобы увидеть доступные наборы приложений.", Severity: "warning"})
 	} else {
 		v.Issues = append(v.Issues, ubuntuEditorIssue{Section: "source", Message: "Метаданные ISO недоступны. Можно использовать настройки образа по умолчанию.", Severity: "warning"})
 	}

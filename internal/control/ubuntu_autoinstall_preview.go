@@ -21,6 +21,8 @@ type autoinstallPreviewPayload struct {
 	Values  autoinstall.Values `json:"values"`
 	Digest  string             `json:"digest"`
 	Expires int64              `json:"expires"`
+	ISOID   int64              `json:"iso_id,omitempty"`
+	ISOSHA  string             `json:"iso_sha,omitempty"`
 }
 
 func signAutoinstallPreview(payload autoinstallPreviewPayload, session string) (string, error) {

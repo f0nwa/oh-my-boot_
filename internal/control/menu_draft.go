@@ -16,6 +16,7 @@ type MenuDraftItem struct {
 	Components     *InstallationComponents
 	Folder         string
 	Title          string
+	InheritsTitle  bool
 }
 
 // MenuDraft is the boot menu being prepared; Items are in menu order.
@@ -176,8 +177,14 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 			}
 			var entry menuProfile
 			switch profile.Kind {
-			case BootProfileUbuntuBuiltin:
+			case BootProfileUbuntuBuiltin, BootProfileUbuntuISO:
 				entry = menuProfile{id: key, kind: profile.Kind, base: base}
+				if profile.Kind == BootProfileUbuntuISO {
+					if profile.UbuntuState != "ready" {
+						return menuProfile{}, "", fmt.Errorf("Ubuntu source %d is not ready", profile.UbuntuSourceID)
+					}
+					entry.ubuntuSourceID, entry.ubuntuSourceSHA256 = profile.UbuntuSourceID, profile.UbuntuSHA256
+				}
 				if installation.AutoinstallID > 0 {
 					for _, file := range sources.Autoinstalls {
 						if file.ID != installation.AutoinstallID {

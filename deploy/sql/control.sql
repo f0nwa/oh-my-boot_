@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS menu_versions (
  local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600),
  local_timer BOOLEAN NOT NULL DEFAULT true,
  default_installation_id BIGINT NOT NULL DEFAULT 0,
+ legacy_ubuntu_source_id BIGINT,
  look TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS menu_versions_one_active_idx ON menu_versions (active) WHERE active;
@@ -132,10 +133,31 @@ CREATE INDEX IF NOT EXISTS winpe_driver_configs_profile_idx ON winpe_driver_conf
 
 CREATE TABLE IF NOT EXISTS boot_profiles (
  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
- kind TEXT NOT NULL CHECK (kind IN ('windows_iso','winpe_iso','ubuntu_builtin')),
+ kind TEXT NOT NULL CHECK (kind IN ('windows_iso','winpe_iso','ubuntu_builtin','ubuntu_iso')),
  title TEXT NOT NULL CHECK (btrim(title) <> '')
 );
 CREATE UNIQUE INDEX IF NOT EXISTS boot_profiles_one_ubuntu_idx ON boot_profiles (kind) WHERE kind='ubuntu_builtin';
+
+CREATE TABLE IF NOT EXISTS ubuntu_sources (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ boot_profile_id BIGINT NOT NULL UNIQUE REFERENCES boot_profiles(id) ON DELETE RESTRICT,
+ storage_id BIGINT NOT NULL CHECK (storage_id > 0),
+ path TEXT NOT NULL CHECK (path <> ''),
+ sha256 TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+ state TEXT NOT NULL CHECK (state IN ('unverified','checking','verified','preparing','ready','error')),
+ error TEXT NOT NULL DEFAULT '',
+ UNIQUE (storage_id,path,sha256)
+);
+CREATE OR REPLACE FUNCTION reject_ubuntu_source_identity_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF (OLD.boot_profile_id, OLD.storage_id, OLD.path, OLD.sha256) IS DISTINCT FROM (NEW.boot_profile_id, NEW.storage_id, NEW.path, NEW.sha256) THEN
+  RAISE EXCEPTION 'Ubuntu source identity is immutable';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS ubuntu_source_identity_immutable ON ubuntu_sources;
+CREATE TRIGGER ubuntu_source_identity_immutable BEFORE UPDATE ON ubuntu_sources FOR EACH ROW EXECUTE FUNCTION reject_ubuntu_source_identity_update();
 
 CREATE TABLE IF NOT EXISTS windows_boot_profiles (
  boot_profile_id BIGINT PRIMARY KEY REFERENCES boot_profiles(id) ON DELETE CASCADE,
@@ -177,6 +199,7 @@ CREATE TABLE IF NOT EXISTS menu_draft_items (
  installation_id BIGINT NOT NULL UNIQUE REFERENCES installations(id) ON DELETE RESTRICT,
  folder TEXT NOT NULL DEFAULT '',
  title TEXT NOT NULL DEFAULT '',
+ title_override TEXT,
  components JSONB
 );
 

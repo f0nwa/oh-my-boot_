@@ -23,7 +23,7 @@ func HandlerWithSMB(applier *Applier, manager *SMBManager) http.Handler {
 }
 
 func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *WindowsISOManager) http.Handler {
-	return HandlerWithDriverManager(applier, manager, windows, nil)
+	return HandlerWithUbuntuISO(HandlerWithDriverManager(applier, manager, windows, nil), nil)
 }
 
 func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *WindowsISOManager, driverManager *DriverManager) http.Handler {

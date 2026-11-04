@@ -27,7 +27,12 @@ type ubuntuSourceManifest struct {
 }
 
 func NewUbuntuSource(isoPath, assetDir string) *UbuntuSource {
-	s := &UbuntuSource{isoPath: isoPath, assetDir: filepath.Join(assetDir, "ubuntu"), info: map[string]os.FileInfo{}}
+	return NewUbuntuSourceAt(isoPath, filepath.Join(assetDir, "ubuntu"))
+}
+
+// NewUbuntuSourceAt verifies one ISO against the prepared source directory.
+func NewUbuntuSourceAt(isoPath, sourceDir string) *UbuntuSource {
+	s := &UbuntuSource{isoPath: isoPath, assetDir: sourceDir, info: map[string]os.FileInfo{}}
 	s.err = s.load()
 	return s
 }

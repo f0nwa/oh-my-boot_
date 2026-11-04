@@ -209,7 +209,7 @@ func installationTestStore(t *testing.T) Store {
 func TestInstallationModelMigration(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
-	if _, err := store.Pool.Exec(ctx, `DROP TABLE menu_version_items,menu_draft_items,windows_installation_options,installations,windows_boot_profiles,boot_profiles; ALTER TABLE menu_versions DROP COLUMN diagnostics_on,DROP COLUMN local_timeout,DROP COLUMN local_timer,DROP COLUMN look; ALTER TABLE menu_draft ADD COLUMN ubuntu BOOLEAN NOT NULL DEFAULT false,ADD COLUMN ubuntu_folder TEXT NOT NULL DEFAULT ''; CREATE TABLE menu_draft_items(position INT PRIMARY KEY,key TEXT NOT NULL UNIQUE,folder TEXT NOT NULL DEFAULT '',title TEXT NOT NULL DEFAULT '')`); err != nil {
+	if _, err := store.Pool.Exec(ctx, `DROP TABLE ubuntu_sources,menu_version_items,menu_draft_items,windows_installation_options,installations,windows_boot_profiles,boot_profiles; ALTER TABLE menu_versions DROP COLUMN diagnostics_on,DROP COLUMN local_timeout,DROP COLUMN local_timer,DROP COLUMN look; ALTER TABLE menu_draft ADD COLUMN ubuntu BOOLEAN NOT NULL DEFAULT false,ADD COLUMN ubuntu_folder TEXT NOT NULL DEFAULT ''; CREATE TABLE menu_draft_items(position INT PRIMARY KEY,key TEXT NOT NULL UNIQUE,folder TEXT NOT NULL DEFAULT '',title TEXT NOT NULL DEFAULT '')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Pool.Exec(ctx, `
@@ -245,6 +245,25 @@ func TestInstallationModelMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	applyDownloadComponentsMigration(t, store)
+	newUbuntuMigration, err := os.ReadFile("../../deploy/sql/2026-11-04-multi-ubuntu.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := store.Pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range map[string]string{"omb.ubuntu_storage_id": "1", "omb.ubuntu_path": "ubuntu.iso", "omb.ubuntu_sha256": strings.Repeat("a", 64)} {
+		if _, err := conn.Exec(ctx, `SELECT set_config($1,$2,false)`, key, value); err != nil {
+			conn.Release()
+			t.Fatal(err)
+		}
+	}
+	_, err = conn.Exec(ctx, string(newUbuntuMigration))
+	conn.Release()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for table, before := range libraryBefore {
 		var after string
 		if err := store.Pool.QueryRow(ctx, "SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM "+table+" t").Scan(&after); err != nil || after != before {

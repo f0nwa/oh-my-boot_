@@ -52,6 +52,10 @@ func validatedBootURL(baseURL string) (string, error) {
 }
 
 func ubuntuBootScript(base, label, seed string) string {
+	return ubuntuBootScriptAt(label, seed, base+"/assets/ubuntu", base+"/images/ubuntu-desktop.iso")
+}
+
+func ubuntuBootScriptAt(label, seed, assetsURL, isoURL string) string {
 	args := ""
 	if seed != "" {
 		// iPXE splits whitespace and treats only a standalone ";" as a command
@@ -61,11 +65,11 @@ func ubuntuBootScript(base, label, seed string) string {
 		args = " autoinstall ds=nocloud-net;s=" + seed
 	}
 	return ":" + label + "\n" +
-		"kernel " + base + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + base + "/images/ubuntu-desktop.iso" + args + " ---\n" +
-		"initrd " + base + "/assets/ubuntu/initrd\n" +
+		"kernel " + assetsURL + "/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + isoURL + args + " ---\n" +
+		"initrd " + assetsURL + "/initrd\n" +
 		"iseq ${platform} efi && goto " + label + "_efi || goto " + label + "_boot\n" +
 		":" + label + "_efi\n" +
-		"shim " + base + "/assets/ubuntu/bootx64.efi || goto " + label + "_failed\n" +
+		"shim " + assetsURL + "/bootx64.efi || goto " + label + "_failed\n" +
 		":" + label + "_boot\n" +
 		"boot || goto " + label + "_failed\n" +
 		":" + label + "_failed\n" +

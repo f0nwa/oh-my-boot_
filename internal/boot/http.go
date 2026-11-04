@@ -48,7 +48,7 @@ func NewDynamicHandlerWithISO(assetDir string, publisher *Publisher, record func
 }
 
 // NewDynamicHandlerWithTransfers also lists the files being sent in transfers.
-func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, record func(Event), isoPath string, transfers *Transfers) (http.Handler, error) {
+func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, record func(Event), isoPath string, transfers *Transfers, registries ...*UbuntuRegistry) (http.Handler, error) {
 	if publisher == nil {
 		return nil, fmt.Errorf("publisher is required")
 	}
@@ -60,6 +60,15 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 	if err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("asset directory is unavailable: %s", assetDir)
 	}
+	registryRoot := os.Getenv("OMB_BOOT_UBUNTU_REGISTRY")
+	if registryRoot == "" {
+		registryRoot = DefaultUbuntuRegistryRoot
+	}
+	ubuntuSources := NewUbuntuRegistry(registryRoot, root)
+	if len(registries) > 0 && registries[0] != nil {
+		ubuntuSources = registries[0]
+	}
+	strictLegacyUbuntu := len(registries) > 0 && registries[0] != nil
 
 	mux := http.NewServeMux()
 	if isoPath != "" {
@@ -200,6 +209,10 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 		// Generic asset aliases must not bypass the NoCloud path validator or
 		// subnet policy by resolving into its private namespace.
 		resolvedName := filepath.ToSlash(rel)
+		if resolvedName == "ubuntu-sources" || strings.HasPrefix(resolvedName, "ubuntu-sources/") {
+			notFound()
+			return
+		}
 		if (resolvedName == "ubuntu-autoinstall" || strings.HasPrefix(resolvedName, "ubuntu-autoinstall/")) && (!autoinstall || resolvedName != name) {
 			notFound()
 			return
@@ -233,6 +246,37 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 		}
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strictLegacyUbuntu && r.URL.Path == "/images/ubuntu-desktop.iso" {
+			ubuntuSources.serveLegacy(w, r, "")
+			return
+		}
+		if strictLegacyUbuntu && strings.HasPrefix(r.URL.Path, "/assets/ubuntu/") && !strings.Contains(strings.TrimPrefix(r.URL.Path, "/assets/ubuntu/"), "/") {
+			ubuntuSources.serveLegacy(w, r, strings.TrimPrefix(r.URL.Path, "/assets/ubuntu/"))
+			return
+		}
+		// The isolated source namespace is served only through the registry;
+		// direct asset paths must not bypass its integrity and network checks.
+		cleanPath := path.Clean(r.URL.Path)
+		if strings.HasPrefix(r.URL.Path, "/images/ubuntu/") {
+			if cleanPath != r.URL.Path {
+				http.NotFound(w, r)
+				return
+			}
+			ubuntuSources.serve(w, r, true)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/assets/ubuntu/") && strings.Contains(strings.TrimPrefix(r.URL.Path, "/assets/ubuntu/"), "/") {
+			if cleanPath != r.URL.Path {
+				http.NotFound(w, r)
+				return
+			}
+			ubuntuSources.serve(w, r, false)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/assets/ubuntu-sources/") || strings.HasPrefix(cleanPath, "/assets/ubuntu-sources/") {
+			http.NotFound(w, r)
+			return
+		}
 		// ServeMux redirects dot segments and repeated slashes before routing.
 		// Reject malformed NoCloud paths here so they get an exact 404 instead.
 		name := strings.TrimPrefix(r.URL.Path, "/assets/")

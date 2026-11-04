@@ -17,7 +17,7 @@ func (s Store) EnsureBootProfiles(ctx context.Context) error {
 }
 
 func (s Store) BootProfiles(ctx context.Context) ([]BootProfile, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0) FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id ORDER BY b.id`)
+	rows, err := s.Pool.Query(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0),COALESCE(u.id,0),COALESCE(u.storage_id,0),COALESCE(u.path,''),COALESCE(u.sha256,''),COALESCE(u.state,'') FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id LEFT JOIN ubuntu_sources u ON u.boot_profile_id=b.id ORDER BY b.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func (s Store) BootProfiles(ctx context.Context) ([]BootProfile, error) {
 	result := []BootProfile{}
 	for rows.Next() {
 		var profile BootProfile
-		if err := rows.Scan(&profile.ID, &profile.Kind, &profile.Title, &profile.WindowsProfileID); err != nil {
+		if err := rows.Scan(&profile.ID, &profile.Kind, &profile.Title, &profile.WindowsProfileID, &profile.UbuntuSourceID, &profile.UbuntuStorageID, &profile.UbuntuPath, &profile.UbuntuSHA256, &profile.UbuntuState); err != nil {
 			return nil, err
 		}
 		result = append(result, profile)

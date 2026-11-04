@@ -48,7 +48,11 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, version := range versions {
-		data.Versions = append(data.Versions, menuVersionRow{MenuVersion: version, Restorable: menuVersionRestorable(version, sources, profiles, answers, configs)})
+		row := menuVersionRow{MenuVersion: version, Restorable: menuVersionRestorable(version, sources, profiles, answers, configs)}
+		if legacyUbuntuMenuWithoutSource(version, sources) {
+			row.UnrestorableReason = "Источник Ubuntu не подтверждён"
+		}
+		data.Versions = append(data.Versions, row)
 		if version.Active {
 			data.ActiveVersion = version.ID
 		}
@@ -82,7 +86,7 @@ func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []Windows
 		entry, folder, err := resolveDraftItem(item, "", sources, profiles, answers, configs)
 		if item.InstallationID > 0 {
 			switch {
-			case entry.kind == BootProfileUbuntuBuiltin:
+			case entry.kind == BootProfileUbuntuBuiltin || entry.kind == BootProfileUbuntuISO:
 				row.Kind = "Ubuntu"
 			case entry.driverConfigID > 0:
 				row.Kind = "Образ с драйверами"
@@ -141,8 +145,23 @@ func (s *Server) menuSources(ctx context.Context) ([]WindowsProfile, []WindowsAn
 	return profiles, answers, configs, nil
 }
 
+func legacyUbuntuMenuWithoutSource(version MenuVersion, sources InstallationMenuSources) bool {
+	if version.ID == 0 || (!strings.Contains(version.Script, "/images/ubuntu-desktop.iso") && !strings.Contains(version.Script, "/assets/ubuntu/vmlinuz") && !strings.Contains(version.Script, "/assets/ubuntu/initrd") && !strings.Contains(version.Script, "/assets/ubuntu/bootx64.efi")) {
+		return false
+	}
+	for _, profile := range sources.BootProfiles {
+		if version.LegacyUbuntuSourceID > 0 && profile.Kind == BootProfileUbuntuBuiltin && profile.UbuntuSourceID == version.LegacyUbuntuSourceID && profile.UbuntuState == "ready" && ubuntuSourceDigest.MatchString(profile.UbuntuSHA256) {
+			return false
+		}
+	}
+	return true
+}
+
 func menuVersionRestorable(version MenuVersion, sources InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) bool {
 	if version.Items == nil {
+		return false
+	}
+	if legacyUbuntuMenuWithoutSource(version, sources) {
 		return false
 	}
 	_, err := BuildMenuFromDraft(draftFromVersion(version), previewBaseURL, profiles, answers, configs, sources)
@@ -160,6 +179,12 @@ func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) err
 	if err != nil {
 		return err
 	}
+	if legacyUbuntuMenuWithoutSource(version, sources) {
+		return fmt.Errorf("legacy Ubuntu menu source is not verified")
+	}
+	if err := s.verifyLegacyUbuntuAlias(ctx, version, sources); err != nil {
+		return err
+	}
 	profiles, answers, configs, err := s.menuSources(ctx)
 	if err != nil {
 		return err
@@ -170,6 +195,7 @@ func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) err
 	}
 	entries := make([]menuProfile, 0, len(draft.Items))
 	ubuntuChecked := false
+	checkedSources := map[string]bool{}
 	for _, item := range draft.Items {
 		entry, _, err := resolveDraftItem(item, "", sources, profiles, answers, configs)
 		if err != nil {
@@ -181,15 +207,97 @@ func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) err
 			}
 			ubuntuChecked = true
 		}
+		if entry.kind == BootProfileUbuntuISO {
+			key := fmt.Sprintf("%d/%s", entry.ubuntuSourceID, entry.ubuntuSourceSHA256)
+			if !checkedSources[key] {
+				if _, err := s.ubuntuSourceCatalogFor(ctx, entry.ubuntuSourceID, entry.ubuntuSourceSHA256); err != nil {
+					return err
+				}
+				checkedSources[key] = true
+			}
+		}
 		entries = append(entries, entry)
 	}
 	if err := s.verifyMenuWindowsProfiles(ctx, version.Script, entries...); err != nil {
+		return err
+	}
+	if err := verifyUbuntuSourceReferences(version.Script, entries); err != nil {
 		return err
 	}
 	if err := verifyMenuAutoinstallReferences(version.Script, entries); err != nil {
 		return err
 	}
 	return s.stageMenuAutoinstalls(ctx, entries)
+}
+
+func verifyUbuntuSourceReferences(script string, entries []menuProfile) error {
+	for _, entry := range entries {
+		if entry.kind != BootProfileUbuntuISO {
+			continue
+		}
+		label := ":" + entry.id + "\n"
+		endLabel := ":" + entry.id + "_failed\n"
+		if strings.Count(script, label) != 1 || strings.Count(script, endLabel) != 1 {
+			return fmt.Errorf("Ubuntu source snapshot labels are invalid")
+		}
+		start := strings.Index(script, label) + len(label)
+		end := strings.Index(script[start:], endLabel)
+		if end < 0 {
+			return fmt.Errorf("Ubuntu source snapshot labels are invalid")
+		}
+		block := script[start : start+end]
+		pathPart := fmt.Sprintf("%d/%s", entry.ubuntuSourceID, entry.ubuntuSourceSHA256)
+		kernelPath := "/assets/ubuntu/" + pathPart + "/vmlinuz"
+		isoPath := "/images/ubuntu/" + pathPart + ".iso"
+		var base string
+		kernels := 0
+		var initrds, shims []string
+		for _, line := range strings.Split(block, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 0 {
+				continue
+			}
+			if fields[0] == "initrd" {
+				initrds = append(initrds, line)
+				continue
+			}
+			if fields[0] == "shim" {
+				shims = append(shims, line)
+				continue
+			}
+			if fields[0] != "kernel" {
+				continue
+			}
+			kernels++
+			if len(fields) < 3 {
+				return fmt.Errorf("Ubuntu source snapshot kernel is invalid")
+			}
+			u, err := url.Parse(fields[1])
+			if err != nil || u.Path != kernelPath || u.RawQuery != "" || u.Fragment != "" {
+				return fmt.Errorf("Ubuntu source snapshot kernel is invalid")
+			}
+			base, err = validatedBootURL(u.Scheme + "://" + u.Host)
+			if err != nil || fields[1] != base+kernelPath {
+				return fmt.Errorf("Ubuntu source snapshot kernel is invalid")
+			}
+			isoCount := 0
+			for _, arg := range fields[2:] {
+				if strings.HasPrefix(arg, "iso-url=") {
+					isoCount++
+					if arg != "iso-url="+base+isoPath {
+						return fmt.Errorf("Ubuntu source snapshot ISO is invalid")
+					}
+				}
+			}
+			if isoCount != 1 {
+				return fmt.Errorf("Ubuntu source snapshot ISO is invalid")
+			}
+		}
+		if kernels != 1 || len(initrds) != 1 || initrds[0] != "initrd "+base+"/assets/ubuntu/"+pathPart+"/initrd" || len(shims) != 1 || shims[0] != "shim "+base+"/assets/ubuntu/"+pathPart+"/bootx64.efi || goto "+entry.id+"_failed" {
+			return fmt.Errorf("Ubuntu source snapshot assets are invalid")
+		}
+	}
+	return nil
 }
 
 // Match saved kernel arguments to the current immutable library references.
@@ -248,7 +356,7 @@ func (s *Server) stageMenuAutoinstalls(ctx context.Context, entries []menuProfil
 		if err != nil || file.ID != entry.autoinstallID || file.State != "validated" || file.SHA256 != entry.autoinstallSHA256 || len(file.UserData) == 0 || len(file.UserData) > boot.MaxAutoinstallUserDataSize || !bytes.Equal(rendered, file.UserData) || fmt.Sprintf("%x", sha256.Sum256(file.UserData)) != entry.autoinstallSHA256 {
 			return fmt.Errorf("Ubuntu Autoinstall file %d is invalid or changed", entry.autoinstallID)
 		}
-		if err := s.validateUbuntuSource(ctx, file.Values); err != nil {
+		if err := s.validateUbuntuSourceFor(ctx, file.Values, entry.ubuntuSourceID, entry.ubuntuSourceSHA256); err != nil {
 			return err
 		}
 		id, err := strconv.ParseInt(strings.TrimPrefix(entry.id, "install_"), 10, 64)
@@ -304,9 +412,14 @@ func (s *Server) menuPublish(w http.ResponseWriter, r *http.Request) {
 		published.Items = append(published.Items, MenuVersionItem{InstallationID: item.InstallationID, Position: position, Title: entry.title, Folder: folder, Components: item.Components})
 	}
 	if s.publishMenu(w, r, published, "menu.publish") {
-		// Store the resolved published placements, so
-		// object titles and folders it relied on no longer look like changes.
-		s.saveDraftAfterPublish(r, published)
+		// Keep title inheritance in the draft while the version freezes its text.
+		for i := range draft.Items {
+			draft.Items[i].Title = published.Items[i].Title
+			draft.Items[i].Folder = published.Items[i].Folder
+		}
+		if err := s.Store.SaveMenuDraft(r.Context(), draft); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.save", "error", err.Error())
+		}
 	}
 }
 

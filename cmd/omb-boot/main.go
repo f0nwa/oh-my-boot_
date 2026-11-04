@@ -49,7 +49,8 @@ func main() {
 	}
 	recorder := boot.NewRecorder(store, log.Default())
 	transfers := boot.NewTransfers()
-	handler, err := boot.NewDynamicHandlerWithTransfers(*assets, publisher, recorder.Record, os.Getenv("OMB_BOOT_UBUNTU_ISO"), transfers)
+	ubuntuRegistry := boot.NewUbuntuRegistry(os.Getenv("OMB_BOOT_UBUNTU_REGISTRY"), *assets)
+	handler, err := boot.NewDynamicHandlerWithTransfers(*assets, publisher, recorder.Record, os.Getenv("OMB_BOOT_UBUNTU_ISO"), transfers, ubuntuRegistry)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -79,7 +80,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	controlServer := &http.Server{Handler: boot.ControlHandlerWithUbuntuSource(publisher, reader, transfers, journal, autoinstallAssets, boot.NewUbuntuSource(os.Getenv("OMB_BOOT_UBUNTU_ISO"), *assets)), ReadHeaderTimeout: 5 * time.Second}
+	controlServer := &http.Server{Handler: boot.ControlHandlerWithUbuntuRegistry(publisher, reader, transfers, journal, autoinstallAssets, boot.NewUbuntuSource(os.Getenv("OMB_BOOT_UBUNTU_ISO"), *assets), ubuntuRegistry), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

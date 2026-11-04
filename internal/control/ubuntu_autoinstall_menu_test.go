@@ -263,6 +263,13 @@ func TestUbuntuAutoinstallRestoreRetainsOldSeedAndRejectsCorruption(t *testing.T
 	if res := menuPost(t, s, "/menu/publish", url.Values{}); res.Code != http.StatusSeeOther {
 		t.Fatalf("publish=%d %s", res.Code, res.Body.String())
 	}
+	// The historical fixture represents a source whose identity was verified
+	// during the legacy migration; unverified history must not be restored.
+	store.bootProfiles[0].UbuntuSourceID = 17
+	store.bootProfiles[0].UbuntuSHA256 = strings.Repeat("a", 64)
+	store.bootProfiles[0].UbuntuState = "ready"
+	store.versions[0].LegacyUbuntuSourceID = 17
+	s.UbuntuSource = multiUbuntuSourceStub{}
 	old := store.versions[0]
 	store.draft.Items = []MenuDraftItem{{InstallationID: 73}}
 	if res := menuPost(t, s, "/menu/publish", url.Values{}); res.Code != http.StatusSeeOther {

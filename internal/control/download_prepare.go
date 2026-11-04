@@ -26,6 +26,9 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 	var sourceID int64
 	for _, source := range sources {
 		if source.ID == item.BootProfileID {
+			if source.Kind == BootProfileUbuntuISO {
+				return s.prepareUbuntuDownload(ctx, source, actor)
+			}
 			if source.Kind == BootProfileUbuntuBuiltin {
 				return s.checkUbuntuReadiness(ctx)
 			}
@@ -86,6 +89,54 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 		}
 	}
 	return fmt.Errorf("Конфигурация не найдена")
+}
+
+type ubuntuSourceStateStore interface {
+	SetUbuntuSourceState(context.Context, int64, string, string) error
+}
+
+func (s *Server) prepareUbuntuDownload(ctx context.Context, source BootProfile, actor int64) error {
+	writer, ok := s.Store.(ubuntuSourceStateStore)
+	if !ok || s.Images == nil || s.UbuntuISO == nil || source.UbuntuSourceID <= 0 || !ubuntuSourceDigest.MatchString(source.UbuntuSHA256) {
+		return fmt.Errorf("Подготовка Ubuntu ISO недоступна")
+	}
+	if source.UbuntuState != "verified" && source.UbuntuState != "preparing" && source.UbuntuState != "ready" && source.UbuntuState != "error" {
+		return fmt.Errorf("Образ ещё не проверен")
+	}
+	if source.UbuntuState == "ready" {
+		if _, err := s.ubuntuSourceCatalogFor(ctx, source.UbuntuSourceID, source.UbuntuSHA256); err == nil {
+			return nil
+		}
+	}
+	if err := writer.SetUbuntuSourceState(ctx, source.UbuntuSourceID, "preparing", ""); err != nil {
+		return err
+	}
+	var problem error
+	catalog, problem := s.Images.Catalog(ctx)
+	var selected WindowsProfileSource
+	if problem == nil {
+		selected, problem = SelectWindowsISO(catalog, source.UbuntuStorageID, source.UbuntuPath, "Ubuntu Desktop", "")
+	}
+	if problem == nil {
+		request := agent.UbuntuISORequest{WindowsISORequest: agent.WindowsISORequest{ID: source.UbuntuSourceID, StorageRoot: selected.StorageRoot, RelativePath: selected.Path, Size: selected.Size, Modified: selected.Modified}, SHA256: source.UbuntuSHA256}
+		problem = s.UbuntuISO.PrepareUbuntuISO(ctx, request)
+	}
+	if problem == nil {
+		_, problem = s.ubuntuSourceCatalogFor(ctx, source.UbuntuSourceID, source.UbuntuSHA256)
+	}
+	finalCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if problem != nil {
+		message := "Не удалось подготовить Ubuntu ISO. Проверьте образ, хранилище и службы Agent и Boot."
+		_ = writer.SetUbuntuSourceState(finalCtx, source.UbuntuSourceID, "error", message)
+		_ = s.Store.Audit(finalCtx, actor, "ubuntu-source.prepare", "error", fmt.Sprintf("id=%d", source.UbuntuSourceID))
+		return fmt.Errorf("%s", message)
+	}
+	if err := writer.SetUbuntuSourceState(finalCtx, source.UbuntuSourceID, "ready", ""); err != nil {
+		return err
+	}
+	_ = s.Store.Audit(finalCtx, actor, "ubuntu-source.prepare", "ok", fmt.Sprintf("id=%d", source.UbuntuSourceID))
+	return nil
 }
 
 func (s *Server) prepareDownloadISO(ctx context.Context, profile WindowsProfile, actor int64) error {

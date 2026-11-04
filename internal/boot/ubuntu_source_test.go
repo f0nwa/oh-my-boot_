@@ -55,10 +55,12 @@ func TestUbuntuSourceRejectsReplacedFiles(t *testing.T) {
 	}
 }
 func TestUbuntuSourceRejectsBadManifestAndSymlink(t *testing.T) {
-	for _, kind := range []string{"manifest", "symlink", "contents"} {
+	for _, kind := range []string{"missing-manifest", "manifest", "symlink", "contents"} {
 		t.Run(kind, func(t *testing.T) {
 			iso, assets := sourceFixture(t)
 			switch kind {
+			case "missing-manifest":
+				os.Remove(filepath.Join(assets, "ubuntu", "manifest.json"))
 			case "manifest":
 				os.WriteFile(filepath.Join(assets, "ubuntu", "manifest.json"), []byte(`{"version":2}`), 0644)
 			case "symlink":

@@ -25,7 +25,7 @@
       group.disabled = !available;
     });
     var ubuntu = document.getElementById("ubuntu-autoinstall");
-    ubuntu.hidden = !profile || profile.dataset.kind !== "ubuntu_builtin";
+    ubuntu.hidden = !profile || (profile.dataset.kind !== "ubuntu_builtin" && profile.dataset.kind !== "ubuntu_iso");
     ubuntu.disabled = ubuntu.hidden;
     ["summary-build-label", "summary-build"].forEach(function (id) { document.getElementById(id).hidden = !winpe; });
     form.querySelectorAll('input[name="answer_id"][data-profile]').forEach(function (input) {

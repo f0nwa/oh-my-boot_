@@ -208,7 +208,7 @@ func TestStructuredDraftOperationsAndChanges(t *testing.T) {
 	if err := d.RemoveInstallation(8); err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Items) != 1 || d.Items[0] != (MenuDraftItem{InstallationID: 7, Title: "Lab Ubuntu", Folder: "Lab"}) {
+	if len(d.Items) != 1 || d.Items[0] != (MenuDraftItem{InstallationID: 7, Title: "Lab Ubuntu", Folder: "Lab", InheritsTitle: true}) {
 		t.Fatalf("items=%+v", d.Items)
 	}
 	if err := d.RemoveInstallation(8); err == nil {

@@ -157,7 +157,7 @@ func TestUnifiedInstallationsPageShowsOnlyPersistentChoices(t *testing.T) {
 	store.installations = []Installation{{ID: 100, BootProfileID: 52, Title: "Ubuntu Lab", Folder: "Linux"}, {ID: 101, BootProfileID: 52, Title: "Ubuntu Rescue", Folder: "Recovery"}, {ID: 102, BootProfileID: 51, Title: "Windows XML", AnswerID: 31}}
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 100, Title: "Ubuntu Lab", Folder: "Linux"}}}
 	body := libraryGet(t, s, "/installations")
-	for _, want := range []string{"Ubuntu Lab", "Ubuntu Rescue", "Системный источник Ubuntu", `action="/installations/101/add"`, `action="/menu/items/install_100/remove"`, "Windows XML", "не выбирали"} {
+	for _, want := range []string{"Ubuntu Lab", "Ubuntu Rescue", "Ubuntu Desktop", `action="/installations/101/add"`, `action="/menu/items/install_100/remove"`, "Windows XML", "не выбирали"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %s", want)
 		}
@@ -190,7 +190,7 @@ func TestUnifiedUbuntuInspectorShowsSourceWithoutWindowsComponents(t *testing.T)
 	store.installations = []Installation{{ID: 100, BootProfileID: 52, Title: "Ubuntu Lab", Folder: "Linux"}}
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 100, Title: "Ubuntu Lab", Folder: "Linux"}}}
 	body := libraryGet(t, s, "/menu?item=install_100")
-	if !strings.Contains(body, "Системный источник Ubuntu") || strings.Contains(body, "<dt>Файл ответов</dt>") || strings.Contains(body, "<dt>Драйверы</dt>") {
+	if !strings.Contains(body, "Ubuntu Desktop") || strings.Contains(body, "<dt>Файл ответов</dt>") || strings.Contains(body, "<dt>Драйверы</dt>") {
 		t.Fatal("Ubuntu inspector shows Windows components")
 	}
 }
@@ -202,7 +202,7 @@ func TestUnifiedInstallationPagesTranslateUbuntuSource(t *testing.T) {
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 100, Title: "Ubuntu Lab", Folder: "Linux"}}}
 	for _, path := range []string{"/installations", "/installations/new?boot_profile_id=52", "/menu?item=install_100"} {
 		body := libraryGet(t, s, path)
-		if !strings.Contains(body, "System Ubuntu source") || strings.Contains(body, "Системный источник Ubuntu") {
+		if !strings.Contains(body, "Ubuntu Desktop") || strings.Contains(body, "Системный источник Ubuntu") {
 			t.Errorf("%s has untranslated Ubuntu source", path)
 		}
 	}

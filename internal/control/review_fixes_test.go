@@ -37,8 +37,8 @@ func TestReaddingRemovedItemRestoresItsTitleAndFolder(t *testing.T) {
 func TestNewInstallationWithAnswerDefaultsToAnswerTitle(t *testing.T) {
 	s, store := newInstallServer(t)
 	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "answer_id": {"31"}})
-	if res.Code != http.StatusSeeOther || store.draft.Items[0].Title != "Lab" {
-		t.Fatalf("status=%d draft=%+v", res.Code, store.draft)
+	if res.Code != http.StatusSeeOther || len(store.installations) != 1 || store.installations[0].Title != "Lab" {
+		t.Fatalf("status=%d installations=%+v", res.Code, store.installations)
 	}
 }
 

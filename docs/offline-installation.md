@@ -237,6 +237,8 @@ sudo runuser -u omb-control -- psql -v ON_ERROR_STOP=1 -d omb_control < deploy/s
 
 `omb-agent.service` работает с `ProtectSystem=strict` и не запустится, если отсутствует хоть один путь из его `ReadWritePaths`. До первого запуска должны существовать `/etc/omb`, `/etc/omb/winiso`, `/mnt/omb-smb`, `/mnt/omb-smb-upload`, `/mnt/omb-iso/profiles`, `/srv/omb/tftp/windows-profiles`, `/srv/omb/tftp/windows-answers`, `/srv/omb/tftp/windows-driver-wims` и `/srv/omb/tftp/windows-driver-configs`. Владельцы и права указаны в руководстве Images и в разделе о драйверах руководства Control.
 
+Для подготовки Ubuntu ISO также установите `scripts/prepare-ubuntu-source.sh` и создайте каталоги, как указано в [установке Boot](installation.md). На сервере должен быть Python 3; каталог реестра источников должен принадлежать root.
+
 ## 4. Проверить
 
 Сначала убедитесь, что сервер действительно изолирован, иначе проверка ничего не докажет:

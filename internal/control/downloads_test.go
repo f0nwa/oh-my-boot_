@@ -106,7 +106,7 @@ func TestDownloadCreatesSourceAndPreparesAutomatically(t *testing.T) {
 	if res.Code != http.StatusSeeOther || len(store.installations) != 1 || prep.calls != 1 || store.sourceCreates != 1 {
 		t.Fatalf("status=%d downloads=%+v created=%d preparation=%d body=%s", res.Code, store.installations, store.sourceCreates, prep.calls, res.Body.String())
 	}
-	if store.installations[0].BootProfileID != 81 || store.profiles[len(store.profiles)-1].State != "ready" || lastDraftKey(store.newInstallStore) != "install_100" {
+	if store.installations[0].BootProfileID != 81 || store.profiles[len(store.profiles)-1].State != "ready" || lastDraftKey(store.newInstallStore) != "" {
 		t.Fatalf("downloads=%+v source=%+v draft=%+v", store.installations, store.profiles, store.draft)
 	}
 	// Repeating the source selection reuses its technical record and files.
@@ -129,7 +129,11 @@ func TestDownloadPreparationErrorPersistsAndCanRetry(t *testing.T) {
 	}
 	// A failed source must never become a publishable menu item.
 	sources, _ := s.installationMenuSources(context.Background())
-	if _, err := BuildMenuFromDraft(*store.draft, testBootURL, store.profiles, store.answers, store.configs, sources); err == nil {
+	draft := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready"}
+	if err := draft.AddInstallation(store.installations[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildMenuFromDraft(draft, testBootURL, store.profiles, store.answers, store.configs, sources); err == nil {
 		t.Fatal("unprepared download can be published")
 	}
 	prep.err = nil
@@ -166,6 +170,9 @@ func TestDownloadEditPreservesIDAndPublishedMenu(t *testing.T) {
 	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "title": {"Original"}})
 	if res.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d", res.Code)
+	}
+	if res := menuPost(t, s, "/installations/100/add", url.Values{}); res.Code != http.StatusSeeOther {
+		t.Fatalf("add: %d", res.Code)
 	}
 	before := len(store.installations)
 	body := libraryGet(t, s, "/installations/100/edit")
@@ -213,7 +220,11 @@ func TestDownloadPreparesSelectedDriversAutomatically(t *testing.T) {
 		t.Fatalf("automatic driver preparation did not finish: %s", body)
 	}
 	sources, _ := s.installationMenuSources(context.Background())
-	if _, err := BuildMenuFromDraft(*store.draft, testBootURL, store.profiles, store.answers, store.configs, sources); err != nil {
+	draft := MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready"}
+	if err := draft.AddInstallation(store.installations[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildMenuFromDraft(draft, testBootURL, store.profiles, store.answers, store.configs, sources); err != nil {
 		t.Fatalf("prepared entry cannot be published: %v", err)
 	}
 }
@@ -255,6 +266,9 @@ func TestDownloadComponentEditIsPendingAndPreservesPublishedSnapshot(t *testing.
 	s, store, _ := downloadsServer(t)
 	if res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "title": {"Windows"}, "answer_id": {"31"}}); res.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d", res.Code)
+	}
+	if res := menuPost(t, s, "/installations/100/add", url.Values{}); res.Code != http.StatusSeeOther {
+		t.Fatalf("add: %d", res.Code)
 	}
 	if res := menuPost(t, s, "/menu/publish", url.Values{}); res.Code != http.StatusSeeOther {
 		t.Fatalf("publish: %d %s", res.Code, res.Body.String())
@@ -311,6 +325,11 @@ func TestDownloadReturnUsesSavedEditsAtPublishedPosition(t *testing.T) {
 	for _, form := range []url.Values{{"boot_profile_id": {"51"}, "title": {"Windows"}, "answer_id": {"31"}}, {"boot_profile_id": {"51"}, "title": {"Second"}}} {
 		if res := menuPost(t, s, "/installations", form); res.Code != http.StatusSeeOther {
 			t.Fatalf("create: %d", res.Code)
+		}
+	}
+	for _, id := range []string{"100", "101"} {
+		if res := menuPost(t, s, "/installations/"+id+"/add", url.Values{}); res.Code != http.StatusSeeOther {
+			t.Fatalf("add: %d", res.Code)
 		}
 	}
 	if res := menuPost(t, s, "/menu/publish", url.Values{}); res.Code != http.StatusSeeOther {

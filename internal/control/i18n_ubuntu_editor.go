@@ -1,7 +1,11 @@
 package control
 
 var ubuntuEditorMessages = map[string]string{
-	"Проверьте поле «%s».":                       "Check the %s field.",
+	"Образ Ubuntu": "Ubuntu image",
+	"Выберите ISO, чтобы увидеть доступные наборы приложений.": "Select an ISO to see its available application sets.",
+	"Обновить доступные наборы":                                "Refresh available sets",
+	"Не выбран":            "Not selected",
+	"Проверьте поле «%s».": "Check the %s field.",
 	"Предпросмотр устарел. Проверяем изменения…": "Preview is stale. Checking changes…",
 	"Исправьте поля на вкладке «Проверка».":      "Correct the fields on the Validation tab.",
 	"Проверка":                   "Validation",

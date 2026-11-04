@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"omb/internal/agent"
+	"omb/internal/boot"
 	"omb/internal/ueficausb"
 )
 
@@ -49,6 +50,7 @@ func main() {
 		Systemctl:  agent.SMBCommandSystemctl{},
 	}
 	driverManager := &agent.DriverManager{Root: "/var/lib/omb-agent/drivers", ProfileRoot: "/srv/omb/tftp/windows-profiles", AnswerRoot: "/srv/omb/tftp/windows-answers", WIMRoot: "/srv/omb/tftp/windows-driver-wims", ConfigRoot: "/srv/omb/tftp/windows-driver-configs"}
+	ubuntu := &agent.UbuntuISOManager{SourceRoot: "/mnt/omb-smb", LocalRoot: agent.LocalISORoot, AssetRoot: "/srv/omb/tftp", ScriptPath: "/usr/local/libexec/omb-prepare-ubuntu-source", RegistryRoot: boot.DefaultUbuntuRegistryRoot, Runner: agent.ExecDriverCommandRunner{}}
 	listener, err := agent.ListenUnix(*socket)
 	if err != nil {
 		log.Fatal(err)
@@ -57,7 +59,8 @@ func main() {
 	recovery := &agent.StorageRecovery{SMB: smb, Windows: windows, ConfigPath: *recoveryConfig}
 	smbSessions := agent.NewSMBWatcher("/var/lib/omb-agent/smb-sessions.json")
 	usbBuilder := &ueficausb.Builder{MediaRoot: "/mnt/omb-iso/profiles", CacheRoot: "/var/lib/omb-agent/uefica-usb", Runner: agent.ExecDriverCommandRunner{}, FreeBytes: agent.FreeBytes}
-	server := &http.Server{Handler: agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder), ReadHeaderTimeout: 5 * time.Second}
+	handler := agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder)
+	server := &http.Server{Handler: agent.HandlerWithUbuntuISO(handler, ubuntu), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// Recover storage mounts and Windows ISO profiles that failed, for example

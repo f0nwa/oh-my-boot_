@@ -266,6 +266,10 @@ func TestDownloadListShowsSourceAndSearchesIt(t *testing.T) {
 			t.Fatalf("source search missing %q", want)
 		}
 	}
+	if res := menuPost(t, s, "/installations/100/add", url.Values{}); res.Code != http.StatusSeeOther {
+		t.Fatalf("add to draft: %d", res.Code)
+	}
+	body = libraryGet(t, s, "/installations?q=Windows-new.iso")
 	if strings.Contains(body, `action="/installations/100/delete"`) {
 		t.Fatal("entry in draft can be deleted")
 	}
@@ -283,8 +287,8 @@ func TestDownloadListShowsSourceAndSearchesIt(t *testing.T) {
 	if res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"52"}, "title": {"Linux desktop"}}); res.Code != 303 {
 		t.Fatalf("Ubuntu create: %d", res.Code)
 	}
-	if body := libraryGet(t, s, "/installations?q=ubuntu-desktop.iso"); !strings.Contains(body, "Linux desktop") || !strings.Contains(body, testBootURL+"/images/ubuntu-desktop.iso") {
-		t.Fatal("system Ubuntu source is missing")
+	if body := libraryGet(t, s, "/installations?q=Linux+desktop"); !strings.Contains(body, "Linux desktop") {
+		t.Fatal("Ubuntu entry is missing")
 	}
 	store.user.Role = "operator"
 	if strings.Contains(libraryGet(t, s, "/installations"), `action="/installations/100/delete"`) {

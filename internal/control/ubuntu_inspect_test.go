@@ -72,7 +72,7 @@ func TestUbuntuISOCreatedFromLibraryAndDownloadForm(t *testing.T) {
 	catalog := s.Images.(*fakeImagesAPI)
 	catalog.catalog.Images[1].Path = "ubuntu-desktop.iso"
 	library := libraryGet(t, s, "/images")
-	if !strings.Contains(library, `action="/images/ubuntu/inspect"`) || !strings.Contains(library, "Создать загрузку") {
+	if !strings.Contains(library, `action="/images/iso/inspect"`) || !strings.Contains(library, "Создать загрузку") {
 		t.Fatal("library lacks create action for Ubuntu ISO")
 	}
 	page := libraryGet(t, s, "/installations/new?storage_id=7&path=ubuntu-desktop.iso")

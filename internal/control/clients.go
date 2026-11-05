@@ -157,6 +157,17 @@ func (c *AgentClient) InspectUbuntuISO(ctx context.Context, req agent.WindowsISO
 	return result, nil
 }
 
+func (c *AgentClient) InspectISO(ctx context.Context, req agent.WindowsISORequest) (agent.ISOInspection, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return agent.ISOInspection{}, err
+	}
+	client := &http.Client{Transport: c.http.Transport, Timeout: 15 * time.Minute}
+	var result agent.ISOInspection
+	err = localCall(ctx, client, http.MethodPost, "/iso/inspect", body, &result)
+	return result, err
+}
+
 func (c *AgentClient) PrepareUbuntuISO(ctx context.Context, req agent.UbuntuISORequest) error {
 	body, err := json.Marshal(req)
 	if err != nil {

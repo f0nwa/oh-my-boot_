@@ -18,6 +18,14 @@ type ubuntuSourceCreator interface {
 
 // The browser provides a catalog identity only; the server resolves the storage root.
 func (s *Server) inspectUbuntuISO(w http.ResponseWriter, r *http.Request) {
+	s.inspectImage(w, r, false)
+}
+
+func (s *Server) inspectISO(w http.ResponseWriter, r *http.Request) {
+	s.inspectImage(w, r, true)
+}
+
+func (s *Server) inspectImage(w http.ResponseWriter, r *http.Request, detect bool) {
 	writer, ok := s.Store.(ubuntuSourceCreator)
 	if !ok || s.Images == nil || s.UbuntuISO == nil {
 		http.Error(w, "Проверка Ubuntu ISO недоступна", http.StatusServiceUnavailable)
@@ -41,7 +49,40 @@ func (s *Server) inspectUbuntuISO(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(16 * time.Minute))
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 15*time.Minute)
 	defer cancel()
-	inspection, err := s.UbuntuISO.InspectUbuntuISO(ctx, agent.WindowsISORequest{ID: storageID, StorageRoot: selected.StorageRoot, RelativePath: selected.Path, Size: selected.Size, Modified: selected.Modified})
+	req := agent.WindowsISORequest{ID: storageID, StorageRoot: selected.StorageRoot, RelativePath: selected.Path, Size: selected.Size, Modified: selected.Modified}
+	var inspection agent.UbuntuISOInspection
+	if detect {
+		detector, ok := s.UbuntuISO.(interface {
+			InspectISO(context.Context, agent.WindowsISORequest) (agent.ISOInspection, error)
+		})
+		if !ok {
+			http.Error(w, "Проверка ISO недоступна", http.StatusServiceUnavailable)
+			return
+		}
+		result, probeErr := detector.InspectISO(ctx, req)
+		if probeErr != nil {
+			http.Error(w, "Не удалось определить поддерживаемый образ. Проверьте ISO и доступность хранилища.", http.StatusUnprocessableEntity)
+			return
+		}
+		if result.Kind == "windows" || result.Kind == "strelec" {
+			hint, problem := isoKindHint(selected.Path)
+			if problem != "" || (result.Kind == "strelec") != (hint == "WinPE Strelec") {
+				http.Error(w, "Тип ISO не соответствует имени файла. Переименуйте ISO и повторите проверку.", http.StatusUnprocessableEntity)
+				return
+			}
+			target := url.Values{"storage_id": {strconv.FormatInt(storageID, 10)}, "path": {selected.Path}}
+			http.Redirect(w, r, "/installations/new?"+target.Encode(), http.StatusSeeOther)
+			return
+		}
+		if result.Kind != "ubuntu" {
+			http.Error(w, "Этот ISO не поддерживается", http.StatusUnprocessableEntity)
+			return
+		}
+		inspection = result.Ubuntu
+	} else {
+		inspection, err = s.UbuntuISO.InspectUbuntuISO(ctx, req)
+	}
+
 	if err != nil || !ubuntuSourceDigest.MatchString(inspection.SHA256) || len(inspection.Sources) == 0 {
 		http.Error(w, "Не удалось проверить Ubuntu Desktop amd64 в выбранном ISO. Проверьте файл и доступность хранилища.", http.StatusUnprocessableEntity)
 		return

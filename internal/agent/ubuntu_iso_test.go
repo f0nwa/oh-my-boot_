@@ -389,3 +389,36 @@ func TestUbuntuISOInspectionAPI(t *testing.T) {
 		t.Fatalf("inspection status=%d calls=%d", res.Code, manager.calls)
 	}
 }
+
+func TestISOInspectionDetectsWindowsAndUbuntu(t *testing.T) {
+	base := t.TempDir()
+	storage := filepath.Join(base, "nas")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(storage, "renamed.iso")
+	if err := os.WriteFile(file, []byte("ISO"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := WindowsISORequest{ID: 6, StorageRoot: storage, RelativePath: "renamed.iso", Size: info.Size(), Modified: info.ModTime()}
+	for _, tc := range []struct {
+		name, kind string
+		mounter    WindowsISOMounter
+	}{
+		{"Windows", "windows", &fakeWindowsISOMounter{}},
+		{"Strelec", "strelec", strelecMounterFixture{}},
+		{"Ubuntu", "ubuntu", &ubuntuInspectMounter{info: "Ubuntu 26.04 - Release amd64", sources: "- id: ubuntu-desktop\n  name: Desktop\n"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manager := &UbuntuISOManager{SourceRoot: base, Mounter: tc.mounter}
+			got, err := manager.InspectISO(context.Background(), req)
+			if err != nil || got.Kind != tc.kind {
+				t.Fatalf("got=%+v err=%v", got, err)
+			}
+		})
+	}
+}

@@ -47,7 +47,21 @@ type UbuntuISOInspection struct {
 	Sources []autoinstall.SourceOption `json:"sources"`
 }
 
-func (m *UbuntuISOManager) Inspect(ctx context.Context, req WindowsISORequest) (result UbuntuISOInspection, resultErr error) {
+type ISOInspection struct {
+	Kind   string              `json:"kind"`
+	Ubuntu UbuntuISOInspection `json:"ubuntu"`
+}
+
+func (m *UbuntuISOManager) Inspect(ctx context.Context, req WindowsISORequest) (UbuntuISOInspection, error) {
+	result, err := m.inspect(ctx, req, false)
+	return result.Ubuntu, err
+}
+
+func (m *UbuntuISOManager) InspectISO(ctx context.Context, req WindowsISORequest) (ISOInspection, error) {
+	return m.inspect(ctx, req, true)
+}
+
+func (m *UbuntuISOManager) inspect(ctx context.Context, req WindowsISORequest, detect bool) (result ISOInspection, resultErr error) {
 	source, err := resolveWindowsISOSource(m.SourceRoot, req, m.LocalRoot)
 	if err != nil {
 		return result, err
@@ -94,6 +108,16 @@ func (m *UbuntuISOManager) Inspect(ctx context.Context, req WindowsISORequest) (
 		return result, err
 	}
 	mounted = true
+	if detect {
+		if _, err := inspectMountedWindowsISO(mountRoot); err == nil {
+			result.Kind = "windows"
+			return result, nil
+		}
+		if _, err := inspectMountedStrelecISO(mountRoot); err == nil {
+			result.Kind = "strelec"
+			return result, nil
+		}
+	}
 	for _, directory := range []string{".disk", "casper", "EFI", "EFI/boot"} {
 		info, err := os.Lstat(filepath.Join(mountRoot, directory))
 		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
@@ -123,7 +147,7 @@ func (m *UbuntuISOManager) Inspect(ctx context.Context, req WindowsISORequest) (
 	if err != nil {
 		return result, err
 	}
-	result.Sources, err = autoinstall.ParseInstallSources(data)
+	result.Ubuntu.Sources, err = autoinstall.ParseInstallSources(data)
 	if err != nil {
 		return result, fmt.Errorf("unsupported Ubuntu Desktop installer: %w", err)
 	}
@@ -136,7 +160,8 @@ func (m *UbuntuISOManager) Inspect(ctx context.Context, req WindowsISORequest) (
 	if err != nil || pathErr != nil || !current.Mode().IsRegular() || !os.SameFile(opened, after) || !os.SameFile(opened, current) || opened.Size() != after.Size() || !opened.ModTime().Equal(after.ModTime()) || opened.Size() != current.Size() || !opened.ModTime().Equal(current.ModTime()) {
 		return result, fmt.Errorf("Ubuntu ISO changed during inspection")
 	}
-	result.SHA256 = hex.EncodeToString(hash.Sum(nil))
+	result.Kind = "ubuntu"
+	result.Ubuntu.SHA256 = hex.EncodeToString(hash.Sum(nil))
 	return result, nil
 }
 
@@ -287,6 +312,30 @@ func HandlerWithUbuntuISO(next http.Handler, manager UbuntuISOAPI) http.Handler 
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /iso/inspect", func(w http.ResponseWriter, r *http.Request) {
+		detector, ok := manager.(interface {
+			InspectISO(context.Context, WindowsISORequest) (ISOInspection, error)
+		})
+		if !ok {
+			http.Error(w, "ISO inspection unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req WindowsISORequest
+		if !decodeSMBRequest(w, r, &req) {
+			return
+		}
+		if !validUbuntuISORequest(req) {
+			http.Error(w, "invalid ISO source", http.StatusBadRequest)
+			return
+		}
+		result, err := detector.InspectISO(r.Context(), req)
+		if err != nil {
+			http.Error(w, "ISO inspection failed", http.StatusUnprocessableEntity)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
 	})
 	mux.HandleFunc("POST /ubuntu-iso/inspect", func(w http.ResponseWriter, r *http.Request) {
 		if manager == nil {

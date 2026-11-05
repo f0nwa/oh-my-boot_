@@ -41,7 +41,8 @@ type SMBManager struct {
 	ImagesGID      string
 	Systemctl      SMBSystemctl
 	// Probe checks that a mounted share can be read. Nil uses probeDir.
-	Probe func(path string) error
+	Probe      func(path string) error
+	WriteProbe func(path string) error
 }
 
 func (m *SMBManager) EnableUpload(ctx context.Context, key, server, share, subpath string) error {
@@ -93,7 +94,17 @@ func (m *SMBManager) EnableUpload(ctx context.Context, key, server, share, subpa
 	if err := m.Systemctl.Run(ctx, "daemon-reload"); err != nil {
 		return err
 	}
-	return m.Systemctl.Run(ctx, "enable", "--now", unitName)
+	if err := m.Systemctl.Run(ctx, "enable", "--now", unitName); err != nil {
+		return err
+	}
+	probe := m.WriteProbe
+	if probe == nil {
+		probe = probeSMBWrite
+	}
+	if err := probe(target); err != nil {
+		return fmt.Errorf("SMB share is not writable: %w", err)
+	}
+	return nil
 }
 
 func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
@@ -171,6 +182,13 @@ func (m *SMBManager) Mount(ctx context.Context, req SMBMountRequest) error {
 	}
 	if err := m.Systemctl.Run(ctx, "enable", "--now", unitName); err != nil {
 		return err
+	}
+	probe := m.Probe
+	if probe == nil {
+		probe = probeDir
+	}
+	if err := probe(target); err != nil {
+		return fmt.Errorf("SMB share is not readable: %w", err)
 	}
 	if uploadUnitName != "" {
 		return m.Systemctl.Run(ctx, "enable", "--now", uploadUnitName)

@@ -22,6 +22,7 @@ type APIRepository interface {
 	CreateSMB(context.Context, ManagedStorageInput) (Storage, error)
 	DeleteSMB(context.Context, int64) error
 	RecordUpload(context.Context, Image) error
+	DeleteImage(context.Context, int64, string) error
 }
 
 type Server struct {
@@ -43,6 +44,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /storages/{id}/folders", s.folders)
 	mux.HandleFunc("POST /storages/{id}/upload", s.uploadISO)
+	mux.HandleFunc("DELETE /storages/{id}/images", s.deleteISO)
 	// Earlier names, from when only SMB storages took uploads.
 	mux.HandleFunc("GET /smb-storages/{id}/folders", s.folders)
 	mux.HandleFunc("POST /smb-storages/{id}/upload", s.uploadISO)

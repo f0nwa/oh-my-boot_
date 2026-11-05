@@ -75,6 +75,7 @@ type ImagesAPI interface {
 	MarkSMBError(context.Context, int64) error
 	MarkSMBScanError(context.Context, int64) error
 	DeleteSMB(context.Context, int64) error
+	DeleteImage(context.Context, int64, string) error
 }
 
 type SMBMountAPI interface {
@@ -265,10 +266,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
+	mux.HandleFunc("GET /assets/image-delete.js", imageDeleteScript)
+	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
+	mux.HandleFunc("POST /images/delete", s.protect("delete", withPageErrors(s.imagesPage, s.imageDelete)))
 	mux.HandleFunc("GET /assets/iso-check.js", isoCheckScript)
 	mux.HandleFunc("GET /assets/image-details.js", imageDetailsScript)
 	mux.HandleFunc("POST /images/name", s.protect("images", withPageErrors(s.imagesPage, s.imageNameSave)))
-	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
 	mux.HandleFunc("POST /images/iso/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectISO)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsProfileDelete)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))

@@ -469,6 +469,9 @@ button[disabled]{opacity:.45;cursor:default}
 .download-delete-panel p{margin:0 0 8px;font-size:12px}
 .download-delete-panel .danger-text{color:var(--bad)}
 
+.image-delete-panel{position:fixed;inset:auto;margin:0;white-space:normal;overflow-wrap:anywhere;width:360px;box-sizing:border-box;max-width:min(360px,calc(100vw - 40px));padding:16px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.image-delete-panel p{margin:0 0 8px;font-size:12px}
+.image-delete-panel .danger-text{color:var(--bad)}
 /* Image details */
 .image-name-link{display:inline;margin:0;padding:0;min-height:0;border:0;background:none;color:var(--text);font:inherit;font-weight:600;text-align:left;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;word-break:break-all}
 .image-name-link:hover{background:none;color:var(--text-2)}

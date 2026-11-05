@@ -52,6 +52,10 @@ func (m *memoryRepository) ScanError(_ context.Context, id int64, _ string) erro
 	m.state[id] = "unavailable"
 	return nil
 }
+func (m *memoryRepository) DeleteImage(_ context.Context, id int64, path string) error {
+	delete(m.images[id], path)
+	return nil
+}
 
 func TestScanStorageKeepsSeparateCatalogsAndMarksMissing(t *testing.T) {
 	roots := []string{realTempDir(t), realTempDir(t)}

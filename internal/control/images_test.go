@@ -20,6 +20,8 @@ type fakeImagesAPI struct {
 	uploaded       string
 	selectedFolder string
 	folders        []string
+	deleted        []images.Image
+	deleteErr      error
 }
 
 type auditRecordingStore struct {
@@ -48,6 +50,13 @@ func (f *fakeImagesAPI) MarkSMBError(context.Context, int64) error        { retu
 func (f *fakeImagesAPI) MarkSMBScanError(context.Context, int64) error    { return f.err }
 func (f *fakeImagesAPI) DeleteSMB(context.Context, int64) error           { return f.err }
 func (f *fakeImagesAPI) Folders(context.Context, int64) ([]string, error) { return f.folders, f.err }
+func (f *fakeImagesAPI) DeleteImage(_ context.Context, id int64, path string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deleted = append(f.deleted, images.Image{StorageID: id, Path: path})
+	return nil
+}
 func (f *fakeImagesAPI) UploadISO(_ context.Context, _ int64, folder, name string, body io.Reader, _ int64) (images.UploadResult, error) {
 	data, err := io.ReadAll(body)
 	if err != nil {

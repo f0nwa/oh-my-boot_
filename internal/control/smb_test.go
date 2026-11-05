@@ -3,9 +3,11 @@ package control
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +47,7 @@ func (f *fakeManagedImages) DeleteSMB(_ context.Context, _ int64) error {
 type fakeSMBMountAPI struct {
 	events       *[]string
 	mountErr     error
+	uploadErr    error
 	removeErr    error
 	mountStarted chan struct{}
 	mountRelease <-chan struct{}
@@ -92,7 +95,7 @@ func (f *fakeSMBMountAPI) EnableUpload(_ context.Context, _, _, _, _ string) err
 	if f.events != nil {
 		*f.events = append(*f.events, "enable-upload")
 	}
-	return f.mountErr
+	return f.uploadErr
 }
 
 func smbForm() url.Values {
@@ -122,7 +125,7 @@ func TestSMBCreateRequiresAdminAndCSRF(t *testing.T) {
 		if res.Code != tc.want {
 			t.Fatalf("role=%s status=%d body=%s", tc.role, res.Code, res.Body.String())
 		}
-		if tc.role == "admin" && strings.Join(events, ",") != "reserve,mount" || tc.role != "admin" && len(events) != 0 {
+		if tc.role == "admin" && strings.Join(events, ",") != "reserve,mount,enable-upload" || tc.role != "admin" && len(events) != 0 {
 			t.Fatalf("role=%s events=%v", tc.role, events)
 		}
 		if tc.role == "admin" && (api.storage.Server != "192.168.10.10" || api.storage.Share != "Downloads" || api.storage.Subpath != "iso") {
@@ -191,7 +194,7 @@ func TestSMBRetryAndRemoveOrder(t *testing.T) {
 	api := &fakeManagedImages{events: &events, fakeImagesAPI: fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{{ID: 7, Kind: "smb", Key: "0123456789abcdef0123456789abcdef", Server: "192.168.10.10", Share: "Downloads", Subpath: "iso"}}}}}
 	mount := &fakeSMBMountAPI{events: &events}
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, Images: api, SMB: mount}
-	if res := submitSMB(t, s, "/images/smb/7/retry", smbForm()); res.Code != http.StatusSeeOther || strings.Join(events, ",") != "mount" || len(api.scans) != 1 || api.scans[0] != 7 {
+	if res := submitSMB(t, s, "/images/smb/7/retry", smbForm()); res.Code != http.StatusSeeOther || strings.Join(events, ",") != "mount,enable-upload" || len(api.scans) != 1 || api.scans[0] != 7 {
 		t.Fatalf("retry status=%d events=%v scans=%v", res.Code, events, api.scans)
 	}
 	events = []string{}
@@ -217,7 +220,29 @@ func TestSMBCreateReportsScanStartFailure(t *testing.T) {
 	api := &fakeManagedImages{events: &events, fakeImagesAPI: fakeImagesAPI{scanErr: errors.New("offline")}}
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, Images: api, SMB: &fakeSMBMountAPI{events: &events}}
 	res := submitSMB(t, s, "/images/smb", smbForm())
-	if res.Code != http.StatusServiceUnavailable || strings.Contains(res.Body.String(), "secret") || strings.Join(events, ",") != "reserve,mount,mark-scan-error" {
+	if res.Code != http.StatusServiceUnavailable || strings.Contains(res.Body.String(), "secret") || strings.Join(events, ",") != "reserve,mount,enable-upload,mark-scan-error" {
 		t.Fatalf("scan failure status=%d events=%v body=%s", res.Code, events, res.Body.String())
+	}
+}
+
+func TestSMBConnectionReportsWriteProbeFailure(t *testing.T) {
+	for _, retry := range []bool{false, true} {
+		t.Run(fmt.Sprintf("retry=%v", retry), func(t *testing.T) {
+			events := []string{}
+			api := &fakeManagedImages{events: &events}
+			path := "/images/smb"
+			wantEvents := "reserve,mount,enable-upload,mark-error"
+			if retry {
+				path = "/images/smb/7/retry"
+				wantEvents = "mount,enable-upload,mark-error"
+				api.catalog.Storages = []images.Storage{{ID: 7, Kind: "smb", Key: "0123456789abcdef0123456789abcdef", Server: "192.168.10.10", Share: "Downloads", Subpath: "iso"}}
+			}
+			mount := &fakeSMBMountAPI{events: &events, uploadErr: os.ErrPermission}
+			s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, Images: api, SMB: mount}
+			res := submitSMB(t, s, path, smbForm())
+			if res.Code != http.StatusServiceUnavailable || strings.Join(events, ",") != wantEvents || !strings.Contains(res.Body.String(), "чтения и записи") || strings.Contains(res.Body.String(), "secret") {
+				t.Fatalf("status=%d events=%v body=%s", res.Code, events, res.Body.String())
+			}
+		})
 	}
 }

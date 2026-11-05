@@ -65,7 +65,7 @@ Operators and administrators can start scans; observers can view the catalog. Ba
 
 In the library, select writable storage, an existing folder and an ISO up to 32 GiB. The complete ISO goes to the selected storage; its size and SHA-256 are checked afterwards. Existing files are not overwritten, and cancellation removes the temporary file. Menu publishing is a separate action.
 
-SMB uses `/mnt/omb-smb/<key>` for reading and `/mnt/omb-smb-upload/<key>` for writing. The NAS account must permit writes. Local uploads use `/var/lib/omb-images/iso`; the `omb-images` group and service unit must permit writing there. Free space refers to the selected storage filesystem.
+SMB uses `/mnt/omb-smb/<key>` for reading and `/mnt/omb-smb-upload/<key>` for writing. The NAS account must permit writes. Local uploads use `/var/lib/omb-images/iso`; the `omb-images` group and service unit must permit writing there. Deleting an ISO from local or mounted storage also requires the `omb-images` user to have write permission in the corresponding directory. Free space refers to the selected storage filesystem.
 
 ## Windows images, XML and drivers
 

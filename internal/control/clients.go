@@ -295,6 +295,14 @@ func (c *ImagesClient) DeleteSMB(ctx context.Context, id int64) error {
 	return localCall(ctx, c.http, "DELETE", "/smb-storages/"+strconv.FormatInt(id, 10), nil, nil)
 }
 
+func (c *ImagesClient) DeleteImage(ctx context.Context, id int64, path string) error {
+	body, err := json.Marshal(map[string]string{"path": path})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "DELETE", "/storages/"+strconv.FormatInt(id, 10)+"/images", body, nil)
+}
+
 func (c *AgentClient) Mount(ctx context.Context, key, server, share, subpath, username, password, domain string) error {
 	body, err := json.Marshal(map[string]string{"key": key, "server": server, "share": share, "subpath": subpath, "username": username, "password": password, "domain": domain})
 	if err != nil {

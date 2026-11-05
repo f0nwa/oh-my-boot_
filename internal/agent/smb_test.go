@@ -238,3 +238,51 @@ func TestSMBRemoveCanRetryAfterCleanupFinished(t *testing.T) {
 		t.Fatalf("retry after completed cleanup: %v", err)
 	}
 }
+
+func TestSMBMountRejectsUnreadableShare(t *testing.T) {
+	manager := testSMBManager(t, &fakeSMBSystemctl{})
+	probed := false
+	manager.Probe = func(path string) error {
+		probed = true
+		if path != filepath.Join(manager.MountRoot, validSMBRequest().Key) {
+			t.Fatalf("probe path = %q", path)
+		}
+		return os.ErrPermission
+	}
+	if err := manager.Mount(context.Background(), validSMBRequest()); err == nil || !probed {
+		t.Fatalf("unreadable share passed: err=%v probed=%v", err, probed)
+	}
+}
+
+func TestSMBEnableUploadRejectsShareWithoutWriteAccess(t *testing.T) {
+	manager := testSMBManager(t, &fakeSMBSystemctl{})
+	req := validSMBRequest()
+	if err := manager.Mount(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	probed := false
+	manager.WriteProbe = func(path string) error {
+		probed = true
+		if path != filepath.Join(manager.UploadRoot, req.Key) {
+			t.Fatalf("write probe path = %q", path)
+		}
+		return os.ErrPermission
+	}
+	if err := manager.EnableUpload(context.Background(), req.Key, req.Server, req.Share, req.Subpath); err == nil || !probed {
+		t.Fatalf("read-only share passed: err=%v probed=%v", err, probed)
+	}
+}
+
+func TestSMBWriteProbeWritesReadsAndRemovesTemporaryFile(t *testing.T) {
+	root := t.TempDir()
+	if err := probeSMBWrite(root); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("write probe left files: %+v", entries)
+	}
+}

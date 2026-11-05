@@ -158,6 +158,17 @@ func (s Store) RecordUpload(ctx context.Context, image Image) error {
 	return err
 }
 
+func (s Store) DeleteImage(ctx context.Context, id int64, path string) error {
+	command, err := s.Pool.Exec(ctx, "DELETE FROM images WHERE storage_id=$1 AND path=$2", id, path)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func (s Store) ScanError(ctx context.Context, id int64, message string) error {
 	if len(message) > 500 {
 		message = message[:500]

@@ -62,6 +62,12 @@ func (s *Server) imagesSMBCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось подключить SMB. Хранилище сохранено для повторной попытки.", http.StatusServiceUnavailable)
 		return
 	}
+	if err := s.SMB.EnableUpload(r.Context(), storage.Key, storage.Server, storage.Share, storage.Subpath); err != nil {
+		_ = s.Images.MarkSMBError(r.Context(), storage.ID)
+		s.auditSMB(r, "smb.create", "error", storage.ID)
+		http.Error(w, "SMB подключено для чтения, но проверка записи не пройдена. Учётной записи нужны права чтения и записи.", http.StatusServiceUnavailable)
+		return
+	}
 	if err := s.Images.Scan(r.Context(), storage.ID); err != nil {
 		_ = s.Images.MarkSMBScanError(r.Context(), storage.ID)
 		s.auditSMB(r, "smb.create", "scan-error", storage.ID)
@@ -114,6 +120,12 @@ func (s *Server) imagesSMBRetry(w http.ResponseWriter, r *http.Request) {
 		_ = s.Images.MarkSMBError(r.Context(), storage.ID)
 		s.auditSMB(r, "smb.retry", "error", storage.ID)
 		http.Error(w, "Не удалось подключить SMB. Проверьте адрес и учётные данные.", http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.SMB.EnableUpload(r.Context(), storage.Key, storage.Server, storage.Share, storage.Subpath); err != nil {
+		_ = s.Images.MarkSMBError(r.Context(), storage.ID)
+		s.auditSMB(r, "smb.retry", "error", storage.ID)
+		http.Error(w, "SMB подключено для чтения, но проверка записи не пройдена. Учётной записи нужны права чтения и записи.", http.StatusServiceUnavailable)
 		return
 	}
 	if err := s.Images.Scan(r.Context(), storage.ID); err != nil {

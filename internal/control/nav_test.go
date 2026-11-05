@@ -67,7 +67,7 @@ func TestNavigationGroupsLibraryAndSystemPages(t *testing.T) {
 	for _, group := range groups {
 		titles = append(titles, group.Title)
 	}
-	if strings.Join(titles, ",") != "Сейчас,Меню,Загрузки,Библиотека,Журнал,Система" {
+	if strings.Join(titles, ",") != "Сейчас,Загрузки,Меню,Библиотека,Журнал,Система" {
 		t.Fatalf("sections=%v", titles)
 	}
 	tabs := subnav(groups)
@@ -113,5 +113,21 @@ func TestStylesheetUsesEmbeddedFontsOnly(t *testing.T) {
 func TestNowSectionIsNowInEnglish(t *testing.T) {
 	if got := translate(langEN, "Сейчас"); got != "Now" {
 		t.Fatalf("Сейчас → %q", got)
+	}
+}
+
+func TestNavigationPlacesDownloadsBeforeMenu(t *testing.T) {
+	groups := navigation("admin", "/")
+	var downloads, menu int = -1, -1
+	for i, group := range groups {
+		switch group.Title {
+		case "Загрузки":
+			downloads = i
+		case "Меню":
+			menu = i
+		}
+	}
+	if downloads < 0 || menu < 0 || downloads >= menu {
+		t.Fatalf("unexpected navigation order: downloads=%d menu=%d", downloads, menu)
 	}
 }

@@ -609,9 +609,6 @@ func (s *Server) libraryData(r *http.Request) pageData {
 				row.Downloads = append(row.Downloads, ubuntuUses[key]...)
 				if p, ok := byPath[key]; ok {
 					row.Downloads = append(row.Downloads, uses[p.ID]...)
-					if profileBootable(p) && p.BootMode == "" {
-						row.USBProfileID = p.ID
-					}
 					if len(row.Downloads) == 0 {
 						row.CleanupProfileID = p.ID
 					}

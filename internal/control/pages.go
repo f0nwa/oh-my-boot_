@@ -17,11 +17,11 @@ import (
 )
 
 type imageRow struct {
-	Image                          images.Image
-	StorageName, Author            string
-	Kind, Problem                  string
-	USBProfileID, CleanupProfileID int64
-	Downloads                      []imageDownload
+	Image               images.Image
+	StorageName, Author string
+	Kind, Problem       string
+	CleanupProfileID    int64
+	Downloads           []imageDownload
 }
 type imageDownload struct {
 	ID    int64

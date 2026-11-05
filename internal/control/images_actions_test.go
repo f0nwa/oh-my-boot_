@@ -26,3 +26,13 @@ func TestImageActionsAreInTheLastColumn(t *testing.T) {
 		t.Fatalf("image action must appear once, in the last cell: %s", row)
 	}
 }
+
+func TestLibraryOmitsUSBActionForPreparedImages(t *testing.T) {
+	s, store, _ := downloadsServer(t)
+	store.profiles[0].State = "ready"
+	store.profiles[0].InstallFile = "install.wim"
+	page := libraryGet(t, s, "/images")
+	if strings.Contains(page, `href="/usb?profile_id=`) {
+		t.Fatal("ISO rows should not contain USB actions")
+	}
+}

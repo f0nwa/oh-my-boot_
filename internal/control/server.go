@@ -266,6 +266,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
 	mux.HandleFunc("GET /assets/iso-check.js", isoCheckScript)
+	mux.HandleFunc("POST /images/name", s.protect("images", withPageErrors(s.imagesPage, s.imageNameSave)))
 	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
 	mux.HandleFunc("POST /images/iso/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectISO)))
 	mux.HandleFunc("POST /images/ubuntu/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectUbuntuISO)))
@@ -592,6 +593,10 @@ func (s *Server) libraryData(r *http.Request) pageData {
 					}
 				}
 			}
+			namesByImage, namesErr := s.imageNames(r.Context())
+			if namesErr != nil {
+				data.Error = "Не удалось прочитать названия образов"
+			}
 			byPath := map[string]WindowsProfile{}
 			for _, p := range profiles {
 				byPath[fmt.Sprintf("%d:%s", p.StorageID, p.Path)] = p
@@ -605,7 +610,7 @@ func (s *Server) libraryData(r *http.Request) pageData {
 				if ubuntuVerified[key] {
 					kind, problem = "Ubuntu", ""
 				}
-				row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem}
+				row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem, DisplayName: namesByImage[key]}
 				row.Downloads = append(row.Downloads, ubuntuUses[key]...)
 				if p, ok := byPath[key]; ok {
 					row.Downloads = append(row.Downloads, uses[p.ID]...)

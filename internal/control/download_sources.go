@@ -33,18 +33,32 @@ func (c bootProfileChoice) Selectable() bool {
 }
 
 func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile, windows []WindowsProfile, discover bool) ([]bootProfileChoice, error) {
+	names, err := s.imageNames(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("Не удалось прочитать названия образов")
+	}
 	choices := s.bootProfileChoices(ctx, shared, windows)
 	existing := map[string]bool{}
 	for i := range choices {
 		choice := &choices[i]
 		choice.Value = strconv.FormatInt(choice.ID, 10)
 		choice.DefaultTitle = choice.Title
+		if choice.Path != "" && choice.UbuntuStorageID > 0 {
+			choice.Title = path.Base(choice.Path)
+			if name := names[imageAuthorKey(choice.UbuntuStorageID, choice.Path)]; name != "" {
+				choice.Title = name
+			}
+		}
 		if (choice.Kind == BootProfileUbuntuISO || choice.Kind == BootProfileUbuntuBuiltin) && choice.UbuntuStorageID > 0 && choice.UbuntuPath != "" {
 			existing[fmt.Sprintf("%d:%s", choice.UbuntuStorageID, choice.UbuntuPath)] = true
 		}
 		for _, w := range windows {
 			if w.ID == choice.WindowsProfileID && isISOBootKind(choice.Kind) {
 				existing[fmt.Sprintf("%d:%s", w.StorageID, w.Path)] = true
+				choice.Title = path.Base(w.Path)
+				if name := names[imageAuthorKey(w.StorageID, w.Path)]; name != "" {
+					choice.Title = name
+				}
 				if _, problem := isoKindHint(w.Path); problem != "" {
 					choice.State, choice.Error = "unsupported", problem
 				}
@@ -75,6 +89,9 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		}
 		kind, title := isoSourceKind(image.Path)
 		choice := bootProfileChoice{BootProfile: BootProfile{Kind: kind, Title: path.Base(image.Path)}, DefaultTitle: title, Value: fmt.Sprintf("iso:%d:%s", image.StorageID, image.Path), Path: image.Path, State: "pending"}
+		if name := names[imageAuthorKey(image.StorageID, image.Path)]; name != "" {
+			choice.Title = name
+		}
 		for _, storage := range catalog.Storages {
 			if storage.ID == image.StorageID {
 				choice.StorageName = storage.Name

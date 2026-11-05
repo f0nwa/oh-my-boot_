@@ -294,6 +294,7 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 		ubuntuISOPath, _ = s.Boot.UbuntuISOPath(ctx)
 	}
 	checked := false
+	names, _ := s.imageNames(ctx)
 	var problem error
 	for i := range rows {
 		rows[i].StorageName = storageNames[rows[i].StorageID]
@@ -310,6 +311,12 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 			}
 		}
 		if rows[i].Kind != BootProfileUbuntuBuiltin {
+			if rows[i].StorageID > 0 && rows[i].SourcePath != "" {
+				rows[i].Image = path.Base(rows[i].SourcePath)
+				if name := names[imageAuthorKey(rows[i].StorageID, rows[i].SourcePath)]; name != "" {
+					rows[i].Image = name
+				}
+			}
 			continue
 		}
 		if ubuntuISOPath != "" {
@@ -321,6 +328,12 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 					rows[i].SourcePath = relative
 					break
 				}
+			}
+		}
+		if rows[i].StorageID > 0 && rows[i].SourcePath != "" {
+			rows[i].Image = path.Base(rows[i].SourcePath)
+			if name := names[imageAuthorKey(rows[i].StorageID, rows[i].SourcePath)]; name != "" {
+				rows[i].Image = name
 			}
 		}
 		if !checked {

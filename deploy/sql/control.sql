@@ -229,3 +229,10 @@ CREATE TRIGGER ubuntu_autoinstall_immutable BEFORE UPDATE ON ubuntu_autoinstall_
 -- Boot-entry bindings are editable; menu items retain their own component snapshot.
 DROP TRIGGER IF EXISTS installation_autoinstall_immutable ON installations;
 DROP FUNCTION IF EXISTS reject_autoinstall_binding_update();
+
+CREATE TABLE IF NOT EXISTS image_names (
+ storage_id BIGINT NOT NULL CHECK (storage_id > 0),
+ path TEXT NOT NULL,
+ name TEXT NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+ PRIMARY KEY (storage_id, path)
+);

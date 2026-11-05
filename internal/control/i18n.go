@@ -308,6 +308,8 @@ var englishMessages = map[string]string{
 	"Выключено":         "Disabled",
 	"Действие":          "Action",
 	"Не удалось прочитать названия образов": "Could not read image names",
+	"Добавлен":          "Added",
+	"Загружен":          "Uploaded",
 	"Тип образа":        "Image type",
 	"Не поддерживается": "Unsupported",
 	"Поддерживаемая структура ISO не найдена":                         "No supported ISO layout was found",

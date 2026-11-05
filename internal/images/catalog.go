@@ -30,11 +30,12 @@ type Storage struct {
 }
 
 type Image struct {
-	StorageID int64     `json:"storage_id"`
-	Path      string    `json:"path"`
-	Size      int64     `json:"size"`
-	Modified  time.Time `json:"modified"`
-	Present   bool      `json:"present"`
+	FirstSeenAt *time.Time `json:"first_seen_at,omitempty"`
+	StorageID   int64      `json:"storage_id"`
+	Path        string     `json:"path"`
+	Size        int64      `json:"size"`
+	Modified    time.Time  `json:"modified"`
+	Present     bool       `json:"present"`
 }
 
 // Scan inventories regular ISO files without following symlinks or changing files.

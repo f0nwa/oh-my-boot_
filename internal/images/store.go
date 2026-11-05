@@ -101,14 +101,14 @@ func (s Store) Catalog(ctx context.Context) (Catalog, error) {
 	if err != nil {
 		return result, err
 	}
-	rows, err = s.Pool.Query(ctx, "SELECT storage_id,path,size_bytes,modified_at,present FROM images ORDER BY storage_id,path")
+	rows, err = s.Pool.Query(ctx, "SELECT storage_id,path,size_bytes,modified_at,present,first_seen_at FROM images ORDER BY storage_id,path")
 	if err != nil {
 		return result, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var image Image
-		if err := rows.Scan(&image.StorageID, &image.Path, &image.Size, &image.Modified, &image.Present); err != nil {
+		if err := rows.Scan(&image.StorageID, &image.Path, &image.Size, &image.Modified, &image.Present, &image.FirstSeenAt); err != nil {
 			return result, err
 		}
 		result.Images = append(result.Images, image)

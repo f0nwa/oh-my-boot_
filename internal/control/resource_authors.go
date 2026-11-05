@@ -5,16 +5,18 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ResourceAuthors resolves the original actor recorded when a library resource
 // was created or uploaded. The first successful event owns a content-addressed
 // resource, even when the same file is uploaded again later.
 type ResourceAuthors struct {
-	Installations map[int64]string
-	Answers       map[int64]string
-	Images        map[string]string
-	Drivers       map[string]string
+	Installations   map[int64]string
+	Answers         map[int64]string
+	Images          map[string]string
+	ImageUploadedAt map[string]time.Time
+	Drivers         map[string]string
 }
 
 func (s *Server) resourceAuthors(ctx context.Context) ResourceAuthors {
@@ -36,7 +38,7 @@ func imageAuthorKey(storageID int64, path string) string {
 }
 
 func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT a.action,a.detail,COALESCE(u.username,'')
+	rows, err := s.Pool.Query(ctx, `SELECT a.action,a.detail,COALESCE(u.username,''),a.occurred_at
 		FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id
 		WHERE a.result='ok' AND a.action IN ('installation.create','windows-answer.create','iso.upload','driver.import')
 		ORDER BY a.id`)
@@ -46,14 +48,15 @@ func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 	defer rows.Close()
 	authors := ResourceAuthors{
 		Installations: map[int64]string{}, Answers: map[int64]string{},
-		Images: map[string]string{}, Drivers: map[string]string{},
+		Images: map[string]string{}, Drivers: map[string]string{}, ImageUploadedAt: map[string]time.Time{},
 	}
 	for rows.Next() {
 		var action, detail, actor string
-		if err := rows.Scan(&action, &detail, &actor); err != nil {
+		var at time.Time
+		if err := rows.Scan(&action, &detail, &actor, &at); err != nil {
 			return ResourceAuthors{}, err
 		}
-		if actor == "" {
+		if actor == "" && action != "iso.upload" {
 			continue
 		}
 		switch action {
@@ -82,6 +85,9 @@ func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 			if err == nil && storageID > 0 {
 				path := detail[firstSpace+1 : lastSpace]
 				key := imageAuthorKey(storageID, path)
+				if _, exists := authors.ImageUploadedAt[key]; !exists {
+					authors.ImageUploadedAt[key] = at
+				}
 				if authors.Images[key] == "" {
 					authors.Images[key] = actor
 				}

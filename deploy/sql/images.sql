@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS images (
  size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0),
  modified_at TIMESTAMPTZ NOT NULL,
  present BOOLEAN NOT NULL DEFAULT TRUE,
+ first_seen_at TIMESTAMPTZ DEFAULT now(),
  PRIMARY KEY (storage_id, path)
 );
 CREATE INDEX IF NOT EXISTS images_present_idx ON images (storage_id, present, path);

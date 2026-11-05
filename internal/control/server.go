@@ -609,6 +609,11 @@ func (s *Server) libraryData(r *http.Request) pageData {
 					kind, problem, arch = inspectionLabel(record.Kind)
 				}
 				row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem, DisplayName: namesByImage[key], Arch: arch}
+				if uploaded, ok := authors.ImageUploadedAt[key]; ok && !uploaded.IsZero() {
+					row.AddedAt, row.AddedVia = &uploaded, "Загружен"
+				} else if image.FirstSeenAt != nil {
+					row.AddedAt, row.AddedVia = image.FirstSeenAt, "Обнаружен"
+				}
 				row.Downloads = append(row.Downloads, ubuntuUses[key]...)
 				if p, ok := byPath[key]; ok {
 					row.Downloads = append(row.Downloads, uses[p.ID]...)

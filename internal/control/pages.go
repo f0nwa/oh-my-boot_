@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"omb/internal/agent"
 	"omb/internal/boot"
@@ -17,6 +18,8 @@ import (
 )
 
 type imageRow struct {
+	AddedAt             *time.Time
+	AddedVia            string
 	Image               images.Image
 	StorageName, Author string
 	DisplayName         string

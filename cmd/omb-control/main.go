@@ -54,9 +54,6 @@ func main() {
 		log.Fatal("no allowed PXE interfaces")
 	}
 	store := control.Store{Pool: pool}
-	if err := store.EnsureBootProfiles(pingCtx); err != nil {
-		log.Fatal(err)
-	}
 	agentClient := control.NewAgentClient(*agentSocket)
 	bootClient := control.NewBootClient(*bootSocket)
 	server := &control.Server{Store: store, Boot: bootClient, UbuntuSource: bootClient, DeletionMenu: bootClient, Agent: agentClient, BootDrivers: agentClient, SMB: agentClient, WindowsISO: agentClient, UbuntuISO: agentClient, WindowsAnswers: agentClient, DriverPackages: agentClient, DriverConfigs: agentClient, Cleanup: agentClient, StorageRecovery: agentClient, UEFICAUSB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist, BootBaseURL: os.Getenv("OMB_CONTROL_BOOT_BASE_URL")}

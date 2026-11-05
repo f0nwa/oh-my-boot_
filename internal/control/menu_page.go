@@ -221,7 +221,7 @@ func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) err
 	if err := s.verifyMenuWindowsProfiles(ctx, version.Script, entries...); err != nil {
 		return err
 	}
-	if err := verifyUbuntuSourceReferences(version.Script, entries); err != nil {
+	if err := verifyUbuntuSourceReferences(version.Script, entries, version.LegacyUbuntuSourceID); err != nil {
 		return err
 	}
 	if err := verifyMenuAutoinstallReferences(version.Script, entries); err != nil {
@@ -230,7 +230,7 @@ func (s *Server) verifyMenuVersion(ctx context.Context, version MenuVersion) err
 	return s.stageMenuAutoinstalls(ctx, entries)
 }
 
-func verifyUbuntuSourceReferences(script string, entries []menuProfile) error {
+func verifyUbuntuSourceReferences(script string, entries []menuProfile, legacySourceID int64) error {
 	for _, entry := range entries {
 		if entry.kind != BootProfileUbuntuISO {
 			continue
@@ -249,6 +249,12 @@ func verifyUbuntuSourceReferences(script string, entries []menuProfile) error {
 		pathPart := fmt.Sprintf("%d/%s", entry.ubuntuSourceID, entry.ubuntuSourceSHA256)
 		kernelPath := "/assets/ubuntu/" + pathPart + "/vmlinuz"
 		isoPath := "/images/ubuntu/" + pathPart + ".iso"
+		assetsPath := "/assets/ubuntu/" + pathPart
+		if legacySourceID > 0 && legacySourceID == entry.ubuntuSourceID && strings.Contains(script, "/images/ubuntu-desktop.iso") {
+			assetsPath = "/assets/ubuntu"
+			kernelPath = assetsPath + "/vmlinuz"
+			isoPath = "/images/ubuntu-desktop.iso"
+		}
 		var base string
 		kernels := 0
 		var initrds, shims []string
@@ -293,7 +299,7 @@ func verifyUbuntuSourceReferences(script string, entries []menuProfile) error {
 				return fmt.Errorf("Ubuntu source snapshot ISO is invalid")
 			}
 		}
-		if kernels != 1 || len(initrds) != 1 || initrds[0] != "initrd "+base+"/assets/ubuntu/"+pathPart+"/initrd" || len(shims) != 1 || shims[0] != "shim "+base+"/assets/ubuntu/"+pathPart+"/bootx64.efi || goto "+entry.id+"_failed" {
+		if kernels != 1 || len(initrds) != 1 || initrds[0] != "initrd "+base+assetsPath+"/initrd" || len(shims) != 1 || shims[0] != "shim "+base+assetsPath+"/bootx64.efi || goto "+entry.id+"_failed" {
 			return fmt.Errorf("Ubuntu source snapshot assets are invalid")
 		}
 	}

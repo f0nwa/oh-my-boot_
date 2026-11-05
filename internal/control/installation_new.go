@@ -15,6 +15,15 @@ import (
 //go:embed installation_form.js
 var installationFormJS []byte
 
+//go:embed iso_check.js
+var isoCheckJS []byte
+
+func isoCheckScript(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(isoCheckJS)
+}
+
 func installationFormScript(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -62,6 +71,7 @@ type bootProfileChoice struct {
 	State, Error, Path string
 	Value, StorageName string
 	DefaultTitle       string
+	InspectStorageID   int64
 }
 
 // bootProfileChoices checks the shared Ubuntu resources once per request.
@@ -236,6 +246,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	editID := int64(0)
+	var previous Installation
 	if raw := r.PathValue("id"); raw != "" {
 		editID, err = strconv.ParseInt(raw, 10, 64)
 		if err != nil || editID <= 0 {
@@ -248,6 +259,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		for _, item := range sources.Installations {
 			if item.ID == editID {
 				found = true
+				previous = item
 				if newSource != nil || item.BootProfileID != shared.ID {
 					http.Error(w, "Источник существующей загрузки нельзя заменить", http.StatusBadRequest)
 					return
@@ -279,6 +291,26 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		if err != nil || autoinstallID <= 0 || (shared.Kind != BootProfileUbuntuBuiltin && shared.Kind != BootProfileUbuntuISO) || !found {
 			http.Error(w, "Выберите проверенный файл Autoinstall только для Ubuntu", http.StatusBadRequest)
 			return
+		}
+		file, fileErr := s.Store.UbuntuAutoinstall(r.Context(), autoinstallID)
+		if fileErr != nil {
+			http.Error(w, "Файл Ubuntu Autoinstall недоступен", http.StatusServiceUnavailable)
+			return
+		}
+		if file.Values.SourceID != "" {
+			// Inspecting an ISO may take minutes; do not block menu edits while it runs.
+			s.draftMu.Unlock()
+			locked = false
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(16 * time.Minute))
+			checkCtx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
+			validationErr := s.validateUbuntuDownloadFile(checkCtx, shared, file.Values)
+			cancel()
+			s.draftMu.Lock()
+			locked = true
+			if validationErr != nil {
+				http.Error(w, "Файл Autoinstall несовместим с выбранным ISO или метаданные образа недоступны", http.StatusBadRequest)
+				return
+			}
 		}
 	}
 	answerID, answerTitle := int64(0), ""
@@ -436,7 +468,11 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		if draft.Items[i].InheritsTitle {
 			menuTitle = title
 		}
-		err = draft.UpdateInstallation(editID, menuTitle, folder)
+		menuFolder := draft.Items[i].Folder
+		if menuFolder == previous.Folder {
+			menuFolder = folder
+		}
+		err = draft.UpdateInstallation(editID, menuTitle, menuFolder)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)

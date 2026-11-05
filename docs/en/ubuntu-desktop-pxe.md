@@ -2,42 +2,17 @@
 
 [Русская версия](../ubuntu-desktop-pxe.md). See the [Control guide](control-installation.md#ubuntu-autoinstall) for current installation management.
 
-Boot serves one selected ISO at `/images/ubuntu-desktop.iso` and its kernel and initrd under `/assets/ubuntu/`. Other storage ISOs are not published through this route. Multiple Ubuntu installations can share the profile with different Autoinstall files.
+OMB supports multiple Ubuntu Desktop amd64 ISOs in connected local and network storage. Agent prepares the kernel, initrd, shim and installation catalog separately for each verified ISO. Multiple boot entries can use one ISO with different Autoinstall files.
 
 ## Source preparation
 
-Set the absolute ISO path in `/etc/omb/boot.env`:
+In **Library → ISO images**, upload a file or find it after scanning a storage. Select **Create boot entry** for the Ubuntu image. OMB checks its contents, architecture and checksum before opening the form with that ISO selected. Ubuntu Server, ARM64 and incomplete images are not supported. The type inferred from a filename is only a hint. If the name does not identify the file as Ubuntu, use **Check for Ubuntu**.
 
-~~~ini
-OMB_BOOT_UBUNTU_ISO=/var/lib/omb-images/iso/ubuntu-desktop-amd64.iso
-~~~
+Set the entry name and folder and optionally choose an Autoinstall file. Agent prepares the source after saving; a failed preparation leaves the entry available for retry. Add the entry to the menu draft separately, then publish. The original ISO remains in storage; prepared files and new URLs are bound to the source ID and ISO SHA-256. A replaced ISO or mismatched prepared files block publication.
 
-Replace this example with a real file. Boot needs read access through all parent directories. For a local Images source, add `omb-images` to the Boot unit's supplementary groups. For SMB, configure managed storage first.
+Set the client-visible Boot address in `/etc/omb/control.env` as `OMB_CONTROL_BOOT_BASE_URL`. BIOS boots the kernel directly; UEFI uses the shim from that same ISO. Boot must be able to read the storage and its parent directories.
 
-Finish active installations and stop Boot before preparing the source. From the current OMB repository root, run as root with your real ISO path:
-
-~~~sh
-systemctl stop omb-boot.service
-scripts/prepare-ubuntu-source.sh --iso /var/lib/omb-images/iso/ubuntu-desktop-amd64.iso --assets /srv/omb/tftp
-~~~
-
-The script mounts the ISO read-only, copies its kernel, initrd, Ubuntu shim and `casper/install-sources.yaml` into a new `ubuntu/` tree, then writes `manifest.json` with ISO and file SHA-256 values. The previous tree is retained alongside it as `.ubuntu-backup.*`; the script prints its location. Failure preserves or restores the previous tree. A failed unmount preserves its temporary directory; do not remove files through an active mount.
-
-At startup Boot verifies the manifest against the configured ISO, then checks file identity, size and mtime. Replacing the ISO or its boot files requires preparation and a Boot restart. Missing metadata still permits manual boot and the ISO-default answer scenario, but disables explicit application source choices. Metadata errors do not stop unrelated Boot functions.
-
-After successful preparation:
-
-~~~sh
-systemctl start omb-boot.service
-~~~
-
-`/etc/omb/control.env` must contain the client-accessible address:
-
-~~~ini
-OMB_CONTROL_BOOT_BASE_URL=http://10.30.0.10:8080
-~~~
-
-Restart the relevant services after changing env files. Run `systemctl daemon-reload` first if a unit changed. Check boot file HTTP HEAD and ISO range GET before publishing. The menu generator calls Ubuntu `shim` only on UEFI; BIOS proceeds directly to kernel boot.
+The old `/images/ubuntu-desktop.iso` and `/assets/ubuntu/` URLs remain only for previously published versions whose source has been verified. Choosing another ISO does not change that binding. A version without a proven source cannot be restored. Do not replace the legacy assets or migrate a running server without a verified ISO match and a backup.
 
 ## Installations and Autoinstall
 

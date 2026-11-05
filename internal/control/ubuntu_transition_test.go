@@ -169,6 +169,29 @@ func TestUbuntuSourceSchemaSeparatesISOIdentities(t *testing.T) {
 	}
 }
 
+func TestUbuntuSourceCanCreatePersistentInstallation(t *testing.T) {
+	ctx := context.Background()
+	store := installationTestStore(t)
+	profile, err := store.CreateUbuntuSource(ctx, 6, "ubuntu.iso", strings.Repeat("a", 64), "Ubuntu Desktop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateInstallation(ctx, Installation{BootProfileID: profile.ID, Title: "Unchecked"}); err == nil {
+		t.Fatal("unverified source accepted as a boot entry")
+	}
+	if err := store.SetUbuntuSourceState(ctx, profile.UbuntuSourceID, "verified", ""); err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.CreateInstallation(ctx, Installation{BootProfileID: profile.ID, Title: "Ubuntu Lab"})
+	if err != nil || item.ID <= 0 {
+		t.Fatalf("create: item=%+v err=%v", item, err)
+	}
+	items, err := store.Installations(ctx)
+	if err != nil || len(items) != 1 || items[0].BootProfileID != profile.ID {
+		t.Fatalf("saved=%+v err=%v", items, err)
+	}
+}
+
 func TestCreateUbuntuSourceReusesExactIdentity(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
@@ -344,6 +367,38 @@ func TestMenuUsesIndependentUbuntuISOIdentities(t *testing.T) {
 	version := MenuVersion{ID: 45, Script: string(script), Items: []MenuVersionItem{}}
 	if legacyUbuntuMenuWithoutSource(version, sources) {
 		t.Fatal("source-specific Ubuntu URLs were mistaken for legacy URLs")
+	}
+}
+
+func TestMigratedUbuntuPublishesSpecificSourceAndRetainsLegacyHistory(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	sources := InstallationMenuSources{
+		Installations: []Installation{{ID: 21, BootProfileID: 1, Title: "Ubuntu"}},
+		BootProfiles:  []BootProfile{{ID: 1, Kind: BootProfileUbuntuBuiltin, UbuntuSourceID: 11, UbuntuStorageID: 6, UbuntuPath: "ubuntu.iso", UbuntuSHA256: digest, UbuntuState: "ready"}},
+	}
+	draft := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 21}}}
+	script, err := BuildMenuFromDraft(draft, testBootURL, nil, nil, nil, sources)
+	if err != nil || !strings.Contains(string(script), "/images/ubuntu/11/"+digest+".iso") || strings.Contains(string(script), "/images/ubuntu-desktop.iso") {
+		t.Fatalf("new publication must use source identity: %v %s", err, script)
+	}
+	old := MenuVersion{ID: 4, LegacyUbuntuSourceID: 11, Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Script: "#!ipxe\n" + ubuntuBootScript(testBootURL, "install_21", ""), Items: versionItems(draft)}
+	if !menuVersionRestorable(old, sources, nil, nil, nil) {
+		t.Fatal("verified legacy history became unrestorable")
+	}
+}
+
+func TestMigratedLegacySnapshotPreflightChecksPinnedReferences(t *testing.T) {
+	s, store, _ := unifiedMenuFixture(t)
+	store.bootProfiles[0] = BootProfile{ID: 1, Kind: BootProfileUbuntuBuiltin, UbuntuSourceID: 17, UbuntuStorageID: 6, UbuntuPath: "ubuntu.iso", UbuntuSHA256: strings.Repeat("a", 64), UbuntuState: "ready"}
+	s.UbuntuSource = multiUbuntuSourceStub{}
+	draft := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 71}}}
+	version := MenuVersion{ID: 4, LegacyUbuntuSourceID: 17, Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Script: "#!ipxe\n" + ubuntuBootScript(testBootURL, "install_71", ""), Items: versionItems(draft)}
+	if err := s.verifyMenuVersion(t.Context(), version); err != nil {
+		t.Fatalf("verified legacy snapshot rejected: %v", err)
+	}
+	version.Script = strings.Replace(version.Script, "iso-url="+testBootURL+"/images/ubuntu-desktop.iso", "iso-url="+testBootURL+"/images/ubuntu-desktop.iso iso-url=http://other.invalid/other.iso", 1)
+	if err := s.verifyMenuVersion(t.Context(), version); err == nil {
+		t.Fatal("legacy snapshot accepted an extra ISO")
 	}
 }
 

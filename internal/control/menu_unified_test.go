@@ -172,7 +172,7 @@ func TestUnifiedPreviewShowsProfileAndComponents(t *testing.T) {
 	store.installations[1].DriverConfigID = 2
 	for _, tc := range []struct{ key, kind, image string }{{"install_71", "Ubuntu", "Ubuntu"}, {"install_72", "Образ с драйверами", "Windows 11"}} {
 		body := libraryGet(t, s, "/menu?item="+tc.key)
-		if !strings.Contains(body, tc.kind) || !strings.Contains(body, "<dd>"+tc.image+"</dd>") {
+		if !strings.Contains(body, tc.kind) || !strings.Contains(body, "<dd>"+tc.image) {
 			t.Errorf("%s lacks profile details", tc.key)
 		}
 		if tc.key == "install_72" && (!strings.Contains(body, "<dd>storage</dd>") || !strings.Contains(body, "<dd>Lab")) {

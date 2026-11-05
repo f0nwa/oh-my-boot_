@@ -37,7 +37,7 @@ Create the unprivileged Boot account and configuration directory:
 ```sh
 sudo useradd --system --home /var/lib/omb-boot --shell /usr/sbin/nologin omb-boot
 sudo install -d -m 0750 -o root -g root /etc/omb
-sudo install -d -m 0755 -o root -g root /usr/local/libexec /srv/omb/tftp/ubuntu-sources /var/lib/omb-boot/ubuntu-registry
+sudo install -d -m 0755 -o root -g root /usr/local/libexec /srv/omb/tftp/ubuntu-sources /var/lib/omb-ubuntu-registry
 sudo install -m 0755 scripts/prepare-ubuntu-source.sh /usr/local/libexec/omb-prepare-ubuntu-source
 ```
 

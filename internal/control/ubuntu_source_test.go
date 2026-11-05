@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -159,5 +160,74 @@ func TestUbuntuAutoinstallIsValidatedAgainstItsSelectedISO(t *testing.T) {
 	entry.id, entry.ubuntuSourceID, entry.ubuntuSourceSHA256 = "install_73", 12, strings.Repeat("b", 64)
 	if err := s.stageMenuAutoinstalls(t.Context(), []menuProfile{entry}); err == nil {
 		t.Fatal("file answer for a different ISO was accepted")
+	}
+}
+
+func TestMigratedUbuntuSourceIsAvailableInAutoinstallEditor(t *testing.T) {
+	s, store := autoinstallServer(t)
+	store.bootProfiles = append(store.bootProfiles, BootProfile{ID: 70, Kind: BootProfileUbuntuBuiltin, Title: "Ubuntu Desktop", UbuntuSourceID: 17, UbuntuStorageID: 6, UbuntuPath: "ubuntu.iso", UbuntuSHA256: strings.Repeat("a", 64), UbuntuState: "ready"})
+	s.UbuntuSource = multiUbuntuSourceStub{}
+	request := accountRequest(http.MethodGet, "/ubuntu-autoinstall/new?iso_source_id=17", nil)
+	id, sha, err := s.selectedUbuntuEditorSource(request)
+	if err != nil || id != 17 || sha != strings.Repeat("a", 64) {
+		t.Fatalf("id=%d sha=%s err=%v", id, sha, err)
+	}
+	body := libraryGet(t, s, "/ubuntu-autoinstall/new?iso_source_id=17")
+	if !strings.Contains(body, "ubuntu.iso") {
+		t.Fatal("migrated ISO is missing from editor")
+	}
+}
+
+func TestCreateUbuntuDownloadRejectsAutoinstallFromDifferentISO(t *testing.T) {
+	for _, tc := range []struct {
+		id, sourceID int64
+		digest, name string
+		accepted     bool
+	}{
+		{61, 11, strings.Repeat("a", 64), "matching", true},
+		{62, 12, strings.Repeat("b", 64), "different", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, store := autoinstallServer(t)
+			s.UbuntuSource = multiUbuntuSourceStub{}
+			store.bootProfiles = append(store.bootProfiles, BootProfile{ID: tc.id, Kind: BootProfileUbuntuISO, Title: "Ubuntu", UbuntuSourceID: tc.sourceID, UbuntuStorageID: 7, UbuntuPath: "ubuntu.iso", UbuntuSHA256: tc.digest, UbuntuState: "ready"})
+			file := testAutoinstallFile(t, "desktop-alpha")
+			file.ID = 1
+			file.Values.SourceID = "ubuntu-desktop-alpha"
+			store.files = []UbuntuAutoinstallFile{file}
+			res := constructorPost(t, s, "/installations", url.Values{"boot_profile_id": {fmt.Sprint(tc.id)}, "title": {"Ubuntu"}, "autoinstall_id": {"1"}})
+			if tc.accepted && (res.Code != http.StatusSeeOther || len(store.installations) != 1) {
+				t.Fatalf("matching source: status=%d body=%s", res.Code, res.Body.String())
+			}
+			if !tc.accepted && (res.Code != http.StatusBadRequest || len(store.installations) != 0) {
+				t.Fatalf("incompatible source accepted: status=%d entries=%+v", res.Code, store.installations)
+			}
+		})
+	}
+}
+
+func TestCreateUbuntuDownloadChecksUnpreparedISOForAutoinstall(t *testing.T) {
+	for _, tc := range []struct {
+		name, digest string
+		accepted     bool
+	}{
+		{"same ISO", strings.Repeat("a", 64), true}, {"changed ISO", strings.Repeat("b", 64), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, base, _ := downloadsServer(t)
+			store := &autoinstallEditorStore{newInstallStore: base.newInstallStore}
+			s.Store = store
+			probe := &inspectUbuntuAgent{}
+			s.UbuntuISO = probe
+			store.bootProfiles = []BootProfile{{ID: 61, Kind: BootProfileUbuntuISO, Title: "Ubuntu", UbuntuSourceID: 11, UbuntuStorageID: 7, UbuntuPath: "Windows-new.iso", UbuntuSHA256: tc.digest, UbuntuState: "verified"}}
+			file := testAutoinstallFile(t, "desktop")
+			file.ID = 1
+			file.Values.SourceID = "ubuntu-desktop"
+			store.files = []UbuntuAutoinstallFile{file}
+			res := constructorPost(t, s, "/installations", url.Values{"boot_profile_id": {"61"}, "title": {"Ubuntu"}, "autoinstall_id": {"1"}})
+			if probe.calls != 1 || (tc.accepted && (res.Code != http.StatusSeeOther || len(store.installations) != 1)) || (!tc.accepted && (res.Code != http.StatusBadRequest || len(store.installations) != 0)) {
+				t.Fatalf("status=%d calls=%d entries=%+v", res.Code, probe.calls, store.installations)
+			}
+		})
 	}
 }

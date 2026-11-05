@@ -16,7 +16,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/etc/omb /etc/systemd/system /mnt/omb-smb /mnt/omb-smb-upload /mnt/omb-iso/profiles /run/omb /var/lib/omb-agent /var/lib/omb-dhcp /srv/omb/tftp/windows-profiles /srv/omb/tftp/windows-answers /srv/omb/tftp/windows-driver-wims /srv/omb/tftp/windows-driver-configs -/srv/omb/tftp/ubuntu-sources -/var/lib/omb-boot/ubuntu-registry -/run/samba
+ReadWritePaths=/etc/omb /etc/systemd/system /mnt/omb-smb /mnt/omb-smb-upload /mnt/omb-iso/profiles /run/omb /var/lib/omb-agent /var/lib/omb-dhcp /srv/omb/tftp/windows-profiles /srv/omb/tftp/windows-answers /srv/omb/tftp/windows-driver-wims /srv/omb/tftp/windows-driver-configs -/srv/omb/tftp/ubuntu-sources -/var/lib/omb-ubuntu-registry -/run/samba
 RestrictAddressFamilies=AF_UNIX
 
 [Install]

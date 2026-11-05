@@ -190,7 +190,7 @@ func TestUnifiedUbuntuInspectorShowsSourceWithoutWindowsComponents(t *testing.T)
 	store.installations = []Installation{{ID: 100, BootProfileID: 52, Title: "Ubuntu Lab", Folder: "Linux"}}
 	store.draft = &MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 100, Title: "Ubuntu Lab", Folder: "Linux"}}}
 	body := libraryGet(t, s, "/menu?item=install_100")
-	if !strings.Contains(body, "Ubuntu Desktop") || strings.Contains(body, "<dt>Файл ответов</dt>") || strings.Contains(body, "<dt>Драйверы</dt>") {
+	if !strings.Contains(body, "Ubuntu Desktop") || !strings.Contains(body, "<dt>Файл ответов</dt>") || strings.Contains(body, "<dt>Драйверы</dt>") {
 		t.Fatal("Ubuntu inspector shows Windows components")
 	}
 }

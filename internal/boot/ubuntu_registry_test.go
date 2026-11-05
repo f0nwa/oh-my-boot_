@@ -10,7 +10,78 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestUbuntuRegistryLoadingOneSourceDoesNotBlockAnother(t *testing.T) {
+	assets, registry := t.TempDir(), t.TempDir()
+	var digests [2]string
+	var isos [2]string
+	for i, id := range []int{11, 12} {
+		iso, fixture := sourceFixture(t)
+		isos[i] = iso
+		data, err := os.ReadFile(iso)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digests[i] = fmt.Sprintf("%x", sha256.Sum256(data))
+		dest := filepath.Join(assets, "ubuntu-sources", fmt.Sprint(id), digests[i])
+		if err := os.MkdirAll(dest, 0755); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"manifest.json", "vmlinuz", "initrd", "bootx64.efi", "install-sources.yaml"} {
+			content, err := os.ReadFile(filepath.Join(fixture, "ubuntu", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dest, name), content, 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		config, err := json.Marshal(map[string]any{"id": id, "sha256": digests[i], "iso_path": iso})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(registry, fmt.Sprintf("%d.json", id)), config, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	started, release := make(chan struct{}), make(chan struct{})
+	r := NewUbuntuRegistry(registry, assets)
+	r.loadSource = func(iso, dir string) *UbuntuSource {
+		if iso == isos[0] {
+			close(started)
+			<-release
+		}
+		return NewUbuntuSourceAt(iso, dir)
+	}
+	first := make(chan error, 1)
+	go func() { _, err := r.source(11, digests[0]); first <- err }()
+	<-started
+	second := make(chan error, 1)
+	go func() { _, err := r.source(12, digests[1]); second <- err }()
+	select {
+	case err := <-second:
+		if err != nil {
+			close(release)
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		close(release)
+		<-first
+		t.Fatal("one ISO blocked another source")
+	}
+	close(release)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUbuntuRegistryDefaultDoesNotResideUnderBootWritableState(t *testing.T) {
+	if filepath.Dir(DefaultUbuntuRegistryRoot) != "/var/lib" {
+		t.Fatal("registry parent must not be writable by the Boot service")
+	}
+}
 
 func TestUbuntuRegistryServesOnlyVerifiedSourceAndAssets(t *testing.T) {
 	assetsRoot := t.TempDir()

@@ -265,6 +265,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
+	mux.HandleFunc("GET /assets/iso-check.js", isoCheckScript)
 	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
 	mux.HandleFunc("POST /images/ubuntu/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectUbuntuISO)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsProfileDelete)))
@@ -596,6 +597,9 @@ func (s *Server) libraryData(r *http.Request) pageData {
 			}
 			for _, image := range catalog.Images {
 				kind, problem := isoKindHint(image.Path)
+				if kind == "Ubuntu" && problem != "" {
+					problem = "ISO ещё не проверен"
+				}
 				key := fmt.Sprintf("%d:%s", image.StorageID, image.Path)
 				if ubuntuVerified[key] {
 					kind, problem = "Ubuntu", ""

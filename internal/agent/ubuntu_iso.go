@@ -31,14 +31,15 @@ type UbuntuISOAPI interface {
 }
 
 type UbuntuISOManager struct {
-	mu           sync.Mutex
-	SourceRoot   string
-	LocalRoot    string
-	AssetRoot    string
-	ScriptPath   string
-	Runner       DriverCommandRunner
-	RegistryRoot string
-	Mounter      WindowsISOMounter
+	mu               sync.Mutex
+	SourceRoot       string
+	LocalRoot        string
+	AssetRoot        string
+	ScriptPath       string
+	Runner           DriverCommandRunner
+	RegistryRoot     string
+	LegacyConfigPath string
+	Mounter          WindowsISOMounter
 }
 
 type UbuntuISOInspection struct {
@@ -184,7 +185,7 @@ func (m *UbuntuISOManager) Prepare(ctx context.Context, req UbuntuISORequest) er
 		return err
 	}
 	info, err := os.Lstat(m.RegistryRoot)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0022 != 0 {
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0022 != 0 || !agentOwnsFile(info) {
 		return fmt.Errorf("Ubuntu source registry is unavailable")
 	}
 	contents, err := json.Marshal(struct {
@@ -197,7 +198,7 @@ func (m *UbuntuISOManager) Prepare(ctx context.Context, req UbuntuISORequest) er
 	}
 	configPath := filepath.Join(m.RegistryRoot, id+".json")
 	if oldInfo, err := os.Lstat(configPath); err == nil {
-		if !oldInfo.Mode().IsRegular() || oldInfo.Size() > 4096 || oldInfo.Mode().Perm()&0022 != 0 {
+		if !oldInfo.Mode().IsRegular() || oldInfo.Size() > 4096 || oldInfo.Mode().Perm()&0022 != 0 || !agentOwnsFile(oldInfo) {
 			return fmt.Errorf("invalid existing Ubuntu source registry entry")
 		}
 		existing, err := os.ReadFile(configPath)
@@ -265,6 +266,28 @@ func (r ubuntuContextReader) Read(p []byte) (int, error) {
 // HandlerWithUbuntuISO exposes preparation only over the agent's local socket.
 func HandlerWithUbuntuISO(next http.Handler, manager UbuntuISOAPI) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /ubuntu-iso/pin-legacy", func(w http.ResponseWriter, r *http.Request) {
+		pinner, ok := manager.(interface {
+			PinLegacy(context.Context, int64, string) error
+		})
+		if !ok || pinner == nil {
+			http.Error(w, "legacy Ubuntu source pinning unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req ubuntuLegacyRef
+		if !decodeSMBRequest(w, r, &req) {
+			return
+		}
+		if req.ID <= 0 || !validUbuntuDigest(req.SHA256) {
+			http.Error(w, "invalid legacy Ubuntu source", http.StatusBadRequest)
+			return
+		}
+		if err := pinner.PinLegacy(r.Context(), req.ID, req.SHA256); err != nil {
+			http.Error(w, "legacy Ubuntu source verification failed", http.StatusUnprocessableEntity)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /ubuntu-iso/inspect", func(w http.ResponseWriter, r *http.Request) {
 		if manager == nil {
 			http.Error(w, "Ubuntu ISO inspection unavailable", http.StatusServiceUnavailable)

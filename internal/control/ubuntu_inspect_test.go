@@ -66,3 +66,54 @@ func TestInspectUbuntuISORequiresPresentCatalogFileAndValidInspection(t *testing
 		})
 	}
 }
+
+func TestUbuntuISOCreatedFromLibraryAndDownloadForm(t *testing.T) {
+	s, _, _ := downloadsServer(t)
+	catalog := s.Images.(*fakeImagesAPI)
+	catalog.catalog.Images[1].Path = "ubuntu-desktop.iso"
+	library := libraryGet(t, s, "/images")
+	if !strings.Contains(library, `action="/images/ubuntu/inspect"`) || !strings.Contains(library, "Создать загрузку") {
+		t.Fatal("library lacks create action for Ubuntu ISO")
+	}
+	page := libraryGet(t, s, "/installations/new?storage_id=7&path=ubuntu-desktop.iso")
+	if !strings.Contains(page, `action="/images/ubuntu/inspect"`) || !strings.Contains(page, `name="path" value="ubuntu-desktop.iso"`) {
+		t.Fatal("new download page cannot inspect its selected Ubuntu ISO")
+	}
+	if !strings.Contains(page, `data-ubuntu-inspect`) || !strings.Contains(library, `data-ubuntu-inspect`) {
+		t.Fatal("inspection forms do not expose progress feedback")
+	}
+}
+
+func TestMigratedUbuntuISOIsNotOfferedTwice(t *testing.T) {
+	s, base, _ := downloadsServer(t)
+	s.Images.(*fakeImagesAPI).catalog.Images[1].Path = "ubuntu-desktop.iso"
+	base.bootProfiles = []BootProfile{{ID: 52, Kind: BootProfileUbuntuBuiltin, Title: "Ubuntu Desktop", UbuntuSourceID: 17, UbuntuStorageID: 7, UbuntuPath: "ubuntu-desktop.iso", UbuntuSHA256: strings.Repeat("a", 64), UbuntuState: "ready"}}
+	choices, err := s.downloadSourceChoices(context.Background(), base.bootProfiles, base.profiles, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, choice := range choices {
+		if choice.Path == "ubuntu-desktop.iso" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("migrated ISO appears %d times: %+v", count, choices)
+	}
+}
+
+func TestAddDownloadExplainsItIsInDraftAndLinksToMenu(t *testing.T) {
+	s, store, _ := downloadsServer(t)
+	if res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "title": {"Windows"}}); res.Code != http.StatusSeeOther {
+		t.Fatal(res.Code)
+	}
+	res := menuPost(t, s, "/installations/100/add", url.Values{})
+	if res.Code != http.StatusSeeOther || store.draft == nil {
+		t.Fatalf("status=%d", res.Code)
+	}
+	body := libraryGet(t, s, res.Header().Get("Location"))
+	if !strings.Contains(body, "Добавлено в черновик меню") || !strings.Contains(body, `href="/menu"`) {
+		t.Fatal("missing draft confirmation or menu link")
+	}
+}

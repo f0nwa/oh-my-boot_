@@ -237,6 +237,8 @@ From here the setup is the same as usual:
 
 `omb-agent.service` runs with `ProtectSystem=strict` and will not start if any path in its `ReadWritePaths` is missing. Before the first start, `/etc/omb`, `/etc/omb/winiso`, `/mnt/omb-smb`, `/mnt/omb-smb-upload`, `/mnt/omb-iso/profiles`, `/srv/omb/tftp/windows-profiles`, `/srv/omb/tftp/windows-answers`, `/srv/omb/tftp/windows-driver-wims` and `/srv/omb/tftp/windows-driver-configs` must exist. Owners and modes are given in the Images guide and in the drivers section of the Control guide.
 
+For Ubuntu ISO preparation, also install `scripts/prepare-ubuntu-source.sh` and create the directories described in the [Boot installation guide](../installation.md). Python 3 must be available on the server, and the source registry directory must be owned by root.
+
 ## 4. Check
 
 First make sure the server really is isolated, otherwise the check proves nothing:

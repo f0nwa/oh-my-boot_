@@ -74,7 +74,7 @@ func (s *Server) prepareUbuntuView(r *http.Request, v *ubuntuAutoinstallEditorVi
 	}
 	profiles, _ := s.Store.BootProfiles(r.Context())
 	for _, profile := range profiles {
-		if profile.Kind == BootProfileUbuntuISO && profile.UbuntuState == "ready" {
+		if (profile.Kind == BootProfileUbuntuISO || profile.Kind == BootProfileUbuntuBuiltin) && profile.UbuntuSourceID > 0 && profile.UbuntuState == "ready" {
 			v.ISOProfiles = append(v.ISOProfiles, profile)
 		}
 	}

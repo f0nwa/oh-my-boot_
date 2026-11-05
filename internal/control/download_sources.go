@@ -18,7 +18,7 @@ func isoKindHint(name string) (kind, problem string) {
 	case strings.Contains(name, "arm64"):
 		return "ARM64", "ARM64 пока не поддерживается"
 	case strings.HasPrefix(name, "ubuntu"):
-		return "Ubuntu", "Проверьте ISO для Ubuntu в библиотеке образов"
+		return "Ubuntu", "Сначала проверьте ISO"
 	case strings.Contains(name, "strelec"):
 		return "WinPE Strelec", ""
 	case strings.HasPrefix(name, "winpe"):
@@ -39,7 +39,7 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		choice := &choices[i]
 		choice.Value = strconv.FormatInt(choice.ID, 10)
 		choice.DefaultTitle = choice.Title
-		if choice.Kind == BootProfileUbuntuISO {
+		if (choice.Kind == BootProfileUbuntuISO || choice.Kind == BootProfileUbuntuBuiltin) && choice.UbuntuStorageID > 0 && choice.UbuntuPath != "" {
 			existing[fmt.Sprintf("%d:%s", choice.UbuntuStorageID, choice.UbuntuPath)] = true
 		}
 		for _, w := range windows {
@@ -59,7 +59,7 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		return nil, fmt.Errorf("Каталог ISO недоступен")
 	}
 	for i := range choices {
-		if choices[i].Kind != BootProfileUbuntuISO {
+		if choices[i].Kind != BootProfileUbuntuISO && choices[i].Kind != BootProfileUbuntuBuiltin {
 			continue
 		}
 		for _, storage := range catalog.Storages {
@@ -86,8 +86,11 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		if !image.Present {
 			choice.State, choice.Error = "unavailable", "Исходный ISO недоступен"
 		}
-		if _, problem := isoKindHint(image.Path); problem != "" {
+		if _, problem := isoKindHint(image.Path); problem != "" && choice.State == "pending" {
 			choice.State, choice.Error = "unsupported", problem
+			if hint, _ := isoKindHint(image.Path); hint == "Ubuntu" && image.Present {
+				choice.InspectStorageID = image.StorageID
+			}
 		}
 		choices = append(choices, choice)
 	}

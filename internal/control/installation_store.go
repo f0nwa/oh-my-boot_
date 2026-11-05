@@ -9,13 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// EnsureBootProfiles creates the one system profile. Library imports belong to
-// the one-time stand migration; startup never regenerates installations.
-func (s Store) EnsureBootProfiles(ctx context.Context) error {
-	_, err := s.Pool.Exec(ctx, `INSERT INTO boot_profiles(kind,title) VALUES('ubuntu_builtin','Ubuntu Desktop') ON CONFLICT (kind) WHERE kind='ubuntu_builtin' DO NOTHING`)
-	return err
-}
-
 func (s Store) BootProfiles(ctx context.Context) ([]BootProfile, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0),COALESCE(u.id,0),COALESCE(u.storage_id,0),COALESCE(u.path,''),COALESCE(u.sha256,''),COALESCE(u.state,'') FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id LEFT JOIN ubuntu_sources u ON u.boot_profile_id=b.id ORDER BY b.id`)
 	if err != nil {
@@ -111,9 +104,17 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 		}
 	}
 	var profile BootProfile
-	err = tx.QueryRow(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0) FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id WHERE b.id=$1 FOR SHARE OF b`, item.BootProfileID).Scan(&profile.ID, &profile.Kind, &profile.Title, &profile.WindowsProfileID)
+	err = tx.QueryRow(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0),COALESCE(u.id,0),COALESCE(u.storage_id,0),COALESCE(u.path,''),COALESCE(u.sha256,''),COALESCE(u.state,'') FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id LEFT JOIN ubuntu_sources u ON u.boot_profile_id=b.id WHERE b.id=$1 FOR SHARE OF b`, item.BootProfileID).Scan(&profile.ID, &profile.Kind, &profile.Title, &profile.WindowsProfileID, &profile.UbuntuSourceID, &profile.UbuntuStorageID, &profile.UbuntuPath, &profile.UbuntuSHA256, &profile.UbuntuState)
 	if err != nil {
 		return Installation{}, err
+	}
+	if profile.UbuntuSourceID > 0 {
+		if err := tx.QueryRow(ctx, `SELECT state FROM ubuntu_sources WHERE id=$1 FOR SHARE`, profile.UbuntuSourceID).Scan(&profile.UbuntuState); err != nil {
+			return Installation{}, err
+		}
+	}
+	if !update && profile.Kind == BootProfileUbuntuISO && profile.UbuntuState != "verified" && profile.UbuntuState != "ready" && profile.UbuntuState != "error" {
+		return Installation{}, fmt.Errorf("Ubuntu source has not been verified")
 	}
 	// Lock selected components while validating and writing their references.
 	var configs []DriverConfig

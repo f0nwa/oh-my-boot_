@@ -95,7 +95,7 @@ func (s *Server) menuItemRename(w http.ResponseWriter, r *http.Request) {
 			return errItemNotInMenu
 		}
 		title, folder := strings.TrimSpace(r.FormValue("title")), strings.TrimSpace(r.FormValue("folder"))
-		inherits := r.FormValue("inherit_title") == "yes" || title == ""
+		inherits := r.FormValue("inherit_title") == "yes" || title == "" || d.Items[i].InheritsTitle && title == d.Items[i].Title
 		if inherits {
 			items, err := s.Store.Installations(r.Context())
 			if err != nil {

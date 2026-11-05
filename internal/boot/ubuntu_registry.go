@@ -21,7 +21,7 @@ type ubuntuRegistryConfig struct {
 }
 
 // DefaultUbuntuRegistryRoot contains Agent-managed source descriptors.
-const DefaultUbuntuRegistryRoot = "/var/lib/omb-boot/ubuntu-registry"
+const DefaultUbuntuRegistryRoot = "/var/lib/omb-ubuntu-registry"
 
 type ubuntuRegistryEntry struct {
 	config ubuntuRegistryConfig
@@ -38,6 +38,8 @@ type ubuntuRegistry struct {
 	root, assets string
 	mu           sync.Mutex
 	entries      map[string]ubuntuRegistryEntry
+	locks        map[string]*sync.Mutex
+	loadSource   func(string, string) *UbuntuSource
 }
 
 // UbuntuRegistry shares verified source snapshots between the public and local APIs.
@@ -107,8 +109,6 @@ func (r *ubuntuRegistry) source(id int64, digest string) (*UbuntuSource, error) 
 	if id <= 0 || !validSHA256(digest) || !filepath.IsAbs(r.root) {
 		return nil, errUbuntuSource
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	configPath := filepath.Join(r.root, strconv.FormatInt(id, 10)+".json")
 	info, err := os.Lstat(configPath)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 || info.Size() > 4096 {
@@ -136,11 +136,28 @@ func (r *ubuntuRegistry) source(id int64, digest string) (*UbuntuSource, error) 
 		return nil, errUbuntuSource
 	}
 	key := fmt.Sprintf("%d/%s", id, digest)
-	if cached, ok := r.entries[key]; ok && cached.config == config {
+	r.mu.Lock()
+	if r.locks == nil {
+		r.locks = make(map[string]*sync.Mutex)
+	}
+	lock := r.locks[key]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		r.locks[key] = lock
+	}
+	r.mu.Unlock()
+	lock.Lock()
+	defer lock.Unlock()
+	r.mu.Lock()
+	cached, ok := r.entries[key]
+	r.mu.Unlock()
+	if ok && cached.config == config {
 		if _, err := cached.source.Catalog(); err == nil {
 			return cached.source, nil
 		}
+		r.mu.Lock()
 		delete(r.entries, key)
+		r.mu.Unlock()
 	}
 	root := filepath.Join(r.assets, "ubuntu-sources")
 	for _, dir := range []string{root, filepath.Join(root, strconv.FormatInt(id, 10)), filepath.Join(root, strconv.FormatInt(id, 10), digest)} {
@@ -149,15 +166,21 @@ func (r *ubuntuRegistry) source(id int64, digest string) (*UbuntuSource, error) 
 			return nil, errUbuntuSource
 		}
 	}
-	source := NewUbuntuSourceAt(config.ISOPath, filepath.Join(root, strconv.FormatInt(id, 10), digest))
+	loader := r.loadSource
+	if loader == nil {
+		loader = NewUbuntuSourceAt
+	}
+	source := loader(config.ISOPath, filepath.Join(root, strconv.FormatInt(id, 10), digest))
 	catalog, err := source.Catalog()
 	if err != nil || catalog.ISOSHA256 != digest {
 		return nil, errUbuntuSource
 	}
+	r.mu.Lock()
 	if r.entries == nil {
 		r.entries = make(map[string]ubuntuRegistryEntry)
 	}
 	r.entries[key] = ubuntuRegistryEntry{config: config, source: source}
+	r.mu.Unlock()
 	return source, nil
 }
 

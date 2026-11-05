@@ -95,3 +95,44 @@ func TestMenuTitleOverrideSurvivesRemovalAndDownloadRename(t *testing.T) {
 		t.Fatalf("draft=%+v", store.draft)
 	}
 }
+
+func TestEditingMenuFolderKeepsTitleInheritance(t *testing.T) {
+	s, store, _ := downloadsServer(t)
+	if res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "title": {"Original"}}); res.Code != http.StatusSeeOther {
+		t.Fatal(res.Code)
+	}
+	if res := menuPost(t, s, "/installations/100/add", url.Values{}); res.Code != http.StatusSeeOther {
+		t.Fatal(res.Code)
+	}
+	if res := menuPost(t, s, "/menu/items/install_100/title", url.Values{"title": {"Original"}, "folder": {"Lab"}}); res.Code != http.StatusSeeOther {
+		t.Fatal(res.Code)
+	}
+	if !store.draft.Items[0].InheritsTitle {
+		t.Fatal("saving only the folder disabled title inheritance")
+	}
+	if res := menuPost(t, s, "/installations/100", url.Values{"boot_profile_id": {"51"}, "title": {"Renamed"}}); res.Code != http.StatusSeeOther {
+		t.Fatal(res.Code)
+	}
+	if store.draft.Items[0].Title != "Renamed" {
+		t.Fatalf("title=%q", store.draft.Items[0].Title)
+	}
+}
+
+func TestDownloadRenamePreservesMenuFolderOverride(t *testing.T) {
+	s, store, _ := downloadsServer(t)
+	if res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "title": {"Original"}, "folder": {"Windows"}}); res.Code != http.StatusSeeOther {
+		t.Fatal(res.Code)
+	}
+	if res := menuPost(t, s, "/installations/100/add", url.Values{}); res.Code != http.StatusSeeOther {
+		t.Fatal(res.Code)
+	}
+	if res := menuPost(t, s, "/menu/items/install_100/title", url.Values{"title": {"Original"}, "folder": {"Lab"}}); res.Code != http.StatusSeeOther {
+		t.Fatal(res.Code)
+	}
+	if res := menuPost(t, s, "/installations/100", url.Values{"boot_profile_id": {"51"}, "title": {"Renamed"}, "folder": {"Windows"}}); res.Code != http.StatusSeeOther {
+		t.Fatal(res.Code)
+	}
+	if store.draft.Items[0].Folder != "Lab" {
+		t.Fatalf("menu folder overwritten: %+v", store.draft.Items[0])
+	}
+}

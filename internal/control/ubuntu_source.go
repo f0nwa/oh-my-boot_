@@ -4,10 +4,39 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"omb/internal/agent"
 	"omb/internal/autoinstall"
 	"strconv"
 	"time"
 )
+
+func (s *Server) validateUbuntuDownloadFile(ctx context.Context, profile BootProfile, v autoinstall.Values) error {
+	if v.SourceID == "" {
+		return nil
+	}
+	if profile.UbuntuSourceID == 0 {
+		return s.validateUbuntuSource(ctx, v)
+	}
+	if profile.UbuntuState == "ready" {
+		return s.validateUbuntuSourceFor(ctx, v, profile.UbuntuSourceID, profile.UbuntuSHA256)
+	}
+	if s.Images == nil || s.UbuntuISO == nil || !ubuntuSourceDigest.MatchString(profile.UbuntuSHA256) {
+		return fmt.Errorf("source metadata unavailable")
+	}
+	catalog, err := s.Images.Catalog(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := SelectWindowsISO(catalog, profile.UbuntuStorageID, profile.UbuntuPath, "Ubuntu Desktop", "")
+	if err != nil {
+		return err
+	}
+	inspection, err := s.UbuntuISO.InspectUbuntuISO(ctx, agent.WindowsISORequest{ID: profile.UbuntuSourceID, StorageRoot: selected.StorageRoot, RelativePath: selected.Path, Size: selected.Size, Modified: selected.Modified})
+	if err != nil || inspection.SHA256 != profile.UbuntuSHA256 || len(inspection.Sources) == 0 {
+		return fmt.Errorf("source metadata unavailable")
+	}
+	return autoinstall.ValidateSource(v, autoinstall.SourceCatalog{ISOSHA256: inspection.SHA256, Sources: inspection.Sources})
+}
 
 type UbuntuSourceAPI interface {
 	UbuntuSource(context.Context) (autoinstall.SourceCatalog, error)
@@ -31,7 +60,7 @@ func (s *Server) selectedUbuntuEditorSource(r *http.Request) (int64, string, err
 		return 0, "", fmt.Errorf("source: ISO catalog unavailable")
 	}
 	for _, profile := range profiles {
-		if profile.Kind == BootProfileUbuntuISO && profile.UbuntuSourceID == id && profile.UbuntuState == "ready" && ubuntuSourceDigest.MatchString(profile.UbuntuSHA256) {
+		if (profile.Kind == BootProfileUbuntuISO || profile.Kind == BootProfileUbuntuBuiltin) && profile.UbuntuSourceID == id && profile.UbuntuState == "ready" && ubuntuSourceDigest.MatchString(profile.UbuntuSHA256) {
 			return id, profile.UbuntuSHA256, nil
 		}
 	}
@@ -101,7 +130,7 @@ func (s *Server) validateUbuntuEditorSource(ctx context.Context, v autoinstall.V
 			return fmt.Errorf("source: ISO catalog unavailable")
 		}
 		for _, profile := range profiles {
-			if profile.Kind == BootProfileUbuntuISO {
+			if profile.Kind == BootProfileUbuntuISO || profile.Kind == BootProfileUbuntuBuiltin && profile.UbuntuSourceID > 0 {
 				if v.SourceID != "" {
 					return fmt.Errorf("source: select an ISO before choosing an application set")
 				}

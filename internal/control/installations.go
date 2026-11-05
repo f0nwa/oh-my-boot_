@@ -142,7 +142,7 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 					}
 				}
 				if profile.Kind == BootProfileUbuntuISO {
-					row.Image = profile.Title
+					row.Image = path.Base(profile.UbuntuPath)
 					row.SourcePath, row.StorageID = profile.UbuntuPath, profile.UbuntuStorageID
 					switch profile.UbuntuState {
 					case "unverified", "checking", "verified":
@@ -464,7 +464,7 @@ func (s *Server) installationAddByID(w http.ResponseWriter, r *http.Request, id 
 		}
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.add", "ok", fmt.Sprintf("install_%d", id))
-	target := "/installations?message=Загрузка+добавлена+в+меню"
+	target := "/installations?message=Добавлено+в+черновик+меню"
 	if strings.HasPrefix(r.URL.Path, "/menu/") {
 		target = "/menu?message=Пункт+возвращён+в+меню"
 	}

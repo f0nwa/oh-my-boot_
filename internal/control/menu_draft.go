@@ -179,10 +179,11 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 			switch profile.Kind {
 			case BootProfileUbuntuBuiltin, BootProfileUbuntuISO:
 				entry = menuProfile{id: key, kind: profile.Kind, base: base}
-				if profile.Kind == BootProfileUbuntuISO {
+				if profile.Kind == BootProfileUbuntuISO || profile.UbuntuSourceID > 0 {
 					if profile.UbuntuState != "ready" {
 						return menuProfile{}, "", fmt.Errorf("Ubuntu source %d is not ready", profile.UbuntuSourceID)
 					}
+					entry.kind = BootProfileUbuntuISO
 					entry.ubuntuSourceID, entry.ubuntuSourceSHA256 = profile.UbuntuSourceID, profile.UbuntuSHA256
 				}
 				if installation.AutoinstallID > 0 {

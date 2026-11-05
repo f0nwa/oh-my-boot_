@@ -17,6 +17,33 @@ import (
 
 type recordingUbuntuISO struct{ calls int }
 
+type recordingUbuntuPin struct {
+	recordingUbuntuISO
+	pins int
+}
+
+func (m *recordingUbuntuPin) PinLegacy(_ context.Context, id int64, digest string) error {
+	m.pins++
+	return nil
+}
+
+func TestUbuntuLegacyPinAPIRejectsUnsafeIdentity(t *testing.T) {
+	manager := &recordingUbuntuPin{}
+	h := HandlerWithUbuntuISO(http.NotFoundHandler(), manager)
+	for _, body := range []string{`{"id":0,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`, `{"id":8,"sha256":"bad"}`, `{"id":8,"sha256":"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"}`} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/ubuntu-iso/pin-legacy", strings.NewReader(body)))
+		if res.Code != http.StatusBadRequest || manager.pins != 0 {
+			t.Fatalf("status=%d pins=%d", res.Code, manager.pins)
+		}
+	}
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/ubuntu-iso/pin-legacy", strings.NewReader(`{"id":8,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`)))
+	if res.Code != http.StatusNoContent || manager.pins != 1 {
+		t.Fatalf("status=%d pins=%d", res.Code, manager.pins)
+	}
+}
+
 type ubuntuInspectMounter struct {
 	info, sources string
 	unmounted     bool
@@ -220,6 +247,104 @@ func TestUbuntuISOManagerPreparesOnlyValidatedSource(t *testing.T) {
 	runner.corrupt = true
 	if err := manager.Prepare(context.Background(), req); err == nil {
 		t.Fatal("accepted corrupt prepared manifest")
+	}
+}
+
+func TestPinLegacyUbuntuRequiresMatchingAssetsAndCannotBeChanged(t *testing.T) {
+	base := t.TempDir()
+	storage := filepath.Join(base, "nas")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	iso := filepath.Join(storage, "ubuntu.iso")
+	data := []byte("test Ubuntu ISO")
+	if err := os.WriteFile(iso, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &preparedUbuntuRunner{assetRoot: t.TempDir()}
+	manager := &UbuntuISOManager{SourceRoot: base, AssetRoot: runner.assetRoot, ScriptPath: "/usr/local/libexec/omb-prepare-ubuntu-source", Runner: runner, RegistryRoot: t.TempDir()}
+	legacyConfig := filepath.Join(base, "boot.env")
+	if err := os.WriteFile(legacyConfig, []byte("OMB_BOOT_UBUNTU_ISO="+iso+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager.LegacyConfigPath = legacyConfig
+	req := UbuntuISORequest{WindowsISORequest: WindowsISORequest{ID: 8, StorageRoot: storage, RelativePath: "ubuntu.iso", Size: info.Size(), Modified: info.ModTime()}, SHA256: fmt.Sprintf("%x", sha256.Sum256(data))}
+	if err := manager.Prepare(t.Context(), req); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(runner.assetRoot, "ubuntu")
+	if err := os.MkdirAll(legacy, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"vmlinuz", "initrd", "bootx64.efi"} {
+		if err := os.WriteFile(filepath.Join(legacy, name), []byte("artifact"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	otherISO := filepath.Join(storage, "other.iso")
+	otherData := []byte("another Ubuntu ISO")
+	if err := os.WriteFile(otherISO, otherData, 0644); err != nil {
+		t.Fatal(err)
+	}
+	otherInfo, err := os.Stat(otherISO)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := UbuntuISORequest{WindowsISORequest: WindowsISORequest{ID: 9, StorageRoot: storage, RelativePath: "other.iso", Size: otherInfo.Size(), Modified: otherInfo.ModTime()}, SHA256: fmt.Sprintf("%x", sha256.Sum256(otherData))}
+	if err := manager.Prepare(t.Context(), other); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.PinLegacy(t.Context(), 9, other.SHA256); err == nil {
+		t.Fatal("pinned a different ISO sharing the same boot artifacts")
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "initrd"), []byte("different"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.PinLegacy(t.Context(), 8, req.SHA256); err == nil {
+		t.Fatal("pinned different legacy assets")
+	}
+	if _, err := os.Stat(filepath.Join(manager.RegistryRoot, "legacy.json")); !os.IsNotExist(err) {
+		t.Fatal("failure created legacy alias")
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "initrd"), []byte("artifact"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	oldInitrd := filepath.Join(legacy, "initrd")
+	if err := os.Remove(oldInitrd); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(legacy, "vmlinuz"), oldInitrd); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.PinLegacy(t.Context(), 8, req.SHA256); err == nil {
+		t.Fatal("pinned a symlinked legacy asset")
+	}
+	if err := os.Remove(oldInitrd); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldInitrd, []byte("artifact"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.PinLegacy(t.Context(), 8, req.SHA256); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(manager.RegistryRoot, "legacy.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.PinLegacy(t.Context(), 8, req.SHA256); err != nil {
+		t.Fatalf("repeat pin failed: %v", err)
+	}
+	if err := manager.PinLegacy(t.Context(), 8, strings.Repeat("b", 64)); err == nil {
+		t.Fatal("changed legacy alias")
+	}
+	after, _ := os.ReadFile(filepath.Join(manager.RegistryRoot, "legacy.json"))
+	if string(after) != string(before) {
+		t.Fatal("legacy alias was overwritten")
 	}
 }
 

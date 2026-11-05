@@ -15,6 +15,7 @@ import (
 )
 
 type newInstallStore struct {
+	inspections map[string]ImageInspection
 	*draftStore
 	packages      []DriverPackage
 	created       []DriverConfig

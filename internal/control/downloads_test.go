@@ -95,6 +95,7 @@ func downloadsServer(t *testing.T) (*Server, *downloadsStore, *downloadPreparer)
 		Storages: []images.Storage{{ID: base.profiles[0].StorageID, Kind: "smb", Root: base.profiles[0].StorageRoot, State: "ready"}, {ID: 7, Name: "NAS", Kind: "smb", Root: "/mnt/omb-smb/key7", State: "ready"}},
 		Images:   []images.Image{{StorageID: base.profiles[0].StorageID, Path: base.profiles[0].Path, Size: base.profiles[0].Size, Modified: base.profiles[0].Modified, Present: true}, {StorageID: 7, Path: "Windows-new.iso", Size: 1234, Modified: time.Date(2026, 11, 3, 8, 0, 0, 0, time.UTC), Present: true}},
 	}}
+	setTestInspection(s, store, "Windows-new.iso", "windows")
 	prep := &downloadPreparer{store: store}
 	s.WindowsISO = prep
 	return s, store, prep

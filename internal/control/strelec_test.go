@@ -12,8 +12,7 @@ import (
 
 func TestStrelecISOCanBeChosenAsServiceBootSource(t *testing.T) {
 	s, store, prep := downloadsServer(t)
-	api := s.Images.(*fakeImagesAPI)
-	api.catalog.Images[1].Path = "WinPE11_10_Sergei_Strelec_x64.iso"
+	setTestInspection(s, store, "WinPE11_10_Sergei_Strelec_x64.iso", "strelec")
 	body := libraryGet(t, s, "/installations/new?storage_id=7&path=WinPE11_10_Sergei_Strelec_x64.iso")
 	if strings.Contains(body, "Сервисные образы WinPE пока не поддерживаются") {
 		t.Fatal("Strelec is still rejected as unsupported")
@@ -27,16 +26,9 @@ func TestStrelecISOCanBeChosenAsServiceBootSource(t *testing.T) {
 	}
 }
 
-func TestStrelecKindIsNotRejectedByFilename(t *testing.T) {
-	kind, problem := isoKindHint("WinPE11_10_Sergei_Strelec_x64_2026.10.21_Russian.iso")
-	if kind != "WinPE Strelec" || problem != "" {
-		t.Fatalf("kind=%q problem=%q", kind, problem)
-	}
-}
-
 func TestStrelecMenuInjectsNativePXEAndNeverWindowsSetup(t *testing.T) {
 	s, store, _ := downloadsServer(t)
-	s.Images.(*fakeImagesAPI).catalog.Images[1].Path = "Strelec.iso"
+	setTestInspection(s, store, "Strelec.iso", "strelec")
 	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"iso:7:Strelec.iso"}, "title": {"Strelec"}})
 	if res.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d", res.Code)
@@ -66,7 +58,7 @@ func TestStrelecMenuInjectsNativePXEAndNeverWindowsSetup(t *testing.T) {
 func TestStrelecCreationRejectsInstallerOptionsBeforeSaving(t *testing.T) {
 	for _, field := range []string{"answer_id", "autoinstall_id"} {
 		s, store, prep := downloadsServer(t)
-		s.Images.(*fakeImagesAPI).catalog.Images[1].Path = "Strelec.iso"
+		setTestInspection(s, store, "Strelec.iso", "strelec")
 		res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"iso:7:Strelec.iso"}, "title": {"Strelec"}, field: {"31"}})
 		if res.Code != http.StatusBadRequest || len(store.installations) != 0 || store.sourceCreates != 0 || prep.calls != 0 {
 			t.Fatalf("field=%s status=%d sourceCreates=%d", field, res.Code, store.sourceCreates)
@@ -76,7 +68,7 @@ func TestStrelecCreationRejectsInstallerOptionsBeforeSaving(t *testing.T) {
 
 func TestStrelecCanBePublishedAndRestoredWithSourceProtection(t *testing.T) {
 	s, store, _ := downloadsServer(t)
-	s.Images.(*fakeImagesAPI).catalog.Images[1].Path = "Strelec.iso"
+	setTestInspection(s, store, "Strelec.iso", "strelec")
 	if res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"iso:7:Strelec.iso"}, "title": {"Strelec"}}); res.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d", res.Code)
 	}
@@ -107,7 +99,7 @@ func TestStrelecDriversUseSameDownloadWorkflowAndDerivedMenu(t *testing.T) {
 	for _, selection := range []string{"inf", "package"} {
 		t.Run(selection, func(t *testing.T) {
 			s, store, _ := downloadsServer(t)
-			s.Images.(*fakeImagesAPI).catalog.Images[1].Path = "Strelec.iso"
+			setTestInspection(s, store, "Strelec.iso", "strelec")
 			builder := &fakeDriverBuilder{}
 			s.DriverConfigs = builder
 			s.DriverPackages = &recordingPackageCheck{}
@@ -189,7 +181,7 @@ func TestServiceDriverSelectionRejectsInstallerAnswer(t *testing.T) {
 
 func TestStrelecSelectionReusesNewestPreparedDriverConfiguration(t *testing.T) {
 	s, store, _ := downloadsServer(t)
-	s.Images.(*fakeImagesAPI).catalog.Images[1].Path = "Strelec.iso"
+	setTestInspection(s, store, "Strelec.iso", "strelec")
 	s.DriverConfigs = &fakeDriverBuilder{}
 	form := url.Values{"boot_profile_id": {"iso:7:Strelec.iso"}, "title": {"Strelec"}, "inf": {strings.Repeat("a", 64) + ":NetKVM/netkvm.inf"}}
 	if r := menuPost(t, s, "/installations", form); r.Code != http.StatusSeeOther {

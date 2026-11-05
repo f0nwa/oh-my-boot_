@@ -33,8 +33,11 @@ func inspectMountedStrelecISO(root string) (string, error) {
 			return "", err
 		}
 		info, err := os.Stat(filepath.Join(root, filepath.FromSlash(input.source)))
-		if err != nil || info.Size() > 16*1024*1024 {
-			return "", fmt.Errorf("Strelec boot input exceeds size limit: %s", input.source)
+		if err != nil {
+			return "", isoPathError(err)
+		}
+		if info.Size() > 16*1024*1024 {
+			return "", unsupportedISO("Strelec boot input exceeds size limit: %s", input.source)
 		}
 	}
 	if err := requireStrelecFile(root, "SSTR/MInst/MInst.exe"); err != nil {
@@ -53,7 +56,7 @@ func inspectMountedStrelecISO(root string) (string, error) {
 		}
 		return name, nil
 	}
-	return "", fmt.Errorf("supported Strelec x64 WIM is missing")
+	return "", unsupportedISO("supported Strelec x64 WIM is missing")
 }
 
 func requireStrelecFile(root, name string) error {
@@ -62,8 +65,11 @@ func requireStrelecFile(root, name string) error {
 	for _, part := range strings.Split(rel, string(filepath.Separator)) {
 		current = filepath.Join(current, part)
 		info, err := os.Lstat(current)
-		if err != nil || info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("Strelec file is missing or has a symlink: %s", name)
+		if err != nil {
+			return isoPathError(err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return unsupportedISO("Strelec file has a symlink: %s", name)
 		}
 	}
 	return requireRegularISOFile(root, name)

@@ -270,7 +270,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/name", s.protect("images", withPageErrors(s.imagesPage, s.imageNameSave)))
 	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
 	mux.HandleFunc("POST /images/iso/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectISO)))
-	mux.HandleFunc("POST /images/ubuntu/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectUbuntuISO)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsProfileDelete)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("delete", withPageErrors(s.answersPage, s.windowsAnswerDelete)))
@@ -569,7 +568,6 @@ func (s *Server) libraryData(r *http.Request) pageData {
 			}
 			uses := map[int64][]imageDownload{}
 			ubuntuUses := map[string][]imageDownload{}
-			ubuntuVerified := map[string]bool{}
 			if sources, e := s.installationMenuSources(r.Context()); e == nil {
 				byID := map[int64]int64{}
 				ubuntuByID := map[int64]string{}
@@ -580,9 +578,6 @@ func (s *Server) libraryData(r *http.Request) pageData {
 					if (p.Kind == BootProfileUbuntuISO || p.Kind == BootProfileUbuntuBuiltin) && p.UbuntuStorageID > 0 && p.UbuntuPath != "" {
 						key := fmt.Sprintf("%d:%s", p.UbuntuStorageID, p.UbuntuPath)
 						ubuntuByID[p.ID] = key
-						if p.UbuntuState == "verified" || p.UbuntuState == "ready" {
-							ubuntuVerified[key] = true
-						}
 					}
 				}
 				for _, item := range sources.Installations {
@@ -598,20 +593,22 @@ func (s *Server) libraryData(r *http.Request) pageData {
 			if namesErr != nil {
 				data.Error = "Не удалось прочитать названия образов"
 			}
+			inspections, inspectionsErr := s.imageInspections(r.Context())
+			if inspectionsErr != nil {
+				data.Error = "Не удалось прочитать результаты проверки ISO"
+			}
+			inspections = matchingImageInspections(catalog, inspections)
 			byPath := map[string]WindowsProfile{}
 			for _, p := range profiles {
 				byPath[fmt.Sprintf("%d:%s", p.StorageID, p.Path)] = p
 			}
 			for _, image := range catalog.Images {
-				kind, problem := isoKindHint(image.Path)
-				if kind == "Ubuntu" && problem != "" {
-					problem = "ISO ещё не проверен"
+				key := imageAuthorKey(image.StorageID, image.Path)
+				kind, problem, arch := inspectionLabel("")
+				if record, ok := inspections[key]; ok {
+					kind, problem, arch = inspectionLabel(record.Kind)
 				}
-				key := fmt.Sprintf("%d:%s", image.StorageID, image.Path)
-				if ubuntuVerified[key] {
-					kind, problem = "Ubuntu", ""
-				}
-				row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem, DisplayName: namesByImage[key]}
+				row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem, DisplayName: namesByImage[key], Arch: arch}
 				row.Downloads = append(row.Downloads, ubuntuUses[key]...)
 				if p, ok := byPath[key]; ok {
 					row.Downloads = append(row.Downloads, uses[p.ID]...)

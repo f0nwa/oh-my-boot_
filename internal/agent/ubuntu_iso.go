@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -76,7 +77,7 @@ func (m *UbuntuISOManager) inspect(ctx context.Context, req WindowsISORequest, d
 	}
 	defer iso.Close()
 	opened, err := iso.Stat()
-	if err != nil || !os.SameFile(before, opened) {
+	if err != nil || !os.SameFile(before, opened) || opened.Size() != req.Size || !opened.ModTime().Truncate(time.Microsecond).Equal(req.Modified.Truncate(time.Microsecond)) {
 		return result, fmt.Errorf("Ubuntu ISO changed before inspection")
 	}
 	mounter := m.Mounter
@@ -108,25 +109,64 @@ func (m *UbuntuISOManager) inspect(ctx context.Context, req WindowsISORequest, d
 		return result, err
 	}
 	mounted = true
+	defer func() {
+		if resultErr != nil {
+			return
+		}
+		after, err := iso.Stat()
+		current, pathErr := os.Lstat(source)
+		if err != nil || pathErr != nil || !current.Mode().IsRegular() || !os.SameFile(opened, after) || !os.SameFile(opened, current) || opened.Size() != after.Size() || !opened.ModTime().Equal(after.ModTime()) || opened.Size() != current.Size() || !opened.ModTime().Equal(current.ModTime()) {
+			resultErr = fmt.Errorf("ISO changed during inspection")
+		}
+	}()
 	if detect {
 		if _, err := inspectMountedWindowsISO(mountRoot); err == nil {
 			result.Kind = "windows"
 			return result, nil
+		} else if !errors.Is(err, errUnsupportedISO) {
+			return result, err
 		}
 		if _, err := inspectMountedStrelecISO(mountRoot); err == nil {
 			result.Kind = "strelec"
 			return result, nil
+		} else if !errors.Is(err, errUnsupportedISO) {
+			return result, err
 		}
 	}
+	sources, err := inspectMountedUbuntuISO(mountRoot)
+	if err != nil {
+		if detect && errors.Is(err, errUnsupportedISO) {
+			result.Kind = "unsupported"
+			return result, nil
+		}
+		return result, err
+	}
+	result.Ubuntu.Sources = sources
+	hash := sha256.New()
+	if _, err := io.Copy(hash, ubuntuContextReader{ctx: ctx, reader: iso}); err != nil {
+		return result, err
+	}
+	result.Kind = "ubuntu"
+	result.Ubuntu.SHA256 = hex.EncodeToString(hash.Sum(nil))
+	return result, nil
+}
+
+func inspectMountedUbuntuISO(mountRoot string) ([]autoinstall.SourceOption, error) {
 	for _, directory := range []string{".disk", "casper", "EFI", "EFI/boot"} {
 		info, err := os.Lstat(filepath.Join(mountRoot, directory))
-		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return result, fmt.Errorf("invalid Ubuntu ISO directory")
+		if err != nil {
+			return nil, isoPathError(err)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, unsupportedISO("invalid Ubuntu ISO directory")
 		}
 	}
 	infoData, err := readUbuntuISOFile(mountRoot, ".disk/info", 4096)
-	if err != nil || !strings.HasPrefix(string(infoData), "Ubuntu ") {
-		return result, fmt.Errorf("unsupported Ubuntu distribution")
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(string(infoData), "Ubuntu ") {
+		return nil, unsupportedISO("unsupported Ubuntu distribution")
 	}
 	amd64 := false
 	for _, word := range strings.Fields(string(infoData)) {
@@ -135,41 +175,36 @@ func (m *UbuntuISOManager) inspect(ctx context.Context, req WindowsISORequest, d
 		}
 	}
 	if !amd64 {
-		return result, fmt.Errorf("unsupported Ubuntu architecture")
+		return nil, unsupportedISO("unsupported Ubuntu architecture")
 	}
 	for _, name := range []string{"casper/vmlinuz", "casper/initrd", "EFI/boot/bootx64.efi"} {
 		info, err := os.Lstat(filepath.Join(mountRoot, name))
-		if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
-			return result, fmt.Errorf("required Ubuntu ISO file is missing: %s", name)
+		if err != nil {
+			return nil, isoPathError(err)
+		}
+		if !info.Mode().IsRegular() || info.Size() <= 0 {
+			return nil, unsupportedISO("required Ubuntu ISO file is missing: %s", name)
 		}
 	}
 	data, err := readUbuntuISOFile(mountRoot, "casper/install-sources.yaml", 64*1024)
 	if err != nil {
-		return result, err
+		return nil, err
 	}
-	result.Ubuntu.Sources, err = autoinstall.ParseInstallSources(data)
+	sources, err := autoinstall.ParseInstallSources(data)
 	if err != nil {
-		return result, fmt.Errorf("unsupported Ubuntu Desktop installer: %w", err)
+		return nil, unsupportedISO("unsupported Ubuntu Desktop installer: %v", err)
 	}
-	hash := sha256.New()
-	if _, err := io.Copy(hash, ubuntuContextReader{ctx: ctx, reader: iso}); err != nil {
-		return result, err
-	}
-	after, err := iso.Stat()
-	current, pathErr := os.Lstat(source)
-	if err != nil || pathErr != nil || !current.Mode().IsRegular() || !os.SameFile(opened, after) || !os.SameFile(opened, current) || opened.Size() != after.Size() || !opened.ModTime().Equal(after.ModTime()) || opened.Size() != current.Size() || !opened.ModTime().Equal(current.ModTime()) {
-		return result, fmt.Errorf("Ubuntu ISO changed during inspection")
-	}
-	result.Kind = "ubuntu"
-	result.Ubuntu.SHA256 = hex.EncodeToString(hash.Sum(nil))
-	return result, nil
+	return sources, nil
 }
 
 func readUbuntuISOFile(root, name string, limit int64) ([]byte, error) {
 	filePath := filepath.Join(root, name)
 	info, err := os.Lstat(filePath)
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > limit {
-		return nil, fmt.Errorf("invalid Ubuntu ISO metadata: %s", name)
+	if err != nil {
+		return nil, isoPathError(err)
+	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > limit {
+		return nil, unsupportedISO("invalid Ubuntu ISO metadata: %s", name)
 	}
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -177,12 +212,18 @@ func readUbuntuISOFile(root, name string, limit int64) ([]byte, error) {
 	}
 	defer f.Close()
 	opened, err := f.Stat()
-	if err != nil || !os.SameFile(info, opened) {
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(info, opened) {
 		return nil, fmt.Errorf("Ubuntu ISO metadata changed: %s", name)
 	}
 	data, err := io.ReadAll(io.LimitReader(f, limit+1))
-	if err != nil || int64(len(data)) > limit {
-		return nil, fmt.Errorf("invalid Ubuntu ISO metadata: %s", name)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, unsupportedISO("invalid Ubuntu ISO metadata: %s", name)
 	}
 	return data, nil
 }

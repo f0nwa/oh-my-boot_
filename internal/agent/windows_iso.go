@@ -194,15 +194,20 @@ func inspectMountedWindowsISO(root string) (string, error) {
 	for _, name := range []string{"sources/install.wim", "sources/install.esd"} {
 		if err := requireRegularISOFile(root, name); err == nil {
 			return path.Base(name), nil
+		} else if !errors.Is(err, errUnsupportedISO) {
+			return "", err
 		}
 	}
-	return "", fmt.Errorf("Windows installation image is missing")
+	return "", unsupportedISO("Windows installation image is missing")
 }
 
 func requireRegularISOFile(root, name string) error {
 	info, err := os.Lstat(filepath.Join(root, filepath.FromSlash(name)))
-	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
-		return fmt.Errorf("required Windows ISO file is missing: %s", name)
+	if err != nil {
+		return isoPathError(err)
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return unsupportedISO("required Windows ISO file is missing: %s", name)
 	}
 	return nil
 }

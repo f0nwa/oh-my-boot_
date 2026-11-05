@@ -411,6 +411,8 @@ func TestISOInspectionDetectsWindowsAndUbuntu(t *testing.T) {
 	}{
 		{"Windows", "windows", &fakeWindowsISOMounter{}},
 		{"Strelec", "strelec", strelecMounterFixture{}},
+		{"non-directory efi entry", "unsupported", &isoWithNonDirectoryEFI{}},
+		{"unsupported Ubuntu ARM64", "unsupported", &ubuntuInspectMounter{info: "Ubuntu Desktop - Release arm64", sources: "- id: ubuntu-desktop\n  name: Desktop\n"}},
 		{"Ubuntu", "ubuntu", &ubuntuInspectMounter{info: "Ubuntu 26.04 - Release amd64", sources: "- id: ubuntu-desktop\n  name: Desktop\n"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -421,4 +423,76 @@ func TestISOInspectionDetectsWindowsAndUbuntu(t *testing.T) {
 			}
 		})
 	}
+}
+
+type changedISOInspectionMounter struct {
+	fakeWindowsISOMounter
+	file string
+}
+
+func (m *changedISOInspectionMounter) Mount(ctx context.Context, source, target string) error {
+	if err := m.fakeWindowsISOMounter.Mount(ctx, source, target); err != nil {
+		return err
+	}
+	return os.WriteFile(m.file, []byte("replacement image with a different size"), 0600)
+}
+func TestWindowsISOInspectionRejectsReplacementAndUnmounts(t *testing.T) {
+	base := t.TempDir()
+	storage := filepath.Join(base, "nas")
+	if err := os.Mkdir(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(storage, "renamed.iso")
+	if err := os.WriteFile(file, []byte("ISO"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mounter := &changedISOInspectionMounter{file: file}
+	manager := &UbuntuISOManager{SourceRoot: base, Mounter: mounter}
+	_, err = manager.InspectISO(context.Background(), WindowsISORequest{ID: 7, StorageRoot: storage, RelativePath: "renamed.iso", Size: info.Size(), Modified: info.ModTime()})
+	if err == nil || !mounter.undo {
+		t.Fatalf("changed source accepted or mount leaked: err=%v unmounted=%v", err, mounter.undo)
+	}
+}
+
+type unreadableISOInspectionMounter struct{ ubuntuInspectMounter }
+
+func (m *unreadableISOInspectionMounter) Mount(ctx context.Context, source, target string) error {
+	if err := m.ubuntuInspectMounter.Mount(ctx, source, target); err != nil {
+		return err
+	}
+	return os.Chmod(filepath.Join(target, ".disk/info"), 0000)
+}
+func TestGenericISOInspectionPreservesMetadataReadErrors(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission test requires an unprivileged user")
+	}
+	base := t.TempDir()
+	storage := filepath.Join(base, "nas")
+	if err := os.Mkdir(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(storage, "test.iso")
+	if err := os.WriteFile(file, []byte("ISO"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mounter := &unreadableISOInspectionMounter{ubuntuInspectMounter: ubuntuInspectMounter{info: "Ubuntu Desktop - Release amd64", sources: "- id: ubuntu-desktop\n  name: Desktop\n"}}
+	manager := &UbuntuISOManager{SourceRoot: base, Mounter: mounter}
+	result, err := manager.InspectISO(context.Background(), WindowsISORequest{ID: 7, StorageRoot: storage, RelativePath: "test.iso", Size: info.Size(), Modified: info.ModTime()})
+	if err == nil || result.Kind == "unsupported" {
+		t.Fatalf("read error classified as unsupported: result=%+v err=%v", result, err)
+	}
+}
+
+type isoWithNonDirectoryEFI struct{ ubuntuInspectMounter }
+
+func (m *isoWithNonDirectoryEFI) Mount(_ context.Context, _ string, target string) error {
+	return os.WriteFile(filepath.Join(target, "efi"), []byte("not a directory"), 0600)
 }

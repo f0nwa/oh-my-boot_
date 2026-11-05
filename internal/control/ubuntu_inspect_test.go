@@ -40,6 +40,10 @@ func (a *inspectUbuntuAgent) InspectUbuntuISO(_ context.Context, r agent.Windows
 	}
 	return agent.UbuntuISOInspection{SHA256: strings.Repeat("a", 64), Sources: []autoinstall.SourceOption{{ID: "ubuntu-desktop"}}}, nil
 }
+func (a *inspectUbuntuAgent) InspectISO(ctx context.Context, r agent.WindowsISORequest) (agent.ISOInspection, error) {
+	result, err := a.InspectUbuntuISO(ctx, r)
+	return agent.ISOInspection{Kind: "ubuntu", Ubuntu: result}, err
+}
 func (*inspectUbuntuAgent) PrepareUbuntuISO(context.Context, agent.UbuntuISORequest) error {
 	return nil
 }
@@ -56,7 +60,7 @@ func TestInspectUbuntuISORequiresPresentCatalogFileAndValidInspection(t *testing
 			s.Store = store
 			a := &inspectUbuntuAgent{fail: tc.fail}
 			s.UbuntuISO = a
-			res := menuPost(t, s, "/images/ubuntu/inspect", url.Values{"storage_id": {"7"}, "path": {tc.path}})
+			res := menuPost(t, s, "/images/iso/inspect", url.Values{"storage_id": {"7"}, "path": {tc.path}})
 			if res.Code != tc.status || store.creates != tc.creates {
 				t.Fatalf("status=%d creates=%d body=%s", res.Code, store.creates, res.Body.String())
 			}
@@ -76,7 +80,7 @@ func TestUbuntuISOCreatedFromLibraryAndDownloadForm(t *testing.T) {
 		t.Fatal("library lacks create action for Ubuntu ISO")
 	}
 	page := libraryGet(t, s, "/installations/new?storage_id=7&path=ubuntu-desktop.iso")
-	if !strings.Contains(page, `action="/images/ubuntu/inspect"`) || !strings.Contains(page, `name="path" value="ubuntu-desktop.iso"`) {
+	if !strings.Contains(page, `action="/images/iso/inspect"`) || !strings.Contains(page, `name="path" value="ubuntu-desktop.iso"`) {
 		t.Fatal("new download page cannot inspect its selected Ubuntu ISO")
 	}
 	if !strings.Contains(page, `data-ubuntu-inspect`) || !strings.Contains(library, `data-ubuntu-inspect`) {

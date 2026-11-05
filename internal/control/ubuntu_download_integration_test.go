@@ -24,7 +24,7 @@ func TestUbuntuImageToPublishedMenuWithPostgres(t *testing.T) {
 	probe := &inspectUbuntuAgent{}
 	boot, published := fakeBoot(t)
 	server := &Server{Store: &downloadSessionStore{Store: store, role: "operator"}, Images: &fakeImagesAPI{catalog: catalog}, UbuntuISO: probe, UbuntuSource: fakeUbuntuCatalog{digest: digest}, Boot: boot, BootBaseURL: testBootURL}
-	res := menuPost(t, server, "/images/ubuntu/inspect", url.Values{"storage_id": {"7"}, "path": {"ubuntu-a.iso"}})
+	res := menuPost(t, server, "/images/iso/inspect", url.Values{"storage_id": {"7"}, "path": {"ubuntu-a.iso"}})
 	if res.Code != http.StatusSeeOther {
 		t.Fatalf("inspect: %d %s", res.Code, res.Body.String())
 	}

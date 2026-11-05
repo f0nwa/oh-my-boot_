@@ -39,9 +39,6 @@ func SelectWindowsISO(catalog images.Catalog, storageID int64, imagePath, title,
 	if imagePath == "" || path.IsAbs(imagePath) || path.Clean(imagePath) != imagePath || strings.ContainsAny(imagePath, "\\\x00") || !strings.EqualFold(path.Ext(imagePath), ".iso") {
 		return WindowsProfileSource{}, fmt.Errorf("invalid ISO path")
 	}
-	if strings.Contains(strings.ToLower(path.Base(imagePath)), "arm64") {
-		return WindowsProfileSource{}, fmt.Errorf("ARM64 ISO is not supported by the x64 profile")
-	}
 	for _, component := range strings.Split(imagePath, "/") {
 		if component == "" || component == "." || component == ".." {
 			return WindowsProfileSource{}, fmt.Errorf("invalid ISO path")
@@ -59,7 +56,7 @@ func SelectWindowsISO(catalog images.Catalog, storageID int64, imagePath, title,
 	}
 	for _, image := range catalog.Images {
 		if image.StorageID == storageID && image.Path == imagePath && image.Present && image.Size > 0 {
-			return WindowsProfileSource{BootMode: isoBootMode(image.Path), StorageID: storageID, StorageRoot: storage.Root, Path: image.Path, Size: image.Size, Modified: image.Modified, Title: title, Folder: folder}, nil
+			return WindowsProfileSource{StorageID: storageID, StorageRoot: storage.Root, Path: image.Path, Size: image.Size, Modified: image.Modified, Title: title, Folder: folder}, nil
 		}
 	}
 	return WindowsProfileSource{}, fmt.Errorf("ISO is not present in the catalog")
@@ -94,7 +91,7 @@ func windowsProfileSourceProblem(catalog images.Catalog, profile WindowsProfile)
 	if err != nil {
 		return fmt.Errorf("исходный ISO профиля %d не найден в хранилище «%s»", profile.ID, storage.Name)
 	}
-	if current.BootMode != profile.BootMode || current.StorageRoot != profile.StorageRoot || current.Size != profile.Size || !current.Modified.Equal(profile.Modified) {
+	if current.StorageRoot != profile.StorageRoot || current.Size != profile.Size || !current.Modified.Equal(profile.Modified) {
 		return fmt.Errorf("исходный ISO профиля %d изменился", profile.ID)
 	}
 	return nil

@@ -10,24 +10,6 @@ import (
 	"strings"
 )
 
-// Names only provide a hint. The mounted image is validated by Agent before
-// any source is considered ready; an arbitrary ISO is never booted directly.
-func isoKindHint(name string) (kind, problem string) {
-	name = strings.ToLower(path.Base(name))
-	switch {
-	case strings.Contains(name, "arm64"):
-		return "ARM64", "ARM64 пока не поддерживается"
-	case strings.HasPrefix(name, "ubuntu"):
-		return "Ubuntu", "Сначала проверьте ISO"
-	case strings.Contains(name, "strelec"):
-		return "WinPE Strelec", ""
-	case strings.HasPrefix(name, "winpe"):
-		return "WinPE", "Для этого образа WinPE пока нет сценария загрузки"
-	default:
-		return "ISO", ""
-	}
-}
-
 func (c bootProfileChoice) Selectable() bool {
 	return c.State == "ready" || isISOBootKind(c.Kind) && (c.State == "pending" || c.State == "error") || c.Kind == BootProfileUbuntuISO && (c.State == "verified" || c.State == "error")
 }
@@ -36,6 +18,10 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 	names, err := s.imageNames(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Не удалось прочитать названия образов")
+	}
+	records, err := s.imageInspections(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("Не удалось прочитать результаты проверки ISO")
 	}
 	choices := s.bootProfileChoices(ctx, shared, windows)
 	existing := map[string]bool{}
@@ -59,9 +45,6 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 				if name := names[imageAuthorKey(w.StorageID, w.Path)]; name != "" {
 					choice.Title = name
 				}
-				if _, problem := isoKindHint(w.Path); problem != "" {
-					choice.State, choice.Error = "unsupported", problem
-				}
 			}
 		}
 	}
@@ -72,6 +55,7 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 	if err != nil {
 		return nil, fmt.Errorf("Каталог ISO недоступен")
 	}
+	records = matchingImageInspections(catalog, records)
 	for i := range choices {
 		if choices[i].Kind != BootProfileUbuntuISO && choices[i].Kind != BootProfileUbuntuBuiltin {
 			continue
@@ -87,8 +71,17 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		if existing[fmt.Sprintf("%d:%s", image.StorageID, image.Path)] {
 			continue
 		}
-		kind, title := isoSourceKind(image.Path)
-		choice := bootProfileChoice{BootProfile: BootProfile{Kind: kind, Title: path.Base(image.Path)}, DefaultTitle: title, Value: fmt.Sprintf("iso:%d:%s", image.StorageID, image.Path), Path: image.Path, State: "pending"}
+		choice := bootProfileChoice{BootProfile: BootProfile{Title: path.Base(image.Path)}, Value: fmt.Sprintf("iso:%d:%s", image.StorageID, image.Path), Path: image.Path, State: "unverified", Error: "Сначала проверьте ISO", InspectStorageID: image.StorageID}
+		if record, ok := records[imageAuthorKey(image.StorageID, image.Path)]; ok {
+			switch record.Kind {
+			case "windows":
+				choice.Kind, choice.DefaultTitle, choice.State, choice.Error, choice.InspectStorageID = BootProfileWindowsISO, "Windows x64", "pending", "", 0
+			case "strelec":
+				choice.Kind, choice.DefaultTitle, choice.State, choice.Error, choice.InspectStorageID = BootProfileWinPEISO, "Strelec x64", "pending", "", 0
+			case "unsupported":
+				choice.State, choice.Error = "unsupported", "Поддерживаемая структура ISO не найдена"
+			}
+		}
 		if name := names[imageAuthorKey(image.StorageID, image.Path)]; name != "" {
 			choice.Title = name
 		}
@@ -103,11 +96,8 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		if !image.Present {
 			choice.State, choice.Error = "unavailable", "Исходный ISO недоступен"
 		}
-		if _, problem := isoKindHint(image.Path); problem != "" && choice.State == "pending" {
-			choice.State, choice.Error = "unsupported", problem
-			if hint, _ := isoKindHint(image.Path); hint == "Ubuntu" && image.Present {
-				choice.InspectStorageID = image.StorageID
-			}
+		if choice.State == "unavailable" {
+			choice.InspectStorageID = 0
 		}
 		choices = append(choices, choice)
 	}
@@ -127,20 +117,19 @@ func (s *Server) resolveDownloadSource(r *http.Request, sources InstallationMenu
 		if err != nil {
 			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Выберите исходный ISO")
 		}
-		if _, problem := isoKindHint(parts[2]); problem != "" {
-			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("%s", problem)
-		}
 		catalog, err := s.Images.Catalog(r.Context())
 		if err != nil {
 			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Каталог ISO недоступен")
 		}
-		kind, title := isoSourceKind(parts[2])
-		selected, err := SelectWindowsISO(catalog, sid, parts[2], title, "")
+		selected, err := SelectWindowsISO(catalog, sid, parts[2], "ISO", "")
 		if err != nil {
 			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Исходный ISO недоступен")
 		}
 		for _, p := range profiles {
 			if p.StorageID == sid && p.Path == parts[2] {
+				if err := windowsProfileSourceProblem(catalog, p); err != nil {
+					return BootProfile{}, WindowsProfile{}, nil, err
+				}
 				for _, shared := range sources.BootProfiles {
 					if shared.WindowsProfileID == p.ID && isISOBootKind(shared.Kind) {
 						return shared, p, nil, nil
@@ -149,6 +138,20 @@ func (s *Server) resolveDownloadSource(r *http.Request, sources InstallationMenu
 				return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Источник загрузки недоступен")
 			}
 		}
+		records, err := s.imageInspections(r.Context())
+		if err != nil {
+			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Не удалось прочитать результаты проверки ISO")
+		}
+		record, ok := currentImageInspection(catalog, records, sid, parts[2])
+		if !ok || (record.Kind != "windows" && record.Kind != "strelec") {
+			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Сначала проверьте ISO")
+		}
+		kind, title := BootProfileWindowsISO, "Windows x64"
+		if record.Kind == "strelec" {
+			kind, title = BootProfileWinPEISO, "Strelec x64"
+			selected.BootMode = agent.ISOStrelecMode
+		}
+		selected.Title = title
 		return BootProfile{Kind: kind, Title: title}, WindowsProfile{}, &selected, nil
 	}
 	id, err := strconv.ParseInt(raw, 10, 64)
@@ -166,26 +169,8 @@ func (s *Server) resolveDownloadSource(r *http.Request, sources InstallationMenu
 					windows = p
 				}
 			}
-			if isISOBootKind(choice.Kind) {
-				if _, problem := isoKindHint(windows.Path); problem != "" {
-					return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("%s", problem)
-				}
-			}
 			return choice.BootProfile, windows, nil, nil
 		}
 	}
 	return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Выберите источник загрузки")
-}
-
-func isoBootMode(name string) string {
-	if strings.Contains(strings.ToLower(path.Base(name)), "strelec") {
-		return agent.ISOStrelecMode
-	}
-	return ""
-}
-func isoSourceKind(name string) (string, string) {
-	if isoBootMode(name) == agent.ISOStrelecMode {
-		return BootProfileWinPEISO, "Strelec x64"
-	}
-	return BootProfileWindowsISO, "Windows x64"
 }

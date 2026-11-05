@@ -21,6 +21,7 @@ type imageRow struct {
 	StorageName, Author string
 	DisplayName         string
 	Kind, Problem       string
+	Arch                string
 	CleanupProfileID    int64
 	Downloads           []imageDownload
 }

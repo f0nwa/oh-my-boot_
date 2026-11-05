@@ -67,7 +67,7 @@ func TestNavigationGroupsLibraryAndSystemPages(t *testing.T) {
 	for _, group := range groups {
 		titles = append(titles, group.Title)
 	}
-	if strings.Join(titles, ",") != "Сейчас,Загрузки,Меню,Библиотека,Журнал,Система" {
+	if strings.Join(titles, ",") != "Сейчас,Меню,Загрузки,Библиотека,Журнал,Система" {
 		t.Fatalf("sections=%v", titles)
 	}
 	tabs := subnav(groups)

@@ -11,9 +11,13 @@ func TestImageActionsAreInTheLastColumn(t *testing.T) {
 	if strings.Contains(page, `href="/installations/new">Создать загрузку</a>`) {
 		t.Fatal("unexpected shared create action below the list")
 	}
-	start := strings.Index(page, `<td class="path-cell">Windows-new.iso`)
-	if start < 0 {
+	nameAt := strings.Index(page, `>Windows-new.iso</button>`)
+	if nameAt < 0 {
 		t.Fatal("missing image row")
+	}
+	start := strings.LastIndex(page[:nameAt], "<tr>")
+	if start < 0 {
+		t.Fatal("missing start of image row")
 	}
 	row := page[start:]
 	end := strings.Index(row, "</tr>")

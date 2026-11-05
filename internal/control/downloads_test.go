@@ -189,7 +189,7 @@ func TestISOLibraryHasOneFileRowAndNoProfileActions(t *testing.T) {
 	s, store, _ := downloadsServer(t)
 	store.profiles = append(store.profiles, WindowsProfile{ID: 80, WindowsProfileSource: WindowsProfileSource{StorageID: 7, Path: "Windows-new.iso", Title: "Internal"}, State: "pending"})
 	body := libraryGet(t, s, "/images")
-	if strings.Count(body, `class="path-cell">Windows-new.iso`) != 1 {
+	if strings.Count(body, `>Windows-new.iso</button>`) != 1 {
 		t.Fatalf("ISO is not shown once: %s", body)
 	}
 	for _, bad := range []string{"Создать профиль", `/images/windows-profiles/80/prepare`, ">pending<", "Название в меню"} {

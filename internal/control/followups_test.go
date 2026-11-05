@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -75,7 +76,8 @@ func TestStylesheetMakesOnlyMarkedButtonsPrimary(t *testing.T) {
 			data.Info = requestContext{}
 		}
 		data.ImageError = ""
-		if n := strings.Count(renderPage(name, data), `btn-primary`); n != 1 {
+		body := regexp.MustCompile(`(?s)<dialog\b[^>]*>.*?</dialog>`).ReplaceAllString(renderPage(name, data), "")
+		if n := strings.Count(body, `btn-primary`); n != 1 {
 			t.Errorf("%s has %d primary buttons", name, n)
 		}
 	}

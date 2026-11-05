@@ -308,6 +308,7 @@ var englishMessages = map[string]string{
 	"Выключено":         "Disabled",
 	"Действие":          "Action",
 	"Не удалось прочитать названия образов":                           "Could not read image names",
+	"Свойства образа":                                                 "Image details",
 	"Название образа":                                                 "Image name",
 	"Изменить название образа":                                        "Edit image name",
 	"Указать название образа":                                         "Set image name",

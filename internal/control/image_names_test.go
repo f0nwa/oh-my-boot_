@@ -129,3 +129,21 @@ func TestImageNamesMigrationWorksTwice(t *testing.T) {
 		t.Fatalf("names=%v err=%v", names, err)
 	}
 }
+
+func TestImageNameOpensImageDetails(t *testing.T) {
+	s, base, _ := downloadsServer(t)
+	store := &namedImagesStore{downloadsStore: base, names: map[string]string{imageAuthorKey(7, "Windows-new.iso"): "Windows 10"}}
+	s.Store = store
+	page := libraryGet(t, s, "/images")
+	if !strings.Contains(page, `data-image-dialog=`) || !strings.Contains(page, `>Windows 10</button>`) || !strings.Contains(page, `<dialog`) || !strings.Contains(page, `action="/images/name"`) || !strings.Contains(page, `Windows-new.iso`) {
+		t.Fatal("named ISO must open a dialog with a rename form and original filename")
+	}
+	if strings.Contains(page, "Изменить название образа</summary>") || strings.Contains(page, "Указать название образа</summary>") {
+		t.Fatal("rename control still expands the table row")
+	}
+	base.user.Role = "observer"
+	page = libraryGet(t, s, "/images")
+	if !strings.Contains(page, `data-image-dialog=`) || strings.Contains(page, `action="/images/name"`) {
+		t.Fatal("observers should see image details without rename controls")
+	}
+}

@@ -468,3 +468,11 @@ button[disabled]{opacity:.45;cursor:default}
 .installs tr:last-child .download-delete-panel{top:auto;bottom:calc(100% + 4px)}
 .download-delete-panel p{margin:0 0 8px;font-size:12px}
 .download-delete-panel .danger-text{color:var(--bad)}
+
+/* Image details */
+.image-name-link{display:inline;margin:0;padding:0;min-height:0;border:0;background:none;color:var(--text);font:inherit;font-weight:600;text-align:left;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;word-break:break-all}
+.image-name-link:hover{background:none;color:var(--text-2)}
+.image-dialog{width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:24px;border:1px solid var(--line-strong);border-radius:10px;background:var(--panel);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.35);word-break:normal;overflow:auto}
+.image-dialog::backdrop{background:rgba(10,12,15,.55)}
+.image-dialog h2{margin:0 0 18px}.image-dialog dl{margin:0 0 18px}.image-dialog dt{color:var(--muted);font-size:12px;margin-top:12px}.image-dialog dd{margin:4px 0 0}.image-dialog-file{overflow-wrap:anywhere}
+.image-dialog form{margin:0}.image-dialog label{display:block}.image-dialog input[name=name]{width:100%}.image-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}.image-dialog-actions button{margin-top:0}

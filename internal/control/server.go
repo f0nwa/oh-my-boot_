@@ -266,6 +266,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
 	mux.HandleFunc("GET /assets/iso-check.js", isoCheckScript)
+	mux.HandleFunc("GET /assets/image-details.js", imageDetailsScript)
 	mux.HandleFunc("POST /images/name", s.protect("images", withPageErrors(s.imagesPage, s.imageNameSave)))
 	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
 	mux.HandleFunc("POST /images/iso/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectISO)))

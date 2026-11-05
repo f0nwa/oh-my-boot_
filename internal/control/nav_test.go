@@ -67,7 +67,7 @@ func TestNavigationGroupsLibraryAndSystemPages(t *testing.T) {
 	for _, group := range groups {
 		titles = append(titles, group.Title)
 	}
-	if strings.Join(titles, ",") != "Сейчас,Загрузки,Меню,Библиотека,Журнал,Система" {
+	if strings.Join(titles, ",") != "Сейчас,Меню,Загрузки,Библиотека,Журнал,Система" {
 		t.Fatalf("sections=%v", titles)
 	}
 	tabs := subnav(groups)
@@ -116,7 +116,7 @@ func TestNowSectionIsNowInEnglish(t *testing.T) {
 	}
 }
 
-func TestNavigationPlacesDownloadsBeforeMenu(t *testing.T) {
+func TestNavigationPlacesMenuBeforeDownloads(t *testing.T) {
 	groups := navigation("admin", "/")
 	var downloads, menu int = -1, -1
 	for i, group := range groups {
@@ -127,7 +127,7 @@ func TestNavigationPlacesDownloadsBeforeMenu(t *testing.T) {
 			menu = i
 		}
 	}
-	if downloads < 0 || menu < 0 || downloads >= menu {
+	if downloads < 0 || menu < 0 || menu >= downloads {
 		t.Fatalf("unexpected navigation order: downloads=%d menu=%d", downloads, menu)
 	}
 }

@@ -17,6 +17,7 @@ a{color:var(--text)}a:hover{color:var(--text-2)}
 :root{--page-max:1920px;--gutter:24px;--edge:max(var(--gutter),calc((100vw - var(--page-max))/2 + var(--gutter)))}
 
 /* Header */
+.nav-shell{position:sticky;top:0;z-index:20}
 .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;min-height:52px;padding:0 var(--edge);background:var(--panel);border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:10px;font-size:15px;text-decoration:none}
 .wordmark{font-family:var(--mono);font-weight:500;letter-spacing:0;white-space:nowrap}.wordmark-cursor{display:inline-block;width:.6em;height:.12em;vertical-align:-.1em;background:var(--accent)}

@@ -131,3 +131,19 @@ func TestNavigationPlacesMenuBeforeDownloads(t *testing.T) {
 		t.Fatalf("unexpected navigation order: downloads=%d menu=%d", downloads, menu)
 	}
 }
+
+func TestNavigationStaysVisibleWhenPageScrolls(t *testing.T) {
+	data := samplePageDataBase(langRU)
+	data.Info.Path = "/images"
+	body := renderPage("images", data)
+	if !strings.Contains(body, `<div class="nav-shell"><header class="topbar">`) || !strings.Contains(body, `</nav></div><main class="content">`) {
+		t.Fatal("top navigation and section tabs are not grouped in a sticky shell")
+	}
+	css, err := templateFS.ReadFile("templates/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), ".nav-shell{position:sticky;top:0;z-index:") {
+		t.Fatal("navigation shell does not stick to the top of the viewport")
+	}
+}

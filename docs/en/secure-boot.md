@@ -59,6 +59,16 @@ Legacy BIOS machines get `ipxeboot/x86_64/undionly.kpxe`. BIOS has no Secure Boo
 - **Everything started from the menu must also pass signature validation.** Windows and Ubuntu are signed in the current chain. A custom utility or Linux image needs an appropriate signature and trust at its verification stage; Secure Boot rejects an unsigned executable.
 - **Drivers we add to WinPE do not affect booting.** Windows checks them, not the firmware.
 
+### Threat model and choosing trust
+
+Secure Boot checks whether loader signatures are acceptable, but it does not prevent OS reinstallation and does not replace physical access control, a BIOS password, or USB/PXE boot restrictions. Even with narrow internal trust, the remaining Windows keys usually allow a signed Windows installation medium to boot.
+
+- **An internal certificate is preferable for a managed fleet.** Enroll its public part in each machine's `db` and sign the first EFI image with the corresponding private key. This narrows third-party loader trust to our infrastructure, but requires key management, certificate deployment, and validation of the full chain.
+- **Trusting Microsoft's third-party UEFI CA is a practical compromise in the current OMB scheme.** Secure Boot stays on, but firmware accepts not only our shim: it also accepts other Microsoft-signed loaders that have not been revoked through `dbx`. For a long-term scheme with narrower trust, use an internal certificate.
+- **Turning Secure Boot off temporarily is only a controlled servicing scenario.** While it is off, firmware does not check loader signatures at all, so this is not safer than trusting the third-party CA. Use it only with controlled physical access and turn protection back on after installation.
+
+Choosing the iPXE network driver is a separate compatibility decision, not a trust decision; see [below](#how-the-lab-switch-differs-from-iventoys-efi-file-choice).
+
 ### Our own keys and exporting laptop keys
 
 Windows can read `PK`, `KEK`, `db`, and `dbx`. These contain public certificates, hashes, and revocation lists, not the private keys used to sign EFI files. In an elevated PowerShell, save them to an accessible folder:
@@ -107,7 +117,7 @@ A certificate embedded in the shim does not make firmware trust that shim: firmw
 
 Any one of the three, once per machine.
 
-**1. Allow Microsoft's key for third-party loaders (recommended).** In the Secure Boot settings turn on the option about “3rd party” or “Microsoft UEFI CA”. Secure Boot stays on, and the machine trusts signed shims: ours and Linux ones. Names depend on the model and BIOS version; examples:
+**1. Allow Microsoft's key for third-party loaders (practical for the current scheme).** In the Secure Boot settings turn on the option about “3rd party” or “Microsoft UEFI CA”. Secure Boot stays on, and the machine trusts signed shims: ours and Linux ones. Names depend on the model and BIOS version; examples:
 
 | Vendor | Where to look |
 |---|---|
@@ -124,7 +134,7 @@ If there is no such option, look for a key mode like “Factory Keys” or “Re
 
 **2. Add our loader to the trusted list by hand.** Some BIOSes offer “Enroll EFI Image”, “Add Trusted File” or “Append Image Hash”. Copy `ipxe-shim.efi` from the server (`/srv/omb/tftp/ipxeboot/x86_64-sb/`) to a FAT32 USB stick, pick it in that BIOS option and save. The firmware remembers the fingerprint of exactly this file; if the shim on the server is updated, repeat this. Not every vendor has the option, and it usually works only from a USB stick or disk, not over the network.
 
-**3. Turn Secure Boot off.** The simplest, but it turns the protection off completely. Fine for a test bench or a machine that joins the regular fleet after installation: Secure Boot can be turned back on afterwards, and Windows boots with it.
+**3. Turn Secure Boot off.** Use this only on a test bench or for controlled servicing: it turns the protection off completely, and firmware stops checking loader signatures. Turn Secure Boot back on after installation; Windows boots with it. This is not a safer alternative to trusting the third-party CA.
 
 ### USB stick for machines outside the domain
 
@@ -200,7 +210,7 @@ Both pinned download sources are in the [boot assets guide](../../deploy/boot-as
 
 iVentoy lets you pick which EFI file to send to machines. Its loader is unsigned, so the file is matched to the firmware. In the main Oh My Boot mode, the chain is signed and all UEFI clients receive the same iPXE loader. The lab now has a global **iPXE / GRUB** choice to test [a separate Debian chain](../grub-secure-boot-test.md); it changes the boot file for every UEFI client and does not select one for a particular firmware.
 
-The choice that does matter is iPXE's network driver. `ipxe.efi` has its own network card drivers, while `snponly.efi` uses the firmware's driver. Some hardware (USB-C docks, USB adapters, some new network cards) works only with the latter. Both are signed and started through the shim, so choosing between them does not affect Secure Boot. It is planned per machine, model or vendor (by MAC prefix): the [task in TODO](../../TODO.md).
+The choice that does matter is iPXE's network driver. `ipxe.efi` has its own network card drivers, while `snponly.efi` uses the firmware's driver. Some hardware (USB-C docks, USB adapters, some new network cards) works only with the latter. For iPXE, `snponly.efi` is the preferred baseline after compatibility is confirmed on the target models; `ipxe.efi` remains the fallback. Both files are signed and started through the shim, so choosing between them does not affect Secure Boot. This choice does not apply to GRUB, which uses a different loader. The iPXE variant can be selected globally, for an individual machine, and by MAC prefix.
 
 ## How to check what the server serves
 

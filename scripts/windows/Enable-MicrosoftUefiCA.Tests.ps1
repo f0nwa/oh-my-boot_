@@ -23,7 +23,7 @@ if (`$a -is [System.Collections.Queue]) { `$a = `$a.Dequeue() }
 Describe 'Invoke-Main' {
     BeforeEach {
         Mock Get-SecureBootState { $true }
-        Mock Test-DbTrust { [pscustomobject]@{ CA2011 = $false; CA2023 = $true } }
+        Mock Test-DbTrust { [pscustomobject]@{ CA2011 = $false; CA2023 = $false } }
         Mock Suspend-BitLockerOnce { $true }
         Mock Get-BiosSerial { 'PF3ABC12' }
     }
@@ -136,9 +136,10 @@ Describe 'Invoke-Main' {
             Invoke-Main -Report | Should -Be 'PF1ABC,LENOVO,"ThinkPad, X1",on,disabled,unknown'
         }
 
-        It 'flags firmware that only carries the 2023 CA' {
-            Mock Get-BiosWmi -ParameterFilter { $Class -eq 'Lenovo_BiosSetting' } { [pscustomobject]@{ CurrentSetting = 'Allow3rdPartyUEFICA,Enable' } }
-            Invoke-Main | Should -Be 5
+        It 'does nothing when db already trusts only the 2023 CA' {
+            Mock Test-DbTrust { [pscustomobject]@{ CA2011 = $false; CA2023 = $true } }
+            Invoke-Main | Should -Be 0
+            Should -Invoke Get-BiosWmi -Times 0 -ParameterFilter { $Class -eq 'Lenovo_BiosSetting' }
         }
     }
 

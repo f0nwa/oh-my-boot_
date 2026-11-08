@@ -5,11 +5,12 @@ Oh My Boot's signed iPXE shim with Secure Boot on.
 
 .DESCRIPTION
 Secured-core laptops ship trusting only Windows' own Secure Boot key. The
-iPXE shim is signed by "Microsoft Corporation UEFI CA 2011", so such a laptop
-refuses it ("Access Denied" right after the loader is downloaded).
+iPXE shim is signed by both "Microsoft Corporation UEFI CA 2011" and
+"Microsoft UEFI CA 2023", so such a laptop refuses it ("Access Denied" right
+after the loader is downloaded).
 
 The script:
-  1. does nothing if Secure Boot is off or the firmware already trusts the CA;
+  1. does nothing if Secure Boot is off or the firmware already trusts either CA;
   2. finds the vendor's BIOS option (Lenovo "Allow Microsoft 3rd Party UEFI
      CA", Dell "Enable Microsoft UEFI CA", HP "Enable MS UEFI CA key") through
      the vendor's built-in WMI interface, with no extra tools;
@@ -46,13 +47,12 @@ Where to append the log. Defaults to %WINDIR%\Temp\OMB-MicrosoftUefiCA.log.
 
 .NOTES
 Exit codes (SCCM understands 0 and 3010):
-  0     nothing to do: Secure Boot off, or the CA is already trusted
+  0     nothing to do: Secure Boot off, or either CA is already trusted
   3010  the option was turned on (or already is); restart to apply
   1     unexpected error
   2     this model has no such option (or vendor WMI is missing)
   3     a BIOS password is needed, or the given one was refused
   4     not a Lenovo, Dell or HP machine
-  5     the option is on but the firmware still lacks the 2011 CA (see log)
 #>
 [CmdletBinding()]
 param(
@@ -330,7 +330,11 @@ function Invoke-Main {
         if (-not $sb) { Write-UefiCALog 'Secure Boot is off: nothing to do'; return 0 }
 
         $trust = Test-DbTrust
-        if ($trust.CA2011) { Write-UefiCALog "db already has $script:UefiCA2011"; return 0 }
+        if ($trust.CA2011 -or $trust.CA2023) {
+            $ca = if ($trust.CA2011) { $script:UefiCA2011 } else { $script:UefiCA2023 }
+            Write-UefiCALog "db already has $ca"
+            return 0
+        }
 
         $maker = [string](Get-Manufacturer)
         $pass = Resolve-BiosPassword $Password $PasswordFile
@@ -353,13 +357,6 @@ function Invoke-Main {
                 return 3010
             }
             'Enabled' {
-                # On, yet the db lacks the CA: either a restart is pending, or
-                # the firmware only carries the 2023 CA, which the iPXE shim
-                # (signed by the 2011 CA) does not chain to.
-                if ($trust.CA2023) {
-                    Write-UefiCALog "option is on but db has only $script:UefiCA2023; the iPXE shim needs $script:UefiCA2011"
-                    return 5
-                }
                 Write-UefiCALog 'option is on, db not updated yet: restart pending'
                 return 3010
             }

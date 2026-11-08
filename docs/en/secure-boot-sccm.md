@@ -2,13 +2,11 @@
 
 This guide is for Lenovo, Dell and HP laptops that get “Access Denied” at PXE boot. In the panel their iPXE step is red: “Firmware rejected the loader”. [secure-boot.md](secure-boot.md#if-a-machine-does-not-boot) explains why. In short, the firmware may trust only Windows keys, not the third-party Microsoft UEFI CAs 2011 or 2023 that sign our loader.
 
-**Current script limitation:** after the server shim update on 29 October 2026, either third-party CA 2011 or 2023 can allow it to boot, but `Enable-MicrosoftUefiCA.ps1` still treats only CA 2011 as ready. On a 2023-only machine its exit code 5 and attempt to enable the firmware option no longer describe a necessary change. Until the script is updated, use only `-CheckOnly` on such machines and inspect `db` separately. [Server shim status](secure-boot.md#the-2011-and-2023-keys).
-
 The script `scripts/windows/Enable-MicrosoftUefiCA.ps1` turns on the BIOS option “allow Microsoft's key for third-party loaders” from Windows, without entering the BIOS. Secure Boot stays on.
 
 ## What the script does
 
-1. Checks whether Secure Boot is on and whether “Microsoft Corporation UEFI CA 2011” is in the trusted list (db). If Secure Boot is off or the key is already there, it changes nothing.
+1. Checks whether Secure Boot is on and whether the trusted list (db) contains at least one third-party key: “Microsoft Corporation UEFI CA 2011” or “Microsoft UEFI CA 2023”. If Secure Boot is off or either key is already there, it changes nothing.
 2. Finds the vendor's BIOS option through its built-in WMI interface. No vendor tools need to be installed.
 
    | Vendor | BIOS option | WMI name |
@@ -27,12 +25,11 @@ The change takes effect after a restart. The log goes to `C:\Windows\Temp\OMB-Mi
 
 | Code | Meaning | What to do |
 |---|---|---|
-| 0 | Nothing needed: Secure Boot is off or the key is already there | — |
+| 0 | Nothing needed: Secure Boot is off or either key is already there | — |
 | 3010 | The option is on (now or from before); a restart is needed | Restart. SCCM handles this code itself |
 | 2 | The model has no such option, or no vendor WMI interface | Older Dells: Dell Command \| Configure, option `--MSUefiCA`. Otherwise, by hand in the BIOS |
 | 3 | A BIOS password is needed, or the one given was refused | Check the password for this serial number |
 | 4 | Not Lenovo, Dell or HP | By hand in the BIOS |
-| 5 | The option is on, but the script found only the third-party UEFI CA 2023, not 2011 | This code is outdated for the new shim: inspect `db`; CA 2023 is enough for the first boot stage |
 | 1 | Unexpected error | See the log |
 
 ## BIOS passwords
@@ -66,13 +63,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Enable-MicrosoftUefiCA
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Enable-MicrosoftUefiCA.ps1 -Password '<password>'
 ```
 
-After the restart, inspect `db`. The current script expects the 2011 key:
+After the restart, check that `db` contains at least one third-party CA:
 
 ```
-[Text.Encoding]::ASCII.GetString((Get-SecureBootUEFI db).Bytes) -match 'Microsoft Corporation UEFI CA 2011'
+[Text.Encoding]::ASCII.GetString((Get-SecureBootUEFI db).Bytes) -match 'Microsoft Corporation UEFI CA 2011|Microsoft UEFI CA 2023'
 ```
 
-If the command prints `True`, `db` contains the third-party CA 2011 corresponding to one of the new shim's signatures. If `db` contains only the third-party `Microsoft UEFI CA 2023`, this check prints `False` even though the firmware may also accept the new shim. Verify the actual menu boot separately on the laptop.
+If the command prints `True`, `db` contains a third-party CA corresponding to one of the new shim's signatures. Verify the actual menu boot separately on the laptop.
 
 ## Rolling out with SCCM
 
@@ -86,7 +83,7 @@ If the command prints `True`, `db` contains the third-party CA 2011 correspondin
    - After running: Configuration Manager restarts computer. You can choose “No action required” to leave the restart to the user; the change then applies at their next restart.
 3. **Collection.** Put only the laptops that do not boot from the network in it: Secured-core models, or the machines the panel marked “Firmware rejected the loader”.
 4. **Deployment.** Make it Required, with a maintenance window. The user gets the usual SCCM restart notice.
-5. **Results.** Monitoring → Deployments shows each machine's exit code. 3010 and 0 mean success; 2, 3, 4 and 5 are explained in the table above. Details are on the machine in `C:\Windows\Temp\OMB-MicrosoftUefiCA.log`.
+5. **Results.** Monitoring → Deployments shows each machine's exit code. 3010 and 0 mean success; 2, 3 and 4 are explained in the table above. Details are on the machine in `C:\Windows\Temp\OMB-MicrosoftUefiCA.log`.
 
 To only check without changes (for example, to survey the fleet in advance), use the same package with a separate program that adds `-CheckOnly`.
 

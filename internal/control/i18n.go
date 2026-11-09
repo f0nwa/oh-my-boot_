@@ -190,6 +190,8 @@ var englishMessages = map[string]string{
 	"глобальное значение":       "global default",
 	"Драйвер UEFI по умолчанию": "Default UEFI driver",
 	"Выбор сетевого драйвера начнёт действовать после возврата к iPXE.": "The network driver selection takes effect after switching back to iPXE.",
+	"GRUB использует сетевой стек прошивки UEFI. Настройки сетевого драйвера iPXE сохраняются и начнут действовать при возврате к основному меню.": "GRUB uses the UEFI firmware network stack. iPXE network driver settings are preserved and take effect upon returning to the main menu.",
+	"не используется (GRUB)": "not used (GRUB)",
 	"Настройка сохранена, но не применена: Agent недоступен":            "Setting saved but not applied: Agent is unavailable",
 	"Недопустимый сетевой драйвер":                                      "Invalid network driver",
 	"Сетевой драйвер сохранён":                                          "Network driver saved",

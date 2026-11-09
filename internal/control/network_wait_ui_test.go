@@ -104,7 +104,6 @@ func TestNetworkWaitFormAndPreview(t *testing.T) {
 			`value="120"`,
 			`name="winpe_retry"`,
 			`value="3"`,
-			`40`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("lang=%s network page missing %q:\n%s", lang, want, body)

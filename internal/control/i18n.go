@@ -271,6 +271,7 @@ var englishMessages = map[string]string{
 	"ISO пока не найдены.":                       "No ISO files found yet.",
 	"Network Agent недоступен":                   "Network Agent is unavailable",
 	"PXE-сеть":                                   "PXE network",
+	"Параметры PXE-сети":                         "PXE network settings",
 	"Ожидание сети WinPE":                        "WinPE network wait",
 	"Лимит ожидания сети WinPE":                  "WinPE network wait limit",
 	"Лимит ожидания сети WinPE (секунд)":         "WinPE network wait limit (seconds)",

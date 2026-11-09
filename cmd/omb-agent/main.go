@@ -50,6 +50,13 @@ func main() {
 		Systemctl:  agent.SMBCommandSystemctl{},
 	}
 	driverManager := &agent.DriverManager{Root: "/var/lib/omb-agent/drivers", ProfileRoot: "/srv/omb/tftp/windows-profiles", AnswerRoot: "/srv/omb/tftp/windows-answers", WIMRoot: "/srv/omb/tftp/windows-driver-wims", ConfigRoot: "/srv/omb/tftp/windows-driver-configs"}
+	applier.WinPE = &agent.WinPEWaitUpdater{
+		CustomTemplatePath:  agent.CustomWinPETemplatePath,
+		DefaultTemplatePath: agent.DefaultWinPETemplatePath,
+		ProfileRoot:         windows.AssetRoot,
+		AnswerRoot:          windows.AnswerRoot,
+		DriverConfigRoot:    driverManager.ConfigRoot,
+	}
 	ubuntu := &agent.UbuntuISOManager{SourceRoot: "/mnt/omb-smb", LocalRoot: agent.LocalISORoot, AssetRoot: "/srv/omb/tftp", ScriptPath: "/usr/local/libexec/omb-prepare-ubuntu-source", RegistryRoot: boot.DefaultUbuntuRegistryRoot, LegacyConfigPath: "/etc/omb/boot.env", Runner: agent.ExecDriverCommandRunner{}}
 	listener, err := agent.ListenUnix(*socket)
 	if err != nil {

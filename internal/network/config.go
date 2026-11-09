@@ -25,6 +25,9 @@ type Config struct {
 	BootURL              string `json:"boot_url"`
 	TFTPRoot             string `json:"tftp_root"`
 	UEFILoader           string `json:"uefi_loader,omitempty"`
+	// WinPE wait for the installation share; zero means the default.
+	WinPETimeoutSeconds int `json:"winpe_timeout_seconds,omitempty"`
+	WinPERetrySeconds   int `json:"winpe_retry_seconds,omitempty"`
 }
 
 // Validate rejects settings that could enable DHCP on the wrong network.
@@ -34,6 +37,9 @@ func Validate(c Config) error {
 	}
 	if c.UEFILoader != "" && c.UEFILoader != "ipxe" && c.UEFILoader != "grub-test" {
 		return fmt.Errorf("UEFI loader must be ipxe or grub-test")
+	}
+	if err := validateWinPE(c); err != nil {
+		return err
 	}
 	if c.Mode != "full" && c.Mode != "proxy" {
 		return fmt.Errorf("mode must be full or proxy")

@@ -415,11 +415,22 @@ func (c *AgentClient) Config(ctx context.Context) (network.Config, error) {
 	return v, err
 }
 func (c *AgentClient) Apply(ctx context.Context, v network.Config) error {
+	_, err := c.ApplyWithWinPE(ctx, v)
+	return err
+}
+
+func (c *AgentClient) ApplyWithWinPE(ctx context.Context, v network.Config) ([]agent.DriverScriptUpdate, error) {
 	payload, err := json.Marshal(v)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return localCall(ctx, c.http, "POST", "/apply", payload, nil)
+	var res struct {
+		DriverUpdates []agent.DriverScriptUpdate `json:"driver_updates"`
+	}
+	if err := localCall(ctx, c.http, "POST", "/apply", payload, &res); err != nil {
+		return nil, err
+	}
+	return res.DriverUpdates, nil
 }
 
 // DHCPEvents returns the PXE dnsmasq log lines the Agent reads from journald.

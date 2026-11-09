@@ -27,13 +27,15 @@ type Status struct {
 }
 
 type Applier struct {
-	mu         sync.Mutex
-	configPath string
-	statePath  string
-	hostsPath  string
-	runner     Runner
-	status     Status
-	current    network.Config
+	mu                sync.Mutex
+	configPath        string
+	statePath         string
+	hostsPath         string
+	runner            Runner
+	status            Status
+	current           network.Config
+	WinPE             *WinPEWaitUpdater
+	lastDriverUpdates []DriverScriptUpdate
 }
 
 // NewApplier restores the last successful config after an interrupted apply.
@@ -123,29 +125,45 @@ func (a *Applier) Apply(ctx context.Context, c network.Config) error {
 		return fmt.Errorf("read current dnsmasq config: %w", readErr)
 	}
 	previousExists := readErr == nil
-	candidate, err := writeCandidate(a.configPath, []byte(content), 0o640)
-	if err != nil {
-		return err
+
+	var updates []DriverScriptUpdate
+	winpeRollback := func() error { return nil }
+	if a.WinPE != nil {
+		var err error
+		updates, winpeRollback, err = a.WinPE.apply(ctx, c.WinPEAttempts(), c.EffectiveWinPERetry())
+		if err != nil {
+			return err
+		}
 	}
-	defer os.Remove(candidate)
-	if err := a.runner.Test(ctx, candidate); err != nil {
-		return fmt.Errorf("dnsmasq config test failed: %w", err)
-	}
-	if err := os.Rename(candidate, a.configPath); err != nil {
-		return fmt.Errorf("activate dnsmasq config: %w", err)
-	}
-	if err := a.runner.Restart(ctx); err != nil {
-		return errors.Join(fmt.Errorf("restart PXE dnsmasq: %w", err), a.rollback(ctx, previous, previousExists))
+
+	dnsmasqUnchanged := a.status.Applied && previousExists && string(previous) == content &&
+		(c.EffectiveWinPETimeout() != a.current.EffectiveWinPETimeout() || c.EffectiveWinPERetry() != a.current.EffectiveWinPERetry())
+	if !dnsmasqUnchanged {
+		candidate, err := writeCandidate(a.configPath, []byte(content), 0o640)
+		if err != nil {
+			return errors.Join(err, winpeRollback())
+		}
+		defer os.Remove(candidate)
+		if err := a.runner.Test(ctx, candidate); err != nil {
+			return errors.Join(fmt.Errorf("dnsmasq config test failed: %w", err), winpeRollback())
+		}
+		if err := os.Rename(candidate, a.configPath); err != nil {
+			return errors.Join(fmt.Errorf("activate dnsmasq config: %w", err), winpeRollback())
+		}
+		if err := a.runner.Restart(ctx); err != nil {
+			return errors.Join(fmt.Errorf("restart PXE dnsmasq: %w", err), a.rollback(ctx, previous, previousExists), winpeRollback())
+		}
 	}
 	state, err := json.Marshal(c)
 	if err != nil {
-		return errors.Join(err, a.rollback(ctx, previous, previousExists))
+		return errors.Join(err, a.rollback(ctx, previous, previousExists), winpeRollback())
 	}
 	if err := writeAtomic(a.statePath, state, 0o600); err != nil {
-		return errors.Join(fmt.Errorf("save agent state: %w", err), a.rollback(ctx, previous, previousExists))
+		return errors.Join(fmt.Errorf("save agent state: %w", err), a.rollback(ctx, previous, previousExists), winpeRollback())
 	}
 	a.status = Status{Applied: true, Mode: c.Mode, Interface: c.Interface}
 	a.current = c
+	a.lastDriverUpdates = updates
 	return nil
 }
 

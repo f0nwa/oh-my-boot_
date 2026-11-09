@@ -16,7 +16,32 @@ import (
 	"omb/internal/winpe"
 )
 
-const ISOStrelecMode = "strelec"
+const (
+	ISOStrelecMode           = "strelec"
+	CustomWinPETemplatePath  = "/etc/omb/windows-profiles/omb-setup.cmd.in"
+	DefaultWinPETemplatePath = "/usr/share/omb/windows-profiles/omb-setup.cmd.in"
+)
+
+// ResolveWinPETemplate reads the customized WinPE startup template if present,
+// falling back to the read-only system default.
+func ResolveWinPETemplate(customPath, fallbackPath string) ([]byte, error) {
+	if info, err := os.Lstat(customPath); err == nil {
+		if !info.Mode().IsRegular() || info.Size() == 0 {
+			return nil, fmt.Errorf("custom WinPE template is not a regular non-empty file")
+		}
+		return os.ReadFile(customPath)
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	info, err := os.Lstat(fallbackPath)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return nil, fmt.Errorf("default WinPE template is not a regular non-empty file")
+	}
+	return os.ReadFile(fallbackPath)
+}
 
 type WindowsISORequest struct {
 	BootMode     string    `json:"boot_mode,omitempty"`

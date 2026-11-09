@@ -22,6 +22,10 @@ func RenderStrelecNetwork(original, installationTemplate []byte, password string
 	if len(mappings) != 1 || len(share) < 2 || bytes.Contains(original, []byte("omb_strelec_")) {
 		return nil, fmt.Errorf("Strelec network mapping is missing or ambiguous")
 	}
+	attempts, pause := 45, 2
+	if a, p, ok := WaitFromScript(installationTemplate); ok {
+		attempts, pause = a, p
+	}
 	replacement := []byte("set OMB_STRELEC_PASSWORD=" + passwordToken + "\r\n" +
 		"wpeutil WaitForNetwork >nul 2>&1\r\n" +
 		"echo WaitForNetwork exit code: %errorlevel% >>\"%OMB_STRELEC_LOG%\"\r\n" +
@@ -30,8 +34,8 @@ func RenderStrelecNetwork(original, installationTemplate []byte, password string
 		"net use Z: " + string(share[1]) + "\\" + strconv.FormatInt(profileID, 10) + " %OMB_STRELEC_PASSWORD% /user:omb-iso /persistent:no >>\"%OMB_STRELEC_LOG%\" 2>&1\r\n" +
 		"if not errorlevel 1 goto omb_strelec_ready\r\n" +
 		"set /a OMB_STRELEC_ATTEMPT+=1 >nul\r\n" +
-		"if %OMB_STRELEC_ATTEMPT% GEQ 45 goto omb_strelec_failed\r\n" +
-		"ping -n 3 127.0.0.1 >nul\r\n" +
+		"if %OMB_STRELEC_ATTEMPT% GEQ " + strconv.Itoa(attempts) + " goto omb_strelec_failed\r\n" +
+		"ping -n " + strconv.Itoa(pause+1) + " 127.0.0.1 >nul\r\n" +
 		"goto omb_strelec_connect\r\n" +
 		":omb_strelec_failed\r\n" +
 		"set OMB_STRELEC_PASSWORD=\r\n" +

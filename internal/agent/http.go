@@ -388,7 +388,13 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(applier.Status())
+		_ = json.NewEncoder(w).Encode(struct {
+			Status
+			DriverUpdates []DriverScriptUpdate `json:"driver_updates,omitempty"`
+		}{
+			Status:        applier.Status(),
+			DriverUpdates: applier.LastDriverUpdates(),
+		})
 	})
 	return mux
 }

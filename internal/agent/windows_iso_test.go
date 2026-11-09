@@ -392,3 +392,42 @@ func TestResolveWindowsISOSourceAcceptsLocalStorage(t *testing.T) {
 		t.Fatal("storage outside both roots accepted")
 	}
 }
+
+func TestResolveWinPETemplate(t *testing.T) {
+	dir := t.TempDir()
+	custom := filepath.Join(dir, "etc", "omb-setup.cmd.in")
+	fallback := filepath.Join(dir, "share", "omb-setup.cmd.in")
+
+	if _, err := ResolveWinPETemplate(custom, fallback); err == nil {
+		t.Fatal("succeeded when neither template exists")
+	}
+	if err := os.MkdirAll(filepath.Dir(fallback), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fallback, []byte("fallback-template"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveWinPETemplate(custom, fallback)
+	if err != nil || string(got) != "fallback-template" {
+		t.Fatalf("fallback template = %q, err = %v", got, err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(custom), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(custom, []byte("custom-template"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err = ResolveWinPETemplate(custom, fallback)
+	if err != nil || string(got) != "custom-template" {
+		t.Fatalf("custom template = %q, err = %v", got, err)
+	}
+
+	linked := filepath.Join(dir, "etc", "linked.cmd.in")
+	if err := os.Symlink(fallback, linked); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveWinPETemplate(linked, fallback); err == nil {
+		t.Fatal("accepted symlink as custom template")
+	}
+}

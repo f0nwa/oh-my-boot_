@@ -27,7 +27,7 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	template, err := os.ReadFile("/usr/share/omb/windows-profiles/omb-setup.cmd.in")
+	template, err := agent.ResolveWinPETemplate(agent.CustomWinPETemplatePath, agent.DefaultWinPETemplatePath)
 	if err != nil {
 		fatal(err)
 	}

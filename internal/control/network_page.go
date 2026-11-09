@@ -1,15 +1,31 @@
 package control
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"omb/internal/agent"
 	"omb/internal/network"
 )
+
+func parseWinPEFormInt(raw string) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		return -1
+	}
+	return v
+}
 
 func networkForm(r *http.Request) network.Config {
 	return network.Config{
@@ -17,6 +33,8 @@ func networkForm(r *http.Request) network.Config {
 		DHCPStart: r.FormValue("dhcp_start"), DHCPEnd: r.FormValue("dhcp_end"), BootURL: r.FormValue("boot_url"), TFTPRoot: r.FormValue("tftp_root"),
 		UEFILoader: r.FormValue("uefi_loader"), DefaultDriver: r.FormValue("default_driver"),
 		ReuseFirmwareNetwork: r.FormValue("reuse_firmware_network") == "true",
+		WinPETimeoutSeconds:  parseWinPEFormInt(r.FormValue("winpe_timeout")),
+		WinPERetrySeconds:    parseWinPEFormInt(r.FormValue("winpe_retry")),
 	}
 }
 
@@ -35,6 +53,53 @@ func (s *Server) checkedNetwork(c network.Config) error {
 		return err
 	}
 	return ValidateNetworkTarget(c, s.AllowedInterfaces, ips)
+}
+
+func (s *Server) hasPreparingWinPEAssets(ctx context.Context) (bool, error) {
+	if s.Store == nil {
+		return false, nil
+	}
+	configs, err := s.Store.DriverConfigs(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, cfg := range configs {
+		if cfg.State == "preparing" {
+			return true, nil
+		}
+	}
+	profiles, err := s.Store.WindowsProfiles(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, p := range profiles {
+		if p.State == "preparing" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *Server) syncWinPEDriverScripts(ctx context.Context, updates []agent.DriverScriptUpdate) error {
+	if len(updates) == 0 || s.Store == nil {
+		return nil
+	}
+	syncer, ok := s.Store.(interface {
+		SyncWinPEDriverScripts(context.Context, []agent.DriverScriptUpdate) (string, error)
+	})
+	if !ok {
+		return nil
+	}
+	activeScript, err := syncer.SyncWinPEDriverScripts(ctx, updates)
+	if err != nil {
+		return err
+	}
+	if activeScript != "" && s.Boot != nil {
+		if _, err := s.Boot.Publish(ctx, []byte(activeScript)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) networkPage(w http.ResponseWriter, r *http.Request) {
@@ -82,12 +147,23 @@ func (s *Server) networkApply(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Network Agent недоступен", 503)
 		return
 	}
-	err := s.Agent.Apply(r.Context(), c)
+	if busy, err := s.hasPreparingWinPEAssets(r.Context()); err != nil {
+		http.Error(w, "Не удалось проверить активные сборки WinPE", 503)
+		return
+	} else if busy {
+		_ = s.Store.Audit(r.Context(), info.User.ID, "network.apply", "conflict", "winpe preparing")
+		http.Error(w, "Нельзя изменять параметры WinPE во время подготовки образов или драйверов", http.StatusConflict)
+		return
+	}
+	updates, err := s.Agent.ApplyWithWinPE(r.Context(), c)
+	if err == nil {
+		err = s.syncWinPEDriverScripts(r.Context(), updates)
+	}
 	result := "ok"
 	if err != nil {
 		result = "error"
 	}
-	_ = s.Store.Audit(r.Context(), info.User.ID, "network.apply", result, fmt.Sprintf("mode=%s interface=%s subnet=%s reuse_firmware_network=%t", c.Mode, c.Interface, c.Subnet, c.ReuseFirmwareNetwork))
+	_ = s.Store.Audit(r.Context(), info.User.ID, "network.apply", result, fmt.Sprintf("mode=%s interface=%s subnet=%s reuse_firmware_network=%t winpe_timeout=%d winpe_retry=%d", c.Mode, c.Interface, c.Subnet, c.ReuseFirmwareNetwork, c.EffectiveWinPETimeout(), c.EffectiveWinPERetry()))
 	active, readErr := s.Agent.Config(r.Context())
 	data := pageData{Info: info, Network: active, HasNetwork: readErr == nil}
 	if err != nil {

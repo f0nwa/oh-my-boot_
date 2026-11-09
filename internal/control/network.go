@@ -27,7 +27,7 @@ func ValidateNetworkTarget(c network.Config, allowed map[string]bool, interfaceI
 	return fmt.Errorf("server IP is not assigned to selected interface")
 }
 
-func InterfaceIPs(name string) ([]netip.Addr, error) {
+var InterfaceIPs = func(name string) ([]netip.Addr, error) {
 	nic, err := net.InterfaceByName(name)
 	if err != nil {
 		return nil, err

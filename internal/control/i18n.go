@@ -180,6 +180,8 @@ var englishMessages = map[string]string{
 
 	"Использовать сетевые настройки прошивки": "Use firmware network settings",
 	"Открывать меню с IP-адресом, полученным прошивкой. Если подключение не удалось — запросить адрес повторно. Действует только при полном DHCP OMB и драйвере «прошивки (snponly)».": "Open the menu using the IP address obtained by firmware. If the connection fails, request an address again. Applies only with full OMB DHCP and the firmware (snponly) driver.",
+	"Открывать меню по IP от прошивки":                                                                                                                                                 "Open the menu using firmware IP",
+	"Открывать меню по IP от прошивки, минуя повторный DHCP iPXE.":                                                                                                                    "Open the menu using firmware IP, bypassing repeated iPXE DHCP.",
 	"Настройка сохранена и начнёт действовать при полном DHCP OMB, загрузчике iPXE и драйвере «прошивки (snponly)».":                                                                   "The setting is saved and takes effect with full OMB DHCP, the iPXE loader, and the firmware (snponly) driver.",
 	"Сетевой драйвер":           "Network driver",
 	"как у всех":                "inherit",
@@ -1307,4 +1309,14 @@ var englishMessages = map[string]string{
 	"Хранилище ISO не найдено":           "ISO storage was not found",
 	"Не удалось проверить хранилище ISO": "Could not check ISO storage",
 	"Проверяется хранилище ISO":          "Checking ISO storage",
+
+	"Поиск по имени, ID или роли":                               "Search by name, ID or role",
+	"активных:":                                                 "active:",
+	"активных":                                                  "active",
+	"Всего":                                                     "Total",
+	"Смена пароля: %s":                                          "Change password: %s",
+	"Смена пароля":                                              "Change password",
+	"Сеансы пользователя на всех устройствах будут завершены.": "The user's sessions on all devices will be terminated.",
+	"Пользователи не найдены":                                   "No users found",
+	"Отключён":                                                  "Disabled",
 }

@@ -2,6 +2,7 @@ package control
 
 import (
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -37,7 +38,7 @@ func TestEveryPageUsesPageHead(t *testing.T) {
 	for _, name := range []string{"login", "installations", "installation_new", "account", "events", "network", "network_preview", "menu", "users", "audit", "images", "answers", "storages", "drivers"} {
 		res := httptest.NewRecorder()
 		render(res, name, samplePageData(langRU))
-		body := res.Body.String()
+		body := regexp.MustCompile(`(?s)<dialog\b[^>]*>.*?</dialog>`).ReplaceAllString(res.Body.String(), "")
 		if !strings.Contains(body, `class="page-head"`) {
 			t.Errorf("%s has no page head", name)
 		}

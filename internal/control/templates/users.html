@@ -1,1 +1,95 @@
-{{define "users"}}{{template "top" .}}<div class="page-head"><div><h1>{{t "Пользователи"}}</h1><p class="lead">{{t "Кто может входить в админку и что ему разрешено."}}</p></div></div><details><summary>{{t "Добавить пользователя"}}</summary><form method="post" action="/users/create"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><label>{{t "Имя"}}</label><input name="username" required><label>{{t "Пароль, от 12 символов"}}</label><input type="password" name="password" minlength="12" autocomplete="new-password" required data-password-generator><label>{{t "Роль"}}</label><select name="role"><option value="observer">{{t "Наблюдатель"}}</option><option value="operator">{{t "Оператор"}}</option><option value="admin">{{t "Администратор"}}</option></select><button class="btn btn-primary">{{t "Создать"}}</button></form></details><section><div class="table-wrap"><table><tr><th>{{t "Имя"}}</th><th>{{t "Роль и доступ"}}</th></tr>{{range .Users}}<tr><td>{{.Username}} <small>#{{.ID}}</small></td><td><form method="post" action="/users/change"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><select name="role"><option value="observer" {{if eq .Role "observer"}}selected{{end}}>{{t "Наблюдатель"}}</option><option value="operator" {{if eq .Role "operator"}}selected{{end}}>{{t "Оператор"}}</option><option value="admin" {{if eq .Role "admin"}}selected{{end}}>{{t "Администратор"}}</option></select><label><input style="width:auto" type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}> {{t "Активен"}}</label><button>{{t "Сохранить"}}</button></form></td></tr>{{end}}</table></div></section><details><summary>{{t "Сменить пароль пользователю"}}</summary><form method="post" action="/users/reset-password"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><label>{{t "ID пользователя из списка"}}</label><input name="id" inputmode="numeric" required><label>{{t "Новый пароль, от 12 символов"}}</label><input name="password" type="password" minlength="12" autocomplete="new-password" required data-password-generator><button>{{t "Сменить пароль и завершить его сеансы"}}</button></form></details><script defer src="/assets/password.js"></script>{{template "bottom" .}}{{end}}
+{{define "users"}}{{template "top" .}}
+<div class="page-head">
+<div>
+<h1>{{t "Пользователи"}}</h1>
+<p class="lead">{{t "Кто может входить в админку и что ему разрешено."}}</p>
+</div>
+<button type="button" class="btn btn-primary" data-user-add><span aria-hidden="true">+</span> {{t "Добавить пользователя"}}</button>
+</div>
+
+<div class="toolbar">
+<form class="search user-search" onsubmit="return false;">
+<label for="user-search" class="sr-only">{{t "Поиск"}}</label>
+<input id="user-search" type="search" placeholder="{{t "Поиск по имени, ID или роли"}}" autocomplete="off">
+</form>
+<span id="user-count" class="muted user-counts" data-label-total="{{t "Всего"}}" data-label-active="{{t "активных"}}">{{t "Всего:"}} {{len .Users}}</span>
+</div>
+
+<section>
+<div class="table-wrap"><table class="user-table">
+<thead>
+<tr>
+<th>{{t "Пользователь"}}</th>
+<th>{{t "Роль"}}</th>
+<th>{{t "Статус"}}</th>
+<th class="user-actions-th"><span class="sr-only">{{t "Действия"}}</span></th>
+</tr>
+</thead>
+<tbody>
+{{range .Users}}
+<tr data-user-row data-user-id="{{.ID}}" data-user-login="{{.Username}}" data-user-role="{{.Role}}" data-user-enabled="{{if .Enabled}}true{{else}}false{{end}}">
+<td>
+<form id="user-change-{{.ID}}" method="post" action="/users/change"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"></form>
+<span class="user-name"><strong>{{.Username}}</strong></span> <small class="mono faint">#{{.ID}}</small>
+</td>
+<td>
+<select name="role" form="user-change-{{.ID}}">
+<option value="observer"{{if eq .Role "observer"}} selected{{end}}>{{t "Наблюдатель"}}</option>
+<option value="operator"{{if eq .Role "operator"}} selected{{end}}>{{t "Оператор"}}</option>
+<option value="admin"{{if eq .Role "admin"}} selected{{end}}>{{t "Администратор"}}</option>
+</select>
+</td>
+<td>
+<label class="check">
+<input type="checkbox" name="enabled" form="user-change-{{.ID}}"{{if .Enabled}} checked{{end}} data-label-active="{{t "Активен"}}" data-label-disabled="{{t "Отключён"}}">
+<span data-enabled-label>{{if .Enabled}}{{t "Активен"}}{{else}}{{t "Отключён"}}{{end}}</span>
+</label>
+</td>
+<td class="row-actions">
+<div class="user-row-actions">
+<button type="button" class="btn btn-ghost" data-user-pw-id="{{.ID}}" data-user-pw-name="{{.Username}}">{{t "Сменить пароль"}}</button>
+<button form="user-change-{{.ID}}" class="btn" data-user-save="{{.ID}}">{{t "Сохранить"}}</button>
+</div>
+</td>
+</tr>
+{{end}}
+<tr id="users-empty-row" hidden>
+<td colspan="4" class="muted text-center">{{t "Пользователи не найдены"}}</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<dialog id="user-create-dialog" class="user-dialog">
+<h2>{{t "Добавить пользователя"}}</h2>
+<form method="post" action="/users/create">
+<input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+<label>{{t "Имя"}}<input name="username" required autocomplete="off"></label>
+<label>{{t "Пароль, от 12 символов"}}<input type="password" name="password" minlength="12" autocomplete="new-password" required data-password-generator></label>
+<label>{{t "Роль"}}<select name="role"><option value="observer">{{t "Наблюдатель"}}</option><option value="operator" selected>{{t "Оператор"}}</option><option value="admin">{{t "Администратор"}}</option></select></label>
+<div class="user-dialog-actions">
+<button type="button" class="btn btn-ghost" data-close-dialog>{{t "Отмена"}}</button>
+<button class="btn btn-primary">{{t "Создать"}}</button>
+</div>
+</form>
+</dialog>
+
+<dialog id="user-password-dialog" class="user-dialog">
+<h2>{{t "Сменить пароль"}} <span id="pw-modal-user" class="mono"></span></h2>
+<form method="post" action="/users/reset-password">
+<input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+<input type="hidden" name="id" id="pw-modal-id">
+<label>{{t "Новый пароль, от 12 символов"}}<input name="password" type="password" minlength="12" autocomplete="new-password" required data-password-generator></label>
+<p class="hint">{{t "Сеансы пользователя на всех устройствах будут завершены."}}</p>
+<div class="user-dialog-actions">
+<button type="button" class="btn btn-ghost" data-close-dialog>{{t "Отмена"}}</button>
+<button class="btn btn-primary">{{t "Сменить пароль"}}</button>
+</div>
+</form>
+</dialog>
+
+<script defer src="/assets/password.js"></script>
+<script defer src="/assets/users.js"></script>
+{{template "bottom" .}}
+{{end}}

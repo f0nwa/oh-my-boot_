@@ -170,11 +170,115 @@ func TestNewInstallationUbuntuRejectsWindowsComponents(t *testing.T) {
 }
 
 func TestNewInstallationFormListsChoices(t *testing.T) {
-	s, _ := newInstallServer(t)
+	s, store := newInstallServer(t)
+	shaA, shaB := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	store.packages = append(store.packages, DriverPackage{SHA256: shaB, Inventory: drivers.Inventory{INFs: []drivers.INF{
+		{Path: "Intel/e1d68x64.inf", Architecture: "amd64", Class: "Net"},
+		{Path: "Intel/e1d68x86.inf", Architecture: "x86", Class: "Net"},
+	}}})
 	body := libraryGet(t, s, "/installations/new")
-	for _, want := range []string{`name="boot_profile_id"`, `value="51"`, `data-profile="17"`, "netkvm", `name="package"`, `/assets/installation-form.js`} {
+	for _, want := range []string{
+		`name="boot_profile_id"`, `value="51"`, `data-profile="17"`, `/assets/installation-form.js`,
+		`name="package" value="` + shaA + `"`,
+		`data-package="` + shaA + `" name="inf" value="` + shaA + `:NetKVM/netkvm.inf"`,
+		`data-package="` + shaA + `" name="inf" value="` + shaA + `:vioscsi/vioscsi.inf"`,
+		`name="inf" value="` + shaB + `:Intel/e1d68x64.inf"`,
+		`Intel/e1d68x64.inf · Net`,
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("form lacks %q: %s", want, body)
+		}
+	}
+	for _, forbidden := range []string{`<details class="step-more"`, `Выбрать отдельные INF`, `name="package" value="` + shaB + `"`, `data-package="` + shaB + `"`} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("form contains forbidden %q: %s", forbidden, body)
+		}
+	}
+}
+
+func TestEditInstallationDriverSelectionState(t *testing.T) {
+	shaA, shaB := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	for _, tc := range []struct {
+		name      string
+		infs      []agent.SelectedINF
+		want      []string
+		forbidden []string
+	}{
+		{
+			name: "full multi-inf package and single-inf package",
+			infs: []agent.SelectedINF{
+				{PackageSHA256: shaA, INFPath: "NetKVM/netkvm.inf"},
+				{PackageSHA256: shaA, INFPath: "vioscsi/vioscsi.inf"},
+				{PackageSHA256: shaB, INFPath: "Intel/e1d68x64.inf"},
+			},
+			want: []string{
+				`name="package" value="` + shaA + `" checked`,
+				`data-package="` + shaA + `" name="inf" value="` + shaA + `:NetKVM/netkvm.inf" checked`,
+				`data-package="` + shaA + `" name="inf" value="` + shaA + `:vioscsi/vioscsi.inf" checked`,
+				`name="inf" value="` + shaB + `:Intel/e1d68x64.inf" checked`,
+			},
+			forbidden: []string{`name="package" value="` + shaB + `"`},
+		},
+		{
+			name: "partial multi-inf package",
+			infs: []agent.SelectedINF{
+				{PackageSHA256: shaA, INFPath: "NetKVM/netkvm.inf"},
+			},
+			want: []string{
+				`data-package="` + shaA + `" name="inf" value="` + shaA + `:NetKVM/netkvm.inf" checked`,
+			},
+			forbidden: []string{
+				`name="package" value="` + shaA + `" checked`,
+				`data-package="` + shaA + `" name="inf" value="` + shaA + `:vioscsi/vioscsi.inf" checked`,
+				`name="inf" value="` + shaB + `:Intel/e1d68x64.inf" checked`,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, store := newInstallServer(t)
+			store.packages = append(store.packages, DriverPackage{SHA256: shaB, Inventory: drivers.Inventory{INFs: []drivers.INF{
+				{Path: "Intel/e1d68x64.inf", Architecture: "amd64", Class: "Net"},
+			}}})
+			store.configs = []DriverConfig{{ID: 40, ProfileID: 17, Title: "Win11", Folder: "Windows", State: "ready", PackageINFs: tc.infs}}
+			store.installations = []Installation{{ID: 100, BootProfileID: 51, Title: "Win11", Folder: "Windows", DriverConfigID: 40}}
+			body := libraryGet(t, s, "/installations/100/edit")
+			for _, w := range tc.want {
+				if !strings.Contains(body, w) {
+					t.Fatalf("edit form lacks %q: %s", w, body)
+				}
+			}
+			for _, f := range tc.forbidden {
+				if strings.Contains(body, f) {
+					t.Fatalf("edit form contains forbidden %q: %s", f, body)
+				}
+			}
+		})
+	}
+}
+
+func TestValidationErrorPreservesDriverSelection(t *testing.T) {
+	s, store := newInstallServer(t)
+	shaA, shaB := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	store.packages = append(store.packages, DriverPackage{SHA256: shaB, Inventory: drivers.Inventory{INFs: []drivers.INF{
+		{Path: "Intel/e1d68x64.inf", Architecture: "amd64", Class: "Net"},
+	}}})
+	res := menuPost(t, s, "/installations", url.Values{
+		"boot_profile_id": {"51"},
+		"title":           {"Кириллица"},
+		"package":         {shaA, shaB},
+	})
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d", res.Code)
+	}
+	body := res.Body.String()
+	for _, want := range []string{
+		`name="package" value="` + shaA + `" checked`,
+		`data-package="` + shaA + `" name="inf" value="` + shaA + `:NetKVM/netkvm.inf" checked`,
+		`data-package="` + shaA + `" name="inf" value="` + shaA + `:vioscsi/vioscsi.inf" checked`,
+		`name="inf" value="` + shaB + `:Intel/e1d68x64.inf" checked`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("error form lacks %q: %s", want, body)
 		}
 	}
 }

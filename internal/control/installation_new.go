@@ -218,7 +218,62 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 			data.SelectedBootKind = profile.Kind
 		}
 	}
+	normalizeDriverForm(data.Form, data.PackageChoices)
 	render(w, "installation_new", data)
+}
+
+func normalizeDriverForm(form url.Values, choices []packageChoice) {
+	if form == nil {
+		return
+	}
+	selectedPackages := map[string]bool{}
+	for _, sha := range form["package"] {
+		selectedPackages[sha] = true
+	}
+	selectedINFs := map[string]bool{}
+	var infs []string
+	addINF := func(val string) {
+		if val != "" && !selectedINFs[val] {
+			selectedINFs[val] = true
+			infs = append(infs, val)
+		}
+	}
+	for _, val := range form["inf"] {
+		addINF(val)
+	}
+	for _, choice := range choices {
+		if selectedPackages[choice.SHA256] {
+			for _, inf := range choice.INFs {
+				addINF(inf.Value)
+			}
+		}
+	}
+	if len(infs) > 0 {
+		form["inf"] = infs
+	} else {
+		delete(form, "inf")
+	}
+	var pkgs []string
+	for _, choice := range choices {
+		if len(choice.INFs) <= 1 {
+			continue
+		}
+		all := true
+		for _, inf := range choice.INFs {
+			if !selectedINFs[inf.Value] {
+				all = false
+				break
+			}
+		}
+		if all {
+			pkgs = append(pkgs, choice.SHA256)
+		}
+	}
+	if len(pkgs) > 0 {
+		form["package"] = pkgs
+	} else {
+		delete(form, "package")
+	}
 }
 
 // installationCreate saves an independent installation; adding it to a menu is separate.

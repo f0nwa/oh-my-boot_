@@ -75,6 +75,7 @@ func samplePageDataBase(lang string) pageData {
 		ISOImages:             []imageRow{{Image: images.Image{StorageID: 7, Path: "win10.iso", Size: 1, Present: true}, StorageName: "Upload"}, {Image: images.Image{StorageID: 7, Path: "arm64.iso", Present: false}, StorageName: "Upload", Problem: "ARM64 пока не поддерживается"}},
 		WindowsProfiles:       []WindowsProfile{profile, {ID: 3, WindowsProfileSource: WindowsProfileSource{Title: "Ready"}, State: "ready"}},
 		WindowsAnswerVariants: []WindowsAnswerVariant{answer, {ID: 5, ProfileID: 3, Title: "Ready", State: "ready", WipesDisk: &wipesTrue}, {ID: 6, ProfileID: 3, Title: "Safe", State: "ready", WipesDisk: &wipesFalse}},
+		PackageChoices:        []packageChoice{{SHA256: "abc", Label: "netkvm", INFs: []infChoice{{Value: "abc:netkvm.inf", Label: "netkvm.inf · Net"}}}, {SHA256: "def", Label: "netkvm, vioscsi", INFs: []infChoice{{Value: "def:netkvm.inf", Label: "netkvm.inf · Net"}, {Value: "def:vioscsi.inf", Label: "vioscsi.inf · SCSIAdapter"}}}},
 		DriverPackages:        []DriverPackage{{SHA256: "abc", Inventory: drivers.Inventory{Files: []drivers.File{{}}, INFs: []drivers.INF{{Path: "netkvm.inf", Architecture: "amd64", Class: "Net", HardwareIDs: []string{"PCI\\VEN_1AF4"}}}}}},
 		DriverConfigs:         []DriverConfig{config},
 	}

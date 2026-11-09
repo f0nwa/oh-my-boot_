@@ -1213,7 +1213,6 @@ var englishMessages = map[string]string{
 	"Нужного нет?":  "Not listed?",
 	"необязательно": "optional",
 	"Пакетов драйверов пока нет.":                                "No driver packages yet.",
-	"Выбрать отдельные INF":                                      "Choose individual INF files",
 	"Добавить драйверы из ZIP":                                   "Add drivers from a ZIP",
 	"Нет — установщик спросит всё сам":                           "None — Setup asks everything itself",
 	"Только латиница: консоль загрузки не показывает кириллицу.": "Latin letters only: the boot console cannot show Cyrillic.",

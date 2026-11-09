@@ -12,8 +12,23 @@
 
   function checked(name) { return form.querySelector('input[name="' + name + '"]:checked'); }
   function text(id, value) { var el = document.getElementById(id); if (el) el.textContent = value; }
+  function syncPackages() {
+    form.querySelectorAll('input[name="package"]').forEach(function (pkg) {
+      var infs = form.querySelectorAll('input[name="inf"][data-package="' + pkg.value + '"]');
+      var selected = 0;
+      infs.forEach(function (inf) { if (inf.checked) selected++; });
+      pkg.checked = infs.length > 0 && selected === infs.length;
+      pkg.indeterminate = selected > 0 && selected < infs.length;
+    });
+  }
 
-  function update() {
+  function update(e) {
+    if (e && e.target && e.target.name === "package") {
+      form.querySelectorAll('input[name="inf"][data-package="' + e.target.value + '"]').forEach(function (inf) {
+        inf.checked = e.target.checked;
+      });
+    }
+    syncPackages();
     var profile = checked("boot_profile_id");
     var id = profile ? profile.dataset.windowsProfile : "";
     var windows = !!profile && profile.dataset.kind === "windows_iso";

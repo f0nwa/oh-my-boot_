@@ -21,11 +21,17 @@ func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
 	if !strings.Contains(body, `value="grub-test" selected`) {
 		t.Fatalf("active GRUB loader not selected: %s", body)
 	}
-	if !strings.Contains(body, `id="ipxe-options" hidden`) {
-		t.Fatalf("ipxe options should be hidden when GRUB active: %s", body)
+	if strings.Contains(body, `id="ipxe-options" hidden`) {
+		t.Fatalf("ipxe options should not have hidden attribute when GRUB active: %s", body)
 	}
-	if strings.Contains(body, `id="grub-loader-note" class="hint" hidden`) {
-		t.Fatalf("grub note should not be hidden: %s", body)
+	if !strings.Contains(body, `id="ipxe-options"`) || !strings.Contains(body, `aria-disabled="true"`) {
+		t.Fatalf("ipxe options should be inactive (aria-disabled=true) when GRUB active: %s", body)
+	}
+	if strings.Contains(body, `id="grub-loader-note" style="padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--chip);margin:12px 0;font-size:12px;display:none;"`) {
+		t.Fatalf("grub note should be displayed when GRUB active: %s", body)
+	}
+	if !strings.Contains(body, "Параметры iPXE не действуют при выборе GRUB") {
+		t.Fatalf("grub note title missing: %s", body)
 	}
 	preview := httptest.NewRecorder()
 	render(preview, "network_preview", data)
@@ -39,6 +45,11 @@ func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
 
 	dataEN := samplePageData(langEN)
 	dataEN.Network.UEFILoader = "grub-test"
+	pageEN := httptest.NewRecorder()
+	render(pageEN, "network", dataEN)
+	if !strings.Contains(pageEN.Body.String(), "iPXE parameters are inactive with GRUB") {
+		t.Fatalf("page EN should display inactive note: %s", pageEN.Body.String())
+	}
 	previewEN := httptest.NewRecorder()
 	render(previewEN, "network_preview", dataEN)
 	if !strings.Contains(previewEN.Body.String(), "not used (GRUB)") {

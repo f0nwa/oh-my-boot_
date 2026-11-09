@@ -281,6 +281,8 @@ var englishMessages = map[string]string{
 	"до":      "up to",
 	"попыток": "attempts",
 	"Proxy DHCP — адреса выдаёт роутер": "Proxy DHCP — the router assigns addresses",
+	"Proxy DHCP (только PXE, адреса выдаёт внешний DHCP)": "Proxy DHCP (PXE only, external DHCP assigns addresses)",
+	"Полный DHCP (OMB выдаёт IP-адреса и опции PXE)":     "Full DHCP (OMB assigns IP addresses and PXE options)",
 	"SMB подключено, но поиск ISO не запущен. Повторите обновление на странице образов.": "SMB is connected, but the ISO search did not start. Refresh again on the Images page.",
 	"URL загрузочного меню": "Boot menu URL",
 	"Загрузчик UEFI":        "UEFI bootloader",

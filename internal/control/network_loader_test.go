@@ -33,6 +33,10 @@ func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
 	if !strings.Contains(body, "Параметры iPXE не действуют при выборе GRUB") {
 		t.Fatalf("grub note title missing: %s", body)
 	}
+	if !strings.Contains(body, "Proxy DHCP (только PXE, адреса выдаёт внешний DHCP)") ||
+		!strings.Contains(body, "Полный DHCP (OMB выдаёт IP-адреса и опции PXE)") {
+		t.Fatalf("page RU should display updated DHCP mode labels: %s", body)
+	}
 	preview := httptest.NewRecorder()
 	render(preview, "network_preview", data)
 	previewBody := preview.Body.String()
@@ -49,6 +53,10 @@ func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
 	render(pageEN, "network", dataEN)
 	if !strings.Contains(pageEN.Body.String(), "iPXE parameters are inactive with GRUB") {
 		t.Fatalf("page EN should display inactive note: %s", pageEN.Body.String())
+	}
+	if !strings.Contains(pageEN.Body.String(), "Proxy DHCP (PXE only, external DHCP assigns addresses)") ||
+		!strings.Contains(pageEN.Body.String(), "Full DHCP (OMB assigns IP addresses and PXE options)") {
+		t.Fatalf("page EN should display updated DHCP mode labels: %s", pageEN.Body.String())
 	}
 	previewEN := httptest.NewRecorder()
 	render(previewEN, "network_preview", dataEN)

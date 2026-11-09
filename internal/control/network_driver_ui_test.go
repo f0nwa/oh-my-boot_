@@ -63,9 +63,9 @@ func TestMachinePageNetworkDriver(t *testing.T) {
 					selected = "snp"
 				}
 				checkDriverSelect(t, body, "network_driver", selected, []string{"", "ipxe", "snp"})
-				labels := []string{"как у всех", "прошивки", "глобальное значение", "машина", "префикс"}
+				labels := []string{"как у всех", "прошивки (snponly)", "глобальное значение", "машина", "префикс"}
 				if lang == "en" {
-					labels = []string{"inherit", "firmware", "global default", "machine", "prefix"}
+					labels = []string{"inherit", "firmware (snponly)", "global default", "machine", "prefix"}
 				}
 				if !strings.Contains(body, labels[0]) || !strings.Contains(body, labels[1]) {
 					t.Fatal("missing driver labels")

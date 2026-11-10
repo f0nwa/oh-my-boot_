@@ -33,9 +33,13 @@ func TestAnswersPageLayout(t *testing.T) {
 	body := libraryGet(t, s, "/answers")
 
 	for _, want := range []string{
+		`data-row-menu`,
+		`popovertarget="answers-add-menu"`,
+		`id="answers-add-menu"`,
+		`class="row-menu-popover"`,
+		`href="/answers/editor"`,
 		`data-answer-upload-open`,
 		`href="/ubuntu-autoinstall/new"`,
-		`class="btn btn-primary" href="/answers/editor"`,
 		`id="answer-upload-dialog"`,
 		`class="user-dialog"`,
 		`data-close-dialog`,
@@ -55,13 +59,16 @@ func TestAnswersPageLayout(t *testing.T) {
 	}
 }
 
-func TestAnswersPageObserverOmitsUpload(t *testing.T) {
+func TestAnswersPageObserverOmitsActions(t *testing.T) {
 	s := libraryServer()
 	s.Store = authOnlyStore{user: User{ID: 2, Role: "observer", Enabled: true}}
 	body := libraryGet(t, s, "/answers")
 
+	if strings.Contains(body, "answers-add-menu") {
+		t.Fatalf("observer should not see add menu")
+	}
 	if strings.Contains(body, "data-answer-upload-open") {
-		t.Fatalf("observer should not see upload button")
+		t.Fatalf("observer should not see upload trigger")
 	}
 	if strings.Contains(body, "id=\"answer-upload-dialog\"") {
 		t.Fatalf("observer should not see upload dialog")

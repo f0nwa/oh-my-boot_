@@ -11,6 +11,10 @@
       if (form) {
         form.reset();
       }
+      var popover = uploadBtn.closest('[popover]');
+      if (popover && typeof popover.hidePopover === 'function') {
+        popover.hidePopover();
+      }
       uploadDialog.showModal();
       var firstInput = uploadDialog.querySelector('select[name="profile_id"], input[name="title"]');
       if (firstInput) {

@@ -116,6 +116,7 @@ func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *test
 		"btn btn-danger",
 		"page-head-title",
 		`action="/events/retention"`,
+		`<button class="btn" disabled>`,
 	} {
 		if !strings.Contains(pageAdmin, want) {
 			t.Errorf("admin events page missing %q", want)

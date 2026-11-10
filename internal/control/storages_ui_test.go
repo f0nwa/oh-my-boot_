@@ -45,6 +45,12 @@ func TestStoragesPageAddSMBModal(t *testing.T) {
 				t.Fatalf("/storages (%s) missing %q", lang, want)
 			}
 		}
+		if lang == langRU && !strings.Contains(body, "Подключить SMB хранилище") {
+			t.Fatalf("/storages (ru) missing renamed button label")
+		}
+		if lang == langEN && !strings.Contains(body, "Connect SMB storage") {
+			t.Fatalf("/storages (en) missing translated button label")
+		}
 
 		// Ensure neither the SMB add wrapper nor the domain field uses <details>/<summary>.
 		if strings.Contains(body, `<summary>Добавить сетевую папку SMB</summary>`) ||

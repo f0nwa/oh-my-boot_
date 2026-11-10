@@ -25,6 +25,7 @@
 
   document.querySelectorAll('input[data-password-generator]').forEach(input => {
     const tools = document.createElement('p');
+    tools.className = 'pw-tools';
     const make = document.createElement('button');
     make.type = 'button';
     make.className = 'secondary';

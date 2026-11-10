@@ -188,6 +188,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /account", s.protect("view", s.accountPage))
 	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
+	mux.HandleFunc("GET /assets/account.js", accountScript)
 	mux.HandleFunc("GET /assets/style.css", stylesheet)
 	mux.HandleFunc("GET /assets/fonts/{name}", fontFile)
 	mux.HandleFunc("GET /favicon.ico", brandFile)

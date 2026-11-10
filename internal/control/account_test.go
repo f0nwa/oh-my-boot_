@@ -63,13 +63,21 @@ func TestAccountPageShowsProfileLanguageAndPasswordForm(t *testing.T) {
 		t.Fatalf("status=%d body=%s", res.Code, body)
 	}
 	for _, want := range []string{
+		`class="card account-card"`, `class="account-card-head"`, `data-account-password-open`,
+		`class="kv account-kv"`, `class="account-lang-block"`, `class="account-lang-row"`,
+		`id="account-password-dialog"`, `class="user-dialog"`,
 		"viewer", "Observer", "View state, catalog and logs only",
 		`action="/settings/language"`, `name="return" value="/account"`, `<option value="en" selected>`,
-		`action="/account/password"`, `name="current_password"`, `data-password-generator`, `src="/assets/password.js"`,
+		`action="/account/password"`, `name="current_password"`, `data-password-generator`,
+		`src="/assets/password.js"`, `src="/assets/account.js"`,
+		`class="btn btn-primary"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("account page lacks %q", want)
 		}
+	}
+	if strings.Contains(body, "<table>") || strings.Contains(body, "<details") || strings.Contains(body, "<summary") || strings.Contains(body, "data-auto-open") {
+		t.Errorf("account page should use compact card and closed dialog without table or details")
 	}
 }
 
@@ -100,7 +108,7 @@ func TestChangeOwnPassword(t *testing.T) {
 	store.audits, store.wrongCurrent = nil, true
 	res = httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/account/password", url.Values{"current_password": {"bad"}, "new_password": {"new-password-456"}}))
-	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), `role="alert"`) || !strings.Contains(res.Body.String(), "Текущий пароль неверен") || !strings.Contains(res.Body.String(), `action="/account/password"`) {
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), `role="alert"`) || !strings.Contains(res.Body.String(), "Текущий пароль неверен") || !strings.Contains(res.Body.String(), `action="/account/password"`) || !strings.Contains(res.Body.String(), `data-auto-open="true"`) {
 		t.Fatalf("wrong current password: %d %s", res.Code, res.Body.String())
 	}
 	if strings.Join(store.audits, ",") != "account.password|error|wrong current password" {
@@ -130,7 +138,24 @@ func TestPasswordInputsOfferGenerator(t *testing.T) {
 	}
 	script := httptest.NewRecorder()
 	(&Server{}).Handler().ServeHTTP(script, httptest.NewRequest(http.MethodGet, "/assets/password.js", nil))
-	if script.Code != http.StatusOK || !strings.Contains(script.Body.String(), "crypto.getRandomValues") {
+	if script.Code != http.StatusOK || !strings.Contains(script.Body.String(), "crypto.getRandomValues") || !strings.Contains(script.Body.String(), "pw-tools") {
 		t.Fatalf("password script: %d", script.Code)
+	}
+}
+
+func TestAccountScriptEndpoint(t *testing.T) {
+	rec := httptest.NewRecorder()
+	(&Server{}).Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/account.js", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "text/javascript; charset=utf-8" {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"account-password-dialog", "data-account-password-open", "showModal"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("account.js lacks %q", want)
+		}
 	}
 }

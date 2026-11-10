@@ -107,18 +107,22 @@ func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *test
 		t.Fatal("could not find <main class=\"content\"> in page")
 	}
 
-	// Must contain the service strip and journal stats
+	// Must contain the service strip, dialog, and exactly 1 clear button
 	for _, want := range []string{
 		"service-strip events-strip",
 		"journal-clear-dialog",
 		"data-journal-clear-open",
 		"/assets/events.js",
 		"btn btn-danger",
-		"journal-keep",
+		"page-head-title",
+		`action="/events/retention"`,
 	} {
 		if !strings.Contains(pageAdmin, want) {
 			t.Errorf("admin events page missing %q", want)
 		}
+	}
+	if cnt := strings.Count(pageAdmin, "data-journal-clear-open"); cnt != 1 {
+		t.Errorf("expected exactly 1 data-journal-clear-open button, got %d", cnt)
 	}
 
 	// Observer view

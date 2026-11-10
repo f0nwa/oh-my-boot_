@@ -173,7 +173,9 @@ func TestPasswordInputsOfferGenerator(t *testing.T) {
 		!strings.Contains(scriptBody, "pw-wrap") ||
 		!strings.Contains(scriptBody, "pw-toggle") ||
 		!strings.Contains(scriptBody, "Show password") ||
-		!strings.Contains(scriptBody, "Hide password") {
+		!strings.Contains(scriptBody, "Hide password") ||
+		!strings.Contains(scriptBody, "!@#$%^&*-_+=") ||
+		!strings.Contains(scriptBody, "randomIndex") {
 		t.Fatalf("password script: %d %s", script.Code, scriptBody)
 	}
 	if strings.Contains(scriptBody, "input.type = 'text'") || strings.Contains(scriptBody, "confirmInput.type = 'text'") {

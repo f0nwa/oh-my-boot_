@@ -8,23 +8,39 @@
     "Сохраните пароль: после отправки формы он больше не будет показан.": "Save the password: it will not be shown again after the form is sent.",
   };
   const tr = text => document.documentElement.lang === 'en' ? (english[text] || text) : text;
-  // Letters and digits without easily confused characters (0/O, 1/l/I).
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  // Letters and digits without easily confused characters (0/O, 1/l/I) plus simple symbols.
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const special = '!@#$%^&*-_+=';
+  const alphabet = upper + lower + digits + special;
   const length = 20;
   const eyeOpenSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
   const eyeClosedSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
 
-  function generate() {
-    const limit = 256 - (256 % alphabet.length);
-    let result = '';
-    while (result.length < length) {
-      const bytes = new Uint8Array(length * 2);
+  function randomIndex(max) {
+    const limit = 256 - (256 % max);
+    const bytes = new Uint8Array(1);
+    while (true) {
       crypto.getRandomValues(bytes);
-      for (const byte of bytes) {
-        if (byte < limit && result.length < length) result += alphabet[byte % alphabet.length];
-      }
+      if (bytes[0] < limit) return bytes[0] % max;
     }
-    return result;
+  }
+
+  function pick(chars) {
+    return chars[randomIndex(chars.length)];
+  }
+
+  function generate() {
+    const result = [pick(upper), pick(lower), pick(digits), pick(special)];
+    while (result.length < length) {
+      result.push(pick(alphabet));
+    }
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = randomIndex(i + 1);
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result.join('');
   }
 
   document.querySelectorAll('input[type="password"]').forEach(input => {

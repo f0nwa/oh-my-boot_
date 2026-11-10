@@ -115,10 +115,16 @@ func TestObserverCannotPostToNewRoutes(t *testing.T) {
 var _ = httptest.NewRecorder
 var _ = drivers.Inventory{}
 
-func TestCheckedAnswerCanBeCheckedAgain(t *testing.T) {
+func TestAnswersPageWipesDiskBadge(t *testing.T) {
 	data := samplePageData(langRU)
 	body := renderPage("answers", data)
-	if !strings.Contains(body, `action="/answers/5/inspect"`) {
-		t.Fatalf("checked answer cannot be re-checked: %s", body)
+	if !strings.Contains(body, `Ready <span class="chip-bad">стирает диск</span>`) {
+		t.Fatalf("wipes-disk answer variant missing danger chip: %s", body)
+	}
+	if strings.Contains(body, `action="/answers/5/inspect"`) {
+		t.Fatalf("answers page should not contain legacy inspect form: %s", body)
+	}
+	if strings.Contains(body, `<th>Диск</th>`) {
+		t.Fatalf("answers page should not have a separate Disk column: %s", body)
 	}
 }

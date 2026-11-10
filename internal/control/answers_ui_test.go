@@ -53,9 +53,30 @@ func TestAnswersPageLayout(t *testing.T) {
 		}
 	}
 
-	// Verify <details> is no longer used for "Загрузить XML"
+	// Verify <details> is no longer used for "Загрузить XML" or "Проверить"
 	if strings.Contains(body, `<details><summary>Загрузить XML</summary>`) {
 		t.Fatalf("/answers still contains <details> for upload XML")
+	}
+	if strings.Contains(body, `<th>Диск</th>`) {
+		t.Fatalf("/answers should not contain separate Disk table header")
+	}
+	if strings.Contains(body, `Проверить`) {
+		t.Fatalf("/answers should not contain inspect/verify button in table")
+	}
+}
+
+func TestAnswersPageWipesDiskChip(t *testing.T) {
+	for _, tc := range []struct {
+		lang      string
+		wantBadge string
+	}{
+		{langRU, `<span class="chip-bad">стирает диск</span>`},
+		{langEN, `<span class="chip-bad">wipes the disk</span>`},
+	} {
+		body := renderPage("answers", samplePageData(tc.lang))
+		if !strings.Contains(body, tc.wantBadge) {
+			t.Fatalf("expected danger badge %q for lang %s, got:\n%s", tc.wantBadge, tc.lang, body)
+		}
 	}
 }
 

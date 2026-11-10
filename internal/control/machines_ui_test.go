@@ -128,3 +128,40 @@ func TestMachinesScriptEndpoint(t *testing.T) {
 		}
 	}
 }
+
+func TestMachinesPageHeaderActionsAndVisualAccents(t *testing.T) {
+	store := newRulesBook("admin")
+	r := store.rules["bc:24:11"]
+	r.NetworkDriver = "snp"
+	store.rules["bc:24:11"] = r
+	s := &Server{Store: store}
+
+	body := libraryGet(t, s, "/machines")
+
+	headEnd := strings.Index(body, `<div class="toolbar">`)
+	if headEnd < 0 {
+		t.Fatalf("missing toolbar in /machines")
+	}
+	headPart := body[:headEnd]
+	toolbarAndRest := body[headEnd:]
+
+	if !strings.Contains(headPart, `class="btn machine-export"`) {
+		t.Errorf("expected Скачать CSV (.machine-export) inside .page-head actions")
+	}
+	if strings.Contains(toolbarAndRest, `machine-export`) {
+		t.Errorf("expected Скачать CSV (.machine-export) not to be repeated in .toolbar")
+	}
+	for _, want := range []string{
+		`<svg class="btn-icon"`,
+		`class="machine-name-accent">test-vm-17</a>`,
+		`<span class="chip">UEFI</span>`,
+		`<span class="chip">BIOS</span>`,
+		`<td class="mono rule-prefix">bc:24:11</td>`,
+		`<span class="chip">прошивки (snponly)</span>`,
+		`class="mono rule-count">2</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("/machines missing visual accent %q", want)
+		}
+	}
+}

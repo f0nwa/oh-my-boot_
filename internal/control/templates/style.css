@@ -420,6 +420,14 @@ button[disabled]{opacity:.45;cursor:default}
 .machine-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 12px;margin:0 0 12px}.machine-fields label{margin:0;display:flex;flex-direction:column;gap:4px}.machine-fields .wide{grid-column:1/-1}
 .machine-table tr:target td{background:var(--chip)}
 .machine-table td{vertical-align:middle}
+.machine-table td>span.mono{color:var(--text)}
+.machine-table a.machine-name-accent{color:var(--accent-ink);font-weight:500;text-decoration:none}
+.machine-table a.machine-name-accent:hover{text-decoration:underline}
+.machine-table td.rule-prefix{color:var(--accent-ink);font-weight:500}
+.machine-table td.rule-title{font-weight:500}
+.machine-table a.rule-count{color:var(--accent-ink);font-weight:600;text-decoration:none}
+.machine-table a.rule-count:hover{text-decoration:underline}
+.btn-icon{width:14px;height:14px;flex:none;opacity:.75}
 .machine-table .saved{color:var(--ok,var(--text-2))}
 .row-actions{width:1%;white-space:nowrap;vertical-align:middle}
 .machine-table .row-actions button{min-height:28px;padding:0 10px;margin-top:0}

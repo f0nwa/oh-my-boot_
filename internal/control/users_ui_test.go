@@ -164,6 +164,11 @@ func TestUsersPageProtectsCurrentUserRow(t *testing.T) {
 			t.Errorf("current user row (%s) must disable role and enabled controls: %s", tc.lang, selfRow)
 		}
 	}
+
+	css, _ := templateFS.ReadFile("templates/style.css")
+	if !strings.Contains(string(css), ".user-table td small{display:inline") {
+		t.Errorf("stylesheet must keep user id and badge inline in .user-table")
+	}
 }
 
 func TestUserChangeBlocksSelfDemotionAndDisable(t *testing.T) {

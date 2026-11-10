@@ -523,6 +523,8 @@ button[disabled]{opacity:.45;cursor:default}
 .toolbar .user-search input{width:280px;max-width:100%}
 .user-counts{margin:0}
 .user-table td{vertical-align:middle}
+.user-table td small{display:inline;margin-left:4px}
+.user-table td .chip{margin-left:4px;vertical-align:1px}
 .user-table .user-name{font-weight:600}
 .user-table td select{min-height:28px;padding:2px 26px 2px 8px;font-size:13px;border-radius:6px;background-color:var(--panel);border:1px solid var(--line-strong);color:var(--text);background-position:right 8px center;background-size:10px 10px}
 .user-table td select:disabled,.user-table td label.check:has(input:disabled){opacity:.55;cursor:not-allowed}

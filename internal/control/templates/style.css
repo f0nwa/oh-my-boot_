@@ -431,8 +431,9 @@ button[disabled]{opacity:.45;cursor:default}
 .machine-table tr:target td{background:var(--chip)}
 .machine-table td{vertical-align:middle}
 .machine-table td>span.mono{color:var(--text)}
-.machine-table a.machine-name-accent{color:var(--accent-ink);font-weight:500;text-decoration:none}
-.machine-table a.machine-name-accent:hover{text-decoration:underline}
+a.machine-name-accent{color:var(--accent-ink);font-weight:500;text-decoration:none}
+a.machine-name-accent:hover{text-decoration:underline}
+.boots-count{color:var(--accent-ink);font-weight:600}
 .machine-table td.rule-prefix{color:var(--accent-ink);font-weight:500}
 .machine-table td.rule-title{font-weight:500}
 .machine-table a.rule-count{color:var(--accent-ink);font-weight:600;text-decoration:none}
@@ -444,7 +445,7 @@ button[disabled]{opacity:.45;cursor:default}
 .import-preview{margin:0 0 24px}.import-preview h2{margin-top:0}.import-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0 6px}.import-actions form,.import-actions p{margin:0}
 .import-bad{color:var(--bad)}.import-tag{white-space:nowrap}.import-add{color:var(--ok)}.import-edit{color:var(--accent-ink)}
 .import-errors{margin:12px 0;padding:12px 14px;border:1px solid var(--bad-line);border-radius:8px;background:var(--bad-bg);color:var(--bad-text)}.import-errors-title{margin:0}.import-errors ul{margin:6px 0 0;padding-left:20px}
-.mac-rules{margin-top:36px}.mac-rules h2{margin-bottom:6px}
+.mac-rules,.autoinstall-section{margin-top:36px}.mac-rules h2,.autoinstall-section h2{margin-bottom:6px}
 .rules-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px}.rules-head p{margin:0}.rules-head button{margin-top:0}
 
 /* Answer file editor: contents, one section, summary/XML/questions and saving */

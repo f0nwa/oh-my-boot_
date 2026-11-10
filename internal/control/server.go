@@ -201,6 +201,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/network.js", networkScript)
 	mux.HandleFunc("GET /assets/users.js", usersScript)
 	mux.HandleFunc("GET /assets/storages.js", storagesScript)
+	mux.HandleFunc("GET /assets/answers.js", answersScript)
 	mux.HandleFunc("GET /assets/events.js", eventsScript)
 	mux.HandleFunc("GET /assets/row-menu.js", rowMenuScript)
 	mux.HandleFunc("GET /assets/system.js", systemScript)

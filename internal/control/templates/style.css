@@ -542,10 +542,11 @@ button[disabled]{opacity:.45;cursor:default}
 .user-dialog label p small{display:block;margin-top:4px;color:var(--muted);font-size:11px}
 .user-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 .user-dialog-actions button{margin-top:0}
+.card-wide{grid-column:1/-1}
 .resource-tag{font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-.resource-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:20px;align-items:stretch}
+.resource-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:24px;align-items:stretch}
 .resource-col-main{display:flex;flex-direction:column;gap:14px;justify-content:space-between}
-.resource-col-side{border-left:1px solid var(--line);padding-left:20px;display:flex;flex-direction:column;justify-content:space-between;gap:10px}
+.resource-col-side{border-left:1px solid var(--line);padding-left:24px;display:flex;flex-direction:column;justify-content:space-between;gap:10px}
 .meter-group{display:flex;flex-direction:column;gap:5px}
 .meter-head{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--text)}
 .meter-val{font-weight:500}

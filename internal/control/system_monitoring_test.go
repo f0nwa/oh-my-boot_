@@ -136,7 +136,7 @@ func TestSystemUIRender(t *testing.T) {
 	}
 	bodyRU := libraryGet(t, s, "/system")
 	for _, want := range []string{
-		`id="server-resources-card"`,
+		`class="card card-wide" id="server-resources-card"`,
 		"Ресурсы сервера",
 		"все интерфейсы",
 		"Процессор",
@@ -189,11 +189,9 @@ func TestSystemUIRender(t *testing.T) {
 	cssRes := httptest.NewRecorder()
 	s.Handler().ServeHTTP(cssRes, cssReq)
 	css := cssRes.Body.String()
-	for _, want := range []string{".resource-grid", ".meter-track", ".fill-cache", ".net-rates"} {
+	for _, want := range []string{".card-wide{grid-column:1/-1}", ".resource-grid", ".meter-track", ".fill-cache", ".net-rates"} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("style.css lacks %q", want)
 		}
 	}
 }
-
-

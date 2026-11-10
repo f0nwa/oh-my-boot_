@@ -165,8 +165,25 @@ func TestPasswordInputsOfferGenerator(t *testing.T) {
 	}
 	script := httptest.NewRecorder()
 	(&Server{}).Handler().ServeHTTP(script, httptest.NewRequest(http.MethodGet, "/assets/password.js", nil))
-	if script.Code != http.StatusOK || !strings.Contains(script.Body.String(), "crypto.getRandomValues") || !strings.Contains(script.Body.String(), "pw-tools") || !strings.Contains(script.Body.String(), "data-password-confirm") {
-		t.Fatalf("password script: %d", script.Code)
+	scriptBody := script.Body.String()
+	if script.Code != http.StatusOK ||
+		!strings.Contains(scriptBody, "crypto.getRandomValues") ||
+		!strings.Contains(scriptBody, "pw-tools") ||
+		!strings.Contains(scriptBody, "data-password-confirm") ||
+		!strings.Contains(scriptBody, "pw-wrap") ||
+		!strings.Contains(scriptBody, "pw-toggle") ||
+		!strings.Contains(scriptBody, "Show password") ||
+		!strings.Contains(scriptBody, "Hide password") {
+		t.Fatalf("password script: %d %s", script.Code, scriptBody)
+	}
+	if strings.Contains(scriptBody, "input.type = 'text'") || strings.Contains(scriptBody, "confirmInput.type = 'text'") {
+		t.Fatalf("generated password must stay masked as password")
+	}
+
+	loginRes := httptest.NewRecorder()
+	(&Server{}).Handler().ServeHTTP(loginRes, httptest.NewRequest(http.MethodGet, "/login", nil))
+	if loginRes.Code != http.StatusOK || !strings.Contains(loginRes.Body.String(), `src="/assets/password.js"`) {
+		t.Fatalf("login page must include password.js: %d", loginRes.Code)
 	}
 }
 

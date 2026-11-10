@@ -148,6 +148,7 @@
       if (pwInput) {
         pwInput.value = '';
         pwInput.type = 'password';
+        pwInput.dispatchEvent(new Event('omb:password-sync'));
       }
 
       // Reset any generated copy button or notes from password.js
@@ -170,6 +171,7 @@
       if (newPwInput) {
         newPwInput.value = '';
         newPwInput.type = 'password';
+        newPwInput.dispatchEvent(new Event('omb:password-sync'));
       }
       createDialog.querySelectorAll('small[role="status"]').forEach(function (el) { el.textContent = ''; });
       createDialog.querySelectorAll('button').forEach(function (btn) {

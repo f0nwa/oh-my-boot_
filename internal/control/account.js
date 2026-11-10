@@ -21,14 +21,18 @@
     var confirm = dialog.querySelector('input[name="confirm_password"]');
     if (cur) {
       cur.value = '';
+      cur.type = 'password';
+      cur.dispatchEvent(new Event('omb:password-sync'));
     }
     if (next) {
       next.value = '';
       next.type = 'password';
+      next.dispatchEvent(new Event('omb:password-sync'));
     }
     if (confirm) {
       confirm.value = '';
       confirm.type = 'password';
+      confirm.dispatchEvent(new Event('omb:password-sync'));
       if (typeof confirm.setCustomValidity === 'function') {
         confirm.setCustomValidity('');
       }

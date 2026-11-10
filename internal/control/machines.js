@@ -184,4 +184,85 @@
       })
       .catch(function () { fail(''); });
   });
+
+  // Dynamic live search as the user types
+  var searchForm = document.querySelector('form.machine-search');
+  var tableArea = document.getElementById('machines-table-area');
+  var countsArea = document.querySelector('.machine-counts');
+  var exportLink = document.querySelector('a.machine-export');
+
+  if (searchForm && tableArea && window.fetch && window.DOMParser && window.AbortController) {
+    var searchInput = searchForm.querySelector('input[name="q"]');
+    var searchTimer, searchPending, searchSeq = 0;
+
+    function setLoading(on) {
+      searchForm.classList.toggle('is-loading', on);
+      tableArea.classList.toggle('is-loading', on);
+      if (searchInput) searchInput.setAttribute('aria-busy', on ? 'true' : 'false');
+    }
+
+    function runSearch(immediate) {
+      var current = ++searchSeq;
+      clearTimeout(searchTimer);
+      if (searchPending) searchPending.abort();
+
+      function exec() {
+        var url = new URL(searchForm.action, window.location.href);
+        var params = new URLSearchParams(new FormData(searchForm));
+        if (!params.get('q')) params.delete('q');
+        url.search = params.toString();
+        searchPending = new AbortController();
+        setLoading(true);
+
+        fetch(url, { credentials: 'same-origin', signal: searchPending.signal, headers: { 'Accept': 'text/html' } })
+          .then(function (res) {
+            if (!res.ok) throw new Error('search failed');
+            return res.text();
+          })
+          .then(function (html) {
+            if (current !== searchSeq) return;
+            var doc = new DOMParser().parseFromString(html, 'text/html');
+            var nextTable = doc.getElementById('machines-table-area');
+            var nextCounts = doc.querySelector('.machine-counts');
+            var nextExport = doc.querySelector('a.machine-export');
+
+            if (nextTable && tableArea) {
+              tableArea.innerHTML = nextTable.innerHTML;
+            }
+            if (nextCounts && countsArea) {
+              countsArea.innerHTML = nextCounts.innerHTML;
+            }
+            if (nextExport && exportLink) {
+              exportLink.href = nextExport.href;
+            }
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', url);
+            }
+            setLoading(false);
+          })
+          .catch(function (err) {
+            if (current === searchSeq) {
+              setLoading(false);
+            }
+          });
+      }
+
+      if (immediate) {
+        exec();
+      } else {
+        searchTimer = setTimeout(exec, 150);
+      }
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', function () {
+        runSearch(false);
+      });
+    }
+
+    searchForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      runSearch(true);
+    });
+  }
 })();

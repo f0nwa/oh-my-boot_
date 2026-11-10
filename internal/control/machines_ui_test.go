@@ -122,6 +122,11 @@ func TestMachinesScriptEndpoint(t *testing.T) {
 		"data-machine-edit-btn",
 		"data-rule-edit-btn",
 		"showModal",
+		"machines-table-area",
+		"runSearch",
+		"AbortController",
+		"setLoading",
+		"is-loading",
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("/assets/machines.js missing %q", want)
@@ -137,6 +142,27 @@ func TestMachinesPageHeaderActionsAndVisualAccents(t *testing.T) {
 	s := &Server{Store: store}
 
 	body := libraryGet(t, s, "/machines")
+
+	if !strings.Contains(body, `id="machines-table-area"`) {
+		t.Errorf("expected #machines-table-area wrapper in /machines")
+	}
+	if !strings.Contains(body, `name="q" value="" placeholder="Имя, MAC, модель, серийный номер" autocomplete="off"`) {
+		t.Errorf("expected autocomplete=off on machines search input")
+	}
+	if !strings.Contains(body, `<span class="search-spinner" aria-hidden="true"></span>`) {
+		t.Errorf("expected search-spinner element inside machines search form")
+	}
+
+	css := libraryGet(t, s, "/assets/style.css")
+	if !strings.Contains(css, `.toolbar .machine-search .search-spinner`) {
+		t.Errorf("expected style.css to style .toolbar .machine-search .search-spinner")
+	}
+	if !strings.Contains(css, `.toolbar .machine-search.is-loading .search-spinner`) {
+		t.Errorf("expected style.css to handle .toolbar .machine-search.is-loading .search-spinner")
+	}
+	if !strings.Contains(css, `#machines-table-area.is-loading`) {
+		t.Errorf("expected style.css to handle #machines-table-area.is-loading")
+	}
 
 	headEnd := strings.Index(body, `<div class="toolbar">`)
 	if headEnd < 0 {

@@ -402,18 +402,13 @@ button[disabled]{opacity:.45;cursor:default}
 .empty-now{border:1px dashed var(--line);border-radius:8px;padding:20px;display:flex;flex-direction:column;gap:4px}.empty-now p{margin:0}
 /* Journal keeping: retention select and the full clear */
 .service-strip.events-strip{margin:0 0 20px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.journal-keep{margin-top:28px;display:flex;flex-direction:column;gap:16px}
-.journal-keep-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:14px}
-.journal-keep-head h2{margin:0}
-.journal-keep-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
-.journal-keep-footer .hint{margin:0;max-width:720px}
 .text-danger{color:var(--bad)}
-.btn.text-danger:hover{color:var(--bad-text);background:var(--bad-bg)}
+.btn.text-danger,.btn-danger-outline{background:var(--panel);border-color:var(--bad-line);color:var(--bad)}
+.btn.text-danger:hover,.btn-danger-outline:hover{background:var(--bad-bg);border-color:var(--bad);color:var(--bad-text)}
 .inline-form{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .inline-form label{margin:0}.inline-form select{width:auto;min-width:200px}
 .btn-danger{background:var(--bad);border:1px solid var(--bad);color:#fff;border-radius:6px;min-height:34px;padding:0 14px;font:inherit;font-weight:600;cursor:pointer}
-:root[data-theme=dark] .btn-danger{color:#1C1414}@media (prefers-color-scheme:dark){:root[data-theme=system] .btn-danger{color:#1C1414}}
-.btn-danger:hover{filter:brightness(1.08)}
+.btn-danger:hover{background:var(--bad);color:#fff;filter:brightness(1.08)}
 .danger-zone summary{color:var(--bad);cursor:pointer}
 .danger-zone p{margin:8px 0}
 /* The «Машина» block of a machine's page */

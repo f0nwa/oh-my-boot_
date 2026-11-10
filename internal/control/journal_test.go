@@ -113,6 +113,7 @@ func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *test
 		"journal-clear-dialog",
 		"data-journal-clear-open",
 		"/assets/events.js",
+		"btn-danger-outline",
 		"btn btn-danger",
 		"page-head-title",
 		`action="/events/retention"`,

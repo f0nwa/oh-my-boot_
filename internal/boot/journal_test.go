@@ -3,6 +3,7 @@ package boot
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -25,6 +26,45 @@ func (m *memoryJournal) DeleteBefore(_ context.Context, before time.Time) (int64
 	}
 	m.events = kept
 	return n, nil
+}
+
+type unavailableJournalStats struct{ calls int }
+
+func (s *unavailableJournalStats) DeleteBefore(context.Context, time.Time) (int64, error) {
+	return 4, nil
+}
+
+func (s *unavailableJournalStats) Stats(context.Context) (JournalStats, error) {
+	s.calls++
+	return JournalStats{}, errors.New("statistics unavailable")
+}
+
+func TestJournalSettingsDoesNotReadStats(t *testing.T) {
+	store := &unavailableJournalStats{}
+	now := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	j := &Journal{Path: filepath.Join(t.TempDir(), "journal.json"), Store: store, Now: func() time.Time { return now }}
+	if err := j.SetDays(context.Background(), 30); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := j.Clear(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	handleJournal(mux, j)
+	res := httptest.NewRecorder()
+	mux.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/journal/settings", nil))
+	var state JournalState
+	if res.Code != http.StatusOK || json.Unmarshal(res.Body.Bytes(), &state) != nil {
+		t.Fatalf("settings status=%d body=%s", res.Code, res.Body)
+	}
+	if state.Days != 30 || state.ClearedAt == nil || !state.ClearedAt.Equal(now) || state.LastRun == nil || !state.LastRun.Equal(now) || state.LastDeleted != 4 || store.calls != 0 {
+		t.Fatalf("state=%+v Stats calls=%d", state, store.calls)
+	}
+	full := httptest.NewRecorder()
+	mux.ServeHTTP(full, httptest.NewRequest(http.MethodGet, "/journal", nil))
+	if full.Code != http.StatusServiceUnavailable || store.calls != 1 {
+		t.Fatalf("full state status=%d Stats calls=%d", full.Code, store.calls)
+	}
 }
 
 func (m *memoryJournal) Stats(context.Context) (JournalStats, error) {

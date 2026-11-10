@@ -2,11 +2,10 @@ package agent
 
 import (
 	"bufio"
-	"context"
+	"container/heap"
 	"encoding/json"
 	"io"
 	"net/http"
-	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
@@ -25,72 +24,128 @@ type DHCPEvent struct {
 }
 
 var (
-	dhcpLine   = regexp.MustCompile(`^(DHCP[A-Z]+|PXE)\([^)]*\) (?:([0-9.]+) )?([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})(?: (.*))?$`)
-	tftpLine   = regexp.MustCompile(`^(sent|failed sending) (\S+) to ([0-9.]+)$`)
-	tftpRoot   = "/srv/omb/tftp/"
-	maxDHCPLog = 1000
+	dhcpLine = regexp.MustCompile(`^(DHCP[A-Z]+|PXE)\([^)]*\) (?:([0-9.]+) )?([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})(?: (.*))?$`)
+	tftpLine = regexp.MustCompile(`^(sent|failed sending) (\S+) to ([0-9.]+)$`)
+	tftpRoot = "/srv/omb/tftp/"
 )
 
-// ParseDnsmasqJournal reads `journalctl -o json` output of the dnsmasq unit
-// and returns its DHCP and TFTP events, newest first. dnsmasq logs every
-// line twice (to stderr and syslog); only the dnsmasq-dhcp and dnsmasq-tftp
-// copies are used.
-func ParseDnsmasqJournal(r io.Reader) []DHCPEvent {
-	var events []DHCPEvent
+const maxDHCPLog = 1000
+
+type dnsmasqEvent struct {
+	DHCPEvent
+	sequence uint64
+}
+
+// The root is the least useful event: oldest timestamp, then last input order.
+type dnsmasqHeap []dnsmasqEvent
+
+func (h dnsmasqHeap) Len() int { return len(h) }
+func (h dnsmasqHeap) Less(i, j int) bool {
+	if h[i].At.Equal(h[j].At) {
+		return h[i].sequence > h[j].sequence
+	}
+	return h[i].At.Before(h[j].At)
+}
+func (h dnsmasqHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+func (h *dnsmasqHeap) Push(v any)   { *h = append(*h, v.(dnsmasqEvent)) }
+func (h *dnsmasqHeap) Pop() any {
+	old := *h
+	n := len(old) - 1
+	v := old[n]
+	old[n] = dnsmasqEvent{}
+	*h = old[:n]
+	return v
+}
+
+type dnsmasqBuffer struct {
+	events dnsmasqHeap
+	cursor string
+	next   uint64
+}
+
+func (b *dnsmasqBuffer) read(r io.Reader) error {
+	if b.events == nil {
+		b.events = make(dnsmasqHeap, 0, maxDHCPLog)
+	}
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64<<10), 1<<20)
 	for scanner.Scan() {
+		line := scanner.Bytes()
+		if strings.HasPrefix(string(line), "-- cursor: ") {
+			b.cursor = strings.TrimPrefix(string(line), "-- cursor: ")
+			continue
+		}
 		var entry struct {
+			Cursor     string `json:"__CURSOR"`
 			Time       string `json:"__REALTIME_TIMESTAMP"`
 			Identifier string `json:"SYSLOG_IDENTIFIER"`
 			Message    string `json:"MESSAGE"`
 		}
-		if json.Unmarshal(scanner.Bytes(), &entry) != nil {
+		if json.Unmarshal(line, &entry) != nil {
 			continue
+		}
+		// Advance past unrecognised messages too, so they do not trigger rescans.
+		if entry.Cursor != "" {
+			b.cursor = entry.Cursor
 		}
 		micros, err := strconv.ParseInt(entry.Time, 10, 64)
 		if err != nil {
 			continue
 		}
-		at := time.UnixMicro(micros).UTC()
+		event := DHCPEvent{At: time.UnixMicro(micros).UTC()}
 		switch entry.Identifier {
 		case "dnsmasq-dhcp":
 			m := dhcpLine.FindStringSubmatch(entry.Message)
 			if m == nil {
 				continue
 			}
-			events = append(events, DHCPEvent{At: at, Kind: m[1], IP: m[2], MAC: strings.ToLower(m[3]), Detail: m[4]})
+			event.Kind, event.IP, event.MAC, event.Detail = m[1], m[2], strings.ToLower(m[3]), m[4]
 		case "dnsmasq-tftp":
 			m := tftpLine.FindStringSubmatch(entry.Message)
 			if m == nil {
 				continue
 			}
-			kind := "tftp-sent"
+			event.Kind = "tftp-sent"
 			if m[1] != "sent" {
-				kind = "tftp-failed"
+				event.Kind = "tftp-failed"
 			}
-			events = append(events, DHCPEvent{At: at, Kind: kind, IP: m[3], Detail: strings.TrimPrefix(m[2], tftpRoot)})
+			event.IP, event.Detail = m[3], strings.TrimPrefix(m[2], tftpRoot)
+		default:
+			continue
+		}
+		candidate := dnsmasqEvent{DHCPEvent: event, sequence: b.next}
+		b.next++
+		if len(b.events) < maxDHCPLog {
+			heap.Push(&b.events, candidate)
+		} else if candidate.At.After(b.events[0].At) {
+			b.events[0] = candidate
+			heap.Fix(&b.events, 0)
 		}
 	}
-	sort.SliceStable(events, func(i, j int) bool { return events[i].At.After(events[j].At) })
-	if len(events) > maxDHCPLog {
-		events = events[:maxDHCPLog]
+	return scanner.Err()
+}
+func (b *dnsmasqBuffer) ordered() []DHCPEvent {
+	ordered := append(dnsmasqHeap(nil), b.events...)
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].At.Equal(ordered[j].At) {
+			return ordered[i].sequence < ordered[j].sequence
+		}
+		return ordered[i].At.After(ordered[j].At)
+	})
+	events := make([]DHCPEvent, len(ordered))
+	for i := range ordered {
+		events[i] = ordered[i].DHCPEvent
 	}
 	return events
 }
 
-// DHCPLog reads the dnsmasq journal on request.
-type DHCPLog struct {
-	Read func(context.Context) ([]byte, error)
-}
-
-// NewDHCPLog reads the last seven days of the omb-dnsmasq unit from journald.
-func NewDHCPLog() *DHCPLog {
-	return &DHCPLog{Read: func(ctx context.Context) ([]byte, error) {
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		return exec.CommandContext(ctx, "journalctl", "-u", "omb-dnsmasq", "--since", "-7d", "-o", "json", "--no-pager", "-q").Output()
-	}}
+// ParseDnsmasqJournal parses journalctl JSON with bounded working memory and
+// returns the newest events, preserving input order for equal timestamps.
+// Only dedicated DHCP/TFTP identifiers are used to avoid syslog duplicates.
+func ParseDnsmasqJournal(r io.Reader) []DHCPEvent {
+	var b dnsmasqBuffer
+	_ = b.read(r)
+	return b.ordered()
 }
 
 // HandlerWithDHCPLog adds GET /dhcp-events to the Agent API.
@@ -98,18 +153,14 @@ func HandlerWithDHCPLog(inner http.Handler, log *DHCPLog) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", inner)
 	mux.HandleFunc("GET /dhcp-events", func(w http.ResponseWriter, r *http.Request) {
-		if log == nil || log.Read == nil {
+		if log == nil {
 			http.Error(w, "dhcp log unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		data, err := log.Read(r.Context())
+		events, err := log.snapshot(r.Context())
 		if err != nil {
 			http.Error(w, "dhcp log unavailable", http.StatusServiceUnavailable)
 			return
-		}
-		events := ParseDnsmasqJournal(strings.NewReader(string(data)))
-		if events == nil {
-			events = []DHCPEvent{}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(events)

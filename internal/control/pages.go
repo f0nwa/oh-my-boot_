@@ -40,6 +40,7 @@ type menuVersionRow struct {
 }
 
 type pageData struct {
+	EventsAsync           bool
 	UbuntuEditor          *ubuntuAutoinstallEditorView
 	UbuntuAutoinstalls    []UbuntuAutoinstallSummary
 	Editor                *editorView

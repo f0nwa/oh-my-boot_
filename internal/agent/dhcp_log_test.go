@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -40,6 +41,25 @@ func TestParseDnsmasqJournal(t *testing.T) {
 	}
 	if events[3].At.Unix() != 1792268938 {
 		t.Errorf("time %v", events[3].At)
+	}
+}
+
+func TestDHCPEventsReuseSnapshot(t *testing.T) {
+	var reads atomic.Int32
+	log := &DHCPLog{Read: func(context.Context) ([]byte, error) {
+		reads.Add(1)
+		return []byte(sampleJournal), nil
+	}}
+	h := HandlerWithDHCPLog(http.NotFoundHandler(), log)
+	for range 3 {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/dhcp-events", nil))
+		if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "tftp-failed") {
+			t.Fatalf("snapshot response: %d %s", res.Code, res.Body)
+		}
+	}
+	if reads.Load() != 1 {
+		t.Fatalf("repeated source scans: got %d, want 1", reads.Load())
 	}
 }
 

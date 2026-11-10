@@ -461,6 +461,13 @@ func (c *BootClient) Journal(ctx context.Context) (boot.JournalState, error) {
 	return v, err
 }
 
+// JournalSettings reads retention and the clear boundary without counting events.
+func (c *BootClient) JournalSettings(ctx context.Context) (boot.JournalState, error) {
+	var v boot.JournalState
+	err := localCall(ctx, c.http, "GET", "/journal/settings", nil, &v)
+	return v, err
+}
+
 // SetJournalRetention sets automatic cleanup in days; 0 turns it off.
 func (c *BootClient) SetJournalRetention(ctx context.Context, days int) error {
 	body, err := json.Marshal(map[string]int{"days": days})

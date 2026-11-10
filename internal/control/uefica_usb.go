@@ -44,7 +44,7 @@ func (v usbView) Archive() string {
 }
 
 func (s *Server) usbPage(w http.ResponseWriter, r *http.Request) {
-	data := s.libraryData(r)
+	data := s.profileLibraryData(r)
 	view := &usbView{Loader: "2011"}
 	cached := map[int64]map[string]int64{}
 	if s.UEFICAUSB != nil {

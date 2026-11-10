@@ -50,7 +50,7 @@ func (s *Server) journalClearedAt(ctx context.Context) time.Time {
 	if s.Boot == nil {
 		return time.Time{}
 	}
-	state, err := s.Boot.Journal(ctx)
+	state, err := s.Boot.JournalSettings(ctx)
 	if err != nil || state.ClearedAt == nil {
 		return time.Time{}
 	}
@@ -68,7 +68,16 @@ func (s *Server) dhcpEvents(ctx context.Context) ([]agent.DHCPEvent, error) {
 	if err != nil {
 		return nil, err
 	}
-	cleared := s.journalClearedAt(ctx)
+	var cleared time.Time
+	if s.Boot != nil {
+		state, err := s.Boot.JournalSettings(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("journal clear boundary unavailable: %w", err)
+		}
+		if state.ClearedAt != nil {
+			cleared = *state.ClearedAt
+		}
+	}
 	if cleared.IsZero() {
 		return events, nil
 	}

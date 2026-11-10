@@ -8,14 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"omb/internal/agent"
-	"omb/internal/boot"
 	"omb/internal/drivers"
 	"omb/internal/images"
 	"omb/internal/ueficausb"
@@ -216,6 +214,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/installation-form.js", installationFormScript)
 	mux.HandleFunc("POST /installations/{key}/add", s.protect("menu", withPageErrors(s.installationsPage, s.installationAdd)))
 	mux.HandleFunc("GET /events", s.protect("view", s.eventsPage))
+	mux.HandleFunc("GET /events/content", s.protect("view", s.eventsContent))
+	mux.HandleFunc("GET /events/services", s.protect("view", s.eventsServices))
+	mux.HandleFunc("GET /events/journal", s.protect("delete", s.eventsJournal))
 	mux.HandleFunc("GET /events/machines/{mac}", s.protect("view", s.machinePage))
 	mux.HandleFunc("POST /events/machines/{mac}/network-driver", s.protect("images", withPageErrors(s.machinePage, s.machineNetworkDriver)))
 	mux.HandleFunc("POST /events/machines/{mac}/edit", s.protect("images", withPageErrors(s.machinePage, s.machineEdit)))
@@ -381,7 +382,7 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 			}
 		}
 		info := requestContext{User: user, Token: cookie.Value, CSRF: CSRFToken(cookie.Value), Path: r.URL.Path}
-		if r.Method == http.MethodGet {
+		if r.Method == http.MethodGet && needsDraftSummary(r) {
 			info.Draft = s.draftStatus(r.Context())
 		}
 		ctx := context.WithValue(r.Context(), ctxKey{}, info)
@@ -461,72 +462,6 @@ func (s *Server) loadServiceStatus(ctx context.Context, data *pageData) {
 	}
 }
 
-func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r), Tab: r.URL.Query().Get("tab"), MACFilter: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mac")))}
-	if data.Tab != "requests" && data.Tab != "dhcp" {
-		data.Tab = "machines"
-	}
-	s.loadServiceStatus(r.Context(), &data)
-	var httpEvents []boot.Event
-	if s.Boot == nil {
-		data.EventError = "Служба Boot недоступна"
-	} else if v, err := s.Boot.Events(r.Context(), 1000); err != nil {
-		data.EventError = "Журнал временно недоступен"
-	} else {
-		httpEvents = v
-	}
-	var dhcp []agent.DHCPEvent
-	if s.Agent == nil {
-		data.DHCPError = "Журнал DHCP недоступен"
-	} else if v, err := s.dhcpEvents(r.Context()); err != nil {
-		data.DHCPError = "Журнал DHCP недоступен"
-	} else {
-		dhcp = resolveDHCPMACs(v, httpEvents)
-	}
-	if s.Boot != nil && Allowed(data.Info.User.Role, "delete") {
-		if state, err := s.Boot.Journal(r.Context()); err == nil {
-			data.Journal = &journalView{JournalState: state, Choices: journalChoices()}
-		}
-	}
-	switch data.Tab {
-	case "machines":
-		rows := machineRowsWith(httpEvents, dhcp, s.loadInstallLog(r.Context(), httpEvents), s.menuNames(r.Context()), time.Now())
-		book := s.machineBook(r.Context(), rows, httpEvents)
-		// The book also knows machines whose requests have left the logs.
-		inRows := map[string]bool{}
-		for _, row := range rows {
-			inRows[row.MAC] = true
-		}
-		for _, info := range book {
-			if !inRows[info.MAC] {
-				rows = append(rows, machineRow{MAC: info.MAC, IP: info.LastIP, Firmware: info.Firmware, LastSeen: info.LastSeen, Stage: "unknown"})
-			}
-		}
-		sort.SliceStable(rows, func(i, j int) bool { return rows[i].LastSeen.After(rows[j].LastSeen) })
-		describeMachines(rows, book, s.macRules(r.Context()))
-		data.Machines = rows
-	case "requests":
-		for _, e := range httpEvents {
-			if data.MACFilter == "" || e.MAC == data.MACFilter {
-				data.Events = append(data.Events, e)
-			}
-		}
-		if len(data.Events) > 300 {
-			data.Events = data.Events[:300]
-		}
-	case "dhcp":
-		for _, e := range dhcp {
-			if data.MACFilter == "" || e.MAC == data.MACFilter {
-				data.DHCPEvents = append(data.DHCPEvents, e)
-			}
-		}
-		if len(data.DHCPEvents) > 300 {
-			data.DHCPEvents = data.DHCPEvents[:300]
-		}
-	}
-	render(w, "events", data)
-}
-
 func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Info: requestInfo(r)}
 	v, err := s.Store.AuditList(r.Context())
@@ -539,126 +474,17 @@ func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) imagesPage(w http.ResponseWriter, r *http.Request) {
-	render(w, "images", s.libraryData(r))
+	render(w, "images", s.imagesLibraryData(r))
 }
 
 func (s *Server) answersPage(w http.ResponseWriter, r *http.Request) {
-	render(w, "answers", s.libraryData(r))
+	render(w, "answers", s.answersLibraryData(r))
 }
 
 func (s *Server) storagesPage(w http.ResponseWriter, r *http.Request) {
-	data := s.libraryData(r)
+	data := s.storageLibraryData(r)
 	s.loadStorageSpace(r.Context(), &data, data.catalogCache)
 	render(w, "storages", data)
-}
-
-// libraryData collects storages, ISO files, Windows profiles and answer
-// files for the library and storage pages.
-func (s *Server) libraryData(r *http.Request) pageData {
-	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
-	authors := s.resourceAuthors(r.Context())
-	profiles, err := s.Store.WindowsProfiles(r.Context())
-	if err != nil {
-		data.ImageError = "Не удалось прочитать профили Windows ISO"
-	} else {
-		data.WindowsProfiles = profiles
-	}
-	answers, err := s.Store.WindowsAnswers(r.Context())
-	if err != nil {
-		data.ImageError = "Не удалось прочитать сценарии Windows"
-	} else {
-		data.WindowsAnswerVariants = answers
-		for i := range data.WindowsAnswerVariants {
-			data.WindowsAnswerVariants[i].Author = authors.Answers[data.WindowsAnswerVariants[i].ID]
-		}
-	}
-	files, err := s.Store.UbuntuAutoinstalls(r.Context())
-	if err != nil {
-		data.ImageError = "Не удалось прочитать файлы Autoinstall"
-	} else {
-		data.UbuntuAutoinstalls = files
-	}
-	if s.Images == nil {
-		data.ImageError = "Сервис образов недоступен"
-	} else {
-		catalog, err := s.Images.Catalog(r.Context())
-		if err != nil {
-			data.ImageError = "Сервис образов недоступен"
-		} else {
-			data.Storages = catalog.Storages
-			data.catalogCache = &catalog
-			names := map[int64]string{}
-			for _, storage := range catalog.Storages {
-				names[storage.ID] = storage.Name
-			}
-			uses := map[int64][]imageDownload{}
-			ubuntuUses := map[string][]imageDownload{}
-			if sources, e := s.installationMenuSources(r.Context()); e == nil {
-				byID := map[int64]int64{}
-				ubuntuByID := map[int64]string{}
-				for _, p := range sources.BootProfiles {
-					if isISOBootKind(p.Kind) {
-						byID[p.ID] = p.WindowsProfileID
-					}
-					if (p.Kind == BootProfileUbuntuISO || p.Kind == BootProfileUbuntuBuiltin) && p.UbuntuStorageID > 0 && p.UbuntuPath != "" {
-						key := fmt.Sprintf("%d:%s", p.UbuntuStorageID, p.UbuntuPath)
-						ubuntuByID[p.ID] = key
-					}
-				}
-				for _, item := range sources.Installations {
-					if id := byID[item.BootProfileID]; id > 0 {
-						uses[id] = append(uses[id], imageDownload{ID: item.ID, Title: item.Title})
-					}
-					if key := ubuntuByID[item.BootProfileID]; key != "" {
-						ubuntuUses[key] = append(ubuntuUses[key], imageDownload{ID: item.ID, Title: item.Title})
-					}
-				}
-			}
-			namesByImage, namesErr := s.imageNames(r.Context())
-			if namesErr != nil {
-				data.Error = "Не удалось прочитать названия образов"
-			}
-			inspections, inspectionsErr := s.imageInspections(r.Context())
-			if inspectionsErr != nil {
-				data.Error = "Не удалось прочитать результаты проверки ISO"
-			}
-			inspections = matchingImageInspections(catalog, inspections)
-			byPath := map[string]WindowsProfile{}
-			for _, p := range profiles {
-				byPath[fmt.Sprintf("%d:%s", p.StorageID, p.Path)] = p
-			}
-			for _, image := range catalog.Images {
-				key := imageAuthorKey(image.StorageID, image.Path)
-				kind, problem, arch := inspectionLabel("")
-				if record, ok := inspections[key]; ok {
-					kind, problem, arch = inspectionLabel(record.Kind)
-				}
-				row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem, DisplayName: namesByImage[key], Arch: arch}
-				if uploaded, ok := authors.ImageUploadedAt[key]; ok && !uploaded.IsZero() {
-					row.AddedAt, row.AddedVia = &uploaded, "Загружен"
-				} else if image.FirstSeenAt != nil {
-					row.AddedAt, row.AddedVia = image.FirstSeenAt, "Обнаружен"
-				}
-				row.Downloads = append(row.Downloads, ubuntuUses[key]...)
-				if p, ok := byPath[key]; ok {
-					row.Downloads = append(row.Downloads, uses[p.ID]...)
-					if len(row.Downloads) == 0 {
-						row.CleanupProfileID = p.ID
-					}
-				}
-				data.ISOImages = append(data.ISOImages, row)
-			}
-		}
-	}
-	s.loadStorageRecovery(r.Context(), &data)
-	if configs, err := s.Store.DriverConfigs(r.Context()); err == nil {
-		if _, active, err := s.currentDraft(r.Context()); err == nil {
-			if sources, err := s.installationMenuSources(r.Context()); err == nil {
-				_, data.AnswerUse = menuUsage(active, configs, sources)
-			}
-		}
-	}
-	return data
 }
 
 func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
@@ -770,7 +596,7 @@ func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
 // systemPage is the overview of the System section: services, storages,
 // the PXE network and, for administrators, users.
 func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
-	data := s.libraryData(r)
+	data := s.storageLibraryData(r)
 	s.loadStorageSpace(r.Context(), &data, data.catalogCache)
 	s.loadServiceStatus(r.Context(), &data)
 	if s.SysMon != nil {

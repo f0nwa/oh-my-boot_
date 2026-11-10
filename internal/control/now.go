@@ -190,7 +190,7 @@ func nowAlerts(data pageData) []nowAlert {
 
 // nowPage is the home page: what is happening on the PXE network right now.
 func (s *Server) nowPage(w http.ResponseWriter, r *http.Request) {
-	data := s.libraryData(r)
+	data := s.storageLibraryData(r)
 	data.Message = r.URL.Query().Get("message")
 	s.loadServiceStatus(r.Context(), &data)
 	if configs, err := s.Store.DriverConfigs(r.Context()); err == nil {

@@ -91,12 +91,17 @@ func (j *Journal) save() error {
 	return os.Rename(tmp, j.Path)
 }
 
+// Settings reports cleanup settings without querying the request log.
+func (j *Journal) Settings() JournalState {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.load()
+	return JournalState{Days: j.settings.Days, ClearedAt: j.settings.ClearedAt, LastRun: j.lastRun, LastDeleted: j.deleted}
+}
+
 // State reports the setting, the last cleanup and the log's size.
 func (j *Journal) State(ctx context.Context) (JournalState, error) {
-	j.mu.Lock()
-	j.load()
-	state := JournalState{Days: j.settings.Days, ClearedAt: j.settings.ClearedAt, LastRun: j.lastRun, LastDeleted: j.deleted}
-	j.mu.Unlock()
+	state := j.Settings()
 	if j.Store == nil {
 		return state, errors.New("request log unavailable")
 	}
@@ -173,9 +178,17 @@ func (j *Journal) Run(ctx context.Context) {
 	}
 }
 
-// handleJournal serves GET /journal, PUT /journal/retention and POST
-// /journal/clear on the control socket.
+// handleJournal serves GET /journal and /journal/settings, PUT
+// /journal/retention and POST /journal/clear on the control socket.
 func handleJournal(mux *http.ServeMux, j *Journal) {
+	mux.HandleFunc("GET /journal/settings", func(w http.ResponseWriter, r *http.Request) {
+		if j == nil {
+			http.Error(w, "request log unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(j.Settings())
+	})
 	mux.HandleFunc("GET /journal", func(w http.ResponseWriter, r *http.Request) {
 		if j == nil {
 			http.Error(w, "request log unavailable", http.StatusServiceUnavailable)

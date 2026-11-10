@@ -438,11 +438,15 @@ func menuOrderNames(keys []string, items map[string]MenuDraftItem) string {
 // draft. Without a stored draft the active version is the draft, so nothing
 // shows as pending after an upgrade.
 func (s *Server) currentDraft(ctx context.Context) (MenuDraft, MenuDraft, error) {
-	active := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: defaultMenuMessage}
 	versions, err := s.Store.MenuVersions(ctx)
 	if err != nil {
 		return MenuDraft{}, MenuDraft{}, err
 	}
+	return s.currentDraftFromVersions(ctx, versions)
+}
+
+func (s *Server) currentDraftFromVersions(ctx context.Context, versions []MenuVersion) (MenuDraft, MenuDraft, error) {
+	active := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: defaultMenuMessage}
 	for _, version := range versions {
 		if version.Active {
 			active = draftFromVersion(version)
@@ -496,7 +500,7 @@ func (s *Server) draftStatus(ctx context.Context) (summary draftSummary) {
 			summary.Active = version.ID
 		}
 	}
-	draft, active, err := s.currentDraft(ctx)
+	draft, active, err := s.currentDraftFromVersions(ctx, versions)
 	if err != nil {
 		return draftSummary{}
 	}

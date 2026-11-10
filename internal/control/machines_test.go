@@ -83,7 +83,7 @@ func TestWideTablesFitTheWindow(t *testing.T) {
 	data := samplePageData(langRU)
 	data.Tab, data.EventError = "requests", ""
 	body := renderPage("events", data)
-	if !strings.Contains(body, `<td class="nowrap">20.10.2026 01:00:00</td>`) || !strings.Contains(body, "Время, UTC&#43;00:00") {
+	if !strings.Contains(body, `<td class="nowrap mono">20.10.2026 01:00:00</td>`) || !strings.Contains(body, "Время, UTC&#43;00:00") {
 		t.Fatalf("time column: %s", body)
 	}
 }

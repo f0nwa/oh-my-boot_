@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Events loading browser checks</title>
+<h1>Events loading browser checks</h1><pre id="results">Running…</pre>
+<div id="events-heading" data-events-url="/heading"><h1>Journal</h1></div>
+<div id="events-services" data-events-url="/services">Loading services…</div>
+<div id="events-content" data-events-url="/content" data-events-error="Could not load data" data-events-retry-label="Retry loading">Loading content…</div>
+<script>
+// Only the network boundary is replaced; the production loader and native DOM run unchanged.
+const calls = {};
+window.fetch = async (url) => {
+  calls[url] = (calls[url] || 0) + 1;
+  if ((url === '/heading' || url === '/services') && calls[url] === 1) throw new Error('offline');
+  const responses = {
+    '/heading': '<h1>Journal</h1><select id="journal-days"><option value="7">7</option><option value="30">30</option></select>',
+    '/services': '<span id="service-ready">Boot ready</span>',
+    '/content': '<table id="loaded-rows"><tbody><tr><td>Machine 1</td></tr></tbody></table>'
+  };
+  if (url === '/heading') responses[url] = '<h1>Journal</h1><form><select id="journal-days"><option value="7">7</option><option value="30">30</option></select><button disabled>Save</button></form><button data-journal-clear-open>Clear</button><dialog id="journal-clear-dialog"><button data-close-dialog>Cancel</button></dialog>';
+  return new Response(responses[url], { headers: { 'Content-Type': 'text/html' } });
+};
+</script>
+<script defer src="../../internal/control/events.js"></script>
+<script>
+window.addEventListener('load', async () => {
+  const results = document.getElementById('results');
+  const checks = [];
+  function check(ok, name) { if (!ok) throw new Error(name); checks.push('PASS: ' + name); }
+  async function until(predicate) {
+    const deadline = performance.now() + 3000;
+    while (!predicate()) {
+      if (performance.now() > deadline) throw new Error('DOM update timed out');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+  try {
+    const heading = document.getElementById('events-heading');
+    const services = document.getElementById('events-services');
+    await until(() => document.getElementById('loaded-rows') && heading.querySelector('[data-events-retry]') && services.querySelector('[data-events-retry]'));
+    check(!!heading.querySelector('h1'), 'heading remains visible after transport failure');
+    check(document.getElementById('loaded-rows').textContent.includes('Machine 1'), 'table loads while other blocks fail');
+    heading.querySelector('[data-events-retry]').click();
+    await until(() => document.getElementById('journal-days'));
+    const select = document.getElementById('journal-days');
+    const save = select.closest('form').querySelector('button');
+    check(save.disabled, 'unchanged retention cannot be submitted');
+    select.value = '30'; select.dispatchEvent(new Event('change'));
+    check(!save.disabled && save.classList.contains('btn-primary'), 'late-loaded retention form reacts to changes');
+    select.value = '7'; select.dispatchEvent(new Event('change'));
+    check(save.disabled && !save.classList.contains('btn-primary'), 'retention returning to original value disables Save');
+    document.querySelector('[data-journal-clear-open]').click();
+    const dialog = document.getElementById('journal-clear-dialog');
+    check(dialog.open, 'late-loaded clear dialog opens');
+    dialog.querySelector('[data-close-dialog]').click();
+    check(!dialog.open, 'clear dialog cancels without submitting');
+    services.querySelector('[data-events-retry]').click();
+    await until(() => document.getElementById('service-ready'));
+    check(calls['/services'] === 2 && calls['/content'] === 1, 'retry reloads only the failed block');
+    await until(() => [...document.querySelectorAll('[data-events-url]')].every(el => el.getAttribute('aria-busy') === 'false'));
+    check(true, 'all completed blocks clear the busy state');
+    results.textContent = checks.join('\n') + '\n9 checks passed';
+    document.title = 'PASS — Events loading browser checks';
+  } catch (error) {
+    results.textContent = checks.join('\n') + '\nFAIL: ' + error.message;
+    document.title = 'FAIL — Events loading browser checks';
+  }
+});
+</script></html>

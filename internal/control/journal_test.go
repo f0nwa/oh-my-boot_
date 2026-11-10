@@ -68,7 +68,7 @@ func TestJournalRetentionAndClearFromTheJournalPage(t *testing.T) {
 	if state, err := client.Journal(context.Background()); err != nil || state.Days != 30 {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
-	page := libraryGet(t, s, "/events")
+	page := libraryGet(t, s, "/events?full=1")
 	if !strings.Contains(page, `<option value="30" selected>Старше 30 дней</option>`) || !strings.Contains(page, `action="/events/clear"`) {
 		t.Fatalf("page: %s", page)
 	}
@@ -83,7 +83,7 @@ func TestJournalRetentionAndClearFromTheJournalPage(t *testing.T) {
 	if res := menuPost(t, op, "/events/clear", url.Values{}); res.Code != http.StatusForbidden {
 		t.Fatalf("operator clear: %d", res.Code)
 	}
-	if page := libraryGet(t, op, "/events"); strings.Contains(page, `action="/events/clear"`) {
+	if page := libraryGet(t, op, "/events?full=1"); strings.Contains(page, `action="/events/clear"`) {
 		t.Fatal("operator sees clear")
 	}
 }
@@ -95,7 +95,7 @@ func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *test
 	// Admin view
 	admin := newDraftStore(t, "admin", nil)
 	sAdmin := &Server{Store: admin, Boot: client}
-	pageAdmin := libraryGet(t, sAdmin, "/events")
+	pageAdmin := libraryGet(t, sAdmin, "/events?full=1")
 
 	// Must NOT contain <details> or <summary> inside <main>
 	if mainIdx := strings.Index(pageAdmin, `<main class="content">`); mainIdx != -1 {
@@ -130,7 +130,7 @@ func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *test
 	// Observer view
 	obs := newDraftStore(t, "observer", nil)
 	sObs := &Server{Store: obs, Boot: client}
-	pageObs := libraryGet(t, sObs, "/events")
+	pageObs := libraryGet(t, sObs, "/events?full=1")
 
 	if mainIdx := strings.Index(pageObs, `<main class="content">`); mainIdx != -1 {
 		mainContent := pageObs[mainIdx:]

@@ -69,6 +69,7 @@ func TestAccountPageShowsProfileLanguageAndPasswordForm(t *testing.T) {
 		"viewer", "Observer", "View state, catalog and logs only",
 		`action="/settings/language"`, `name="return" value="/account"`, `<option value="en" selected>`,
 		`action="/account/password"`, `name="current_password"`, `data-password-generator`,
+		`data-password-confirm="#account-confirm-password"`, `name="confirm_password"`, `id="account-confirm-password"`,
 		`src="/assets/password.js"`, `src="/assets/account.js"`,
 		`class="btn btn-primary"`,
 	} {
@@ -94,7 +95,11 @@ func TestChangeOwnPassword(t *testing.T) {
 	store := &accountStore{authOnlyStore: authOnlyStore{user: User{ID: 3, Username: "viewer", Role: "observer", Enabled: true}}}
 	s := &Server{Store: store}
 	res := httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/account/password", url.Values{"current_password": {"old-password-123"}, "new_password": {"new-password-456"}}))
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/account/password", url.Values{
+		"current_password": {"old-password-123"},
+		"new_password":     {"new-password-456"},
+		"confirm_password": {"new-password-456"},
+	}))
 	if location, _ := url.QueryUnescape(res.Header().Get("Location")); res.Code != http.StatusSeeOther || location != "/account?message=Пароль изменён" {
 		t.Fatalf("change status=%d location=%q", res.Code, location)
 	}
@@ -107,7 +112,11 @@ func TestChangeOwnPassword(t *testing.T) {
 
 	store.audits, store.wrongCurrent = nil, true
 	res = httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/account/password", url.Values{"current_password": {"bad"}, "new_password": {"new-password-456"}}))
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/account/password", url.Values{
+		"current_password": {"bad"},
+		"new_password":     {"new-password-456"},
+		"confirm_password": {"new-password-456"},
+	}))
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), `role="alert"`) || !strings.Contains(res.Body.String(), "Текущий пароль неверен") || !strings.Contains(res.Body.String(), `action="/account/password"`) || !strings.Contains(res.Body.String(), `data-auto-open="true"`) {
 		t.Fatalf("wrong current password: %d %s", res.Code, res.Body.String())
 	}
@@ -116,8 +125,26 @@ func TestChangeOwnPassword(t *testing.T) {
 	}
 
 	store.wrongCurrent = false
+	store.changed.newPwd = ""
 	res = httptest.NewRecorder()
-	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/account/password", url.Values{"current_password": {"old-password-123"}, "new_password": {"short"}}))
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/account/password", url.Values{
+		"current_password": {"old-password-123"},
+		"new_password":     {"new-password-456"},
+		"confirm_password": {"other-password-456"},
+	}))
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), `role="alert"`) || !strings.Contains(res.Body.String(), "Пароли не совпадают") || !strings.Contains(res.Body.String(), `data-auto-open="true"`) {
+		t.Fatalf("mismatched passwords: %d %s", res.Code, res.Body.String())
+	}
+	if store.changed.newPwd != "" {
+		t.Fatalf("mismatched passwords must not call ChangeOwnPassword")
+	}
+
+	res = httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/account/password", url.Values{
+		"current_password": {"old-password-123"},
+		"new_password":     {"short"},
+		"confirm_password": {"short"},
+	}))
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "Новый пароль должен содержать не меньше 12 символов") {
 		t.Fatalf("short password: %d %s", res.Code, res.Body.String())
 	}
@@ -138,7 +165,7 @@ func TestPasswordInputsOfferGenerator(t *testing.T) {
 	}
 	script := httptest.NewRecorder()
 	(&Server{}).Handler().ServeHTTP(script, httptest.NewRequest(http.MethodGet, "/assets/password.js", nil))
-	if script.Code != http.StatusOK || !strings.Contains(script.Body.String(), "crypto.getRandomValues") || !strings.Contains(script.Body.String(), "pw-tools") {
+	if script.Code != http.StatusOK || !strings.Contains(script.Body.String(), "crypto.getRandomValues") || !strings.Contains(script.Body.String(), "pw-tools") || !strings.Contains(script.Body.String(), "data-password-confirm") {
 		t.Fatalf("password script: %d", script.Code)
 	}
 }

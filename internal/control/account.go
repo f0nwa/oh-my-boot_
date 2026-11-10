@@ -31,6 +31,10 @@ func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) accountPassword(w http.ResponseWriter, r *http.Request) {
 	info := requestInfo(r)
 	next := r.FormValue("new_password")
+	if next != r.FormValue("confirm_password") {
+		http.Error(w, "Пароли не совпадают", http.StatusBadRequest)
+		return
+	}
 	if utf8.RuneCountInString(next) < 12 {
 		http.Error(w, "Новый пароль должен содержать не меньше 12 символов", http.StatusBadRequest)
 		return

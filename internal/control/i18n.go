@@ -635,6 +635,8 @@ var englishMessages = map[string]string{
 	"Служба Boot недоступна":                      "The Boot service is unavailable",
 	"Служба загрузки недоступна":                  "The boot service is unavailable",
 	"Служба хранилищ недоступна":                  "The storage service is unavailable",
+	"Пароли не совпадают":                         "Passwords do not match",
+	"Повторите новый пароль":                      "Repeat new password",
 	"Сменить пароль":                              "Change password",
 	"Сменить пароль и завершить его сеансы":       "Change password and end the user's sessions",
 	"Смонтированный каталог":                      "Mounted directory",

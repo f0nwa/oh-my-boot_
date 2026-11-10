@@ -44,6 +44,15 @@
       input.type = 'text';
       input.value = generate();
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      const confirmSelector = input.getAttribute('data-password-confirm');
+      if (confirmSelector) {
+        const confirmInput = document.querySelector(confirmSelector);
+        if (confirmInput) {
+          confirmInput.type = 'text';
+          confirmInput.value = input.value;
+          confirmInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
       copy.hidden = false;
       note.textContent = tr('Сохраните пароль: после отправки формы он больше не будет показан.');
     });

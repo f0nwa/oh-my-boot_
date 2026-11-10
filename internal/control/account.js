@@ -4,15 +4,34 @@
   var dialog = document.getElementById('account-password-dialog');
   if (!dialog) return;
 
+  function validateConfirm() {
+    var next = dialog.querySelector('input[name="new_password"]');
+    var confirm = dialog.querySelector('input[name="confirm_password"]');
+    if (!next || !confirm || typeof confirm.setCustomValidity !== 'function') return;
+    if (confirm.value && next.value !== confirm.value) {
+      confirm.setCustomValidity(document.documentElement.lang === 'en' ? 'Passwords do not match' : 'Пароли не совпадают');
+    } else {
+      confirm.setCustomValidity('');
+    }
+  }
+
   function resetDialogForm() {
     var cur = dialog.querySelector('input[name="current_password"]');
     var next = dialog.querySelector('input[name="new_password"]');
+    var confirm = dialog.querySelector('input[name="confirm_password"]');
     if (cur) {
       cur.value = '';
     }
     if (next) {
       next.value = '';
       next.type = 'password';
+    }
+    if (confirm) {
+      confirm.value = '';
+      confirm.type = 'password';
+      if (typeof confirm.setCustomValidity === 'function') {
+        confirm.setCustomValidity('');
+      }
     }
     dialog.querySelectorAll('small[role="status"]').forEach(function (el) {
       el.textContent = '';
@@ -26,6 +45,12 @@
       el.hidden = true;
     });
   }
+
+  dialog.addEventListener('input', function (event) {
+    if (event.target && (event.target.name === 'new_password' || event.target.name === 'confirm_password')) {
+      validateConfirm();
+    }
+  });
 
   function openDialog(reset) {
     if (typeof dialog.showModal !== 'function') return;

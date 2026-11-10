@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -66,8 +67,20 @@ func main() {
 	recovery := &agent.StorageRecovery{SMB: smb, Windows: windows, ConfigPath: *recoveryConfig}
 	smbSessions := agent.NewSMBWatcher("/var/lib/omb-agent/smb-sessions.json")
 	usbBuilder := &ueficausb.Builder{MediaRoot: "/mnt/omb-iso/profiles", CacheRoot: "/var/lib/omb-agent/uefica-usb", Runner: agent.ExecDriverCommandRunner{}, FreeBytes: agent.FreeBytes}
+	diskUsage := &agent.DiskUsageCollector{
+		Roots: agent.DiskUsageRoots{
+			WindowsProfiles:      windows.AssetRoot,
+			WindowsDriverWIMs:    driverManager.WIMRoot,
+			WindowsDriverConfigs: driverManager.ConfigRoot,
+			WindowsAnswers:       windows.AnswerRoot,
+			UbuntuSources:        filepath.Join(ubuntu.AssetRoot, "ubuntu-sources"),
+			Drivers:              driverManager.Root,
+			UEFICAUSB:            usbBuilder.CacheRoot,
+		},
+	}
 	handler := agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder)
-	server := &http.Server{Handler: agent.HandlerWithUbuntuISO(handler, ubuntu), ReadHeaderTimeout: 5 * time.Second}
+	handler = agent.HandlerWithDiskUsage(agent.HandlerWithUbuntuISO(handler, ubuntu), diskUsage)
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// Recover storage mounts and Windows ISO profiles that failed, for example

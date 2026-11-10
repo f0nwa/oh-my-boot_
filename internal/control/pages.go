@@ -100,6 +100,8 @@ type pageData struct {
 	DriverPackages        []DriverPackage
 	DriverConfigs         []DriverConfig
 	Metrics               SystemSnapshot
+	StorageSpace          *storageSpaceView
+	catalogCache          *images.Catalog
 }
 
 func storageKindLabel(kind string) string {
@@ -170,6 +172,7 @@ func parsePages(lang string) *template.Template {
 		"arch":        isoArch,
 		"usedPercent": usedPercent,
 		"usedBytes":   func(total, free int64) int64 { return max(total-free, 0) },
+		"join":        joinStrings,
 	}).ParseFS(templateFS, "templates/*.html"))
 }
 

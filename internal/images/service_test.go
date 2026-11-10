@@ -33,7 +33,7 @@ type memoryRepository struct {
 func (m *memoryRepository) Storage(_ context.Context, id int64) (Storage, error) {
 	return m.storages[id], nil
 }
-func (m *memoryRepository) SaveScan(_ context.Context, id int64, found []Image) error {
+func (m *memoryRepository) SaveScan(_ context.Context, id int64, found []Image, otherBytes int64) error {
 	if m.images[id] == nil {
 		m.images[id] = map[string]Image{}
 	}
@@ -44,6 +44,10 @@ func (m *memoryRepository) SaveScan(_ context.Context, id int64, found []Image) 
 	for _, image := range found {
 		image.StorageID = id
 		m.images[id][image.Path] = image
+	}
+	if s, ok := m.storages[id]; ok {
+		s.OtherBytes = otherBytes
+		m.storages[id] = s
 	}
 	m.state[id] = "ready"
 	return nil
@@ -116,7 +120,7 @@ func TestMountedScanPreservesCatalogWhenMountChanges(t *testing.T) {
 		}
 		return "mount-2", true
 	}
-	if err := scanStorageWith(context.Background(), repo, 1, mount, func(string) ([]Image, error) { return nil, nil }); err == nil {
+	if err := scanStorageWith(context.Background(), repo, 1, mount, func(string) (ScanResult, error) { return ScanResult{}, nil }); err == nil {
 		t.Fatal("expected changed mount to fail")
 	}
 	if checks != 2 || !repo.images[1]["old.iso"].Present || repo.state[1] != "unavailable" {
@@ -131,9 +135,9 @@ func TestSMBScanPreservesCatalogWhenUnmounted(t *testing.T) {
 		state:    map[int64]string{},
 	}
 	scanCalled := false
-	err := scanStorageWith(context.Background(), repo, 1, func(string) (string, bool) { return "", false }, func(string) ([]Image, error) {
+	err := scanStorageWith(context.Background(), repo, 1, func(string) (string, bool) { return "", false }, func(string) (ScanResult, error) {
 		scanCalled = true
-		return nil, nil
+		return ScanResult{}, nil
 	})
 	if err == nil || scanCalled || !repo.images[1]["old.iso"].Present || repo.state[1] != "unavailable" {
 		t.Fatalf("unmounted SMB changed catalog: err=%v scan=%v images=%+v state=%s", err, scanCalled, repo.images, repo.state[1])
@@ -148,9 +152,30 @@ func TestScanFailureUsesFreshContextToStoreError(t *testing.T) {
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_ = scanStorageWith(ctx, repo, 1, func(string) (string, bool) { return "", false }, func(string) ([]Image, error) { return nil, errors.New("read failed") })
+	_ = scanStorageWith(ctx, repo, 1, func(string) (string, bool) { return "", false }, func(string) (ScanResult, error) { return ScanResult{}, errors.New("read failed") })
 	if !repo.errorContextValid || repo.state[1] != "unavailable" {
 		t.Fatalf("failure was not persisted with fresh context: valid=%v state=%s", repo.errorContextValid, repo.state[1])
+	}
+}
+
+func TestScanStorageRecordsOtherBytes(t *testing.T) {
+	root := realTempDir(t)
+	repo := &memoryRepository{
+		storages: map[int64]Storage{1: {ID: 1, Root: root, Kind: "local"}},
+		images:   map[int64]map[string]Image{},
+		state:    map[int64]string{},
+	}
+	if err := os.WriteFile(filepath.Join(root, "win.iso"), []byte("123456"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "readme.txt"), []byte("hello-world"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ScanStorage(context.Background(), repo, 1); err != nil {
+		t.Fatal(err)
+	}
+	if repo.storages[1].OtherBytes != 11 {
+		t.Fatalf("OtherBytes = %d, want 11", repo.storages[1].OtherBytes)
 	}
 }
 

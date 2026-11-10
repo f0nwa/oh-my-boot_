@@ -15,6 +15,7 @@ func TestScanFindsISOsAndSkipsSymlinks(t *testing.T) {
 	for path, content := range map[string]string{
 		filepath.Join(root, "nested", "Ubuntu.ISO"): "iso-data",
 		filepath.Join(root, "notes.txt"):            "notes",
+		filepath.Join(root, ".omb-upload-123.part"): "partial-upload",
 		filepath.Join(other, "secret.iso"):          "outside",
 	} {
 		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
@@ -32,7 +33,7 @@ func TestScanFindsISOsAndSkipsSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Path != "nested/Ubuntu.ISO" || got[0].Size != 8 {
+	if len(got.Images) != 1 || got.Images[0].Path != "nested/Ubuntu.ISO" || got.Images[0].Size != 8 || got.OtherBytes != 5 {
 		t.Fatalf("unexpected catalog: %+v", got)
 	}
 }

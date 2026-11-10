@@ -9,7 +9,7 @@ import (
 
 type ScanRepository interface {
 	Storage(context.Context, int64) (Storage, error)
-	SaveScan(context.Context, int64, []Image) error
+	SaveScan(context.Context, int64, []Image, int64) error
 	ScanError(context.Context, int64, string) error
 }
 
@@ -17,7 +17,7 @@ func ScanStorage(ctx context.Context, repo ScanRepository, id int64) error {
 	return scanStorageWith(ctx, repo, id, MountIdentity, Scan)
 }
 
-func scanStorageWith(ctx context.Context, repo ScanRepository, id int64, mountIdentity func(string) (string, bool), scan func(string) ([]Image, error)) error {
+func scanStorageWith(ctx context.Context, repo ScanRepository, id int64, mountIdentity func(string) (string, bool), scan func(string) (ScanResult, error)) error {
 	fail := func(scanErr error) error {
 		failureCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -51,7 +51,7 @@ func scanStorageWith(ctx context.Context, repo ScanRepository, id int64, mountId
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
-	if err := repo.SaveScan(ctx, id, found); err != nil {
+	if err := repo.SaveScan(ctx, id, found.Images, found.OtherBytes); err != nil {
 		return fail(err)
 	}
 	return nil

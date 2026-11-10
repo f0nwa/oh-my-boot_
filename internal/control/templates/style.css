@@ -570,4 +570,36 @@ button[disabled]{opacity:.45;cursor:default}
 .uptime-row{border-top:1px solid var(--line);padding-top:8px;display:flex;align-items:center;gap:6px;font-size:12px}
 @media (max-width:760px){.resource-grid{grid-template-columns:1fr;gap:16px}.resource-col-side{border-left:0;border-top:1px solid var(--line);padding-left:0;padding-top:14px}}
 
+/* Storage space breakdown */
+.space-section{margin-bottom:18px}
+.disk-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:10px}
+.disk-head h2{margin:0}
+.disk-summary{flex:none;text-align:right;font-size:12px;color:var(--muted)}
+.disk-summary strong{color:var(--text);font-weight:600}
+.seg-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--chip);gap:1px}
+.seg-bar-sm{height:4px;width:100%}
+.seg-fill{height:100%}
+.seg-omb{background:var(--accent)}
+.seg-drv{background:#3B82F6}
+.seg-ubuntu{background:#10B981}
+.seg-cache{background:#8B5CF6}
+.seg-folder{background:#64748B}
+.seg-rest{background:var(--line-strong)}
+.disk-legend{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin-top:10px;font-size:12px;color:var(--muted)}
+.legend-items{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
+.legend-item{display:inline-flex;align-items:center;gap:6px}
+.cat-sq{display:inline-block;width:8px;height:8px;border-radius:2px;flex:none}
+.space-cell{min-width:280px}
+.space-meta{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;color:var(--muted);margin-top:5px;flex-wrap:wrap}
+.space-meta .mono{color:var(--text)}
+.space-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.table-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px 16px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.table-head h2{margin:0;font-size:14px}
+.artifact-title{display:inline-flex;align-items:center;gap:8px;font-weight:500}
+.artifact-links{display:flex;flex-wrap:wrap;gap:4px 10px}
+.num-col{text-align:right}
+.kv-list li>.seg-bar-sm{flex-basis:100%;margin-top:4px}
+.kv-list li>.space-meta{flex-basis:100%;margin-top:2px}
+@media (max-width:760px){.disk-head{flex-direction:column;align-items:flex-start;gap:4px}.disk-summary{text-align:left}}
+
 

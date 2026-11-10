@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS storages (
  subpath TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL DEFAULT 'unknown' CHECK (state IN ('unknown','scanning','ready','unavailable')),
  last_error TEXT NOT NULL DEFAULT '',
- last_scan_at TIMESTAMPTZ
+ last_scan_at TIMESTAMPTZ,
+ other_bytes BIGINT NOT NULL DEFAULT 0 CHECK (other_bytes >= 0)
 );
 
 CREATE TABLE IF NOT EXISTS images (

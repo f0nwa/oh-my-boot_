@@ -36,8 +36,8 @@ func (r *httpRepository) CreateSMB(_ context.Context, _ ManagedStorageInput) (St
 }
 func (r *httpRepository) DeleteSMB(_ context.Context, _ int64) error    { return nil }
 func (r *httpRepository) RecordUpload(_ context.Context, _ Image) error { return nil }
-func (r *httpRepository) SaveScan(ctx context.Context, id int64, found []Image) error {
-	err := r.memoryRepository.SaveScan(ctx, id, found)
+func (r *httpRepository) SaveScan(ctx context.Context, id int64, found []Image, otherBytes int64) error {
+	err := r.memoryRepository.SaveScan(ctx, id, found, otherBytes)
 	close(r.done)
 	return err
 }

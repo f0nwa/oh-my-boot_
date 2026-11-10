@@ -51,19 +51,22 @@ func TestFirstSeenPersistsAcrossScansAndUpload(t *testing.T) {
 	}
 	store := images.Store{Pool: control.Pool}
 	found := []images.Image{{Path: "scan.iso", Size: 1234, Modified: time.Now()}}
-	if err := store.SaveScan(ctx, id, found); err != nil {
+	if err := store.SaveScan(ctx, id, found, 777); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err := store.Catalog(ctx)
 	if err != nil || len(catalog.Images) != 1 || catalog.Images[0].FirstSeenAt == nil {
 		t.Fatalf("catalog=%+v err=%v", catalog, err)
 	}
+	if len(catalog.Storages) != 1 || catalog.Storages[0].ISOBytes != 1234 || catalog.Storages[0].OtherBytes != 777 {
+		t.Fatalf("storage byte counts mismatch: %+v", catalog.Storages)
+	}
 	original := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	if _, err := control.Pool.Exec(ctx, `UPDATE images SET first_seen_at=$1`, original); err != nil {
 		t.Fatal(err)
 	}
 	found[0].Size++
-	if err := store.SaveScan(ctx, id, found); err != nil {
+	if err := store.SaveScan(ctx, id, found, 555); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err = store.Catalog(ctx)
@@ -122,7 +125,7 @@ func TestLegacyDiscoveryDateStaysUnknownAfterMigration(t *testing.T) {
 	if err != nil || len(catalog.Images) != 1 || catalog.Images[0].FirstSeenAt != nil {
 		t.Fatalf("migration invented a date: %+v %v", catalog, err)
 	}
-	if err := store.SaveScan(ctx, catalog.Storages[0].ID, catalog.Images); err != nil {
+	if err := store.SaveScan(ctx, catalog.Storages[0].ID, catalog.Images, 0); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err = store.Catalog(ctx)

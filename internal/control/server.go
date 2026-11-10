@@ -128,6 +128,10 @@ type MenuReader interface {
 	CurrentMenu(context.Context) ([]byte, error)
 }
 
+type DiskUsageAPI interface {
+	DiskUsage(context.Context) (agent.DiskUsageReport, error)
+}
+
 type Server struct {
 	BootDrivers       BootDriverSync
 	driverMu          sync.Mutex
@@ -135,6 +139,7 @@ type Server struct {
 	Boot              *BootClient
 	DeletionMenu      MenuReader
 	Agent             *AgentClient
+	DiskUsage         DiskUsageAPI
 	Images            ImagesAPI
 	SMB               SMBMountAPI
 	WindowsISO        WindowsISOAPI
@@ -537,7 +542,9 @@ func (s *Server) answersPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) storagesPage(w http.ResponseWriter, r *http.Request) {
-	render(w, "storages", s.libraryData(r))
+	data := s.libraryData(r)
+	s.loadStorageSpace(r.Context(), &data, data.catalogCache)
+	render(w, "storages", data)
 }
 
 // libraryData collects storages, ISO files, Windows profiles and answer
@@ -574,6 +581,7 @@ func (s *Server) libraryData(r *http.Request) pageData {
 			data.ImageError = "Сервис образов недоступен"
 		} else {
 			data.Storages = catalog.Storages
+			data.catalogCache = &catalog
 			names := map[int64]string{}
 			for _, storage := range catalog.Storages {
 				names[storage.ID] = storage.Name
@@ -744,6 +752,7 @@ func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
 // the PXE network and, for administrators, users.
 func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
 	data := s.libraryData(r)
+	s.loadStorageSpace(r.Context(), &data, data.catalogCache)
 	s.loadServiceStatus(r.Context(), &data)
 	if s.SysMon != nil {
 		data.Metrics = s.SysMon.Snapshot(normalizeLanguage(data.Info.User.Language))

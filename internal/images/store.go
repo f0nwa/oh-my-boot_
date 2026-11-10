@@ -37,9 +37,9 @@ func (s Store) CreateSMB(ctx context.Context, input ManagedStorageInput) (Storag
 	err := s.Pool.QueryRow(ctx,
 		`INSERT INTO storages (name,kind,root,storage_key,server,share,subpath,state,last_error)
 		 VALUES ($1,'smb',$2,$3,$4,$5,$6,'unavailable','Ожидает подключения')
-		 RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at`,
+		 RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes`,
 		input.Name, smbstorage.Root(input.Key), input.Key, input.Server, input.Share, input.Subpath,
-	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt)
+	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
 	return storage, err
 }
 
@@ -69,28 +69,28 @@ func (s Store) AddStorage(ctx context.Context, name, kind, root string) (Storage
 	}
 	var storage Storage
 	err = s.Pool.QueryRow(ctx,
-		"INSERT INTO storages (name,kind,root) VALUES ($1,$2,$3) RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at",
+		"INSERT INTO storages (name,kind,root) VALUES ($1,$2,$3) RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes",
 		name, kind, root,
-	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt)
+	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
 	return storage, err
 }
 
 func (s Store) Storage(ctx context.Context, id int64) (Storage, error) {
 	var storage Storage
-	err := s.Pool.QueryRow(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at FROM storages WHERE id=$1", id).
-		Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt)
+	err := s.Pool.QueryRow(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes FROM storages WHERE id=$1", id).
+		Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
 	return storage, err
 }
 
 func (s Store) Catalog(ctx context.Context) (Catalog, error) {
 	result := Catalog{Storages: []Storage{}, Images: []Image{}}
-	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at FROM storages ORDER BY name")
+	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes FROM storages ORDER BY name")
 	if err != nil {
 		return result, err
 	}
 	for rows.Next() {
 		var storage Storage
-		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt); err != nil {
+		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes); err != nil {
 			rows.Close()
 			return result, err
 		}
@@ -106,14 +106,24 @@ func (s Store) Catalog(ctx context.Context) (Catalog, error) {
 		return result, err
 	}
 	defer rows.Close()
+	isoBytes := map[int64]int64{}
 	for rows.Next() {
 		var image Image
 		if err := rows.Scan(&image.StorageID, &image.Path, &image.Size, &image.Modified, &image.Present, &image.FirstSeenAt); err != nil {
 			return result, err
 		}
+		if image.Present {
+			isoBytes[image.StorageID] += image.Size
+		}
 		result.Images = append(result.Images, image)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return result, err
+	}
+	for i := range result.Storages {
+		result.Storages[i].ISOBytes = isoBytes[result.Storages[i].ID]
+	}
+	return result, nil
 }
 
 func (s Store) MarkScanning(ctx context.Context, id int64) error {
@@ -127,7 +137,10 @@ func (s Store) MarkScanning(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s Store) SaveScan(ctx context.Context, id int64, found []Image) error {
+func (s Store) SaveScan(ctx context.Context, id int64, found []Image, otherBytes int64) error {
+	if otherBytes < 0 {
+		otherBytes = 0
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -144,7 +157,7 @@ func (s Store) SaveScan(ctx context.Context, id int64, found []Image) error {
 			return err
 		}
 	}
-	if _, err := tx.Exec(ctx, "UPDATE storages SET state='ready',last_error='',last_scan_at=now() WHERE id=$1", id); err != nil {
+	if _, err := tx.Exec(ctx, "UPDATE storages SET state='ready',last_error='',last_scan_at=now(),other_bytes=$2 WHERE id=$1", id, otherBytes); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -179,7 +192,7 @@ func (s Store) ScanError(ctx context.Context, id int64, message string) error {
 
 // Storages lists storages without their image catalog.
 func (s Store) Storages(ctx context.Context) ([]Storage, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at FROM storages ORDER BY id")
+	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes FROM storages ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +200,7 @@ func (s Store) Storages(ctx context.Context) ([]Storage, error) {
 	result := []Storage{}
 	for rows.Next() {
 		var storage Storage
-		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt); err != nil {
+		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes); err != nil {
 			return nil, err
 		}
 		result = append(result, storage)

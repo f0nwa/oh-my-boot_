@@ -27,6 +27,10 @@ type Storage struct {
 	Total   int64 `json:"total,omitempty"`
 	Free    int64 `json:"free,omitempty"`
 	Uploads bool  `json:"uploads,omitempty"`
+	// ISOBytes sums present ISO files in the catalog; OtherBytes is the size of
+	// other regular files recorded during the latest scan.
+	ISOBytes   int64 `json:"iso_bytes,omitempty"`
+	OtherBytes int64 `json:"other_bytes,omitempty"`
 }
 
 type Image struct {
@@ -38,17 +42,26 @@ type Image struct {
 	Present     bool       `json:"present"`
 }
 
-// Scan inventories regular ISO files without following symlinks or changing files.
-func Scan(root string) ([]Image, error) {
+// ScanResult holds the ISO inventory and total size of non-ISO regular files
+// discovered in a storage root.
+type ScanResult struct {
+	Images     []Image
+	OtherBytes int64
+}
+
+// Scan inventories regular ISO files and totals other regular files without
+// following symlinks or changing files.
+func Scan(root string) (ScanResult, error) {
 	if err := validateRootPath(root); err != nil {
-		return nil, err
+		return ScanResult{}, err
 	}
 	images := []Image{}
+	var otherBytes int64
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !strings.EqualFold(filepath.Ext(entry.Name()), ".iso") {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
 		fileInfo, err := entry.Info()
@@ -56,6 +69,14 @@ func Scan(root string) ([]Image, error) {
 			return err
 		}
 		if !fileInfo.Mode().IsRegular() {
+			return nil
+		}
+		name := entry.Name()
+		if !strings.EqualFold(filepath.Ext(name), ".iso") {
+			if strings.HasPrefix(name, ".omb-upload-") && strings.HasSuffix(name, ".part") {
+				return nil
+			}
+			otherBytes += fileInfo.Size()
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)
@@ -66,8 +87,8 @@ func Scan(root string) ([]Image, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return ScanResult{}, err
 	}
 	sort.Slice(images, func(i, j int) bool { return images[i].Path < images[j].Path })
-	return images, nil
+	return ScanResult{Images: images, OtherBytes: otherBytes}, nil
 }

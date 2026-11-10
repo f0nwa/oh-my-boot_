@@ -587,3 +587,12 @@ func (c *AgentClient) SetBootDrivers(ctx context.Context, rules []network.BootDr
 	defer cancel()
 	return localCall(ctx, c.http, http.MethodPut, "/network/boot-drivers", payload, nil)
 }
+
+func (c *AgentClient) DiskUsage(ctx context.Context) (agent.DiskUsageReport, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	client := &http.Client{Transport: c.http.Transport, Timeout: 3 * time.Second}
+	var report agent.DiskUsageReport
+	err := localCall(ctx, client, http.MethodGet, "/disk-usage", nil, &report)
+	return report, err
+}

@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"time"
@@ -177,12 +178,17 @@ func (s Store) CreateUser(ctx context.Context, username, password, role string) 
 	return err
 }
 
+var (
+	errSelfDemote = errors.New("cannot remove your own administrator access")
+	errLastAdmin  = errors.New("cannot disable the last administrator")
+)
+
 func (s Store) ChangeUser(ctx context.Context, id, actorID int64, role string, enabled bool) error {
 	if !Allowed(role, "view") {
 		return fmt.Errorf("invalid role")
 	}
 	if id == actorID && (!enabled || role != "admin") {
-		return fmt.Errorf("cannot remove your own administrator access")
+		return errSelfDemote
 	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -203,7 +209,7 @@ func (s Store) ChangeUser(ctx context.Context, id, actorID int64, role string, e
 			return err
 		}
 		if count <= 1 {
-			return fmt.Errorf("cannot disable the last administrator")
+			return errLastAdmin
 		}
 	}
 	if _, err := tx.Exec(ctx, "UPDATE users SET role=$2,enabled=$3 WHERE id=$1", id, role, enabled); err != nil {

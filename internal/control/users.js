@@ -65,7 +65,7 @@
       if (!id) return;
       var roleSelect = document.querySelector('select[name="role"][form="user-change-' + id + '"]');
       var enabledInput = document.querySelector('input[name="enabled"][form="user-change-' + id + '"]');
-      if (roleSelect && enabledInput) {
+      if (roleSelect && enabledInput && !roleSelect.disabled && !enabledInput.disabled) {
         initialStates[id] = {
           role: roleSelect.value,
           enabled: enabledInput.checked

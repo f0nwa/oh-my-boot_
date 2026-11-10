@@ -525,6 +525,7 @@ button[disabled]{opacity:.45;cursor:default}
 .user-table td{vertical-align:middle}
 .user-table .user-name{font-weight:600}
 .user-table td select{min-height:28px;padding:2px 26px 2px 8px;font-size:13px;border-radius:6px;background-color:var(--panel);border:1px solid var(--line-strong);color:var(--text);background-position:right 8px center;background-size:10px 10px}
+.user-table td select:disabled,.user-table td label.check:has(input:disabled){opacity:.55;cursor:not-allowed}
 .user-table td label.check{display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0}
 .user-row-actions{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end}
 .user-row-actions button{min-height:28px;padding:0 10px;margin-top:0}

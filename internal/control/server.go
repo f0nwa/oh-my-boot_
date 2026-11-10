@@ -249,7 +249,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /menu/items/{key}/title", s.protect("menu", withPageErrors(s.menuPage, s.menuItemRename)))
 	mux.HandleFunc("GET /users", s.protect("users", s.usersPage))
 	mux.HandleFunc("POST /users/create", s.protect("users", s.userCreate))
-	mux.HandleFunc("POST /users/change", s.protect("users", s.userChange))
+	mux.HandleFunc("POST /users/change", s.protect("users", withPageErrors(s.usersPage, s.userChange)))
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
@@ -681,7 +681,7 @@ func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message")}
+	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
 	v, err := s.Store.Users(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось прочитать пользователей", 500)
@@ -713,13 +713,27 @@ func (s *Server) userChange(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный ID", 400)
 		return
 	}
-	err = s.Store.ChangeUser(r.Context(), id, info.User.ID, r.FormValue("role"), r.FormValue("enabled") == "on")
+	role := r.FormValue("role")
+	enabled := r.FormValue("enabled") == "on"
+	if id == info.User.ID && (!enabled || role != "admin") {
+		_ = s.Store.Audit(r.Context(), info.User.ID, "user.change", "error", fmt.Sprintf("id=%d self", id))
+		http.Error(w, "Нельзя отключить свою учётную запись или понизить свою роль администратора", 400)
+		return
+	}
+	err = s.Store.ChangeUser(r.Context(), id, info.User.ID, role, enabled)
 	result := "ok"
 	if err != nil {
 		result = "error"
 	}
 	_ = s.Store.Audit(r.Context(), info.User.ID, "user.change", result, fmt.Sprintf("id=%d", id))
-	if err != nil {
+	switch {
+	case errors.Is(err, errSelfDemote):
+		http.Error(w, "Нельзя отключить свою учётную запись или понизить свою роль администратора", 400)
+		return
+	case errors.Is(err, errLastAdmin):
+		http.Error(w, "Нельзя отключить или понизить последнего администратора", 400)
+		return
+	case err != nil:
 		http.Error(w, "Не удалось изменить пользователя: "+err.Error(), 400)
 		return
 	}

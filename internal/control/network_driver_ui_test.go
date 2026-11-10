@@ -106,12 +106,15 @@ func TestMacRuleNetworkDriver(t *testing.T) {
 		book.rules[r.Prefix] = r
 		s := &Server{Store: book}
 		body := libraryGet(t, s, "/machines")
-		formRE := regexp.MustCompile(`(?s)<form[^>]*action="/machine-rules/bc:24:11"[^>]*>(.*?)</form>`)
+		if !strings.Contains(body, `data-prefix="bc:24:11"`) || !strings.Contains(body, `data-driver="snp"`) {
+			t.Fatal("missing rule edit button with driver")
+		}
+		formRE := regexp.MustCompile(`(?s)<form[^>]*id="rule-edit-form"[^>]*>(.*?)</form>`)
 		m := formRE.FindStringSubmatch(body)
 		if len(m) != 2 {
 			t.Fatal("missing rule form")
 		}
-		checkDriverSelect(t, m[1], "network_driver", "snp", []string{"", "ipxe", "snp"})
+		checkDriverSelect(t, m[1], "network_driver", "", []string{"", "ipxe", "snp"})
 		res := menuPost(t, s, "/machine-rules/bc:24:11", url.Values{"title": {"rule"}, "network_driver": {"ipxe"}, "q": {"laptop"}, "sort": {"name"}})
 		if res.Code != 303 || book.rules["bc:24:11"].NetworkDriver != "ipxe" {
 			t.Fatalf("edit=%d %+v", res.Code, book.rules)

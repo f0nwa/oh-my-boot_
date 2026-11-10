@@ -419,13 +419,15 @@ button[disabled]{opacity:.45;cursor:default}
 .add-machine{margin:0 0 16px}.add-machine .machine-form{max-width:760px}
 .machine-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 12px;margin:0 0 12px}.machine-fields label{margin:0;display:flex;flex-direction:column;gap:4px}.machine-fields .wide{grid-column:1/-1}
 .machine-table tr:target td{background:var(--chip)}
+.machine-table td{vertical-align:middle}
 .machine-table .saved{color:var(--ok,var(--text-2))}
-.row-actions{width:1%;white-space:nowrap;vertical-align:top}.row-edit{margin:0}.row-edit>summary{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;min-height:0;font-weight:400;color:var(--text-2)}.row-edit>summary:hover{color:var(--text)}.row-edit .danger-zone{margin:4px 0 0}
-.row-edit[open]{white-space:normal}.row-edit .machine-form{display:flex;flex-direction:column;gap:8px;width:260px;margin:8px 0}.row-edit .machine-form label{margin:0;display:flex;flex-direction:column;gap:4px}
+.row-actions{width:1%;white-space:nowrap;vertical-align:middle}
+.machine-table .row-actions button{min-height:28px;padding:0 10px;margin-top:0}
 .import-preview{margin:0 0 24px}.import-preview h2{margin-top:0}.import-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0 6px}.import-actions form,.import-actions p{margin:0}
 .import-bad{color:var(--bad)}.import-tag{white-space:nowrap}.import-add{color:var(--ok)}.import-edit{color:var(--accent-ink)}
-.import-errors ul{margin:6px 0 0;padding-left:20px}
+.import-errors{margin:12px 0;padding:12px 14px;border:1px solid var(--bad-line);border-radius:8px;background:var(--bad-bg);color:var(--bad-text)}.import-errors-title{margin:0}.import-errors ul{margin:6px 0 0;padding-left:20px}
 .mac-rules{margin-top:36px}.mac-rules h2{margin-bottom:6px}
+.rules-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px}.rules-head p{margin:0}.rules-head button{margin-top:0}
 
 /* Answer file editor: contents, one section, summary/XML/questions and saving */
 .ed{display:grid;grid-template-columns:220px minmax(0,1fr) minmax(300px,380px);gap:20px;align-items:start}
@@ -538,12 +540,14 @@ button[disabled]{opacity:.45;cursor:default}
 .user-dialog h2{margin:0 0 16px;font-size:18px}
 .user-dialog form{margin:0;display:flex;flex-direction:column;gap:12px}
 .user-dialog label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500}
-.user-dialog input,.user-dialog select{width:100%;max-width:none;box-sizing:border-box}
+.user-dialog input,.user-dialog select,.user-dialog textarea{width:100%;max-width:none;box-sizing:border-box}
 .user-dialog p.hint{margin:4px 0 0;font-size:12px;color:var(--muted)}
 .user-dialog label p{font-size:12px;font-weight:normal;margin:4px 0 0}
 .user-dialog label p button{min-height:26px;padding:0 8px;font-size:12px;margin:0 4px 0 0;border:1px solid var(--line-strong)}
 .user-dialog label p small{display:block;margin-top:4px;color:var(--muted);font-size:11px}
 .user-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.user-dialog-actions-split{justify-content:space-between;align-items:center}
+.user-dialog-actions-end{display:flex;gap:8px;align-items:center}
 .user-dialog-actions button{margin-top:0}
 .card-wide{grid-column:1/-1}
 .resource-tag{font-size:11px;text-transform:uppercase;letter-spacing:.04em}

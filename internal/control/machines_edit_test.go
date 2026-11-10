@@ -127,7 +127,7 @@ func TestMachineTableRights(t *testing.T) {
 	}
 	store.user.Role = "operator"
 	page = libraryGet(t, s, "/machines")
-	if !strings.Contains(page, `method="post" action="/machines"`) || !strings.Contains(page, `action="/machines/bc:24:11:52:02:37"`) || strings.Contains(page, "/delete") {
+	if !strings.Contains(page, `method="post" action="/machines"`) || !strings.Contains(page, `id="machine-edit-form"`) || !strings.Contains(page, `data-mac="bc:24:11:52:02:37"`) || strings.Contains(page, "/delete") || strings.Contains(page, `id="machine-delete-form"`) {
 		t.Fatal("operator forms wrong")
 	}
 	if res := menuPost(t, s, "/machines/bc:24:11:52:02:37/delete", url.Values{}); res.Code != http.StatusForbidden {
@@ -135,7 +135,7 @@ func TestMachineTableRights(t *testing.T) {
 	}
 	store.user.Role = "admin"
 	page = libraryGet(t, s, "/machines")
-	if !strings.Contains(page, `action="/machines/bc:24:11:52:02:37/delete"`) {
+	if !strings.Contains(page, `id="machine-delete-form"`) {
 		t.Fatal("admin has no delete")
 	}
 	res := menuPost(t, s, "/machines/bc:24:11:52:02:37/delete", url.Values{"q": {"vm"}})

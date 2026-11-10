@@ -99,6 +99,7 @@ type pageData struct {
 	WindowsAnswerVariants []WindowsAnswerVariant
 	DriverPackages        []DriverPackage
 	DriverConfigs         []DriverConfig
+	Metrics               SystemSnapshot
 }
 
 func storageKindLabel(kind string) string {

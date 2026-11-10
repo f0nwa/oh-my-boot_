@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -148,6 +149,7 @@ type Server struct {
 	UEFICAUSB         UEFICAUSBAPI
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
+	SysMon            *SystemMonitor
 	menuMu            sync.Mutex
 	draftMu           sync.Mutex
 	smbMu             sync.Mutex
@@ -169,6 +171,9 @@ func (s *Server) Handler() http.Handler {
 	if s.machineImports == nil {
 		s.machineImports = &machineImportStash{}
 	}
+	if s.SysMon == nil {
+		s.SysMon = NewSystemMonitor(nil)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
@@ -189,6 +194,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/now.js", nowScript)
 	mux.HandleFunc("GET /assets/network.js", networkScript)
 	mux.HandleFunc("GET /assets/users.js", usersScript)
+	mux.HandleFunc("GET /assets/system.js", systemScript)
 	mux.HandleFunc("GET /search", s.protect("view", s.searchPage))
 	mux.HandleFunc("GET /assets/search.js", searchScript)
 	mux.HandleFunc("GET /installations/new", s.protect("images", s.installationNewPage))
@@ -252,6 +258,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /answers", s.protect("view", s.answersPage))
 	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
 	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))
+	mux.HandleFunc("GET /api/system/metrics", s.protect("view", s.systemMetricsAPI))
 	mux.HandleFunc("POST /answers/{id}/inspect", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerInspect)))
 	mux.HandleFunc("GET /answers/editor", s.protect("view", s.answerEditorNew))
 	mux.HandleFunc("GET /answers/{id}/edit", s.protect("view", s.answerEditorEdit))
@@ -738,6 +745,9 @@ func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
 func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
 	data := s.libraryData(r)
 	s.loadServiceStatus(r.Context(), &data)
+	if s.SysMon != nil {
+		data.Metrics = s.SysMon.Snapshot(normalizeLanguage(data.Info.User.Language))
+	}
 	if s.Agent != nil {
 		if c, err := s.Agent.Config(r.Context()); err == nil {
 			data.Network, data.HasNetwork = c, true
@@ -749,4 +759,15 @@ func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	render(w, "system", data)
+}
+
+func (s *Server) systemMetricsAPI(w http.ResponseWriter, r *http.Request) {
+	lang := normalizeLanguage(requestInfo(r).User.Language)
+	var snap SystemSnapshot
+	if s.SysMon != nil {
+		snap = s.SysMon.Snapshot(lang)
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(snap)
 }

@@ -106,7 +106,7 @@ type pageData struct {
 
 func storageKindLabel(kind string) string {
 	if kind == "smb" {
-		return "Сетевая папка SMB"
+		return "SMB хранилище"
 	}
 	if kind == "mounted" {
 		return "Смонтированный каталог"

@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"omb/internal/images"
 )
 
 func TestStoragesScriptEndpoint(t *testing.T) {
@@ -126,5 +128,76 @@ func TestStoragesPageUsesRowMenuAndRetryModalWithNoDetails(t *testing.T) {
 	obsBody := libraryGet(t, obs, "/storages")
 	if strings.Contains(obsBody, `action="/images/scan"`) || strings.Contains(obsBody, `data-row-menu`) {
 		t.Fatalf("observer permissions mismatch on /storages")
+	}
+}
+
+func TestStoragesPageShowsTypeAndAccessMode(t *testing.T) {
+	for _, tc := range []struct {
+		lang          string
+		wantTypeSMB   string
+		wantTypeLocal string
+		wantAccessRW  string
+		wantAccessRO  string
+		forbidOldNote string
+	}{
+		{
+			lang:          langRU,
+			wantTypeSMB:   "SMB хранилище",
+			wantTypeLocal: "Локальный каталог",
+			wantAccessRW:  "Доступно<br><small class=\"muted\">чтение и запись</small>",
+			wantAccessRO:  "Доступно<br><small class=\"muted\">только чтение</small>",
+			forbidOldNote: "можно загружать ISO",
+		},
+		{
+			lang:          langEN,
+			wantTypeSMB:   "SMB storage",
+			wantTypeLocal: "Local directory",
+			wantAccessRW:  "Available<br><small class=\"muted\">read and write</small>",
+			wantAccessRO:  "Available<br><small class=\"muted\">read-only</small>",
+			forbidOldNote: "ISO uploads allowed",
+		},
+	} {
+		api := &fakeImagesAPI{
+			catalog: images.Catalog{
+				Storages: []images.Storage{
+					{
+						ID:      5,
+						Name:    "NAS Synology",
+						Kind:    "smb",
+						Server:  "192.168.10.10",
+						Share:   "Downloads",
+						State:   "ready",
+						Uploads: true,
+						Total:   385 << 30,
+						Free:    115 << 30,
+					},
+					{
+						ID:      6,
+						Name:    "Local Archive",
+						Kind:    "local",
+						Root:    "/var/lib/omb-images/iso",
+						State:   "ready",
+						Uploads: false,
+						Total:   100 << 30,
+						Free:    40 << 30,
+					},
+				},
+			},
+		}
+		s := &Server{
+			Store:     authOnlyStore{user: User{ID: 1, Role: "admin", Language: tc.lang, Enabled: true}},
+			Images:    api,
+			DiskUsage: fakeDiskUsageAPI{},
+		}
+		body := libraryGet(t, s, "/storages")
+
+		for _, want := range []string{tc.wantTypeSMB, tc.wantTypeLocal, tc.wantAccessRW, tc.wantAccessRO} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("/storages (%s) missing %q in body:\n%s", tc.lang, want, body)
+			}
+		}
+		if strings.Contains(body, tc.forbidOldNote) {
+			t.Fatalf("/storages (%s) must not contain obsolete note %q", tc.lang, tc.forbidOldNote)
+		}
 	}
 }

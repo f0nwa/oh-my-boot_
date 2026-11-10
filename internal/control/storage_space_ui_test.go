@@ -59,6 +59,7 @@ func sampleSpaceTestServer(role, lang string, diskAPI DiskUsageAPI) *Server {
 					Share:      "Downloads",
 					Subpath:    "iso",
 					State:      "ready",
+					Uploads:    true,
 					Total:      385 << 30,
 					Free:       115 << 30,
 					ISOBytes:   46 << 30,

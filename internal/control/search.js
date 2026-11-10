@@ -5,18 +5,43 @@
   var dialog = document.getElementById("search-dialog");
   if (!dialog || typeof dialog.showModal !== "function") return;
   var en = document.documentElement.lang === "en";
+  var box = dialog.querySelector(".search-box");
   var input = dialog.querySelector('input[name="q"]');
   var list = document.getElementById("search-results");
-  var active = -1, timer = null, seq = 0;
+  var openers = document.querySelectorAll("[data-search-open]");
+  var active = -1, timer = null, loadTimer = null, seq = 0;
   var mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-  document.querySelectorAll("[data-search-open] kbd").forEach(function (kbd) { kbd.textContent = mac ? "⌘K" : "Ctrl K"; });
+  openers.forEach(function (button) {
+    var kbd = button.querySelector("kbd");
+    if (kbd) kbd.textContent = mac ? "⌘K" : "Ctrl K";
+  });
 
-  function hint(text) {
+  function setLoading(on) {
+    if (box) box.classList.toggle("is-loading", on);
+    if (input) input.setAttribute("aria-busy", on ? "true" : "false");
+    openers.forEach(function (btn) { btn.classList.toggle("is-loading", on); });
+    if (on) {
+      if (!options().length) {
+        hint(en ? "Searching…" : "Поиск…", true);
+      } else {
+        list.classList.add("is-loading");
+      }
+    } else {
+      list.classList.remove("is-loading");
+    }
+  }
+
+  function hint(text, loading) {
     list.replaceChildren();
     var li = document.createElement("li");
-    li.className = "search-hint";
-    li.textContent = text;
+    li.className = "search-hint" + (loading ? " search-loading" : "");
+    if (loading) {
+      var dot = document.createElement("span");
+      dot.className = "dot dot-accent dot-pulse";
+      li.append(dot);
+    }
+    li.append(document.createTextNode(text));
     list.append(li);
     active = -1;
   }
@@ -62,12 +87,32 @@
   }
   function search() {
     var q = input.value.trim();
-    if (!q) { hint(en ? "Type a MAC address, an image or an installation." : "Введите MAC, название образа или установки."); return; }
+    clearTimeout(loadTimer);
+    if (!q) {
+      setLoading(false);
+      hint(en ? "Type a MAC address, an image or an installation." : "Введите MAC, название образа или установки.");
+      return;
+    }
     var mine = ++seq;
+    loadTimer = setTimeout(function () {
+      if (mine === seq) setLoading(true);
+    }, 150);
     fetch("/search?format=json&q=" + encodeURIComponent(q), { credentials: "same-origin" })
       .then(function (res) { return res.ok ? res.json() : []; })
-      .then(function (results) { if (mine === seq) render(results); })
-      .catch(function () {});
+      .then(function (results) {
+        if (mine === seq) {
+          clearTimeout(loadTimer);
+          setLoading(false);
+          render(results);
+        }
+      })
+      .catch(function () {
+        if (mine === seq) {
+          clearTimeout(loadTimer);
+          setLoading(false);
+          hint(en ? "Search failed." : "Ошибка поиска.");
+        }
+      });
   }
   function open(event) {
     if (event) event.preventDefault();
@@ -77,13 +122,16 @@
     search();
   }
 
-  document.querySelectorAll("[data-search-open]").forEach(function (button) { button.addEventListener("click", open); });
+  openers.forEach(function (button) { button.addEventListener("click", open); });
   document.addEventListener("keydown", function (event) {
     var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || event.target.isContentEditable;
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") open(event);
     else if (event.key === "/" && !typing && !dialog.open) open(event);
   });
-  input.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(search, 150); });
+  input.addEventListener("input", function () {
+    clearTimeout(timer);
+    timer = setTimeout(search, 150);
+  });
   dialog.addEventListener("keydown", function (event) {
     if (event.key === "ArrowDown") { event.preventDefault(); choose(active + 1); }
     else if (event.key === "ArrowUp") { event.preventDefault(); choose(active - 1); }
@@ -91,4 +139,9 @@
   });
   // A click on the backdrop closes the dialog.
   dialog.addEventListener("click", function (event) { if (event.target === dialog) dialog.close(); });
+  dialog.addEventListener("close", function () {
+    clearTimeout(timer);
+    clearTimeout(loadTimer);
+    setLoading(false);
+  });
 })();

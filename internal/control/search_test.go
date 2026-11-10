@@ -51,9 +51,15 @@ func TestSearchAnswersJSONAndPage(t *testing.T) {
 	if !strings.Contains(body, `id="search-dialog"`) || !strings.Contains(body, `data-search-open`) || !strings.Contains(body, `/assets/search.js`) {
 		t.Fatal("layout lacks the ⌘K dialog")
 	}
+	if !strings.Contains(body, `class="search-spinner"`) || !strings.Contains(body, `class="search-loader"`) {
+		t.Fatal("layout lacks the search animation loader and spinner elements")
+	}
 	script := httptest.NewRecorder()
 	s.Handler().ServeHTTP(script, httptest.NewRequest(http.MethodGet, "/assets/search.js", nil))
 	if script.Code != http.StatusOK || !strings.Contains(script.Body.String(), "showModal") {
 		t.Fatalf("search.js status=%d", script.Code)
+	}
+	if !strings.Contains(script.Body.String(), "setLoading") || !strings.Contains(script.Body.String(), "is-loading") {
+		t.Fatal("search.js lacks loading state handlers")
 	}
 }

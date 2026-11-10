@@ -602,4 +602,16 @@ button[disabled]{opacity:.45;cursor:default}
 .kv-list li>.space-meta{flex-basis:100%;margin-top:2px}
 @media (max-width:760px){.disk-head{flex-direction:column;align-items:flex-start;gap:4px}.disk-summary{text-align:left}}
 
+/* Universal table row action menu */
+.row-actions-group{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.row-actions-group form{margin:0}
+.row-actions-group button{margin-top:0;min-height:28px}
+.row-menu-btn{min-width:30px;padding:0 8px;line-height:1}
+.row-menu-popover{position:fixed;inset:auto;margin:0;min-width:190px;padding:4px;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel);color:var(--text);box-shadow:0 12px 32px rgba(0,0,0,.35)}
+.row-menu-popover form{margin:0}
+.row-menu-item{display:block;width:100%;margin:0;padding:7px 10px;min-height:30px;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;font-size:13px;font-weight:400;text-align:left;cursor:pointer}
+.row-menu-item:hover,.row-menu-item:focus-visible{background:var(--chip)}
+.row-menu-danger{color:var(--bad)}
+.row-menu-sep{border:0;border-top:1px solid var(--line);margin:4px 0}
+
 

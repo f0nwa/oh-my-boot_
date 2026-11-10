@@ -68,3 +68,63 @@ func TestStoragesPageAddSMBModal(t *testing.T) {
 		t.Fatalf("observer should not see add SMB button or dialog")
 	}
 }
+
+func TestRowMenuScriptEndpoint(t *testing.T) {
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/assets/row-menu.js", nil)
+	rec := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/javascript; charset=utf-8" {
+		t.Fatalf("unexpected Content-Type: %q", ct)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"data-row-menu", "popover-open", "data-close-popover"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("row-menu.js lacks %q", want)
+		}
+	}
+}
+
+func TestStoragesPageUsesRowMenuAndRetryModalWithNoDetails(t *testing.T) {
+	for _, lang := range []string{langRU, langEN} {
+		s := sampleSpaceTestServer("admin", lang, fakeDiskUsageAPI{})
+		body := libraryGet(t, s, "/storages")
+
+		for _, want := range []string{
+			`data-row-menu`,
+			`popovertarget="storage-menu-5"`,
+			`id="storage-menu-5"`,
+			`>☰<`,
+			`data-smb-retry-id="5"`,
+			`action="/images/smb/5/remove"`,
+			`id="smb-retry-dialog"`,
+			`src="/assets/row-menu.js"`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("/storages (%s) missing %q", lang, want)
+			}
+		}
+		if mainStart := strings.Index(body, `<main class="content">`); mainStart < 0 {
+			t.Fatalf("/storages (%s) missing <main>", lang)
+		} else if mainBody := body[mainStart:]; strings.Contains(mainBody, "<details") || strings.Contains(mainBody, "<summary") {
+			t.Fatalf("/storages (%s) must not contain any <details> or <summary> inside <main>: %s", lang, mainBody)
+		}
+	}
+
+	op := sampleSpaceTestServer("operator", langRU, fakeDiskUsageAPI{})
+	opBody := libraryGet(t, op, "/storages")
+	if !strings.Contains(opBody, `action="/images/scan"`) || strings.Contains(opBody, `data-row-menu`) || strings.Contains(opBody, `id="smb-retry-dialog"`) {
+		t.Fatalf("operator permissions mismatch on /storages")
+	}
+
+	obs := sampleSpaceTestServer("observer", langRU, fakeDiskUsageAPI{})
+	obsBody := libraryGet(t, obs, "/storages")
+	if strings.Contains(obsBody, `action="/images/scan"`) || strings.Contains(obsBody, `data-row-menu`) {
+		t.Fatalf("observer permissions mismatch on /storages")
+	}
+}

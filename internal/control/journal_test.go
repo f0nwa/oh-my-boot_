@@ -87,3 +87,52 @@ func TestJournalRetentionAndClearFromTheJournalPage(t *testing.T) {
 		t.Fatal("operator sees clear")
 	}
 }
+
+func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *testing.T) {
+	store := &journalStore{events: []time.Time{time.Now()}}
+	client := journalBoot(t, store)
+
+	// Admin view
+	admin := newDraftStore(t, "admin", nil)
+	sAdmin := &Server{Store: admin, Boot: client}
+	pageAdmin := libraryGet(t, sAdmin, "/events")
+
+	// Must NOT contain <details> or <summary> inside <main>
+	if mainIdx := strings.Index(pageAdmin, `<main class="content">`); mainIdx != -1 {
+		mainContent := pageAdmin[mainIdx:]
+		if strings.Contains(mainContent, "<details") || strings.Contains(mainContent, "<summary") {
+			t.Fatalf("events page content contains forbidden <details> or <summary>: %s", mainContent)
+		}
+	} else {
+		t.Fatal("could not find <main class=\"content\"> in page")
+	}
+
+	// Must contain the service strip and journal stats
+	for _, want := range []string{
+		"service-strip events-strip",
+		"journal-clear-dialog",
+		"data-journal-clear-open",
+		"/assets/events.js",
+		"btn btn-danger",
+		"journal-keep",
+	} {
+		if !strings.Contains(pageAdmin, want) {
+			t.Errorf("admin events page missing %q", want)
+		}
+	}
+
+	// Observer view
+	obs := newDraftStore(t, "observer", nil)
+	sObs := &Server{Store: obs, Boot: client}
+	pageObs := libraryGet(t, sObs, "/events")
+
+	if mainIdx := strings.Index(pageObs, `<main class="content">`); mainIdx != -1 {
+		mainContent := pageObs[mainIdx:]
+		if strings.Contains(mainContent, "<details") || strings.Contains(mainContent, "<summary") {
+			t.Fatalf("observer events page content contains forbidden <details> or <summary>")
+		}
+	}
+	if strings.Contains(pageObs, "data-journal-clear-open") || strings.Contains(pageObs, "journal-clear-dialog") {
+		t.Errorf("observer should not see clear dialog triggers or clear dialog")
+	}
+}

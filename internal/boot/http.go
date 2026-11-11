@@ -14,6 +14,7 @@ import (
 )
 
 type Event struct {
+	ID         int64     `json:"id,omitempty"`
 	Kind       string    `json:"kind"`
 	Path       string    `json:"path"`
 	RemoteAddr string    `json:"remote_addr"`

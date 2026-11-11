@@ -210,6 +210,8 @@
         var url = new URL(searchForm.action, window.location.href);
         var params = new URLSearchParams(new FormData(searchForm));
         if (!params.get('q')) params.delete('q');
+        params.delete('offset');
+        params.delete('partial');
         url.search = params.toString();
         searchPending = new AbortController();
         setLoading(true);
@@ -228,6 +230,7 @@
 
             if (nextTable && tableArea) {
               tableArea.innerHTML = nextTable.innerHTML;
+              if (typeof window.initInfiniteScroll === 'function') window.initInfiniteScroll();
             }
             if (nextCounts && countsArea) {
               countsArea.innerHTML = nextCounts.innerHTML;

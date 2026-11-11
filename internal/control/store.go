@@ -23,6 +23,7 @@ type User struct {
 	Theme    string
 }
 type AuditEvent struct {
+	ID     int64
 	At     time.Time
 	Actor  string
 	Action string
@@ -133,7 +134,7 @@ func (s Store) Audit(ctx context.Context, actorID int64, action, result, detail 
 }
 
 func (s Store) AuditList(ctx context.Context) ([]AuditEvent, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT a.occurred_at,coalesce(u.username,'system'),a.action,a.result,a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 100")
+	rows, err := s.Pool.Query(ctx, "SELECT a.id, a.occurred_at, coalesce(u.username,'system'), a.action, a.result, a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 100")
 	if err != nil {
 		return nil, err
 	}
@@ -141,12 +142,49 @@ func (s Store) AuditList(ctx context.Context) ([]AuditEvent, error) {
 	out := []AuditEvent{}
 	for rows.Next() {
 		var a AuditEvent
-		if err := rows.Scan(&a.At, &a.Actor, &a.Action, &a.Result, &a.Detail); err != nil {
+		if err := rows.Scan(&a.ID, &a.At, &a.Actor, &a.Action, &a.Result, &a.Detail); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+func (s Store) AuditPaged(ctx context.Context, limit int, beforeID int64) ([]AuditEvent, bool, error) {
+	if limit < 1 || limit > 1000 {
+		limit = 50
+	}
+	fetchLimit := limit + 1
+	var query string
+	var args []any
+	if beforeID > 0 {
+		query = "SELECT a.id, a.occurred_at, coalesce(u.username,'system'), a.action, a.result, a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id WHERE a.id < $1 ORDER BY a.id DESC LIMIT $2"
+		args = []any{beforeID, fetchLimit}
+	} else {
+		query = "SELECT a.id, a.occurred_at, coalesce(u.username,'system'), a.action, a.result, a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT $1"
+		args = []any{fetchLimit}
+	}
+	rows, err := s.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	out := []AuditEvent{}
+	for rows.Next() {
+		var a AuditEvent
+		if err := rows.Scan(&a.ID, &a.At, &a.Actor, &a.Action, &a.Result, &a.Detail); err != nil {
+			return nil, false, err
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(out) > limit
+	if hasMore {
+		out = out[:limit]
+	}
+	return out, hasMore, nil
 }
 
 func (s Store) Users(ctx context.Context) ([]User, error) {

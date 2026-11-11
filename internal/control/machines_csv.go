@@ -73,7 +73,7 @@ func (s *Server) machinesCSV(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Список машин недоступен", http.StatusServiceUnavailable)
 		return
 	}
-	list := buildMachineList(machines, r.URL.Query().Get("q"), r.URL.Query().Get("sort"), s.macRules(r.Context()), r.URL.Query().Get("rule"))
+	list := buildMachineList(machines, r.URL.Query().Get("q"), r.URL.Query().Get("sort"), s.macRules(r.Context()), r.URL.Query().Get("rule"), 0, 0)
 	lang := normalizeLanguage(requestInfo(r).User.Language)
 	var buf bytes.Buffer
 	buf.WriteString("\xef\xbb\xbf")

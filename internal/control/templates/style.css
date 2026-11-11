@@ -668,3 +668,13 @@ a.machine-name-accent:hover{text-decoration:underline}
 .pw-tools small{flex-basis:100%;margin:0;color:var(--muted);font-size:11px}
 @media (max-width:760px){.account-kv,.account-lang-block form{grid-template-columns:1fr}}
 
+/* Infinite scroll sentinel and states */
+.infinite-scroll-sentinel{display:flex;align-items:center;justify-content:center;padding:16px 0;min-height:48px;text-align:center;box-sizing:border-box}
+.infinite-scroll-loading{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.infinite-scroll-loading .search-spinner{position:static;display:inline-block;margin:0;width:14px;height:14px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;opacity:1;pointer-events:auto;animation:search-spin .7s linear infinite}
+.infinite-scroll-end{font-size:12px;color:var(--muted)}
+.infinite-scroll-error{display:inline-flex;align-items:center;gap:10px;padding:6px 12px;border-radius:6px;background:var(--bad-bg);border:1px solid var(--bad-line);color:var(--bad-text);font-size:12px}
+.infinite-scroll-error .error{color:var(--bad-text);font-weight:500}
+.infinite-scroll-error .btn{margin:0;padding:2px 10px;min-height:26px;font-size:12px}
+@media (prefers-reduced-motion:reduce){.infinite-scroll-loading .search-spinner{animation:none;border-color:var(--accent)}}
+

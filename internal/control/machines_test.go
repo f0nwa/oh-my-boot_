@@ -60,9 +60,20 @@ func TestResolveDHCPMACsFromHTTP(t *testing.T) {
 func TestEventsPageTabs(t *testing.T) {
 	data := samplePageData(langRU)
 	data.Tab = "machines"
-	data.Machines = []machineRow{{MAC: "bc:24:11:04:2a:ed", IP: "10.30.0.19", Firmware: "UEFI", Stage: "files", Choice: "Windows 11", LastSeen: time.Now()}}
+	data.Machines = []machineRow{
+		{Name: "Тестовая", MAC: "bc:24:11:04:2a:ed", IP: "10.30.0.19", Firmware: "UEFI", Stage: "files", Choice: "Windows 11", Boots: 5, LastSeen: time.Now()},
+		{MAC: "bc:24:11:04:2a:ee", IP: "10.30.0.20", Firmware: "BIOS", Stage: "menu", Boots: 0, LastSeen: time.Now()},
+	}
 	body := renderPage("events", data)
-	for _, want := range []string{"bc:24:11:04:2a:ed", `href="/events/machines/bc:24:11:04:2a:ed"`, "Загрузка файлов", `href="/events?tab=dhcp"`} {
+	for _, want := range []string{
+		"bc:24:11:04:2a:ed",
+		`href="/events/machines/bc:24:11:04:2a:ed"`,
+		"machine-name-accent",
+		`class="mono boots-count">5</td>`,
+		`class="mono muted">0</td>`,
+		"Загрузка файлов",
+		`href="/events?tab=dhcp"`,
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("machines tab lacks %q: %s", want, body)
 		}

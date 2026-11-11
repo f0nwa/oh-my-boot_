@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPublisherSwitchesLiveMenu(t *testing.T) {
@@ -112,6 +113,10 @@ func TestControlAPIStatusAndPublish(t *testing.T) {
 type recordingEvents struct{ limit int }
 
 func (e *recordingEvents) Recent(limit int) ([]Event, error) { e.limit = limit; return []Event{}, nil }
+func (e *recordingEvents) RecentPaged(limit int, _ *time.Time, _ int64, _ string) ([]Event, error) {
+	e.limit = limit
+	return []Event{}, nil
+}
 
 func TestControlAPIClampsEventLimit(t *testing.T) {
 	p, err := NewPublisher(filepath.Join(t.TempDir(), "menu.ipxe"), []byte("#!ipxe\n"))

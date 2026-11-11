@@ -74,6 +74,7 @@
       if (!area.isConnected || controller.signal.aborted) return;
       area.innerHTML = html;
       initJournal();
+      if (typeof window.initInfiniteScroll === 'function') window.initInfiniteScroll();
     }).catch(() => {
       if (!area.isConnected) return;
       const labels = document.getElementById('events-content');

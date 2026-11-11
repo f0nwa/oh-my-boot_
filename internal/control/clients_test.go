@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net"
 	"net/http"
 	"os"
@@ -107,5 +108,38 @@ func TestBootClientRejectsOversizedAutoinstallBeforeDial(t *testing.T) {
 	_, err := client.StageAutoinstall(context.Background(), 7, strings.Repeat("0", 64), make([]byte, 64<<10+1))
 	if err == nil || !strings.Contains(err.Error(), "too large") {
 		t.Fatalf("oversize should fail before dialing: %v", err)
+	}
+}
+
+func TestBootClientEventsPaged(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "boot.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	var gotPath string
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.RequestURI()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]boot.Event{
+			{ID: 10, Kind: "menu", MAC: "aa:bb:cc:dd:ee:01"},
+		})
+	})}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewBootClient(socket)
+	now := time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)
+	events, err := client.EventsPaged(context.Background(), 25, &now, 42, "aa:bb:cc:dd:ee:01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].ID != 10 {
+		t.Fatalf("unexpected events: %+v", events)
+	}
+	if !strings.Contains(gotPath, "limit=25") || !strings.Contains(gotPath, "before_id=42") || !strings.Contains(gotPath, "mac=aa%3Abb%3Acc%3Add%3Aee%3A01") {
+		t.Fatalf("unexpected request URI: %s", gotPath)
 	}
 }

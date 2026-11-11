@@ -387,11 +387,25 @@ func (c *BootClient) CurrentMenu(ctx context.Context) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(res.Body, 256<<10+1))
 }
 func (c *BootClient) Events(ctx context.Context, limit int) ([]boot.Event, error) {
+	return c.EventsPaged(ctx, limit, nil, 0, "")
+}
+func (c *BootClient) EventsPaged(ctx context.Context, limit int, beforeTime *time.Time, beforeID int64, mac string) ([]boot.Event, error) {
 	if limit < 1 || limit > 1000 {
 		return nil, fmt.Errorf("invalid event limit")
 	}
+	params := url.Values{}
+	params.Set("limit", strconv.Itoa(limit))
+	if beforeTime != nil && !beforeTime.IsZero() {
+		params.Set("before_time", beforeTime.Format(time.RFC3339Nano))
+	}
+	if beforeID > 0 {
+		params.Set("before_id", strconv.FormatInt(beforeID, 10))
+	}
+	if mac != "" {
+		params.Set("mac", mac)
+	}
 	var v []boot.Event
-	err := localCall(ctx, c.http, "GET", "/events?limit="+strconv.Itoa(limit), nil, &v)
+	err := localCall(ctx, c.http, "GET", "/events?"+params.Encode(), nil, &v)
 	return v, err
 }
 func (c *BootClient) Publish(ctx context.Context, script []byte) (string, error) {

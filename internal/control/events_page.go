@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -59,7 +60,26 @@ func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) eventsContent(w http.ResponseWriter, r *http.Request) {
 	r, cancel := eventsContext(r)
 	defer cancel()
-	render(w, "events-table", s.eventsTableData(r))
+	data := s.eventsTableData(r)
+	if r.URL.Query().Get("partial") == "1" {
+		if data.Tab == "requests" {
+			if data.EventError != "" {
+				http.Error(w, data.EventError, http.StatusServiceUnavailable)
+				return
+			}
+			render(w, "event_requests_partial", data)
+			return
+		}
+		if data.Tab == "dhcp" {
+			if data.DHCPError != "" {
+				http.Error(w, data.DHCPError, http.StatusServiceUnavailable)
+				return
+			}
+			render(w, "event_dhcp_partial", data)
+			return
+		}
+	}
+	render(w, "events-table", data)
 }
 
 func (s *Server) eventsServices(w http.ResponseWriter, r *http.Request) {
@@ -93,6 +113,47 @@ func (s *Server) eventsJournal(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) eventsTableData(r *http.Request) pageData {
 	data := eventsRequest(r)
+
+	if data.Tab == "requests" {
+		var beforeTime *time.Time
+		if bt := r.URL.Query().Get("before_time"); bt != "" {
+			if t, err := time.Parse(time.RFC3339Nano, bt); err == nil {
+				beforeTime = &t
+			} else if t, err := time.Parse(time.RFC3339, bt); err == nil {
+				beforeTime = &t
+			}
+		}
+		var beforeID int64
+		if bid := r.URL.Query().Get("before_id"); bid != "" {
+			if id, err := strconv.ParseInt(bid, 10, 64); err == nil && id > 0 {
+				beforeID = id
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if s.Boot == nil {
+			data.EventError = "Служба Boot недоступна"
+		} else if v, err := s.Boot.EventsPaged(ctx, 50, beforeTime, beforeID, data.MACFilter); err != nil {
+			data.EventError = "Журнал временно недоступен"
+		} else {
+			for _, e := range v {
+				if data.MACFilter == "" || e.MAC == data.MACFilter {
+					data.Events = append(data.Events, e)
+				}
+			}
+			if len(v) == 50 {
+				data.EventsHasMore = true
+				lastEvent := v[len(v)-1]
+				data.EventsNextTime = lastEvent.At.Format(time.RFC3339Nano)
+				data.EventsNextID = lastEvent.ID
+			} else {
+				data.EventsHasMore = false
+			}
+		}
+		return data
+	}
+
 	var httpEvents []boot.Event
 	var rawDHCP []agent.DHCPEvent
 	var sources sync.WaitGroup
@@ -109,19 +170,17 @@ func (s *Server) eventsTableData(r *http.Request) pageData {
 			httpEvents = v
 		}
 	}()
-	if data.Tab != "requests" {
-		sources.Add(1)
-		go func() {
-			defer sources.Done()
-			if s.Agent == nil {
-				data.DHCPError = "Журнал DHCP недоступен"
-			} else if v, err := s.dhcpEvents(r.Context()); err != nil {
-				data.DHCPError = "Журнал DHCP недоступен"
-			} else {
-				rawDHCP = v
-			}
-		}()
-	}
+	sources.Add(1)
+	go func() {
+		defer sources.Done()
+		if s.Agent == nil {
+			data.DHCPError = "Журнал DHCP недоступен"
+		} else if v, err := s.dhcpEvents(r.Context()); err != nil {
+			data.DHCPError = "Журнал DHCP недоступен"
+		} else {
+			rawDHCP = v
+		}
+	}()
 	sources.Wait()
 	dhcp := resolveDHCPMACs(rawDHCP, httpEvents)
 
@@ -142,23 +201,33 @@ func (s *Server) eventsTableData(r *http.Request) pageData {
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].LastSeen.After(rows[j].LastSeen) })
 		describeMachines(rows, book, s.macRules(r.Context()))
 		data.Machines = rows
-	case "requests":
-		for _, e := range httpEvents {
-			if data.MACFilter == "" || e.MAC == data.MACFilter {
-				data.Events = append(data.Events, e)
-			}
-		}
-		if len(data.Events) > 300 {
-			data.Events = data.Events[:300]
-		}
 	case "dhcp":
+		offset := 0
+		if v, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && v >= 0 {
+			offset = v
+		}
+		var filtered []agent.DHCPEvent
 		for _, e := range dhcp {
 			if data.MACFilter == "" || e.MAC == data.MACFilter {
-				data.DHCPEvents = append(data.DHCPEvents, e)
+				filtered = append(filtered, e)
 			}
 		}
-		if len(data.DHCPEvents) > 300 {
-			data.DHCPEvents = data.DHCPEvents[:300]
+		total := len(filtered)
+		const limit = 50
+		if offset < total {
+			end := offset + limit
+			if end > total {
+				end = total
+			}
+			data.DHCPEvents = filtered[offset:end]
+		} else {
+			data.DHCPEvents = nil
+		}
+		if offset+limit < total {
+			data.EventsHasMore = true
+			data.EventsNextOffset = offset + limit
+		} else {
+			data.EventsHasMore = false
 		}
 	}
 	return data

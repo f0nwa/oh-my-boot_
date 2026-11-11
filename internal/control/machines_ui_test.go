@@ -1,9 +1,11 @@
 package control
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMachinesPageHasNoDetails(t *testing.T) {
@@ -188,6 +190,78 @@ func TestMachinesPageHeaderActionsAndVisualAccents(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/machines missing visual accent %q", want)
+		}
+	}
+}
+
+func TestMachinesPagePaginationAndPartialRows(t *testing.T) {
+	t0 := time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)
+	store := &bookStore{
+		authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
+		machines:      make(map[string]MachineInfo, 120),
+	}
+	for i := 1; i <= 120; i++ {
+		mac := fmt.Sprintf("bc:24:11:00:%02x:%02x", i/256, i%256)
+		store.machines[mac] = MachineInfo{
+			MAC:       mac,
+			Name:      fmt.Sprintf("node-%03d", i),
+			FirstSeen: t0.Add(time.Duration(121-i) * time.Minute),
+			LastSeen:  t0.Add(time.Duration(121-i) * time.Minute),
+		}
+	}
+	s := &Server{Store: store}
+
+	// 1. Initial page GET /machines: should render first 50 machines and sentinel
+	body := libraryGet(t, s, "/machines")
+	if !strings.Contains(body, "node-001") {
+		t.Errorf("GET /machines expected to contain node-001")
+	}
+	if !strings.Contains(body, "node-050") {
+		t.Errorf("GET /machines expected to contain node-050")
+	}
+	if strings.Contains(body, "node-051") {
+		t.Errorf("GET /machines should not contain node-051 (offset=0, limit=50)")
+	}
+	if !strings.Contains(body, `data-has-more="true"`) {
+		t.Errorf("GET /machines expected data-has-more=\"true\"")
+	}
+	if !strings.Contains(body, `data-next-offset="50"`) {
+		t.Errorf("GET /machines expected data-next-offset=\"50\"")
+	}
+	if !strings.Contains(body, `class="infinite-scroll-sentinel"`) {
+		t.Errorf("GET /machines expected .infinite-scroll-sentinel container")
+	}
+
+	// 2. Partial page GET /machines?offset=50&partial=1: should render rows 51-100 and sentinel without full layout
+	partial := libraryGet(t, s, "/machines?offset=50&partial=1")
+	if strings.Contains(partial, "<!DOCTYPE") || strings.Contains(partial, "<html") || strings.Contains(partial, "<main") {
+		t.Errorf("GET /machines?partial=1 should not render full page layout")
+	}
+	if strings.Contains(partial, "node-001") || strings.Contains(partial, "node-050") {
+		t.Errorf("GET /machines?offset=50&partial=1 should not contain node-001..node-050")
+	}
+	if !strings.Contains(partial, "node-051") {
+		t.Errorf("GET /machines?offset=50&partial=1 expected to contain node-051")
+	}
+	if !strings.Contains(partial, "node-100") {
+		t.Errorf("GET /machines?offset=50&partial=1 expected to contain node-100")
+	}
+	if strings.Contains(partial, "node-101") {
+		t.Errorf("GET /machines?offset=50&partial=1 should not contain node-101")
+	}
+	if !strings.Contains(partial, `data-has-more="true"`) {
+		t.Errorf("GET /machines?offset=50&partial=1 expected data-has-more=\"true\"")
+	}
+	if !strings.Contains(partial, `data-next-offset="100"`) {
+		t.Errorf("GET /machines?offset=50&partial=1 expected data-next-offset=\"100\"")
+	}
+
+	// 3. CSV export GET /machines.csv: MUST export all 120 matched machines
+	csvData := libraryGet(t, s, "/machines.csv")
+	for i := 1; i <= 120; i++ {
+		name := fmt.Sprintf("node-%03d", i)
+		if !strings.Contains(csvData, name) {
+			t.Fatalf("CSV export missing machine %s", name)
 		}
 	}
 }

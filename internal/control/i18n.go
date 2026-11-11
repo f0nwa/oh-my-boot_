@@ -122,8 +122,11 @@ func translateEN(text string, depth int) string {
 }
 
 var englishMessages = map[string]string{
-	"Загрузка…":                   "Loading…",
-	"Повторить загрузку":          "Retry loading",
+	"Загрузка…":                      "Loading…",
+	"Загрузка следующих 50 записей…": "Loading next 50 entries…",
+	"записей загружены":              "entries loaded",
+	"Все записи загружены":           "All entries loaded",
+	"Повторить загрузку":             "Retry loading",
 	"Загрузить журнал":            "Load journal",
 	"Не удалось загрузить данные": "Could not load data",
 

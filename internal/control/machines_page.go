@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,13 @@ type machineList struct {
 	Rules      []MacRule
 	RuleFilter *MacRule
 	HasRules   bool // the store keeps rules
+
+	// Pagination
+	Offset       int
+	Limit        int
+	TotalMatches int
+	HasMore      bool
+	NextOffset   int
 }
 
 // Filtered reports whether the table shows only part of the list.
@@ -136,8 +144,12 @@ func (r machineListRow) matches(query string) bool {
 
 // buildMachineList sorts and filters the book for the page. ruleFilter
 // narrows it to machines whose MAC starts with that rule's prefix.
-func buildMachineList(book []MachineInfo, query, sortBy string, rules macRules, ruleFilter string) machineList {
-	list := machineList{Available: true, Query: strings.TrimSpace(query), Sort: sortBy, Total: len(book)}
+// When limit <= 0, no slice limit is applied.
+func buildMachineList(book []MachineInfo, query, sortBy string, rules macRules, ruleFilter string, offset, limit int) machineList {
+	list := machineList{Available: true, Query: strings.TrimSpace(query), Sort: sortBy, Total: len(book), Offset: offset, Limit: limit}
+	if list.Offset < 0 {
+		list.Offset = 0
+	}
 	if _, ok := machineSorts[list.Sort]; !ok {
 		list.Sort = "last"
 	}
@@ -173,6 +185,22 @@ func buildMachineList(book []MachineInfo, query, sortBy string, rules macRules, 
 		}
 		return list.Rows[i].MAC < list.Rows[j].MAC
 	})
+	list.TotalMatches = len(list.Rows)
+	if list.Limit > 0 {
+		if list.Offset < len(list.Rows) {
+			end := list.Offset + list.Limit
+			if end > len(list.Rows) {
+				end = len(list.Rows)
+			}
+			list.Rows = list.Rows[list.Offset:end]
+		} else {
+			list.Rows = nil
+		}
+		if list.Offset+len(list.Rows) < list.TotalMatches {
+			list.HasMore = true
+			list.NextOffset = list.Offset + len(list.Rows)
+		}
+	}
 	return list
 }
 
@@ -241,6 +269,10 @@ func (s *Server) refreshedBook(ctx context.Context) ([]MachineInfo, bool) {
 
 // machinesPage lists every machine in the book with search and sorting.
 func (s *Server) machinesPage(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("partial") == "1" {
+		render(w, "machine_rows_partial", s.machinesData(r))
+		return
+	}
 	render(w, "machines", s.machinesData(r))
 }
 
@@ -248,13 +280,18 @@ func (s *Server) machinesPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) machinesData(r *http.Request) pageData {
 	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), Form: pageForm(r)}
 	q := r.URL.Query()
+	offset := 0
+	if v, err := strconv.Atoi(q.Get("offset")); err == nil && v >= 0 {
+		offset = v
+	}
+	const limit = 50
 	machines, ok := s.refreshedBook(r.Context())
 	if ok {
-		list := buildMachineList(machines, q.Get("q"), q.Get("sort"), s.macRules(r.Context()), q.Get("rule"))
+		list := buildMachineList(machines, q.Get("q"), q.Get("sort"), s.macRules(r.Context()), q.Get("rule"), offset, limit)
 		_, list.HasRules = s.Store.(MacRuleBook)
 		data.MachineList = &list
 	} else {
-		data.MachineList = &machineList{Query: q.Get("q")}
+		data.MachineList = &machineList{Query: q.Get("q"), Offset: offset, Limit: limit}
 	}
 	role := data.Info.User.Role
 	data.MachineList.CanEdit = ok && Allowed(role, "images")

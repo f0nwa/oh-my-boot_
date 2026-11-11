@@ -59,7 +59,7 @@ func TestMachinePageRendersTimelineAndSessions(t *testing.T) {
 	}
 	data.SessionIndex = 1
 	body := renderPage("machine", data)
-	for _, want := range []string{`class="outcome outcome-ok"`, "Получила файлы установки · Win11 VirtIO", `href="/events/machines/52:54:00:b2:44:0d?boot=0"`, `?boot=1" class="active"`, `href="/events?tab=dhcp&mac=52%3a54%3a00%3ab2%3a44%3a0d"`} {
+	for _, want := range []string{`class="outcome outcome-ok"`, "Получила файлы установки · Win11 VirtIO", `class="mono boots-count">3</strong>`, `href="/events/machines/52:54:00:b2:44:0d?boot=0"`, `?boot=1" class="active"`, `href="/events?tab=dhcp&mac=52%3a54%3a00%3ab2%3a44%3a0d"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("machine page lacks %q: %s", want, body)
 		}
@@ -68,6 +68,11 @@ func TestMachinePageRendersTimelineAndSessions(t *testing.T) {
 	if body := renderPage("machine", data); !strings.Contains(body, `class="outcome outcome-bad"`) || !strings.Contains(body, `class="timeline-step failed"`) || !strings.Contains(body, "TFTP не отдал загрузчик") {
 		t.Fatalf("failed boot: %s", body)
 	}
+	data.Machines[0].Boots = 0
+	if body := renderPage("machine", data); !strings.Contains(body, `<span class="mono muted">0</span>`) {
+		t.Fatalf("zero boots should be muted, got: %s", body)
+	}
+	data.Machines[0].Boots = 3
 	data.Lang = langEN
 	if found := cyrillic.FindAllString(renderPage("machine", data), 5); len(found) > 0 {
 		t.Fatalf("English machine page has Russian text: %v", found)

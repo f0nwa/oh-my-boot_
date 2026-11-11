@@ -60,6 +60,10 @@ type pageData struct {
 	AgentOK               bool
 	EventError            string
 	Events                []boot.Event
+	EventsHasMore         bool
+	EventsNextTime        string
+	EventsNextID          int64
+	EventsNextOffset      int
 	Audit                 []AuditEvent
 	Users                 []User
 	Network               network.Config

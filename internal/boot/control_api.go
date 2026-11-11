@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type EventReader interface {
 	Recent(limit int) ([]Event, error)
+	RecentPaged(limit int, beforeTime *time.Time, beforeID int64, mac string) ([]Event, error)
 }
 
 // ControlHandler is served only over a permission-restricted Unix socket.
@@ -98,7 +100,7 @@ func controlMux(p *Publisher, events EventReader, transfers *Transfers, assets *
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			n, err := strconv.Atoi(raw)
 			if err != nil || n < 1 {
-				http.Error(w, "invalid limit", 400)
+				http.Error(w, "invalid limit", http.StatusBadRequest)
 				return
 			}
 			limit = n
@@ -106,9 +108,31 @@ func controlMux(p *Publisher, events EventReader, transfers *Transfers, assets *
 		if limit > 1000 {
 			limit = 1000
 		}
-		rows, err := events.Recent(limit)
+		var beforeTime *time.Time
+		if raw := r.URL.Query().Get("before_time"); raw != "" {
+			t, err := time.Parse(time.RFC3339Nano, raw)
+			if err != nil {
+				t, err = time.Parse(time.RFC3339, raw)
+			}
+			if err != nil {
+				http.Error(w, "invalid before_time", http.StatusBadRequest)
+				return
+			}
+			beforeTime = &t
+		}
+		var beforeID int64
+		if raw := r.URL.Query().Get("before_id"); raw != "" {
+			id, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || id < 0 {
+				http.Error(w, "invalid before_id", http.StatusBadRequest)
+				return
+			}
+			beforeID = id
+		}
+		mac := strings.TrimSpace(r.URL.Query().Get("mac"))
+		rows, err := events.RecentPaged(limit, beforeTime, beforeID, mac)
 		if err != nil {
-			http.Error(w, "event store unavailable", 503)
+			http.Error(w, "event store unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

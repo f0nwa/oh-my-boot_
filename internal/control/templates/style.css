@@ -309,8 +309,9 @@ td small{display:block}
 .inspector-head{display:flex;justify-content:space-between;gap:8px;font-size:12px}
 .inspector form{margin:0}.inspector label{margin-top:12px}
 .inspector .kv{grid-template-columns:110px minmax(0,1fr)}
+.inspector .kv dd{min-width:0;overflow-wrap:anywhere}
 .inspector-actions{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px}
-.inspector-actions button{margin:0}.inspector-remove{margin-left:auto}
+.inspector-actions button{margin:0;border-color:var(--line-strong)}.inspector-remove{margin-left:auto}
 button[disabled]{opacity:.45;cursor:default}
 
 /* «Сейчас» */

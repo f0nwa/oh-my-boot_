@@ -65,5 +65,22 @@ func (s *Server) checkUbuntuReadiness(ctx context.Context) error {
 	if checker == nil {
 		checker = HTTPUbuntuReadiness{BaseURL: s.BootBaseURL}
 	}
-	return checker.Check(ctx)
+	err := checker.Check(ctx)
+	s.ubuntuCacheMu.Lock()
+	cache := s.ubuntuCache
+	s.ubuntuCacheMu.Unlock()
+	if cache != nil {
+		cache.Update(err)
+	}
+	return err
+}
+
+func (s *Server) checkUbuntuReadinessCached(ctx context.Context) error {
+	s.ubuntuCacheMu.Lock()
+	if s.ubuntuCache == nil {
+		s.ubuntuCache = newUbuntuReadinessCache(30*time.Second, 150*time.Millisecond)
+	}
+	cache := s.ubuntuCache
+	s.ubuntuCacheMu.Unlock()
+	return cache.Check(ctx, s.checkUbuntuReadiness)
 }

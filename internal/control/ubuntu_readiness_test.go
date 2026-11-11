@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"omb/internal/boot"
 )
@@ -176,5 +177,58 @@ func TestUbuntuReadinessDoesNotBlockWindowsOnlyMenu(t *testing.T) {
 	res := menuPost(t, s, "/menu/publish", url.Values{})
 	if res.Code != http.StatusSeeOther || len(*published) != 1 {
 		t.Fatalf("Windows menu blocked: %d", res.Code)
+	}
+}
+
+func TestUbuntuReadinessSlowBootDoesNotBlockInstallationsPages(t *testing.T) {
+	slowBoot := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "ubuntu-desktop.iso") {
+			time.Sleep(3 * time.Second)
+		}
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Length", "1024")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Error(w, "HEAD required", http.StatusMethodNotAllowed)
+	}))
+	defer slowBoot.Close()
+
+	s, store := newInstallServer(t)
+	s.BootBaseURL = slowBoot.URL
+	s.UbuntuReadiness = nil
+	store.installations = []Installation{{ID: 100, BootProfileID: 52, Title: "Existing Ubuntu"}}
+
+	start := time.Now()
+	res := libraryGet(t, s, "/installations")
+	d1 := time.Since(start)
+	if !strings.Contains(res, "Existing Ubuntu") {
+		t.Fatalf("GET /installations missing existing installation")
+	}
+	if d1 >= 250*time.Millisecond {
+		t.Fatalf("GET /installations took %v, expected < 250ms", d1)
+	}
+
+	start = time.Now()
+	resNew := libraryGet(t, s, "/installations/new?boot_profile_id=52")
+	d2 := time.Since(start)
+	if !strings.Contains(resNew, `value="52"`) {
+		t.Fatalf("GET /installations/new missing profile 52")
+	}
+	if d2 >= 250*time.Millisecond {
+		t.Fatalf("GET /installations/new took %v, expected < 250ms", d2)
+	}
+
+	start = time.Now()
+	postRes := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"52"}, "title": {"New Ubuntu Lab"}})
+	d3 := time.Since(start)
+	if postRes.Code != http.StatusSeeOther {
+		t.Fatalf("POST /installations status=%d body=%s", postRes.Code, postRes.Body.String())
+	}
+	if d3 < 2500*time.Millisecond {
+		t.Fatalf("POST /installations took %v, expected >= 2.5s (strict check)", d3)
+	}
+	if len(store.installations) != 2 {
+		t.Fatalf("expected 2 installations, got %d", len(store.installations))
 	}
 }

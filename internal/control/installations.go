@@ -337,7 +337,7 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 			}
 		}
 		if !checked {
-			problem = s.checkUbuntuReadiness(ctx)
+			problem = s.checkUbuntuReadinessCached(ctx)
 			checked = true
 		}
 		if problem != nil {

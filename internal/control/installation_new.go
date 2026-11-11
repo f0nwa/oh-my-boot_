@@ -100,7 +100,7 @@ func (s *Server) bootProfileChoices(ctx context.Context, shared []BootProfile, w
 				choice.Path = profile.Title
 			}
 			if !ubuntuChecked {
-				ubuntuProblem = s.checkUbuntuReadiness(ctx)
+				ubuntuProblem = s.checkUbuntuReadinessCached(ctx)
 				ubuntuChecked = true
 			}
 			if ubuntuProblem != nil {
@@ -299,6 +299,12 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if shared.Kind == BootProfileUbuntuBuiltin {
+		if err := s.checkUbuntuReadiness(r.Context()); err != nil {
+			http.Error(w, fmt.Sprintf("Источник загрузки недоступен: %s", err.Error()), http.StatusBadRequest)
+			return
+		}
 	}
 	editID := int64(0)
 	var previous Installation

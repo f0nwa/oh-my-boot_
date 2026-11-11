@@ -159,6 +159,8 @@ type Server struct {
 	bookCache         machineBookCache
 	machineImports    *machineImportStash
 	windowsMu         sync.Mutex
+	ubuntuCacheMu     sync.Mutex
+	ubuntuCache       *ubuntuReadinessCache
 }
 
 type requestContext struct {

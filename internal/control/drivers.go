@@ -84,6 +84,7 @@ func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver.import", "ok", inventory.SHA256)
+	s.InvalidateResourceAuthorsCache()
 	http.Redirect(w, r, "/drivers?message=Пакет+драйвера+добавлен", http.StatusSeeOther)
 }
 

@@ -162,6 +162,7 @@ type Server struct {
 	windowsMu         sync.Mutex
 	ubuntuCacheMu     sync.Mutex
 	ubuntuCache       *ubuntuReadinessCache
+	authorsCache      resourceAuthorsCache
 }
 
 type requestContext struct {
@@ -190,6 +191,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
 	mux.HandleFunc("GET /assets/infinite-scroll.js", infiniteScrollScript)
+	mux.HandleFunc("GET /assets/async-block.js", asyncBlockScript)
 	mux.HandleFunc("GET /assets/account.js", accountScript)
 	mux.HandleFunc("GET /assets/style.css", stylesheet)
 	mux.HandleFunc("GET /assets/fonts/{name}", fontFile)
@@ -242,6 +244,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /network/preview", s.protect("network", s.networkPreview))
 	mux.HandleFunc("POST /network/apply", s.protect("network", s.networkApply))
 	mux.HandleFunc("GET /menu", s.protect("view", s.menuPage))
+	mux.HandleFunc("GET /menu/versions", s.protect("view", s.menuVersions))
 	mux.HandleFunc("POST /menu/publish", s.protect("menu", withPageErrors(s.menuPage, s.menuPublish)))
 	mux.HandleFunc("POST /menu/rollback", s.protect("menu", withPageErrors(s.menuPage, s.menuRollback)))
 	mux.HandleFunc("POST /menu/local-timer", s.protect("menu", withPageErrors(s.menuPage, s.menuLocalTimer)))

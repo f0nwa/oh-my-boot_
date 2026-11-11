@@ -160,6 +160,7 @@ func (s *Server) saveWindowsAnswer(r *http.Request, profileID int64, title, fold
 		detail += " editor=1"
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.create", "ok", detail)
+	s.InvalidateResourceAuthorsCache()
 	variant.State = "ready"
 	return variant, 0, ""
 }

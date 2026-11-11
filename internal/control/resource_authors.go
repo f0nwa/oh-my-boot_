@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,7 +20,90 @@ type ResourceAuthors struct {
 	Drivers         map[string]string
 }
 
+func (a ResourceAuthors) clone() ResourceAuthors {
+	out := ResourceAuthors{
+		Installations:   make(map[int64]string, len(a.Installations)),
+		Answers:         make(map[int64]string, len(a.Answers)),
+		Images:          make(map[string]string, len(a.Images)),
+		ImageUploadedAt: make(map[string]time.Time, len(a.ImageUploadedAt)),
+		Drivers:         make(map[string]string, len(a.Drivers)),
+	}
+	for k, v := range a.Installations {
+		out.Installations[k] = v
+	}
+	for k, v := range a.Answers {
+		out.Answers[k] = v
+	}
+	for k, v := range a.Images {
+		out.Images[k] = v
+	}
+	for k, v := range a.ImageUploadedAt {
+		out.ImageUploadedAt[k] = v
+	}
+	for k, v := range a.Drivers {
+		out.Drivers[k] = v
+	}
+	return out
+}
+
+type resourceAuthorsCache struct {
+	mu      sync.RWMutex
+	data    ResourceAuthors
+	expires time.Time
+	valid   bool
+}
+
+var defaultResourceAuthorsCache resourceAuthorsCache
+
+const resourceAuthorsTTL = 60 * time.Second
+
+func (c *resourceAuthorsCache) get(now time.Time) (ResourceAuthors, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.valid && now.Before(c.expires) {
+		return c.data.clone(), true
+	}
+	return ResourceAuthors{}, false
+}
+
+func (c *resourceAuthorsCache) set(authors ResourceAuthors, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data = authors.clone()
+	c.expires = now.Add(resourceAuthorsTTL)
+	c.valid = true
+}
+
+func (c *resourceAuthorsCache) invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.valid = false
+	c.data = ResourceAuthors{}
+	c.expires = time.Time{}
+}
+
+// InvalidateResourceAuthorsCache clears the cached ResourceAuthors on the server.
+func (s *Server) InvalidateResourceAuthorsCache() {
+	if s != nil {
+		s.authorsCache.invalidate()
+	}
+	defaultResourceAuthorsCache.invalidate()
+}
+
+// InvalidateResourceAuthorsCache invalidates the global default ResourceAuthors cache.
+func InvalidateResourceAuthorsCache() {
+	defaultResourceAuthorsCache.invalidate()
+}
+
 func (s *Server) resourceAuthors(ctx context.Context) ResourceAuthors {
+	if s == nil {
+		return ResourceAuthors{}
+	}
+	now := time.Now()
+	if cached, ok := s.authorsCache.get(now); ok {
+		return cached
+	}
+
 	store, ok := s.Store.(interface {
 		ResourceAuthors(context.Context) (ResourceAuthors, error)
 	})
@@ -30,7 +114,8 @@ func (s *Server) resourceAuthors(ctx context.Context) ResourceAuthors {
 	if err != nil {
 		return ResourceAuthors{}
 	}
-	return authors
+	s.authorsCache.set(authors, now)
+	return authors.clone()
 }
 
 func imageAuthorKey(storageID int64, path string) string {

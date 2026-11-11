@@ -94,6 +94,7 @@ func (s *Server) imagesUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.upload", "ok", strconv.FormatInt(storage.ID, 10)+" "+result.Path+" "+result.SHA256)
+	s.InvalidateResourceAuthorsCache()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusCreated)

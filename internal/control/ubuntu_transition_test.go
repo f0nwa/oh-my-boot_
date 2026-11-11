@@ -336,7 +336,7 @@ func TestMenuExplainsUnverifiedLegacyUbuntuSource(t *testing.T) {
 	store := newDraftStore(t, "operator", nil)
 	store.versions = []MenuVersion{{ID: 45, Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Script: "#!ipxe\nchain http://boot/images/ubuntu-desktop.iso\n", Items: []MenuVersionItem{}}}
 	s, _ := draftServer(t, store)
-	body := libraryGet(t, s, "/menu")
+	body := libraryGet(t, s, "/menu/versions")
 	if !strings.Contains(body, "Источник Ubuntu не подтверждён") {
 		t.Fatal("menu history does not explain the unverified legacy source")
 	}

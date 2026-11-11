@@ -49,7 +49,7 @@ func TestDraftBarOpensChangesInsteadOfReloadingMenu(t *testing.T) {
 	res = httptest.NewRecorder()
 	render(res, "menu", data)
 	body := res.Body.String()
-	if strings.Contains(body, `href="/menu#menu-changes"`) || !strings.Contains(body, `id="menu-changes" open`) {
+	if strings.Contains(body, `href="/menu#menu-changes"`) || !strings.Contains(body, `id="menu-changes"`) {
 		t.Fatal("menu page should show the expanded change list without a reload link")
 	}
 }

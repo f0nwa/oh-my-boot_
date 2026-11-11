@@ -1,8 +1,10 @@
 package control
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +12,19 @@ import (
 	"omb/internal/agent"
 	"omb/internal/boot"
 )
+
+func testBootClient(t *testing.T, handler http.Handler) *BootClient {
+	t.Helper()
+	socket := filepath.Join(t.TempDir(), "boot.sock")
+	ln, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: handler}
+	go srv.Serve(ln)
+	t.Cleanup(func() { _ = srv.Close() })
+	return NewBootClient(socket)
+}
 
 func TestMachineSessionsSplitBootsAndNameOutcome(t *testing.T) {
 	t0 := time.Date(2026, 10, 20, 22, 47, 0, 0, time.UTC)
@@ -96,5 +111,67 @@ func TestMachinePageRejectsBadMACAndLinksFromEvents(t *testing.T) {
 	data.Machines = []machineRow{{MAC: "bc:24:11:04:2a:ed", LastSeen: time.Now()}}
 	if body := renderPage("events", data); !strings.Contains(body, `href="/events/machines/bc:24:11:04:2a:ed"`) {
 		t.Fatalf("events page does not link machines: %s", body)
+	}
+}
+
+func TestMachinePageTargetedBootEvents(t *testing.T) {
+	var requestedMAC string
+	var requestedLimit string
+	bootSrv := testBootClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedMAC = r.URL.Query().Get("mac")
+		requestedLimit = r.URL.Query().Get("limit")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]\n"))
+	}))
+
+	s := &Server{
+		Store: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
+		Boot:  bootSrv,
+	}
+
+	targetMAC := "52:54:00:b2:44:0d"
+	body := libraryGet(t, s, "/events/machines/"+targetMAC)
+	if requestedMAC != targetMAC {
+		t.Fatalf("expected Boot to be queried with mac=%q, got %q", targetMAC, requestedMAC)
+	}
+	if requestedLimit != "500" {
+		t.Fatalf("expected Boot to be queried with limit=500, got %q", requestedLimit)
+	}
+	if !strings.Contains(body, targetMAC) {
+		t.Fatalf("body should contain target MAC: %s", body)
+	}
+}
+
+func TestMachinePageHasNoDetails(t *testing.T) {
+	data := samplePageData(langRU)
+	data.MACFilter = "52:54:00:b2:44:0d"
+	data.Machine = &machineCard{
+		MachineInfo: MachineInfo{
+			MAC:                  data.MACFilter,
+			Name:                 "Тестовая машина",
+			Manufacturer:         "QEMU",
+			Product:              "Standard PC",
+			ManufacturerOverride: "OMB Maker",
+			ProductOverride:      "OMB Model",
+			Note:                 "Заметка тестовой машины",
+		},
+		Known: true,
+	}
+	body := renderPage("machine", data)
+	if strings.Contains(body, "<details") || strings.Contains(body, "</details>") {
+		t.Fatalf("machine page must not contain <details>: %s", body)
+	}
+	if strings.Contains(body, "<summary") || strings.Contains(body, "</summary>") {
+		t.Fatalf("machine page must not contain <summary>: %s", body)
+	}
+	for _, want := range []string{
+		`id="machine-edit-dialog"`,
+		`id="machine-delete-dialog"`,
+		"data-machine-edit-open",
+		"data-machine-delete-open",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("machine page lacks %q: %s", want, body)
+		}
 	}
 }

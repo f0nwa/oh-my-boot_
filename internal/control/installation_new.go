@@ -547,6 +547,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "installation.create", "ok", fmt.Sprintf("install_%d", item.ID))
+	s.InvalidateResourceAuthorsCache()
 	// The menu lock is released before slow systemd/WIM work; a saved failed
 	// entry remains editable and retryable, and publishing still checks readiness.
 	s.draftMu.Unlock()

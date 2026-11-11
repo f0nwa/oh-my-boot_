@@ -253,7 +253,7 @@ func TestMenuHistoryMarksDeletedRecordUnavailable(t *testing.T) {
 		{ID: 8, Active: true, Script: "#!ipxe\n", Title: "Current"},
 	}}
 	server := &Server{Store: store}
-	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
+	req := httptest.NewRequest(http.MethodGet, "/menu/versions", nil)
 	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	server.Handler().ServeHTTP(res, req)
@@ -308,7 +308,7 @@ func TestMenuHistoryShowsVersionNumberAndTimeZone(t *testing.T) {
 		{ID: 21, At: time.Date(2026, 10, 19, 21, 23, 0, 0, msk), Script: "#!ipxe\n", Title: "Old"},
 		{ID: 25, Active: true, At: time.Date(2026, 10, 19, 23, 17, 0, 0, msk), Script: "#!ipxe\n", Title: "Current"},
 	}}
-	req := httptest.NewRequest(http.MethodGet, "/menu", nil)
+	req := httptest.NewRequest(http.MethodGet, "/menu/versions", nil)
 	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)

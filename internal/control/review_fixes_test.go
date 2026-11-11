@@ -77,8 +77,8 @@ func TestPendingAddCanBeDroppedFromChanges(t *testing.T) {
 	store.draft = &MenuDraft{Title: "oh my boot_", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 1017, Title: "Windows 11"}, {InstallationID: 2031, Title: "Lab"}}}
 	s, _ := draftServer(t, store)
 	body := libraryGet(t, s, "/menu")
-	i := strings.Index(body, `class="menu-changes"`)
-	j := i + strings.Index(body[max(i, 0):], "</details>")
+	i := strings.Index(body, `id="menu-changes"`)
+	j := i + strings.Index(body[max(i, 0):], "</ul></div>")
 	if i < 0 || j < i || !strings.Contains(body[i:j], `action="/menu/items/install_2031/remove"`) {
 		t.Fatalf("pending block lacks per-row remove: %s", body)
 	}

@@ -71,6 +71,7 @@ type pageData struct {
 	Confirmation          string
 	HasNetwork            bool
 	Versions              []menuVersionRow
+	VersionsCount         int
 	Draft                 MenuDraft
 	DraftRows             []menuDraftRow
 	Changes               []MenuChange

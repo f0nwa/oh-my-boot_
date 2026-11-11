@@ -313,6 +313,18 @@ func stepStage(step machineStep) string {
 	return ""
 }
 
+// filterDHCPByMAC filters DHCP and TFTP events down to the specified MAC address.
+func filterDHCPByMAC(dhcp []agent.DHCPEvent, mac string) []agent.DHCPEvent {
+	mac = strings.ToLower(mac)
+	var out []agent.DHCPEvent
+	for _, e := range dhcp {
+		if strings.ToLower(e.MAC) == mac {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // machinePage shows one machine: where its boots stopped and every step of
 // the selected attempt.
 func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
@@ -325,7 +337,7 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 	var httpEvents []boot.Event
 	if s.Boot == nil {
 		data.EventError = "Служба Boot недоступна"
-	} else if v, err := s.Boot.Events(r.Context(), 1000); err != nil {
+	} else if v, err := s.Boot.EventsPaged(r.Context(), 500, nil, 0, mac); err != nil {
 		data.EventError = "Журнал временно недоступен"
 	} else {
 		httpEvents = v
@@ -341,13 +353,16 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 	names := s.menuNames(r.Context())
 	now := time.Now()
 	install := s.loadInstallLog(r.Context(), httpEvents)
-	rows := machineRowsWith(httpEvents, dhcp, install, names, now)
+	resolvedDHCP := resolveDHCPMACs(dhcp, httpEvents)
+	macDHCP := filterDHCPByMAC(resolvedDHCP, mac)
+	rows := machineRowsWith(httpEvents, macDHCP, install, names, now)
 	book := s.machineBook(r.Context(), rows, httpEvents)
 	rules := s.macRules(r.Context())
 	describeMachines(rows, book, rules)
 	for _, row := range rows {
 		if row.MAC == mac {
 			data.Machines = []machineRow{row}
+			break
 		}
 	}
 	if book != nil {
@@ -363,7 +378,7 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Machine = &machineCard{MachineInfo: info, Known: known, Label: machineLabel(&info, mac), EffectiveDriver: effectiveNetworkDriver(info, rules, defaultDriver)}
 	}
-	data.Sessions = machineSessionsWith(mac, httpEvents, dhcp, install, names, now)
+	data.Sessions = machineSessionsWith(mac, httpEvents, macDHCP, install, names, now)
 	if len(data.Machines) == 1 && len(data.Sessions) > 0 {
 		attachDownloads(data.Machines, s.bootTransfers(r.Context()), now)
 		data.Sessions[0].Download = data.Machines[0].Download

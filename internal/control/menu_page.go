@@ -37,6 +37,13 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать версии меню", 500)
 		return
 	}
+	data.VersionsCount = len(versions)
+	for _, version := range versions {
+		if version.Active {
+			data.ActiveVersion = version.ID
+			break
+		}
+	}
 	profiles, answers, configs, err := s.menuSources(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -47,17 +54,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 503)
 		return
 	}
-	for _, version := range versions {
-		row := menuVersionRow{MenuVersion: version, Restorable: menuVersionRestorable(version, sources, profiles, answers, configs)}
-		if legacyUbuntuMenuWithoutSource(version, sources) {
-			row.UnrestorableReason = "Источник Ubuntu не подтверждён"
-		}
-		data.Versions = append(data.Versions, row)
-		if version.Active {
-			data.ActiveVersion = version.ID
-		}
-	}
-	draft, active, err := s.currentDraft(r.Context())
+	draft, active, err := s.currentDraftFromVersions(r.Context(), versions)
 	if err != nil {
 		http.Error(w, "Не удалось прочитать черновик меню", 500)
 		return
@@ -77,6 +74,36 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installationRows(profiles, answers, configs, draft, active, sources), profiles, answers, configs, key, screen, sources)
 	render(w, "menu", data)
+}
+
+func (s *Server) menuVersions(w http.ResponseWriter, r *http.Request) {
+	versions, err := s.Store.MenuVersions(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать версии меню", 500)
+		return
+	}
+	profiles, answers, configs, err := s.menuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	sources, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), 503)
+		return
+	}
+	data := pageData{Info: requestInfo(r)}
+	for _, version := range versions {
+		row := menuVersionRow{MenuVersion: version, Restorable: menuVersionRestorable(version, sources, profiles, answers, configs)}
+		if legacyUbuntuMenuWithoutSource(version, sources) {
+			row.UnrestorableReason = "Источник Ubuntu не подтверждён"
+		}
+		data.Versions = append(data.Versions, row)
+		if version.Active {
+			data.ActiveVersion = version.ID
+		}
+	}
+	render(w, "menu_versions_table", data)
 }
 
 func menuDraftRows(draft MenuDraft, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, sources InstallationMenuSources) []menuDraftRow {

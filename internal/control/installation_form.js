@@ -49,8 +49,20 @@
       input.disabled = !own;
       if (!own && input.checked) form.querySelector('input[name="answer_id"][value="0"]').checked = true;
     });
+    function filterAnswers(name, searchID, eligible) {
+      var search = document.getElementById(searchID);
+      var items = Array.from(form.querySelectorAll('input[name="' + name + '"]')).filter(function (input) { return input.value !== "0" && eligible(input); });
+      search.hidden = items.length <= 10;
+      var query = search.hidden ? "" : search.value.trim().toLocaleLowerCase();
+      items.forEach(function (input) {
+        input.closest("label").hidden = !!query && !input.dataset.title.toLocaleLowerCase().includes(query) && !input.checked;
+      });
+    }
+    filterAnswers("answer_id", "windows-answer-search", function (input) { return !input.disabled; });
+    filterAnswers("autoinstall_id", "ubuntu-answer-search", function () { return true; });
+    text("menu-step-no", windows ? "4" : winpe ? "3" : !ubuntu.hidden ? "3" : "2");
     var answer = windows ? checked("answer_id") : null;
-    var autoinstall = !windows && !ubuntu.disabled ? document.getElementById("i-autoinstall").selectedOptions[0] : null;
+    var autoinstall = !ubuntu.disabled ? checked("autoinstall_id") : null;
     if (!titleEdited) {
       var base = answer && answer.value !== "0" ? answer : profile;
       title.value = base ? base.dataset.title : "";

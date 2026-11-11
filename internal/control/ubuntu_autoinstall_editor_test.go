@@ -400,3 +400,19 @@ func TestUbuntuConstructorPostgreSQL(t *testing.T) {
 		}
 	}
 }
+
+func TestInstallationAutomationUsesRadioChoices(t *testing.T) {
+	s, store := autoinstallServer(t)
+	file := testAutoinstallFile(t, "lab")
+	file.ID = 1
+	store.files = []UbuntuAutoinstallFile{file}
+	body := libraryGet(t, s, "/installations/new?boot_profile_id=52")
+	for _, want := range []string{`name="autoinstall_id" value="0" checked`, `name="autoinstall_id" value="1"`, `id="ubuntu-step-no">2`, `id="menu-step-no">3`, `id="ubuntu-answer-search"`, `id="windows-answer-search"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("form lacks %q", want)
+		}
+	}
+	if strings.Contains(body, `<select id="i-autoinstall"`) {
+		t.Error("Ubuntu automation remains a select")
+	}
+}

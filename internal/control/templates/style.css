@@ -686,6 +686,8 @@ a.machine-name-accent:hover{text-decoration:underline}
 .user-dialog-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .user-dialog-head h2{margin:0}
 .menu-versions-dialog{width:min(860px,calc(100vw - 32px))}
+.menu-versions-dialog th,.menu-versions-dialog td{padding:10px 8px}
+.menu-versions-dialog td:nth-child(4){white-space:nowrap}
 .driver-package-dialog{width:min(720px,calc(100vw - 32px))}
 .driver-package-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
 #menu-versions-content .search-spinner{position:static;display:inline-block;vertical-align:middle;margin:0 4px 0 0;width:14px;height:14px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;opacity:1;pointer-events:auto;animation:search-spin .7s linear infinite}

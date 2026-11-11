@@ -141,6 +141,22 @@ func TestMenuVersionsEndpoint(t *testing.T) {
 	}
 }
 
+func TestMenuVersionsShowsCompactSHA(t *testing.T) {
+	digest := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	store := &menuVersionsMockStore{
+		authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
+		versions:      []MenuVersion{{ID: 1, Title: "OMB Menu", SHA256: digest, At: time.Now(), Items: []MenuVersionItem{}}},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/menu/versions", nil)
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	body := res.Body.String()
+	if res.Code != http.StatusOK || !strings.Contains(body, `title="`+digest+`"`) || !strings.Contains(body, `0123…cdef`) {
+		t.Fatalf("expected compact SHA with full value in title: status %d, body %s", res.Code, body)
+	}
+}
+
 func TestMenuPageHasNoDetails(t *testing.T) {
 	data := samplePageData(langRU)
 	data.Changes = []MenuChange{

@@ -179,6 +179,12 @@ func parsePages(lang string) *template.Template {
 		"usedPercent": usedPercent,
 		"usedBytes":   func(total, free int64) int64 { return max(total-free, 0) },
 		"join":        joinStrings,
+		"shortSHA": func(s string) string {
+			if len(s) <= 8 {
+				return s
+			}
+			return s[:4] + "…" + s[len(s)-4:]
+		},
 	}).ParseFS(templateFS, "templates/*.html"))
 }
 

@@ -175,3 +175,15 @@ func TestMachinePageHasNoDetails(t *testing.T) {
 		}
 	}
 }
+
+func TestMachinePageLoadsDialogScriptUnderCSP(t *testing.T) {
+	data := samplePageData(langRU)
+	data.MACFilter = "52:54:00:b2:44:0d"
+	body := renderPage("machine", data)
+	if !strings.Contains(body, `src="/assets/machine-page.js"`) {
+		t.Fatal("machine page must load dialog handlers from a same-origin script allowed by CSP")
+	}
+	if strings.Contains(body, "<script>\n(function()") {
+		t.Fatal("machine page must not use inline dialog handlers blocked by CSP")
+	}
+}

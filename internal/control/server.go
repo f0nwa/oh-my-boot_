@@ -234,6 +234,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /machines/{mac}", s.protect("images", withPageErrors(s.machinesPage, s.machineTableEdit)))
 	mux.HandleFunc("POST /machines/{mac}/delete", s.protect("delete", withPageErrors(s.machinesPage, s.machineTableDelete)))
 	mux.HandleFunc("GET /assets/machines.js", machinesScript)
+	mux.HandleFunc("GET /assets/machine-page.js", machinePageScript)
 	mux.HandleFunc("GET /machines.csv", s.protect("view", s.machinesCSV))
 	mux.HandleFunc("POST /machine-rules", s.protect("images", withPageErrors(s.machinesPage, s.macRuleAdd)))
 	mux.HandleFunc("POST /machine-rules/{prefix}", s.protect("images", withPageErrors(s.machinesPage, s.macRuleEdit)))

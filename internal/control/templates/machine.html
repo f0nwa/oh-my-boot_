@@ -9,36 +9,7 @@
 {{else}}<p class="muted">{{t "Записей об этой машине пока нет."}}</p>{{end}}
 {{if ne $.Info.User.Role "observer"}}<dialog id="machine-edit-dialog" class="user-dialog"><h2>{{t "Изменить имя и модель"}}</h2><form method="post" action="/events/machines/{{.MACFilter}}/edit" class="machine-form"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><label for="m-name">{{t "Своё имя"}}</label><input id="m-name" name="name" value="{{with .Machine}}{{.Name}}{{end}}" maxlength="80" placeholder="{{t "например, бухгалтерия-3"}}"><label for="m-maker">{{t "Производитель"}}</label><input id="m-maker" name="manufacturer" value="{{with .Machine}}{{.ManufacturerOverride}}{{end}}" maxlength="120" placeholder="{{with .Machine}}{{if .Manufacturer}}{{.Manufacturer}}{{else}}{{t "как сообщит машина"}}{{end}}{{end}}"><label for="m-model">{{t "Модель"}}</label><input id="m-model" name="product" value="{{with .Machine}}{{.ProductOverride}}{{end}}" maxlength="120" placeholder="{{with .Machine}}{{if .Product}}{{.Product}}{{else}}{{t "как сообщит машина"}}{{end}}{{end}}"><label for="m-note">{{t "Заметка"}}</label><textarea id="m-note" name="note" maxlength="500" rows="3">{{with .Machine}}{{.Note}}{{end}}</textarea><p class="hint">{{t "Пустые поля производителя и модели — значит, как сообщила машина."}}</p><div class="user-dialog-actions"><button type="button" class="btn btn-ghost" data-close-dialog>{{t "Отмена"}}</button><button class="btn btn-primary">{{t "Сохранить"}}</button></div></form></dialog>{{end}}
 {{if and .Machine .Machine.Known (eq $.Info.User.Role "admin")}}<dialog id="machine-delete-dialog" class="user-dialog"><h2>{{t "Удалить машину из списка"}}</h2><p>{{t "Имя, заметка и сведения о модели будут удалены. Если машина снова загрузится по сети, она появится в списке без имени."}}</p><form method="post" action="/events/machines/{{.MACFilter}}/delete" class="machine-form"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><div class="user-dialog-actions user-dialog-actions-split"><button type="button" class="btn btn-ghost" data-close-dialog>{{t "Отмена"}}</button><button class="btn btn-danger">{{t "Удалить"}}</button></div></form></dialog>{{end}}
-<script>
-(function() {
-  function setupDialog(triggerSelector, dialogId) {
-    var btn = document.querySelector(triggerSelector);
-    var dlg = document.getElementById(dialogId);
-    if (!btn || !dlg) return;
-    btn.addEventListener('click', function() {
-      if (typeof dlg.showModal === 'function') dlg.showModal();
-      else dlg.setAttribute('open', '');
-    });
-    dlg.querySelectorAll('[data-close-dialog]').forEach(function(c) {
-      c.addEventListener('click', function() {
-        if (typeof dlg.close === 'function') dlg.close();
-        else dlg.removeAttribute('open');
-      });
-    });
-    dlg.addEventListener('click', function(e) {
-      if (e.target === dlg && typeof dlg.close === 'function') dlg.close();
-    });
-  }
-  setupDialog('[data-machine-edit-open]', 'machine-edit-dialog');
-  setupDialog('[data-machine-delete-open]', 'machine-delete-dialog');
-  var retry = document.querySelector('[data-events-retry]');
-  if (retry) {
-    retry.addEventListener('click', function() {
-      window.location.reload();
-    });
-  }
-})();
-</script>
+<script defer src="/assets/machine-page.js"></script>
 {{template "bottom" .}}{{end}}
 
 {{define "networkDriverOptions"}}<option value="" {{if eq . ""}}selected{{end}}>{{t "как у всех"}}</option><option value="ipxe" {{if eq . "ipxe"}}selected{{end}}>iPXE</option><option value="snp" {{if eq . "snp"}}selected{{end}}>{{t "прошивки (snponly)"}}</option>{{end}}

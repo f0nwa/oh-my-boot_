@@ -719,3 +719,17 @@ a.machine-name-accent:hover{text-decoration:underline}
 .async-block-error .error{color:var(--bad-text);font-weight:500}
 .async-block-error .btn{margin:0;padding:4px 12px;min-height:28px;font-size:13px}
 @media (prefers-reduced-motion:reduce){.async-block-loading .search-spinner{animation:none;border-color:var(--accent)}}
+
+/* Driver dependencies and library cleanup */
+.driver-config-table .driver-actions{width:1%;text-align:right;white-space:nowrap;vertical-align:middle}
+.driver-config-table .driver-actions>button,.driver-package-actions>button{margin-top:0;min-height:30px}
+.driver-meta{display:block;color:var(--muted);margin-top:4px}
+.driver-meta.error{color:var(--bad)}
+.driver-inf+.driver-inf,.driver-use+.driver-use{margin-top:12px}
+.driver-config-table td{vertical-align:top}
+.driver-config-table tr[id]{scroll-margin-top:24px}
+.driver-package-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-shrink:0;flex-wrap:wrap}
+.driver-package-usage{margin-top:8px;color:var(--muted);font-size:12px}
+.driver-package-usage a{margin-right:6px}
+.driver-config-table button:disabled,.driver-package-actions button:disabled{color:var(--muted);background:transparent;border-color:var(--line);opacity:.5;filter:none;cursor:default}
+@media(max-width:600px){.driver-package-row{align-items:flex-start;flex-direction:column}.driver-package-actions{align-self:stretch}}

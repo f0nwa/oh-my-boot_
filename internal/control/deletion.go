@@ -80,6 +80,8 @@ func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.draftMu.Lock()
+	defer s.draftMu.Unlock()
 	s.menuMu.Lock()
 	defer s.menuMu.Unlock()
 	s.windowsMu.Lock()
@@ -116,6 +118,16 @@ func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
 			s.rejectDeletion(w, r, "driver-config.delete", id, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется загрузкой № %d", item.ID))
 			return
 		}
+	}
+
+	usage := s.loadDriverUsage(r.Context(), nil, nil)
+	if !usage.Available {
+		http.Error(w, usage.Error, http.StatusServiceUnavailable)
+		return
+	}
+	if len(usage.Configs[id]) > 0 {
+		s.rejectDeletion(w, r, "driver-config.delete", id, "used by draft or active menu", "Конфигурация используется в черновике или опубликованном меню")
+		return
 	}
 	configs, err := s.Store.DriverConfigs(r.Context())
 	if err != nil {

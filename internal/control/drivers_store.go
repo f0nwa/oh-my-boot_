@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"omb/internal/drivers"
 )
 
@@ -48,4 +49,15 @@ func (s Store) DriverPackages(ctx context.Context) ([]DriverPackage, error) {
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+func (s Store) DeleteDriverPackage(ctx context.Context, hash string) error {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM winpe_driver_packages WHERE sha256=$1`, hash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }

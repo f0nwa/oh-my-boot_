@@ -104,6 +104,7 @@ type pageData struct {
 	WindowsProfiles       []WindowsProfile
 	WindowsAnswerVariants []WindowsAnswerVariant
 	DriverPackages        []DriverPackage
+	DriverUsage           driverUsage
 	DriverConfigs         []DriverConfig
 	Metrics               SystemSnapshot
 	StorageSpace          *storageSpaceView

@@ -617,3 +617,11 @@ func (c *AgentClient) DiskUsage(ctx context.Context) (agent.DiskUsageReport, err
 	err := localCall(ctx, client, http.MethodGet, "/disk-usage", nil, &report)
 	return report, err
 }
+
+func (c *AgentClient) RemoveDriverPackage(ctx context.Context, hash string) error {
+	body, err := json.Marshal(map[string]string{"sha256": hash})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, http.MethodPost, "/winpe-drivers/remove-package", body, nil)
+}

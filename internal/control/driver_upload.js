@@ -16,8 +16,11 @@
     const uploadButton = event.target.closest('[data-driver-upload-open]');
     const packageButton = event.target.closest('[data-driver-package-open]');
     const deleteButton = event.target.closest('[data-driver-delete-open]');
+    const packageDeleteButton = event.target.closest('[data-driver-package-delete-open]');
+    if ((deleteButton && deleteButton.disabled) || (packageDeleteButton && packageDeleteButton.disabled)) return;
     const dialogID = uploadButton ? 'driver-upload-dialog'
       : packageButton ? 'driver-package-dialog-' + packageButton.dataset.driverPackageOpen
+      : packageDeleteButton ? 'driver-package-delete-dialog-' + packageDeleteButton.dataset.driverPackageDeleteOpen
       : deleteButton ? 'driver-delete-dialog-' + deleteButton.dataset.driverDeleteOpen
       : null;
     if (dialogID) {

@@ -346,3 +346,11 @@ func (s *deletionStore) Installations(context.Context) ([]Installation, error) {
 	return s.installations, nil
 }
 func (s *deletionStore) BootProfiles(context.Context) ([]BootProfile, error) { return nil, nil }
+
+func (c *deletionCleaner) RemoveDriverPackage(context.Context, string) error {
+	c.calls = append(c.calls, "package")
+	if c.fail {
+		return pgx.ErrNoRows
+	}
+	return nil
+}

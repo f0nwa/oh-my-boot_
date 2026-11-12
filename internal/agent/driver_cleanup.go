@@ -56,3 +56,17 @@ func (m *DriverManager) RemoveConfig(_ context.Context, id int64, wimKey string,
 	}
 	return nil
 }
+
+// RemovePackage deletes only the validated, agent-owned source package.
+// Control checks database references before requesting this operation.
+func (m *DriverManager) RemovePackage(ctx context.Context, hash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !validDriverHash(hash) {
+		return fmt.Errorf("invalid driver package hash")
+	}
+	return removeManagedDirectory(m.Root, hash)
+}

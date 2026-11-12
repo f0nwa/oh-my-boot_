@@ -68,6 +68,28 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"wim_key": key})
 	})
+
+	mux.HandleFunc("POST /winpe-drivers/remove-package", func(w http.ResponseWriter, r *http.Request) {
+		if driverManager == nil {
+			http.Error(w, "driver packages unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			SHA256 string `json:"sha256"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4096) {
+			return
+		}
+		if !validDriverHash(req.SHA256) {
+			http.Error(w, "invalid driver package hash", http.StatusBadRequest)
+			return
+		}
+		if err := driverManager.RemovePackage(r.Context(), req.SHA256); err != nil {
+			http.Error(w, "driver package cleanup failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /winpe-drivers/remove-config", func(w http.ResponseWriter, r *http.Request) {
 		if driverManager == nil {
 			http.Error(w, "driver configuration unavailable", http.StatusServiceUnavailable)

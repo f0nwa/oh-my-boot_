@@ -36,17 +36,12 @@ func (s *Server) driversPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Профили ISO недоступны", http.StatusServiceUnavailable)
 		return
 	}
-	answers, err := s.Store.WindowsAnswers(r.Context())
-	if err != nil {
-		http.Error(w, "Сценарии Windows недоступны", http.StatusServiceUnavailable)
-		return
-	}
 	configs, err := s.Store.DriverConfigs(r.Context())
 	if err != nil {
 		http.Error(w, "Конфигурации установки недоступны", http.StatusServiceUnavailable)
 		return
 	}
-	render(w, "drivers", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), DriverPackages: packages, WindowsProfiles: profiles, WindowsAnswerVariants: answers, DriverConfigs: configs})
+	render(w, "drivers", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), DriverPackages: packages, WindowsProfiles: profiles, DriverConfigs: configs, DriverUsage: s.loadDriverUsage(r.Context(), profiles, configs)})
 }
 
 func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +61,8 @@ func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать пакет", http.StatusInternalServerError)
 		return
 	}
+	s.windowsMu.Lock()
+	defer s.windowsMu.Unlock()
 	inventory, err := s.DriverPackages.ImportDriverPackage(r.Context(), archive, size)
 	if err != nil {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver.import", "error", "agent")

@@ -638,6 +638,7 @@ a.machine-name-accent:hover{text-decoration:underline}
 
 /* Align answer file actions with their row contents. */
 .answers-table td{vertical-align:middle}
+.answers-table .answer-actions{text-align:right}
 
 /* Universal table row action menu */
 .row-actions-group{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}

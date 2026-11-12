@@ -76,6 +76,32 @@ func TestISOPageOffersUploadForReadySMBStorage(t *testing.T) {
 	}
 }
 
+func TestISOPageUploadIsInDialogForEditorsOnly(t *testing.T) {
+	for _, tc := range []struct {
+		role string
+		want bool
+	}{{"operator", true}, {"observer", false}} {
+		t.Run(tc.role, func(t *testing.T) {
+			api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{uploadStorage()}}}
+			s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: tc.role, Enabled: true}}, Images: api}
+			req := httptest.NewRequest(http.MethodGet, "/images", nil)
+			req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+			res := httptest.NewRecorder()
+			s.Handler().ServeHTTP(res, req)
+			body := res.Body.String()
+			open := strings.Index(body, `id="iso-upload-dialog"`)
+			form := strings.Index(body, `id="iso-upload-form"`)
+			trigger := strings.Contains(body, `id="iso-upload-open"`)
+			if tc.want && (open < 0 || form < open || !trigger || !strings.Contains(body[form:], `</dialog>`)) {
+				t.Fatal("upload trigger and form inside dialog are required")
+			}
+			if !tc.want && (open >= 0 || form >= 0 || trigger) {
+				t.Fatal("observer must not see upload controls")
+			}
+		})
+	}
+}
+
 func localStorage(uploads bool) images.Storage {
 	return images.Storage{ID: 3, Name: "Local", Kind: "local", Root: "/var/lib/omb-images/iso", State: "ready", Uploads: uploads, Total: 39 << 30, Free: 26 << 30}
 }

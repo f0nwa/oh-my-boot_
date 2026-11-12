@@ -19,6 +19,12 @@
   };
   const form = document.getElementById('iso-upload-form');
   if (!form) return;
+  const dialog = document.getElementById('iso-upload-dialog');
+  const open = document.getElementById('iso-upload-open');
+  const close = document.getElementById('iso-upload-close');
+  open.addEventListener('click', () => dialog.showModal());
+  close.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('cancel', event => { if (request) event.preventDefault(); });
   const storage = form.querySelector('[name="storage"]');
   const folder = form.querySelector('[name="folder"]');
   const file = form.querySelector('[name="file"]');
@@ -31,7 +37,7 @@
   let foldersReady = false;
   const folderField = document.getElementById('iso-folder-field');
   // Cancel and the progress bar only make sense while a transfer runs.
-  const busy = on => { submit.disabled = on || !foldersReady; storage.disabled = on; folder.disabled = on; cancel.hidden = !on; progress.parentElement.hidden = !on; };
+  const busy = on => { close.disabled = on; submit.disabled = on || !foldersReady; storage.disabled = on; folder.disabled = on; cancel.hidden = !on; progress.parentElement.hidden = !on; };
 
   async function loadFolders() {
     if (foldersRequest) foldersRequest.abort();

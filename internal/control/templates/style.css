@@ -636,6 +636,9 @@ a.machine-name-accent:hover{text-decoration:underline}
 .kv-list li>.space-meta{flex-basis:100%;margin-top:2px}
 @media (max-width:760px){.disk-head{flex-direction:column;align-items:flex-start;gap:4px}.disk-summary{text-align:left}}
 
+/* Align answer file actions with their row contents. */
+.answers-table td{vertical-align:middle}
+
 /* Universal table row action menu */
 .row-actions-group{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .row-actions-group form{margin:0}

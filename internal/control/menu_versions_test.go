@@ -81,8 +81,8 @@ func TestMenuPageDoesNotEvaluateAllVersions(t *testing.T) {
 	if strings.Contains(body, "Удалённый пункт") {
 		t.Fatalf("/menu should not evaluate or display unrestorable reason 'Удалённый пункт': %s", body)
 	}
-	if strings.Contains(body, `action="/menu/rollback"`) {
-		t.Fatalf("/menu should not render rollback forms: %s", body)
+	if strings.Contains(body, `data-menu-rollback-open`) {
+		t.Fatalf("/menu should not render version-specific rollback buttons: %s", body)
 	}
 }
 
@@ -188,5 +188,25 @@ func TestMenuPageHasNoDetails(t *testing.T) {
 	}
 	if !strings.Contains(body, `data-async-url="/menu/versions"`) {
 		t.Fatalf("menu page lacks data-async-url=\"/menu/versions\": %s", body)
+	}
+}
+
+func TestMenuVersionRollbackRequiresConfirmation(t *testing.T) {
+	data := samplePageData(langRU)
+	data.Versions = []menuVersionRow{{MenuVersion: MenuVersion{ID: 42}, Restorable: true}}
+	table := renderPage("menu_versions_table", data)
+	for _, want := range []string{`type="button"`, `data-menu-rollback-open="42"`} {
+		if !strings.Contains(table, want) {
+			t.Errorf("rollback action missing %q: %s", want, table)
+		}
+	}
+	if strings.Contains(table, `action="/menu/rollback"`) {
+		t.Fatal("history must not directly submit rollback")
+	}
+	page := renderPage("menu", data)
+	for _, want := range []string{`id="menu-rollback-dialog"`, `action="/menu/rollback"`, `name="id"`, `data-rollback-version`, `неопубликованные изменения`, `data-close-dialog`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("confirmation missing %q", want)
+		}
 	}
 }

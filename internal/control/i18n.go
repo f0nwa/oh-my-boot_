@@ -921,6 +921,8 @@ var englishMessages = map[string]string{
 	"Записи с":                   "Records since",
 	"запросов":                   "requests",
 	"Удаляются все записи о загрузках: запросы к Boot, подключения WinPE к общей папке, которые уже закончились, и строки DHCP/TFTP до этого момента. Машины пропадут со страниц «Сейчас» и «Журнал», пока не загрузятся снова. Отменить нельзя.": "All boot records are deleted: requests to Boot, finished WinPE share connections and DHCP/TFTP lines up to now. Machines disappear from the Now and Journal pages until they boot again. This cannot be undone.",
+	"Вернуть версию меню": "Restore menu version",
+	"Версия сразу станет активной, а неопубликованные изменения будут потеряны.": "This version will become active immediately, and unpublished changes will be lost.",
 	"Очистить журнал": "Clear the log",
 	"Автоочистка удаляет запросы к Boot старше выбранного срока раз в час. Строки DHCP и TFTP система хранит в journald до 7 дней, подключения WinPE — 7 дней.": "Automatic cleanup deletes requests to Boot older than the chosen period once an hour. The system keeps DHCP and TFTP lines in journald for up to 7 days, WinPE connections for 7 days.",
 	"Не удалять":                        "Keep everything",

@@ -133,6 +133,21 @@
 
   // Делегированный обработчик открытия диалога версий меню и закрытия диалогов
   document.addEventListener('click', function (ev) {
+    var rollbackBtn = ev.target.closest('[data-menu-rollback-open]');
+    if (rollbackBtn) {
+      var rollbackDialog = document.getElementById('menu-rollback-dialog');
+      if (rollbackDialog) {
+        var version = rollbackBtn.getAttribute('data-menu-rollback-open');
+        rollbackDialog.querySelector('[name="id"]').value = version;
+        rollbackDialog.querySelector('[data-rollback-version]').textContent = '#' + version;
+        if (!rollbackDialog.open) {
+          if (typeof rollbackDialog.showModal === 'function') rollbackDialog.showModal();
+          else rollbackDialog.setAttribute('open', '');
+        }
+      }
+      return;
+    }
+
     var menuVersionsBtn = ev.target.closest('[data-menu-versions-open]');
     if (menuVersionsBtn) {
       var dlg = document.getElementById('menu-versions-dialog');

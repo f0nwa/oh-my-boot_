@@ -691,9 +691,23 @@ a.machine-name-accent:hover{text-decoration:underline}
 .menu-versions-dialog{width:min(860px,calc(100vw - 32px))}
 .menu-versions-dialog th,.menu-versions-dialog td{padding:10px 8px}
 .menu-versions-dialog td:nth-child(4){white-space:nowrap}
-.driver-upload-dialog{width:min(900px,calc(100vw - 32px))}
-.driver-upload-dialog .grid{grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr))}
+.driver-upload-dialog{width:min(650px,calc(100vw - 32px))}
+.driver-upload-dialog p.driver-upload-intro{margin:0 0 4px}
+.driver-upload-dialog .driver-upload-method{padding:16px 0;gap:10px}
+.driver-upload-method+.driver-upload-method{border-top:1px solid var(--line)}
+.driver-upload-dialog .driver-upload-method label{margin:0;font-size:14px;color:var(--text)}
+.driver-upload-fields{display:flex;flex-wrap:wrap;align-items:center;gap:10px;min-width:0}
+.driver-upload-fields input[type="file"]{flex:1;width:0;min-width:0;padding:5px;font-size:12px;background:var(--bg)}
+.driver-upload-fields input::file-selector-button{font:inherit;line-height:16px;color:var(--text);background:var(--panel);border:1px solid var(--line-strong);border-radius:4px;padding:5px 9px;margin-right:8px;cursor:pointer}
+.driver-upload-fields button{flex:none;min-height:40px;margin:0;white-space:nowrap}
+.driver-upload-fields button[type="submit"]{min-width:132px}
+.driver-upload-dialog .driver-upload-method p{margin:0;font-size:12px;overflow-wrap:anywhere}
 .driver-upload-dialog [role="status"]:empty{display:none}
+.driver-upload-method progress{width:100%}
+.driver-upload-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid var(--line);padding-top:16px}
+.driver-upload-dialog .driver-upload-footer p{margin:0}
+.driver-upload-footer button{margin:0;flex:none}
+@media(max-width:520px){.driver-upload-fields input[type="file"]{flex-basis:100%;width:100%}.driver-upload-fields{justify-content:flex-end}.driver-upload-footer{align-items:flex-start}}
 .driver-package-dialog{width:min(720px,calc(100vw - 32px))}
 .driver-package-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
 #menu-versions-content .search-spinner{position:static;display:inline-block;vertical-align:middle;margin:0 4px 0 0;width:14px;height:14px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;opacity:1;pointer-events:auto;animation:search-spin .7s linear infinite}

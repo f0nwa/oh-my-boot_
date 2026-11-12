@@ -67,18 +67,18 @@ func TestNavigationGroupsLibraryAndSystemPages(t *testing.T) {
 	for _, group := range groups {
 		titles = append(titles, group.Title)
 	}
-	if strings.Join(titles, ",") != "Сейчас,Меню,Загрузки,Библиотека,Журнал,Система" {
+	if strings.Join(titles, ",") != "Сейчас,Меню,Библиотека,Журнал,Система" {
 		t.Fatalf("sections=%v", titles)
 	}
 	tabs := subnav(groups)
-	if len(tabs) != 4 || tabs[0].Path != "/images" || !tabs[1].Active || tabs[1].Path != "/drivers" || tabs[3].Path != "/usb" {
+	if len(tabs) != 5 || tabs[0].Path != "/installations" || tabs[1].Path != "/images" || !tabs[2].Active || tabs[2].Path != "/drivers" || tabs[3].Path != "/answers" || tabs[4].Path != "/usb" {
 		t.Fatalf("library tabs=%+v", tabs)
 	}
-	if tabs := subnav(navigation("admin", "/installations/new")); tabs != nil {
-		t.Fatalf("installations has no tabs: %+v", tabs)
+	if tabs := subnav(navigation("admin", "/installations/new")); len(tabs) != 5 || !tabs[0].Active {
+		t.Fatalf("installation form must show library tabs: %+v", tabs)
 	}
 	for _, group := range navigation("admin", "/installations/new") {
-		if group.Active != (group.Title == "Загрузки") {
+		if group.Active != (group.Title == "Библиотека") {
 			t.Fatalf("active section for /installations/new: %+v", group)
 		}
 	}
@@ -116,19 +116,22 @@ func TestNowSectionIsNowInEnglish(t *testing.T) {
 	}
 }
 
-func TestNavigationPlacesMenuBeforeDownloads(t *testing.T) {
+func TestNavigationPlacesMenuBeforeLibrary(t *testing.T) {
 	groups := navigation("admin", "/")
-	var downloads, menu int = -1, -1
+	var library, menu int = -1, -1
 	for i, group := range groups {
 		switch group.Title {
-		case "Загрузки":
-			downloads = i
+		case "Библиотека":
+			library = i
+			if group.Path != "/installations" {
+				t.Fatalf("library must open boot entries: %+v", group)
+			}
 		case "Меню":
 			menu = i
 		}
 	}
-	if downloads < 0 || menu < 0 || menu >= downloads {
-		t.Fatalf("unexpected navigation order: downloads=%d menu=%d", downloads, menu)
+	if library < 0 || menu < 0 || menu >= library {
+		t.Fatalf("unexpected navigation order: library=%d menu=%d", library, menu)
 	}
 }
 

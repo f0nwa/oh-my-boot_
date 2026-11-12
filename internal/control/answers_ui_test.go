@@ -98,3 +98,23 @@ func TestAnswersPageObserverOmitsActions(t *testing.T) {
 		t.Fatalf("observer should not see create ubuntu button")
 	}
 }
+
+func TestAnswerRowActions(t *testing.T) {
+	for _, role := range []string{"admin", "operator", "observer"} {
+		data := samplePageData(langRU)
+		data.Info.User.Role = role
+		body := renderPage("answers", data)
+		for _, want := range []string{`popovertarget="answer-menu-5"`, `id="answer-menu-5"`, `href="/answers/5/edit"`} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s: missing %s", role, want)
+			}
+		}
+		hasDelete := strings.Contains(body, `action="/images/windows-answers/5/delete"`)
+		if hasDelete != (role == "admin") {
+			t.Errorf("%s: unexpected delete availability", role)
+		}
+		if strings.Contains(body, `<summary>Удалить сценарий #`) {
+			t.Errorf("%s: obsolete disclosure", role)
+		}
+	}
+}

@@ -4,6 +4,15 @@
   var uploadDialog = document.getElementById('answer-upload-dialog');
 
   document.addEventListener('click', function (event) {
+    var deleteBtn = event.target.closest('[data-answer-delete-open]');
+    if (deleteBtn) {
+      var deleteDialog = document.getElementById(deleteBtn.getAttribute('data-answer-delete-open'));
+      var menu = deleteBtn.closest('[popover]');
+      if (menu && typeof menu.hidePopover === 'function') menu.hidePopover();
+      if (deleteDialog && typeof deleteDialog.showModal === 'function') deleteDialog.showModal();
+      return;
+    }
+
     var uploadBtn = event.target.closest('[data-answer-upload-open]');
     if (uploadBtn && uploadDialog && typeof uploadDialog.showModal === 'function') {
       event.preventDefault();

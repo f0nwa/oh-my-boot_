@@ -639,6 +639,8 @@ a.machine-name-accent:hover{text-decoration:underline}
 /* Align answer file actions with their row contents. */
 .answers-table td{vertical-align:middle}
 .answers-table .answer-actions{text-align:right}
+.answer-delete-dialog{width:min(380px,calc(100vw - 32px));text-align:left;white-space:normal}
+.answer-delete-dialog .user-dialog-actions{flex-wrap:wrap}
 
 /* Universal table row action menu */
 .row-actions-group{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}

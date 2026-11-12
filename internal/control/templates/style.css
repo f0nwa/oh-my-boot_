@@ -704,10 +704,9 @@ a.machine-name-accent:hover{text-decoration:underline}
 .driver-upload-dialog .driver-upload-method p{margin:0;font-size:12px;overflow-wrap:anywhere}
 .driver-upload-dialog [role="status"]:empty{display:none}
 .driver-upload-method progress{width:100%}
-.driver-upload-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid var(--line);padding-top:16px}
+.driver-upload-footer{border-top:1px solid var(--line);padding-top:16px}
 .driver-upload-dialog .driver-upload-footer p{margin:0}
-.driver-upload-footer button{margin:0;flex:none}
-@media(max-width:520px){.driver-upload-fields input[type="file"]{flex-basis:100%;width:100%}.driver-upload-fields{justify-content:flex-end}.driver-upload-footer{align-items:flex-start}}
+@media(max-width:520px){.driver-upload-fields input[type="file"]{flex-basis:100%;width:100%}.driver-upload-fields{justify-content:flex-end}}
 .driver-package-dialog{width:min(720px,calc(100vw - 32px))}
 .driver-package-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
 #menu-versions-content .search-spinner{position:static;display:inline-block;vertical-align:middle;margin:0 4px 0 0;width:14px;height:14px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;opacity:1;pointer-events:auto;animation:search-spin .7s linear infinite}

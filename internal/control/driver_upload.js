@@ -12,6 +12,31 @@
     for (const arg of args) result = result.replace('%s', arg);
     return result;
   };
+  document.addEventListener('click', event => {
+    const uploadButton = event.target.closest('[data-driver-upload-open]');
+    const packageButton = event.target.closest('[data-driver-package-open]');
+    const deleteButton = event.target.closest('[data-driver-delete-open]');
+    const dialogID = uploadButton ? 'driver-upload-dialog'
+      : packageButton ? 'driver-package-dialog-' + packageButton.dataset.driverPackageOpen
+      : deleteButton ? 'driver-delete-dialog-' + deleteButton.dataset.driverDeleteOpen
+      : null;
+    if (dialogID) {
+      const dialog = document.getElementById(dialogID);
+      if (dialog && typeof dialog.showModal === 'function') dialog.showModal();
+      return;
+    }
+    const closeButton = event.target.closest('[data-close-dialog]');
+    if (closeButton) {
+      const dialog = closeButton.closest('dialog');
+      if (dialog) dialog.close();
+      return;
+    }
+    if (event.target.tagName === 'DIALOG') {
+      const rect = event.target.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right ||
+          event.clientY < rect.top || event.clientY > rect.bottom) event.target.close();
+    }
+  });
   const forms = document.querySelectorAll('[data-driver-upload]');
   forms.forEach(form => {
     const status = form.querySelector('[role="status"]');

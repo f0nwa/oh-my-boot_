@@ -288,7 +288,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /answers/upload", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
 	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))
-	mux.HandleFunc("POST /drivers/configs/{id}/prepare", s.protect("images", withPageErrors(s.installationsPage, s.driverConfigPrepare)))
 	mux.HandleFunc("POST /drivers/configs/{id}/delete", s.protect("delete", withPageErrors(s.driversPage, s.driverConfigDelete)))
 	mux.HandleFunc("GET /assets/driver-upload.js", s.driverUploadScript)
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))

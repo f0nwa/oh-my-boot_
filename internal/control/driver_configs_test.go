@@ -113,7 +113,7 @@ func TestDriverConfigSelectionValidatesINFAndAnswer(t *testing.T) {
 	}
 }
 
-func TestDriverConfigCreateAndPrepare(t *testing.T) {
+func TestDriverConfigPreparesOnInstallationCreate(t *testing.T) {
 	store := configFixture()
 	builder := &fakeDriverBuilder{}
 	s := &Server{Store: store, DriverConfigs: builder}
@@ -126,12 +126,7 @@ func TestDriverConfigCreateAndPrepare(t *testing.T) {
 	if res.Code != http.StatusSeeOther || len(store.configs) != 1 {
 		t.Fatalf("create: %d %+v", res.Code, store.configs)
 	}
-	prepare := httptest.NewRequest(http.MethodPost, "/drivers/configs/1/prepare", strings.NewReader("csrf="+url.QueryEscape(CSRFToken("test-token"))))
-	prepare.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	prepare.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
-	prepared := httptest.NewRecorder()
-	s.Handler().ServeHTTP(prepared, prepare)
-	if prepared.Code != http.StatusSeeOther || store.configs[0].State != "ready" || len(builder.calls) != 1 || builder.calls[0].AnswerID != 4 {
-		t.Fatalf("prepare: %d %+v %+v", prepared.Code, store.configs, builder.calls)
+	if store.configs[0].State != "ready" || len(builder.calls) != 1 || builder.calls[0].AnswerID != 4 {
+		t.Fatalf("automatic preparation: configs=%+v calls=%+v", store.configs, builder.calls)
 	}
 }

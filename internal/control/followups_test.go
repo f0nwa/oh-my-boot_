@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"omb/internal/agent"
 	"omb/internal/drivers"
 	"omb/internal/images"
 )
@@ -88,16 +87,6 @@ func TestSidebarCollapsesOnNarrowScreens(t *testing.T) {
 	css, _ := templateFS.ReadFile("templates/style.css")
 	if !strings.Contains(body, `id="nav-toggle"`) || !strings.Contains(string(css), ".nav-check:checked") {
 		t.Fatal("no collapsible navigation")
-	}
-}
-
-func TestPrepareReturnsToDriversPage(t *testing.T) {
-	store := configFixture()
-	store.configs = []DriverConfig{{ID: 1, ProfileID: 17, AnswerID: 4, Title: "Laptop A", Folder: "Windows", State: "pending", PackageINFs: []agent.SelectedINF{{PackageSHA256: strings.Repeat("a", 64), INFPath: "net.inf"}}}}
-	s := &Server{Store: store, DriverConfigs: &fakeDriverBuilder{}}
-	res := menuPost(t, s, "/drivers/configs/1/prepare", url.Values{"return": {"/drivers"}})
-	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/drivers?message=") {
-		t.Fatalf("status=%d location=%q body=%s", res.Code, res.Header().Get("Location"), res.Body.String())
 	}
 }
 

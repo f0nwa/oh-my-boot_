@@ -1,13 +1,11 @@
 package control
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"omb/internal/agent"
 )
@@ -107,74 +105,6 @@ func (s *Server) driverConfigCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.create", "ok", fmt.Sprintf("id=%d profile=%d", config.ID, config.ProfileID))
 	http.Redirect(w, r, "/drivers?message=Конфигурация+создана", http.StatusSeeOther)
-}
-
-func (s *Server) driverConfigPrepare(w http.ResponseWriter, r *http.Request) {
-	s.windowsMu.Lock()
-	defer s.windowsMu.Unlock()
-	if s.DriverConfigs == nil {
-		http.Error(w, "Подготовка конфигураций недоступна", http.StatusServiceUnavailable)
-		return
-	}
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil || id <= 0 {
-		http.Error(w, "Неверная конфигурация", http.StatusBadRequest)
-		return
-	}
-	config, err := s.Store.DriverConfig(r.Context(), id)
-	if err != nil {
-		http.Error(w, "Конфигурация не найдена", http.StatusNotFound)
-		return
-	}
-	if config.State == "ready" {
-		http.Redirect(w, r, safeReturnPath(r.FormValue("return"))+"?message="+url.QueryEscape("Конфигурация уже готова"), http.StatusSeeOther)
-		return
-	}
-	profiles, err := s.Store.WindowsProfiles(r.Context())
-	if err != nil {
-		http.Error(w, "Профили ISO недоступны", http.StatusServiceUnavailable)
-		return
-	}
-	answers, err := s.Store.WindowsAnswers(r.Context())
-	if err != nil {
-		http.Error(w, "Сценарии Windows недоступны", http.StatusServiceUnavailable)
-		return
-	}
-	packages, err := s.Store.DriverPackages(r.Context())
-	if err != nil {
-		http.Error(w, "Каталог драйверов недоступен", http.StatusServiceUnavailable)
-		return
-	}
-	values := url.Values{"profile_id": {strconv.FormatInt(config.ProfileID, 10)}, "answer_id": {strconv.FormatInt(config.AnswerID, 10)}, "title": {config.Title}, "folder": {config.Folder}}
-	for _, inf := range config.PackageINFs {
-		values.Add("inf", inf.PackageSHA256+":"+inf.INFPath)
-	}
-	if _, err := SelectDriverConfig(values, profiles, answers, packages); err != nil {
-		http.Error(w, "Источник конфигурации недоступен: "+err.Error(), http.StatusConflict)
-		return
-	}
-	if err := s.Store.SetDriverConfigResult(r.Context(), id, "preparing", agent.DriverBuildResult{}, ""); err != nil {
-		http.Error(w, "Не удалось начать подготовку", http.StatusServiceUnavailable)
-		return
-	}
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(16 * time.Minute))
-	buildCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 15*time.Minute)
-	defer cancel()
-	result, err := s.DriverConfigs.PrepareDriverConfig(buildCtx, agent.DriverBuildRequest{ConfigID: id, ProfileID: config.ProfileID, AnswerID: config.AnswerID, PackageINFs: config.PackageINFs})
-	finalCtx, cancelFinal := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
-	defer cancelFinal()
-	if err != nil {
-		_ = s.Store.SetDriverConfigResult(finalCtx, id, "error", agent.DriverBuildResult{}, "Не удалось подготовить WinPE")
-		_ = s.Store.Audit(finalCtx, requestInfo(r).User.ID, "driver-config.prepare", "error", fmt.Sprintf("id=%d", id))
-		http.Error(w, "Не удалось подготовить WinPE: "+err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	if err := s.Store.SetDriverConfigResult(finalCtx, id, "ready", result, ""); err != nil {
-		http.Error(w, "Не удалось сохранить результат", http.StatusServiceUnavailable)
-		return
-	}
-	_ = s.Store.Audit(finalCtx, requestInfo(r).User.ID, "driver-config.prepare", "ok", fmt.Sprintf("id=%d wim=%s", id, result.WIMKey))
-	http.Redirect(w, r, safeReturnPath(r.FormValue("return"))+"?message="+url.QueryEscape("Конфигурация подготовлена"), http.StatusSeeOther)
 }
 
 // selectDriverINFs validates a configuration before its source is prepared.

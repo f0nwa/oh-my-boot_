@@ -185,7 +185,7 @@ td button.secondary{border-color:var(--line-strong)}
 td details{margin:6px 0 0}td details:last-child{margin-bottom:0}
 td summary{min-height:24px;font-weight:400;font-size:12px;color:var(--text-2)}
 td form{margin:0}
-.iso-actions{text-align:right}.iso-actions button{min-width:140px;max-width:220px}
+.iso-actions{text-align:right}
 .row-actions{white-space:nowrap}.row-actions details{white-space:normal;margin:6px 0 0}.row-actions button{min-width:28px;padding:0 8px}
 .cell-input{border-color:transparent;background:transparent;min-height:30px;padding:4px 8px;margin-left:-8px;max-width:100%}
 .cell-input:hover{border-color:var(--line-strong)}.cell-input:focus{background:var(--panel)}
@@ -537,9 +537,7 @@ a.machine-name-accent:hover{text-decoration:underline}
 .download-delete-panel p{margin:0 0 8px;font-size:12px}
 .download-delete-panel .danger-text{color:var(--bad)}
 
-.image-delete-panel{position:fixed;inset:auto;margin:0;white-space:normal;overflow-wrap:anywhere;width:360px;box-sizing:border-box;max-width:min(360px,calc(100vw - 40px));padding:16px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);box-shadow:0 10px 30px rgba(0,0,0,.25)}
-.image-delete-panel p{margin:0 0 8px;font-size:12px}
-.image-delete-panel .danger-text{color:var(--bad)}
+.image-delete-file{overflow-wrap:anywhere}
 /* Image details */
 .image-name-link{display:inline;margin:0;padding:0;min-height:0;border:0;background:none;color:var(--text);font:inherit;font-weight:600;text-align:left;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;word-break:break-all}
 .image-name-link:hover{background:none;color:var(--text-2)}
@@ -639,8 +637,8 @@ a.machine-name-accent:hover{text-decoration:underline}
 /* Align answer file actions with their row contents. */
 .answers-table td{vertical-align:middle}
 .answers-table .answer-actions{text-align:right}
-.answer-delete-dialog{width:min(380px,calc(100vw - 32px));text-align:left;white-space:normal}
-.answer-delete-dialog .user-dialog-actions{flex-wrap:wrap}
+.answer-delete-dialog,.image-delete-dialog{width:min(380px,calc(100vw - 32px));text-align:left;white-space:normal}
+.answer-delete-dialog .user-dialog-actions,.image-delete-dialog .user-dialog-actions{flex-wrap:wrap}
 
 /* Universal table row action menu */
 .row-actions-group{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}

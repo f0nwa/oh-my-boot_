@@ -22,15 +22,15 @@ func TestImagesDeletionButtonTracksSavedDownloads(t *testing.T) {
 			store.bootProfiles = []BootProfile{{ID: 90, Kind: kind, WindowsProfileID: store.profiles[0].ID, UbuntuStorageID: image.StorageID, UbuntuPath: image.Path}}
 			store.installations = []Installation{{ID: 91, Title: "Used ISO", BootProfileID: 90}}
 			body := libraryGet(t, s, "/images")
-			if !regexp.MustCompile(`popovertarget="image-delete-0"[^>]*disabled`).MatchString(body) {
+			if !regexp.MustCompile(`data-image-delete-open="image-delete-0"[^>]*disabled`).MatchString(body) {
 				t.Fatal("referenced ISO has active deletion")
 			}
-			if !strings.Contains(body, `popovertarget="image-delete-1"`) || regexp.MustCompile(`popovertarget="image-delete-1"[^>]*disabled`).MatchString(body) {
+			if !strings.Contains(body, `data-image-delete-open="image-delete-1"`) || regexp.MustCompile(`data-image-delete-open="image-delete-1"[^>]*disabled`).MatchString(body) {
 				t.Fatal("unreferenced ISO has no active deletion")
 			}
 			store.installations = nil
 			body = libraryGet(t, s, "/images")
-			if regexp.MustCompile(`popovertarget="image-delete-0"[^>]*disabled`).MatchString(body) {
+			if regexp.MustCompile(`data-image-delete-open="image-delete-0"[^>]*disabled`).MatchString(body) {
 				t.Fatal("ISO remains blocked after the last download is removed")
 			}
 		})
@@ -51,7 +51,7 @@ func TestImagesDeletionDisabledWhenUsageCannotBeChecked(t *testing.T) {
 	s.Store = &imageUsageFailureStore{downloadsStore: store}
 	body := libraryGet(t, s, "/images")
 	for _, id := range []string{"0", "1"} {
-		if !regexp.MustCompile(`popovertarget="image-delete-` + id + `"[^>]*disabled`).MatchString(body) {
+		if !regexp.MustCompile(`data-image-delete-open="image-delete-` + id + `"[^>]*disabled`).MatchString(body) {
 			t.Fatalf("ISO %s can be deleted without checking usage", id)
 		}
 	}

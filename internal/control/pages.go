@@ -81,6 +81,7 @@ type pageData struct {
 	BootProfileChoices    []bootProfileChoice
 	SelectedBootKind      string
 	EditInstallationID    int64
+	EditInstallation      *installationEditorActions
 	Form                  url.Values
 	Query                 string
 	Tab                   string

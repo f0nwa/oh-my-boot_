@@ -29,6 +29,8 @@ func (s *Server) editDraft(w http.ResponseWriter, r *http.Request, action, messa
 	target := "/menu?message=" + strings.ReplaceAll(message, " ", "+")
 	if r.FormValue("return") == "/installations" {
 		target = "/installations?message=" + strings.ReplaceAll(message, " ", "+")
+	} else if edit := "/installations/" + strings.TrimPrefix(r.PathValue("key"), "install_") + "/edit"; action == "menu.draft.remove" && menuItemKey.MatchString(r.PathValue("key")) && r.FormValue("return") == edit {
+		target = edit + "?message=" + strings.ReplaceAll(message, " ", "+")
 	} else if action == "menu.draft.local_timer" {
 		target += "&item=autoboot"
 	} else if action == "menu.draft.default" && r.PathValue("key") == "local" {

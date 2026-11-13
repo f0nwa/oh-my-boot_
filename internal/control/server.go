@@ -219,6 +219,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /installations/{id}", s.protect("images", withPageErrors(s.installationNewPage, s.installationCreate)))
 	mux.HandleFunc("POST /installations/{id}/prepare", s.protect("images", withPageErrors(s.installationsPage, s.installationPrepare)))
 	mux.HandleFunc("POST /installations/{id}/delete", s.protect("delete", withPageErrors(s.installationsPage, s.installationDelete)))
+	mux.HandleFunc("POST /installations/{id}/remove-delete", s.protect("delete", withPageErrors(s.installationsPage, s.installationRemoveDelete)))
 	mux.HandleFunc("GET /assets/installation-form.js", installationFormScript)
 	mux.HandleFunc("POST /installations/{key}/add", s.protect("menu", withPageErrors(s.installationsPage, s.installationAdd)))
 	mux.HandleFunc("GET /events", s.protect("view", s.eventsPage))

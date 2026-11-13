@@ -9,6 +9,14 @@ import (
 )
 
 func (s *Server) installationDelete(w http.ResponseWriter, r *http.Request) {
+	s.deleteInstallation(w, r, false)
+}
+
+func (s *Server) installationRemoveDelete(w http.ResponseWriter, r *http.Request) {
+	s.deleteInstallation(w, r, true)
+}
+
+func (s *Server) deleteInstallation(w http.ResponseWriter, r *http.Request, remove bool) {
 	id, ok := deletionID(w, r)
 	if !ok {
 		return
@@ -29,8 +37,13 @@ func (s *Server) installationDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if active {
-		s.rejectDeletion(w, r, "installation.delete", id, "published", "Сначала уберите загрузку из меню и опубликуйте изменения")
-		return
+		if !remove {
+			s.rejectDeletion(w, r, "installation.delete", id, "published", "Сначала уберите загрузку из меню и опубликуйте изменения")
+			return
+		}
+		if !s.publishInstallationRemoval(w, r, id) {
+			return
+		}
 	}
 	err = s.Store.DeleteInstallation(r.Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -48,4 +61,39 @@ func (s *Server) installationDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "installation.delete", "ok", fmt.Sprintf("id=%d", id))
 	http.Redirect(w, r, "/installations?message=Загрузка+удалена", http.StatusSeeOther)
+}
+
+// publishInstallationRemoval builds from the active snapshot, never from the
+// draft: other pending changes remain pending. draftMu and menuMu are held by
+// the caller until deletion also removes the selected draft placement.
+func (s *Server) publishInstallationRemoval(w http.ResponseWriter, r *http.Request, id int64) bool {
+	_, active, err := s.currentDraft(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать черновик меню", http.StatusServiceUnavailable)
+		return false
+	}
+	if err := active.RemoveInstallation(id); err != nil {
+		http.Error(w, "Не удалось проверить меню", http.StatusServiceUnavailable)
+		return false
+	}
+	profiles, answers, configs, err := s.menuSources(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать источники меню", http.StatusServiceUnavailable)
+		return false
+	}
+	sources, err := s.installationMenuSources(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось прочитать источники меню", http.StatusServiceUnavailable)
+		return false
+	}
+	script, err := BuildMenuFromDraft(active, s.BootBaseURL, profiles, answers, configs, sources)
+	if err != nil {
+		http.Error(w, "Меню не собрано: "+err.Error(), http.StatusConflict)
+		return false
+	}
+	version := MenuVersion{Title: active.Title, Label: active.Label, Message: active.Message, Script: string(script), NoDiagnostics: active.NoDiagnostics, LocalTimeout: active.LocalTimeout, NoLocalTimer: active.NoLocalTimer, DefaultInstallationID: active.DefaultInstallationID, Look: menuLook, Items: make([]MenuVersionItem, 0, len(active.Items))}
+	for position, item := range active.Items {
+		version.Items = append(version.Items, MenuVersionItem{InstallationID: item.InstallationID, Position: position, Title: item.Title, Folder: item.Folder, Components: item.Components})
+	}
+	return s.publishMenuLocked(w, r, version, "installation.remove-delete.publish")
 }

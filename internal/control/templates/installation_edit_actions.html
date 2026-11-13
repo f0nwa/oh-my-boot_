@@ -1,0 +1,13 @@
+{{define "installation_edit_actions"}}{{with .EditInstallation}}
+{{if or .InDraft (eq $.Info.User.Role "admin")}}<div class="installation-edit-actions">
+{{if .InDraft}}<button type="submit" form="installation-remove-form" class="secondary btn-wide">{{t "Убрать из меню"}}</button>{{end}}
+{{if eq $.Info.User.Role "admin"}}<button type="button" class="secondary danger-text btn-wide" data-download-delete-open="installation-edit-delete">{{if .InMenu}}{{t "Убрать из меню и удалить"}}{{else}}{{t "Удалить"}}{{end}}</button>{{end}}
+</div>{{end}}{{end}}{{end}}
+
+{{define "installation_edit_remove_form"}}{{with .EditInstallation}}{{if .InDraft}}
+<form id="installation-remove-form" method="post" action="/menu/items/install_{{.ID}}/remove"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="return" value="/installations/{{.ID}}/edit"></form>
+{{end}}{{end}}{{end}}
+
+{{define "installation_edit_delete_dialog"}}{{if eq .Info.User.Role "admin"}}{{with .EditInstallation}}
+<dialog id="installation-edit-delete" class="user-dialog download-delete-dialog" aria-labelledby="installation-edit-delete-title"><h2 id="installation-edit-delete-title">{{if .InMenu}}{{t "Убрать из меню и удалить загрузку?"}}{{else}}{{t "Удалить загрузку из списка?"}}{{end}}</h2><p>{{.Title}}</p>{{if .InMenu}}<p class="hint">{{t "Загрузка исчезнет из опубликованного меню и черновика. Остальные изменения черновика не будут опубликованы."}}</p>{{end}}<p class="hint">{{t "ISO, подготовленные файлы, драйверы и файлы ответов останутся в библиотеке. Старые версии меню с этой загрузкой станут недоступны для восстановления."}}</p><div class="user-dialog-actions"><button type="button" class="btn btn-ghost" data-download-delete-close>{{t "Отмена"}}</button><form method="post" action="/installations/{{.ID}}/{{if .InMenu}}remove-delete{{else}}delete{{end}}"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="confirm" value="yes"><button class="btn-danger">{{if .InMenu}}{{t "Убрать и удалить"}}{{else}}{{t "Подтвердить удаление"}}{{end}}</button></form></div></dialog>
+{{end}}{{end}}{{end}}

@@ -510,6 +510,16 @@ func (s *Server) saveDraftAfterPublish(r *http.Request, m MenuVersion) {
 func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersion, action string) bool {
 	s.menuMu.Lock()
 	defer s.menuMu.Unlock()
+	if !s.publishMenuLocked(w, r, m, action) {
+		return false
+	}
+	http.Redirect(w, r, "/menu?message=Меню+опубликовано", http.StatusSeeOther)
+	return true
+}
+
+// publishMenuLocked publishes without a redirect so compound actions can finish
+// under the same menu lock. The caller must hold menuMu.
+func (s *Server) publishMenuLocked(w http.ResponseWriter, r *http.Request, m MenuVersion, action string) bool {
 	if err := s.verifyMenuVersion(r.Context(), m); err != nil {
 		http.Error(w, "Загрузка недоступна: "+err.Error(), http.StatusConflict)
 		return false
@@ -551,7 +561,6 @@ func (s *Server) publishMenu(w http.ResponseWriter, r *http.Request, m MenuVersi
 		return false
 	}
 	_ = s.Store.Audit(r.Context(), info.User.ID, action, "ok", "sha256="+m.SHA256)
-	http.Redirect(w, r, "/menu?message=Меню+опубликовано", 303)
 	return true
 }
 

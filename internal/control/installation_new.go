@@ -32,6 +32,14 @@ func installationFormScript(w http.ResponseWriter, _ *http.Request) {
 
 type infChoice struct{ Value, Label string }
 
+type installationEditorActions struct {
+	ID                int64
+	Title             string
+	InDraft, InActive bool
+}
+
+func (a installationEditorActions) InMenu() bool { return a.InDraft || a.InActive }
+
 // packageChoice is a driver package offered on the installation form, named
 // by its x64 INF files because packages carry no name of their own.
 type packageChoice struct {
@@ -125,7 +133,7 @@ func (s *Server) bootProfileChoices(ctx context.Context, shared []BootProfile, w
 }
 
 func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r), Error: pageError(r)}
+	data := pageData{Info: requestInfo(r), Error: pageError(r), Message: r.URL.Query().Get("message")}
 	profiles, answers, _, err := s.menuSources(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -156,6 +164,23 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.Form = pageForm(r)
+	if data.EditInstallationID > 0 {
+		draft, active, err := s.currentDraft(r.Context())
+		if err != nil {
+			http.Error(w, "Не удалось прочитать черновик меню", http.StatusServiceUnavailable)
+			return
+		}
+		for _, item := range sources.Installations {
+			if item.ID == data.EditInstallationID {
+				data.EditInstallation = &installationEditorActions{ID: item.ID, Title: item.Title, InDraft: draft.InstallationIndex(item.ID) >= 0, InActive: active.InstallationIndex(item.ID) >= 0}
+				break
+			}
+		}
+		if data.EditInstallation == nil {
+			http.NotFound(w, r)
+			return
+		}
+	}
 	if data.EditInstallationID > 0 && data.Form == nil {
 		found := false
 		for _, item := range sources.Installations {

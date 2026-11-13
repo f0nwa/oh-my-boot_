@@ -5,7 +5,6 @@
   var results = document.getElementById('download-results');
   var filters = document.getElementById('download-filters');
   var error = document.getElementById('download-search-error');
-  if (!form || !results || !filters || !error) return;
 
   document.addEventListener('click', function (event) {
     var button = event.target.closest('[data-download-delete-open]');
@@ -21,6 +20,8 @@
     var close = event.target.closest('[data-download-delete-close]');
     if (close) close.closest('dialog').close();
   });
+
+  if (!form || !results || !filters || !error) return;
 
   var input = form.elements.q;
   var timer, pending, sequence = 0;

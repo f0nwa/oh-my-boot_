@@ -366,6 +366,7 @@ var englishMessages = map[string]string{
 	"Автор загрузки:": "Boot entry author:",
 	"Автор XML:":      "XML author:",
 	"Загрузил ISO:":   "ISO uploaded by:",
+	"Загрузил":        "Uploaded by",
 	"Администратор":   "Administrator",
 	"Адрес":           "Address",
 	"Активен":         "Enabled",

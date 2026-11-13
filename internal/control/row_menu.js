@@ -18,23 +18,24 @@
     panel.style.top = top + 'px';
   }
 
-  document.querySelectorAll('button[data-row-menu][popovertarget]').forEach(function (button) {
-    var panel = document.getElementById(button.getAttribute('popovertarget'));
-    if (!panel) return;
-    panel.addEventListener('toggle', function (event) {
-      var open = event.newState === 'open';
-      button.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (open) {
-        if (active && active.panel !== panel && active.panel.matches(':popover-open') && typeof active.panel.hidePopover === 'function') {
-          active.panel.hidePopover();
-        }
-        active = { button: button, panel: panel };
-        place();
-      } else if (active && active.panel === panel) {
-        active = null;
+  // Capture toggle events so menus added by live search work without rebinding.
+  document.addEventListener('toggle', function (event) {
+    var panel = event.target;
+    if (!panel.matches || !panel.matches('.row-menu-popover[popover]')) return;
+    var button = document.querySelector('button[data-row-menu][popovertarget="' + CSS.escape(panel.id) + '"]');
+    if (!button) return;
+    var open = event.newState === 'open';
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      if (active && active.panel !== panel && active.panel.matches(':popover-open') && typeof active.panel.hidePopover === 'function') {
+        active.panel.hidePopover();
       }
-    });
-  });
+      active = { button: button, panel: panel };
+      place();
+    } else if (active && active.panel === panel) {
+      active = null;
+    }
+  }, true);
 
   document.addEventListener('click', function (event) {
     var item = event.target.closest('[data-close-popover]');

@@ -524,18 +524,10 @@ a.machine-name-accent:hover{text-decoration:underline}
 .installs .download-source{display:block;margin-top:6px;color:var(--muted);overflow-wrap:anywhere;white-space:normal;max-width:60ch}
 .installs .download-source .mono{color:var(--muted)}
 .download-actions{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px}
-.download-actions button,.download-actions summary{min-height:28px;margin:0;padding:0 8px;font-size:12px;line-height:26px}
+.download-row-actions{text-align:right;white-space:nowrap}
+.download-actions .secondary:not(.row-menu-btn){min-height:28px;margin:0;padding:0 8px;font-size:12px;line-height:26px}
 .download-actions>form{display:flex;justify-content:center;width:154px;flex:none}
-.download-actions>.download-delete{min-width:64px}
-.download-actions .download-delete{position:relative;margin:0;white-space:normal}
-.download-actions .download-delete[open]{z-index:6}
-.download-delete>summary{display:inline-flex;align-items:center;justify-content:center;list-style:none;border:1px solid var(--line-strong);border-radius:6px;white-space:nowrap;color:var(--text-2);font-weight:500}
-.download-delete>summary::-webkit-details-marker{display:none}
-.download-delete>summary:hover,.download-delete[open]>summary{background:var(--chip);color:var(--text)}
-.download-delete-panel{position:absolute;right:0;top:calc(100% + 4px);z-index:7;width:260px;max-width:65vw;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
-.installs tr:last-child .download-delete-panel{top:auto;bottom:calc(100% + 4px)}
-.download-delete-panel p{margin:0 0 8px;font-size:12px}
-.download-delete-panel .danger-text{color:var(--bad)}
+.download-delete-dialog p{overflow-wrap:anywhere}
 
 .image-delete-file{overflow-wrap:anywhere}
 /* Image details */
@@ -637,8 +629,8 @@ a.machine-name-accent:hover{text-decoration:underline}
 /* Align answer file actions with their row contents. */
 .answers-table td{vertical-align:middle}
 .answers-table .answer-actions{text-align:right}
-.answer-delete-dialog,.image-delete-dialog{width:min(380px,calc(100vw - 32px));text-align:left;white-space:normal}
-.answer-delete-dialog .user-dialog-actions,.image-delete-dialog .user-dialog-actions{flex-wrap:wrap}
+.answer-delete-dialog,.image-delete-dialog,.download-delete-dialog{width:min(380px,calc(100vw - 32px));text-align:left;white-space:normal}
+.answer-delete-dialog .user-dialog-actions,.image-delete-dialog .user-dialog-actions,.download-delete-dialog .user-dialog-actions{flex-wrap:wrap}
 
 /* Universal table row action menu */
 .row-actions-group{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}

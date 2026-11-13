@@ -8,9 +8,18 @@
   if (!form || !results || !filters || !error) return;
 
   document.addEventListener('click', function (event) {
-    document.querySelectorAll('.download-delete[open]').forEach(function (menu) {
-      if (!menu.contains(event.target)) menu.open = false;
-    });
+    var button = event.target.closest('[data-download-delete-open]');
+    if (button) {
+      if (button.disabled) return;
+      var dialog = document.getElementById(button.getAttribute('data-download-delete-open'));
+      if (!dialog) return;
+      var menu = button.closest('[popover]');
+      if (menu && menu.matches(':popover-open')) menu.hidePopover();
+      dialog.showModal();
+      return;
+    }
+    var close = event.target.closest('[data-download-delete-close]');
+    if (close) close.closest('dialog').close();
   });
 
   var input = form.elements.q;

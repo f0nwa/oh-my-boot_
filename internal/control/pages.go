@@ -27,6 +27,7 @@ type imageRow struct {
 	Arch                string
 	CleanupProfileID    int64
 	Downloads           []imageDownload
+	DeleteBlockedReason string
 }
 type imageDownload struct {
 	ID    int64

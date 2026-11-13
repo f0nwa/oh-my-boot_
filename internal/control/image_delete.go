@@ -59,6 +59,15 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось проверить профили ISO", http.StatusServiceUnavailable)
 		return
 	}
+	sources, err := s.libraryMenuReferences(r.Context())
+	if err != nil {
+		http.Error(w, "Не удалось проверить загрузки", http.StatusServiceUnavailable)
+		return
+	}
+	if uses := imageDownloadsBySource(profiles, sources)[imageAuthorKey(storageID, imagePath)]; len(uses) > 0 {
+		s.rejectDeletion(w, r, "iso.delete", storageID, fmt.Sprintf("used by installation %d", uses[0].ID), fmt.Sprintf("Объект используется загрузкой № %d", uses[0].ID))
+		return
+	}
 	var profileID int64
 	for _, profile := range profiles {
 		if profile.StorageID == storageID && profile.Path == imagePath {
@@ -79,17 +88,6 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		if active {
 			s.rejectDeletion(w, r, "iso.delete", storageID, "published", "Сначала снимите пункт с публикации меню")
 			return
-		}
-		source, err := s.installationMenuSources(r.Context())
-		if err != nil {
-			http.Error(w, "Не удалось проверить загрузки", http.StatusServiceUnavailable)
-			return
-		}
-		for _, item := range source.Installations {
-			if (installationComponent{profileID: profileID}).matches(item, source.BootProfiles) {
-				s.rejectDeletion(w, r, "iso.delete", storageID, fmt.Sprintf("used by installation %d", item.ID), fmt.Sprintf("Объект используется загрузкой № %d", item.ID))
-				return
-			}
 		}
 		answers, err := s.Store.WindowsAnswers(r.Context())
 		if err != nil {

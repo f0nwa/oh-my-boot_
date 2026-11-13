@@ -98,28 +98,10 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	for _, storage := range catalog.Storages {
 		names[storage.ID] = storage.Name
 	}
-	uses := map[int64][]imageDownload{}
-	ubuntuUses := map[string][]imageDownload{}
-	if sources, e := s.libraryMenuReferences(r.Context()); e == nil {
-		byID := map[int64]int64{}
-		ubuntuByID := map[int64]string{}
-		for _, p := range sources.BootProfiles {
-			if isISOBootKind(p.Kind) {
-				byID[p.ID] = p.WindowsProfileID
-			}
-			if (p.Kind == BootProfileUbuntuISO || p.Kind == BootProfileUbuntuBuiltin) && p.UbuntuStorageID > 0 && p.UbuntuPath != "" {
-				key := fmt.Sprintf("%d:%s", p.UbuntuStorageID, p.UbuntuPath)
-				ubuntuByID[p.ID] = key
-			}
-		}
-		for _, item := range sources.Installations {
-			if id := byID[item.BootProfileID]; id > 0 {
-				uses[id] = append(uses[id], imageDownload{ID: item.ID, Title: item.Title})
-			}
-			if key := ubuntuByID[item.BootProfileID]; key != "" {
-				ubuntuUses[key] = append(ubuntuUses[key], imageDownload{ID: item.ID, Title: item.Title})
-			}
-		}
+	sources, usageErr := s.libraryMenuReferences(r.Context())
+	uses := imageDownloadsBySource(data.WindowsProfiles, sources)
+	if usageErr != nil {
+		data.Error = "Не удалось проверить загрузки"
 	}
 	namesByImage, namesErr := s.imageNames(r.Context())
 	if namesErr != nil {
@@ -146,10 +128,14 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 		} else if image.FirstSeenAt != nil {
 			row.AddedAt, row.AddedVia = image.FirstSeenAt, "Обнаружен"
 		}
-		row.Downloads = append(row.Downloads, ubuntuUses[key]...)
+		row.Downloads = uses[key]
+		if usageErr != nil {
+			row.DeleteBlockedReason = "Не удалось проверить загрузки"
+		} else if len(row.Downloads) > 0 {
+			row.DeleteBlockedReason = "Образ используется загрузками"
+		}
 		if p, ok := byPath[key]; ok {
-			row.Downloads = append(row.Downloads, uses[p.ID]...)
-			if len(row.Downloads) == 0 {
+			if row.DeleteBlockedReason == "" {
 				row.CleanupProfileID = p.ID
 			}
 		}

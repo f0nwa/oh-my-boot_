@@ -1,15 +1,105 @@
 package control
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
 	"omb/internal/images"
 )
+
+func TestImagesDeletionButtonTracksSavedDownloads(t *testing.T) {
+	for _, kind := range []string{BootProfileWindowsISO, BootProfileWinPEISO, BootProfileUbuntuISO, BootProfileUbuntuBuiltin} {
+		t.Run(string(kind), func(t *testing.T) {
+			s, store, _ := downloadsServer(t)
+			store.user.Role = "admin"
+			image := s.Images.(*fakeImagesAPI).catalog.Images[0]
+			store.bootProfiles = []BootProfile{{ID: 90, Kind: kind, WindowsProfileID: store.profiles[0].ID, UbuntuStorageID: image.StorageID, UbuntuPath: image.Path}}
+			store.installations = []Installation{{ID: 91, Title: "Used ISO", BootProfileID: 90}}
+			body := libraryGet(t, s, "/images")
+			if !regexp.MustCompile(`popovertarget="image-delete-0"[^>]*disabled`).MatchString(body) {
+				t.Fatal("referenced ISO has active deletion")
+			}
+			if !strings.Contains(body, `popovertarget="image-delete-1"`) || regexp.MustCompile(`popovertarget="image-delete-1"[^>]*disabled`).MatchString(body) {
+				t.Fatal("unreferenced ISO has no active deletion")
+			}
+			store.installations = nil
+			body = libraryGet(t, s, "/images")
+			if regexp.MustCompile(`popovertarget="image-delete-0"[^>]*disabled`).MatchString(body) {
+				t.Fatal("ISO remains blocked after the last download is removed")
+			}
+		})
+	}
+}
+
+type imageUsageFailureStore struct {
+	*downloadsStore
+}
+
+func (s *imageUsageFailureStore) BootProfiles(context.Context) ([]BootProfile, error) {
+	return nil, errors.New("database unavailable")
+}
+
+func TestImagesDeletionDisabledWhenUsageCannotBeChecked(t *testing.T) {
+	s, store, _ := downloadsServer(t)
+	store.user.Role = "admin"
+	s.Store = &imageUsageFailureStore{downloadsStore: store}
+	body := libraryGet(t, s, "/images")
+	for _, id := range []string{"0", "1"} {
+		if !regexp.MustCompile(`popovertarget="image-delete-` + id + `"[^>]*disabled`).MatchString(body) {
+			t.Fatalf("ISO %s can be deleted without checking usage", id)
+		}
+	}
+	if !strings.Contains(body, "Не удалось проверить загрузки") {
+		t.Fatal("usage failure is hidden")
+	}
+}
+
+func TestImageDeleteBlocksUbuntuSourceUsedByDownload(t *testing.T) {
+	for _, kind := range []string{BootProfileUbuntuISO, BootProfileUbuntuBuiltin} {
+		t.Run(string(kind), func(t *testing.T) {
+			api := &fakeImagesAPI{catalog: imageDeletionCatalog("local")}
+			base := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
+			store := &referencedDeletionStore{deletionStore: base, source: InstallationMenuSources{
+				BootProfiles:  []BootProfile{{ID: 90, Kind: kind, UbuntuStorageID: 7, UbuntuPath: "Windows/win.iso"}},
+				Installations: []Installation{{ID: 91, BootProfileID: 90}},
+			}}
+			cleaner := &deletionCleaner{}
+			server := deletionTestServer(base, cleaner)
+			server.Store, server.Images = store, api
+			res := submitImageDeletion(t, server, imageDeletionForm("7", "Windows/win.iso"))
+			if res.Code != http.StatusConflict || len(api.deleted) != 0 || len(cleaner.calls) != 0 || len(base.deleted) != 0 {
+				t.Fatalf("used Ubuntu ISO removed: status=%d deleted=%v cleanup=%v", res.Code, api.deleted, cleaner.calls)
+			}
+		})
+	}
+}
+
+type imageDeletionUsageFailureStore struct {
+	*deletionStore
+}
+
+func (s *imageDeletionUsageFailureStore) Installations(context.Context) ([]Installation, error) {
+	return nil, errors.New("database unavailable")
+}
+
+func TestImageDeleteRejectsUnverifiedUsageBeforeRemovingSource(t *testing.T) {
+	api := &fakeImagesAPI{catalog: imageDeletionCatalog("local")}
+	base := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
+	cleaner := &deletionCleaner{}
+	server := deletionTestServer(base, cleaner)
+	server.Store = &imageDeletionUsageFailureStore{deletionStore: base}
+	server.Images = api
+	res := submitImageDeletion(t, server, imageDeletionForm("7", "Windows/win.iso"))
+	if res.Code != http.StatusServiceUnavailable || len(api.deleted) != 0 || len(cleaner.calls) != 0 {
+		t.Fatalf("unverified source removed: status=%d deleted=%v cleanup=%v", res.Code, api.deleted, cleaner.calls)
+	}
+}
 
 func imageDeletionForm(storageID, path string) url.Values {
 	return url.Values{"storage_id": {storageID}, "path": {path}, "csrf": {CSRFToken("test-token")}}

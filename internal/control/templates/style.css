@@ -524,9 +524,9 @@ a.machine-name-accent:hover{text-decoration:underline}
 .installs .download-source{display:block;margin-top:6px;color:var(--muted);overflow-wrap:anywhere;white-space:normal;max-width:60ch}
 .installs .download-source .mono{color:var(--muted)}
 .download-actions{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px}
-.download-row-actions{text-align:right;white-space:nowrap}
+.download-row-actions{text-align:right;white-space:nowrap;padding-right:6px;vertical-align:middle}
 .download-actions .secondary:not(.row-menu-btn){min-height:28px;margin:0;padding:0 8px;font-size:12px;line-height:26px}
-.download-actions>form{display:flex;justify-content:center;width:154px;flex:none}
+.download-actions>form{display:flex;justify-content:flex-end;flex:none}
 .download-delete-dialog p{overflow-wrap:anywhere}
 
 .image-delete-file{overflow-wrap:anywhere}

@@ -282,6 +282,7 @@ func TestDeleteEndpointsRequireAdminAndCSRF(t *testing.T) {
 
 func TestAdminPagesExposeRecordDeletionActions(t *testing.T) {
 	data := pageData{Info: requestContext{User: User{ID: 1, Role: "admin"}, CSRF: "test"}, WindowsProfiles: []WindowsProfile{{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows", Path: "win.iso"}, State: "ready"}}, WindowsAnswerVariants: []WindowsAnswerVariant{{ID: 4, ProfileID: 17, Title: "Lab"}}, DriverConfigs: []DriverConfig{{ID: 3, Title: "VirtIO"}}}
+	data.AnswerFileUsage.DownloadsKnown = true
 	data.ISOImages = []imageRow{{CleanupProfileID: 17}}
 	for _, tc := range []struct{ page, action string }{
 		{"images", `/images/windows-profiles/17/delete`},

@@ -105,6 +105,7 @@ func TestAnswerRowActions(t *testing.T) {
 	for _, role := range []string{"admin", "operator", "observer"} {
 		data := samplePageData(langRU)
 		data.Info.User.Role = role
+		data.AnswerFileUsage.DownloadsKnown = true
 		body := renderPage("answers", data)
 		for _, want := range []string{`popovertarget="answer-menu-5"`, `id="answer-menu-5"`, `href="/answers/5/edit"`} {
 			if !strings.Contains(body, want) {
@@ -154,5 +155,36 @@ func TestAnswerFilesCommonColumns(t *testing.T) {
 		if strings.Contains(tables[1][1], ">Проверен<") || strings.Contains(tables[1][1], ">Validated<") {
 			t.Fatal("Ubuntu uses different ready terminology")
 		}
+	}
+}
+
+func TestAnswerDeleteAvailability(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		known     bool
+		downloads []answerFileDownload
+		disabled  bool
+		reason    string
+	}{
+		{name: "free", known: true},
+		{name: "used", known: true, downloads: []answerFileDownload{{ID: 9, Title: "Boot"}}, disabled: true, reason: "Сценарий используется загрузками"},
+		{name: "unknown", disabled: true, reason: "Не удалось проверить использование"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := samplePageData(langRU)
+			data.AnswerFileUsage = answerFileUsage{DownloadsKnown: tc.known, MenuKnown: true, Windows: map[int64]answerFileUses{5: {Downloads: tc.downloads}}}
+			body := renderPage("answers", data)
+			match := regexp.MustCompile(`<button[^>]*data-answer-delete-open="answer-delete-5"[^>]*>[^<]*</button>`).FindString(body)
+			if match == "" || strings.Contains(match, " disabled") != tc.disabled || (tc.reason != "" && !strings.Contains(match, tc.reason)) {
+				t.Fatalf("unexpected button: %s", match)
+			}
+			if !strings.Contains(match, ">Удалить сценарий</button>") {
+				t.Fatalf("unexpected label: %s", match)
+			}
+			hasDialog := strings.Contains(body, `id="answer-delete-5"`)
+			if hasDialog == tc.disabled {
+				t.Fatalf("dialog present=%v, disabled=%v", hasDialog, tc.disabled)
+			}
+		})
 	}
 }

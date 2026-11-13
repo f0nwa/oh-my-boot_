@@ -36,6 +36,7 @@ type installationRow struct {
 	StorageWarning                     string
 	StorageUnavailable                 bool
 	CanDelete                          bool
+	InMenu                             bool
 	AnswerWipesDisk                    *bool
 	// Status is in_menu, pending_add, pending_remove, not_in_menu,
 	// needs_build, building, error or unavailable.
@@ -234,6 +235,7 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 		item, draftHas := inDraft[key]
 		published, activeHas := inActive[key]
 		row.CanDelete = !activeHas && !draftHas
+		row.InMenu = activeHas || draftHas
 		if !draftHas && activeHas {
 			item = published
 		}

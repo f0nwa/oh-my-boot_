@@ -2,7 +2,7 @@
 {{$prepare := and .ID (or (eq .Status "needs_prepare") (eq .Status "needs_build") (eq .Status "error") (eq .Status "unavailable") (eq .Status "preparing") (eq .Status "building"))}}
 {{$add := or (eq .Status "not_in_menu") (eq .Status "pending_remove")}}
 {{$remove := or (eq .Status "in_menu") (eq .Status "pending_add") (eq .Status "pending_change")}}
-{{$delete := and .ID .CanDelete (eq $info.User.Role "admin")}}
+{{$delete := and .ID (or .CanDelete .InMenu) (eq $info.User.Role "admin")}}
 {{$menu := and (or $prepare $add $remove) $delete}}
 {{$buttonClass := "secondary"}}{{if $menu}}{{$buttonClass = "row-menu-item"}}{{end}}
 <td class="download-row-actions"><div class="download-actions">
@@ -10,10 +10,10 @@
 {{if $prepare}}<form method="post" action="/installations/{{.ID}}/prepare"><input type="hidden" name="csrf" value="{{$info.CSRF}}"><button class="{{$buttonClass}}"{{if $menu}} role="menuitem"{{end}}>{{if or (eq .Status "preparing") (eq .Status "building")}}{{t "Проверить подготовку"}}{{else}}{{t "Повторить подготовку"}}{{end}}</button></form>
 {{else if $add}}<form method="post" action="/installations/{{if .ID}}{{.ID}}{{else}}{{.Key}}{{end}}/add"><input type="hidden" name="csrf" value="{{$info.CSRF}}"><button class="{{$buttonClass}}"{{if $menu}} role="menuitem"{{end}}>{{if eq .Status "pending_remove"}}{{t "Вернуть"}}{{else}}{{t "Добавить в меню"}}{{end}}</button></form>
 {{else if $remove}}<form method="post" action="/menu/items/{{.Key}}/remove"><input type="hidden" name="csrf" value="{{$info.CSRF}}"><input type="hidden" name="return" value="/installations"><button class="{{$buttonClass}}"{{if $menu}} role="menuitem"{{end}}>{{if eq .Status "pending_add"}}{{t "Отменить"}}{{else}}{{t "Убрать из меню"}}{{end}}</button></form>{{end}}
-{{if $delete}}<button type="button" class="{{$buttonClass}} {{if $menu}}row-menu-danger{{else}}danger-text{{end}}"{{if $menu}} role="menuitem"{{end}} data-download-delete-open="download-delete-{{.Key}}">{{t "Удалить"}}</button>{{end}}
+{{if $delete}}<button type="button" class="{{$buttonClass}} {{if $menu}}row-menu-danger{{else}}danger-text{{end}}"{{if $menu}} role="menuitem"{{end}} data-download-delete-open="download-delete-{{.Key}}">{{if .InMenu}}{{t "Убрать из меню и удалить"}}{{else}}{{t "Удалить"}}{{end}}</button>{{end}}
 {{if $menu}}</div>{{end}}
 </div></td>{{end}}{{end}}
 
-{{define "installation_delete_dialogs"}}{{if eq .Info.User.Role "admin"}}{{range .Installations}}{{if and .ID .CanDelete}}
-<dialog id="download-delete-{{.Key}}" class="user-dialog download-delete-dialog" aria-labelledby="download-delete-title-{{.Key}}"><h2 id="download-delete-title-{{.Key}}">{{t "Удалить загрузку из списка?"}}</h2><p>{{.Title}}</p><p class="hint">{{t "ISO, подготовленные файлы, драйверы и файлы ответов останутся в библиотеке. Старые версии меню с этой загрузкой станут недоступны для восстановления."}}</p><div class="user-dialog-actions"><button type="button" class="btn btn-ghost" data-download-delete-close>{{t "Отмена"}}</button><form method="post" action="/installations/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="confirm" value="yes"><button class="btn-danger">{{t "Подтвердить удаление"}}</button></form></div></dialog>
+{{define "installation_delete_dialogs"}}{{if eq .Info.User.Role "admin"}}{{range .Installations}}{{if and .ID (or .CanDelete .InMenu)}}
+<dialog id="download-delete-{{.Key}}" class="user-dialog download-delete-dialog" aria-labelledby="download-delete-title-{{.Key}}"><h2 id="download-delete-title-{{.Key}}">{{if .InMenu}}{{t "Убрать из меню и удалить загрузку?"}}{{else}}{{t "Удалить загрузку из списка?"}}{{end}}</h2><p>{{.Title}}</p>{{if .InMenu}}<p class="hint">{{t "Загрузка исчезнет из опубликованного меню и черновика. Остальные изменения черновика не будут опубликованы."}}</p>{{end}}<p class="hint">{{t "ISO, подготовленные файлы, драйверы и файлы ответов останутся в библиотеке. Старые версии меню с этой загрузкой станут недоступны для восстановления."}}</p><div class="user-dialog-actions"><button type="button" class="btn btn-ghost" data-download-delete-close>{{t "Отмена"}}</button><form method="post" action="/installations/{{.ID}}/{{if .InMenu}}remove-delete{{else}}delete{{end}}"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="confirm" value="yes"><button class="btn-danger">{{if .InMenu}}{{t "Убрать и удалить"}}{{else}}{{t "Подтвердить удаление"}}{{end}}</button></form></div></dialog>
 {{end}}{{end}}{{end}}{{end}}

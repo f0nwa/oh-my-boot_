@@ -106,12 +106,22 @@ func TestDownloadDeletionAppearsOnlyOutsidePublishedAndDraftMenus(t *testing.T) 
 				if strings.Contains(body, `action="/installations/`+id+`/delete"`) {
 					t.Fatalf("entry %s can be deleted while in a menu", id)
 				}
+				if !strings.Contains(body, `action="/installations/`+id+`/remove-delete"`) || !strings.Contains(body, `popovertarget="download-menu-install_`+id+`"`) || !strings.Contains(body, `data-download-delete-open="download-delete-install_`+id+`"`) {
+					t.Fatalf("entry %s lacks combined removal in its actions menu", id)
+				}
 			}
 			if !strings.Contains(body, `action="/installations/103/delete"`) {
 				t.Fatal("entry outside both menus cannot be deleted")
 			}
 			if state == "ready" && !strings.Contains(body, "Убрать из меню") {
 				t.Fatal("published entry lacks a clear remove-from-menu action")
+			}
+			for _, role := range []string{"operator", "observer"} {
+				store.user.Role = role
+				body = libraryGet(t, s, "/installations")
+				if strings.Contains(body, "/remove-delete") || strings.Contains(body, "data-download-delete-open") {
+					t.Fatalf("role %s sees administrative deletion", role)
+				}
 			}
 		})
 	}

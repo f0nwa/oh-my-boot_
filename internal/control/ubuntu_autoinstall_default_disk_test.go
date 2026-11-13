@@ -28,7 +28,7 @@ func TestUbuntuDefaultDiskWarningsBeyondEditor(t *testing.T) {
 	store.files = []UbuntuAutoinstallFile{file}
 
 	library := libraryGet(t, s, "/answers")
-	if !strings.Contains(library, "стирает диск: выбор установщика") {
+	if !strings.Contains(library, "Стирает диск") || !strings.Contains(library, "Диск выбирает установщик") {
 		t.Fatalf("library hides destructive default mode: %s", library)
 	}
 	selector := libraryGet(t, s, "/installations/new?boot_profile_id=52")

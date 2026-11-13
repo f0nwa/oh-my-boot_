@@ -89,9 +89,9 @@ func TestUnifiedLibraryUsageUsesInstallationReferences(t *testing.T) {
 	profiles, answers, configs := draftFixture()
 	source := testInstallationSources(profiles, answers, configs)
 	active := MenuDraft{Items: []MenuDraftItem{{InstallationID: 1017}, {InstallationID: 2031}, {InstallationID: 3002}}}
-	profileUse, answerUse := menuUsage(active, configs, source)
-	if profileUse[17] != 3 || answerUse[31] != 2 {
-		t.Fatalf("profiles=%v answers=%v", profileUse, answerUse)
+	usage := buildAnswerFileUsage(source.Installations, configs, active)
+	if usage.Windows[31].Published != 2 {
+		t.Fatalf("usage=%+v", usage)
 	}
 	if rows := installationRows(profiles, answers, configs, MenuDraft{}, MenuDraft{}, InstallationMenuSources{}); len(rows) != 0 {
 		t.Fatalf("library invented installations: %+v", rows)

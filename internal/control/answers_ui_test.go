@@ -3,8 +3,10 @@ package control
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAnswersScriptEndpoint(t *testing.T) {
@@ -65,13 +67,13 @@ func TestAnswersPageLayout(t *testing.T) {
 	}
 }
 
-func TestAnswersPageWipesDiskChip(t *testing.T) {
+func TestAnswersPageDiskWarning(t *testing.T) {
 	for _, tc := range []struct {
 		lang      string
 		wantBadge string
 	}{
-		{langRU, `<span class="chip-bad">стирает диск</span>`},
-		{langEN, `<span class="chip-bad">wipes the disk</span>`},
+		{langRU, `<span class="danger-text">Изменяет разделы</span>`},
+		{langEN, `<span class="danger-text">Changes partitions</span>`},
 	} {
 		body := renderPage("answers", samplePageData(tc.lang))
 		if !strings.Contains(body, tc.wantBadge) {
@@ -115,6 +117,42 @@ func TestAnswerRowActions(t *testing.T) {
 		}
 		if strings.Contains(body, `<summary>Удалить сценарий #`) {
 			t.Errorf("%s: obsolete disclosure", role)
+		}
+	}
+}
+
+func TestAnswerFilesCommonColumns(t *testing.T) {
+	for _, lang := range []string{langRU, langEN} {
+		data := samplePageData(lang)
+		data.UbuntuAutoinstalls = []UbuntuAutoinstallSummary{{ID: 41, Title: "Ubuntu shared", State: "validated", DiskMode: "interactive", Author: "ubuntu-creator", CreatedAt: time.Date(2026, 11, 2, 8, 15, 0, 0, time.UTC)}}
+		data.WindowsAnswerVariants[0].CreatedAt = time.Date(2026, 11, 1, 7, 30, 0, 0, time.UTC)
+		body := renderPage("answers", data)
+		tables := regexp.MustCompile(`(?s)<table class="answers-table"[^>]*>(.*?)</table>`).FindAllStringSubmatch(body, -1)
+		if len(tables) != 2 {
+			t.Fatalf("%s: got %d answer tables, want two", lang, len(tables))
+		}
+		var headers []string
+		for _, table := range tables {
+			head := regexp.MustCompile(`(?s)<thead>(.*?)</thead>`).FindStringSubmatch(table[1])
+			if len(head) != 2 {
+				t.Fatal("missing semantic header")
+			}
+			cols := regexp.MustCompile(`<th(?:\s[^>]*)?>`).FindAllString(head[1], -1)
+			if len(cols) != 9 {
+				t.Fatalf("got %d columns, want 9", len(cols))
+			}
+			headers = append(headers, head[1])
+		}
+		if headers[0] != headers[1] {
+			t.Fatal("headers differ between operating systems")
+		}
+		for _, want := range []string{">Windows</h2>", ">Ubuntu</h2>", "ubuntu-creator", "2026-11-02", "2026-11-01", `popovertarget="ubuntu-answer-menu-41"`, `href="/ubuntu-autoinstall/41/download"`} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s missing %q", lang, want)
+			}
+		}
+		if strings.Contains(tables[1][1], ">Проверен<") || strings.Contains(tables[1][1], ">Validated<") {
+			t.Fatal("Ubuntu uses different ready terminology")
 		}
 	}
 }

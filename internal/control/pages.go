@@ -93,7 +93,7 @@ type pageData struct {
 	SessionIndex          int
 	DHCPEvents            []agent.DHCPEvent
 	DHCPError             string
-	AnswerUse             map[int64]int
+	AnswerFileUsage       answerFileUsage
 	ActiveVersion         int64
 	ImageError            string
 	Recovery              *agent.RecoveryStatus

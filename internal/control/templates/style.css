@@ -740,3 +740,16 @@ a.machine-name-accent:hover{text-decoration:underline}
 .driver-package-usage a{margin-right:6px}
 .driver-config-table button:disabled,.driver-package-actions button:disabled{color:var(--muted);background:transparent;border-color:var(--line);opacity:.5;filter:none;cursor:default}
 @media(max-width:600px){.driver-package-row{align-items:flex-start;flex-direction:column}.driver-package-actions{align-self:stretch}}
+
+/* Shared Windows and Ubuntu answer-file tables. */
+.answer-section h2,.autoinstall-section h2{margin:0 0 14px;font-size:14px;font-weight:600}
+.answers-table{table-layout:fixed;min-width:1120px}
+.answers-table .answer-col-name{width:17%}.answers-table .answer-col-image{width:11%}.answers-table .answer-col-author{width:7%}.answers-table .answer-col-created{width:10%}.answers-table .answer-col-disk{width:16%}.answers-table .answer-col-use{width:12%}.answers-table .answer-col-state{width:9%}.answers-table .answer-col-sha{width:10%}.answers-table .answer-col-actions{width:8%}
+.answers-table th,.answers-table td{overflow-wrap:anywhere}
+.answers-table td{padding-top:14px;padding-bottom:14px}
+.answers-table .answer-name{font-weight:500}
+.answers-table .answer-meta{display:block;margin-top:4px;color:var(--muted);font-size:11px}
+.answers-table .answer-use-link{display:block;margin-top:4px;font-size:12px}
+.answers-table .answer-state{white-space:nowrap}
+.answers-table time{font-variant-numeric:tabular-nums;white-space:nowrap}
+.answers-table .answer-actions>button{margin-top:0}

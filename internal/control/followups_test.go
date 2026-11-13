@@ -107,8 +107,8 @@ var _ = drivers.Inventory{}
 func TestAnswersPageWipesDiskBadge(t *testing.T) {
 	data := samplePageData(langRU)
 	body := renderPage("answers", data)
-	if !strings.Contains(body, `Ready <span class="chip-bad">стирает диск</span>`) {
-		t.Fatalf("wipes-disk answer variant missing danger chip: %s", body)
+	if !strings.Contains(body, `<span class="danger-text">Изменяет разделы</span>`) {
+		t.Fatalf("answer variant missing disk-change warning: %s", body)
 	}
 	if strings.Contains(body, `action="/answers/5/inspect"`) {
 		t.Fatalf("answers page should not contain legacy inspect form: %s", body)

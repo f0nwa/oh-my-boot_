@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 	"unicode/utf8"
 
 	"omb/internal/agent"
@@ -25,6 +26,8 @@ type WindowsAnswerVariant struct {
 	Folder    string
 	SHA256    string
 	Size      int64
+	CreatedAt time.Time
+	Disk      AnswerFileDisk
 	State     string
 	Error     string
 	// WipesDisk is nil for files uploaded before the check existed.
@@ -142,7 +145,7 @@ func (s *Server) saveWindowsAnswer(r *http.Request, profileID int64, title, fold
 	if wipes, known := AnswerWipesDisk(data); known {
 		wipesDisk = &wipes
 	}
-	variant, err := s.Store.CreateWindowsAnswer(r.Context(), WindowsAnswerVariant{ProfileID: profileID, Title: title, Folder: folder, SHA256: digest, Size: int64(len(data)), WipesDisk: wipesDisk})
+	variant, err := s.Store.CreateWindowsAnswer(r.Context(), WindowsAnswerVariant{ProfileID: profileID, Title: title, Folder: folder, SHA256: digest, Size: int64(len(data)), WipesDisk: wipesDisk, Disk: SummarizeWindowsAnswerDisk(data)})
 	if err != nil {
 		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось сохранить сценарий"
 	}

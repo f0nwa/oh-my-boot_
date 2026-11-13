@@ -78,14 +78,12 @@ func (s *Server) answersLibraryData(r *http.Request) pageData {
 		data.ImageError = "Не удалось прочитать файлы Autoinstall"
 	} else {
 		data.UbuntuAutoinstalls = files
-	}
-	if configs, err := s.Store.DriverConfigs(r.Context()); err == nil {
-		if _, active, err := s.currentDraft(r.Context()); err == nil {
-			if sources, err := s.libraryMenuReferences(r.Context()); err == nil {
-				_, data.AnswerUse = menuUsage(active, configs, sources)
-			}
+		for i := range data.UbuntuAutoinstalls {
+			data.UbuntuAutoinstalls[i].Author = authors.UbuntuAnswers[data.UbuntuAutoinstalls[i].ID]
 		}
 	}
+	data.AnswerFileUsage = s.loadAnswerFileUsage(r.Context())
+
 	return data
 }
 

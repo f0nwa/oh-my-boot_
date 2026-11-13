@@ -43,6 +43,18 @@ A banner above the form lists what went into the form and what stays as custom X
 
 Details: [internal/unattend/UPSTREAM.md](../../internal/unattend/UPSTREAM.md) (in Russian).
 
+## Shared answer-file lists
+
+Library → Answer files has two tables: **Windows** and **Ubuntu**. Both have the same nine columns: name, image, added by, created, target disk / action, usage, state, SHA-256 and actions.
+
+“Added by” identifies the OMB account that created or uploaded the file, not necessarily the author of an external XML. Missing history is shown as “Unknown”. Creation dates include the time zone. Windows shows its bound image; current Ubuntu files show “Not bound to an ISO”, which does not imply compatibility with every ISO.
+
+“Ready” means the file has been saved and prepared for use in OMB. It does not confirm a successful OS installation. The state tooltip describes the checks performed; the SHA-256 tooltip contains the complete digest.
+
+Usage shows saved downloads with links and a separate count of published menu entries. Published entries retain their published component bindings when a saved download changes. Unavailable reference data is shown as unknown usage rather than zero.
+
+Windows disk descriptions come from unchanged editor settings or conservative XML analysis. Arbitrary commands are shown as script-defined actions with an unknown target. Finding no automatic partitioning does not guarantee data preservation. Ubuntu shows manual selection, installer-selected disk or an exact serial number. Row actions are grouped in the menu on the right and respect the account's role.
+
 ## License
 
 unattend-generator is MIT licensed, © Christoph Schneegans. License text: [internal/unattend/LICENSE-unattend-generator.txt](../../internal/unattend/LICENSE-unattend-generator.txt). The original's resources (`internal/unattend/resource/`: PowerShell and VBScript scripts, lookup tables) are copied unchanged.

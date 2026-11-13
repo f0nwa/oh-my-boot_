@@ -202,6 +202,7 @@ func (s *Server) ubuntuAutoinstallSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "ubuntu-autoinstall.create", "ok", strconv.FormatInt(file.ID, 10))
+	s.InvalidateResourceAuthorsCache()
 	http.Redirect(w, r, "/ubuntu-autoinstall/"+strconv.FormatInt(file.ID, 10), http.StatusSeeOther)
 }
 

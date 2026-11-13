@@ -1,6 +1,16 @@
 {{define "ubuntu_autoinstall_files"}}
-<section class="autoinstall-section" id="ubuntu-autoinstall"><div class="rules-head"><div><h2>{{t "Файлы Ubuntu Autoinstall"}}</h2></div></div>
-{{if .UbuntuAutoinstalls}}<div class="table-wrap"><table><tr><th>{{t "Название"}}</th><th>{{t "Создан"}}</th><th>{{t "Целевой диск"}}</th><th>{{t "Состояние"}}</th><th>SHA-256</th><th>{{t "Действия"}}</th></tr>
-{{range .UbuntuAutoinstalls}}<tr><td><a href="/ubuntu-autoinstall/{{.ID}}">{{.Title}}</a></td><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td><td>{{if eq .DiskMode "serial"}}<strong class="danger-text">{{t "стирает диск"}}: {{.DiskSerial}}</strong>{{else if eq .DiskMode "default"}}<strong class="danger-text">{{t "стирает диск: выбор установщика"}}</strong>{{else}}{{t "Выбор диска вручную"}}{{end}}</td><td>{{if eq .State "validated"}}{{t "Проверен"}}{{else}}{{t "Не проверен"}}{{end}}</td><td class="mono">{{.SHA256}}</td><td><a href="/ubuntu-autoinstall/{{.ID}}/download">{{t "Скачать user-data"}}</a>{{if ne $.Info.User.Role "observer"}} · <a href="/ubuntu-autoinstall/{{.ID}}/copy">{{t "Создать копию"}}</a>{{end}}</td></tr>{{end}}
-</table></div>{{else}}<p class="muted">{{t "Файлов Ubuntu Autoinstall пока нет."}}</p>{{end}}</section>
+<section class="autoinstall-section" id="ubuntu-autoinstall"><h2>Ubuntu</h2>
+{{if .UbuntuAutoinstalls}}<div class="table-wrap"><table class="answers-table">{{template "answer_table_head"}}<tbody>
+{{range .UbuntuAutoinstalls}}<tr>
+<td><span class="answer-name">{{.Title}}</span></td>
+<td>{{t "Без привязки к ISO"}}</td>
+<td>{{template "answer_file_author" .Author}}</td>
+<td>{{template "answer_file_created" .CreatedAt}}</td>
+<td>{{template "answer_file_disk" .DiskSummary}}</td>
+<td>{{template "answer_file_usage" (dict "Use" (index $.AnswerFileUsage.Ubuntu .ID) "DownloadsKnown" $.AnswerFileUsage.DownloadsKnown "MenuKnown" $.AnswerFileUsage.MenuKnown "Role" $.Info.User.Role)}}</td>
+<td>{{template "answer_file_state" (dict "State" .State "Error" "")}}</td>
+<td><small class="mono" title="{{.SHA256}}">{{shortSHA .SHA256}}</small></td>
+<td class="row-actions answer-actions"><button type="button" class="secondary row-menu-btn" data-row-menu popovertarget="ubuntu-answer-menu-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-label="{{t "Действия"}}">☰</button><div id="ubuntu-answer-menu-{{.ID}}" popover class="row-menu-popover" role="menu"><a class="row-menu-item" role="menuitem" href="/ubuntu-autoinstall/{{.ID}}">{{t "Открыть в редакторе"}}</a><a class="row-menu-item" role="menuitem" href="/ubuntu-autoinstall/{{.ID}}/download">{{t "Скачать user-data"}}</a>{{if ne $.Info.User.Role "observer"}}<a class="row-menu-item" role="menuitem" href="/ubuntu-autoinstall/{{.ID}}/copy">{{t "Создать копию"}}</a>{{end}}</div></td>
+</tr>{{end}}
+</tbody></table></div>{{else}}<p class="muted">{{t "Файлов Ubuntu Autoinstall пока нет."}}</p>{{end}}</section>
 {{end}}

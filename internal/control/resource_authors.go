@@ -15,6 +15,7 @@ import (
 type ResourceAuthors struct {
 	Installations   map[int64]string
 	Answers         map[int64]string
+	UbuntuAnswers   map[int64]string
 	Images          map[string]string
 	ImageUploadedAt map[string]time.Time
 	Drivers         map[string]string
@@ -24,6 +25,7 @@ func (a ResourceAuthors) clone() ResourceAuthors {
 	out := ResourceAuthors{
 		Installations:   make(map[int64]string, len(a.Installations)),
 		Answers:         make(map[int64]string, len(a.Answers)),
+		UbuntuAnswers:   make(map[int64]string, len(a.UbuntuAnswers)),
 		Images:          make(map[string]string, len(a.Images)),
 		ImageUploadedAt: make(map[string]time.Time, len(a.ImageUploadedAt)),
 		Drivers:         make(map[string]string, len(a.Drivers)),
@@ -33,6 +35,9 @@ func (a ResourceAuthors) clone() ResourceAuthors {
 	}
 	for k, v := range a.Answers {
 		out.Answers[k] = v
+	}
+	for k, v := range a.UbuntuAnswers {
+		out.UbuntuAnswers[k] = v
 	}
 	for k, v := range a.Images {
 		out.Images[k] = v
@@ -125,14 +130,14 @@ func imageAuthorKey(storageID int64, path string) string {
 func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT a.action,a.detail,COALESCE(u.username,''),a.occurred_at
 		FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id
-		WHERE a.result='ok' AND a.action IN ('installation.create','windows-answer.create','iso.upload','driver.import')
+		WHERE a.result='ok' AND a.action IN ('installation.create','windows-answer.create','ubuntu-autoinstall.create','iso.upload','driver.import')
 		ORDER BY a.id`)
 	if err != nil {
 		return ResourceAuthors{}, err
 	}
 	defer rows.Close()
 	authors := ResourceAuthors{
-		Installations: map[int64]string{}, Answers: map[int64]string{},
+		Installations: map[int64]string{}, Answers: map[int64]string{}, UbuntuAnswers: map[int64]string{},
 		Images: map[string]string{}, Drivers: map[string]string{}, ImageUploadedAt: map[string]time.Time{},
 	}
 	for rows.Next() {
@@ -159,6 +164,11 @@ func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 					}
 					break
 				}
+			}
+		case "ubuntu-autoinstall.create":
+			id, err := strconv.ParseInt(detail, 10, 64)
+			if err == nil && id > 0 && authors.UbuntuAnswers[id] == "" {
+				authors.UbuntuAnswers[id] = actor
 			}
 		case "iso.upload":
 			firstSpace := strings.IndexByte(detail, ' ')

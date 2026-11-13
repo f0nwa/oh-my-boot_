@@ -525,32 +525,3 @@ func insertDraftItem(items, published []MenuDraftItem, item MenuDraftItem) []Men
 	out = append(out, item)
 	return append(out, items[at:]...)
 }
-
-// menuUsage counts the published menu items that rely on each profile and
-// each answer file.
-func menuUsage(active MenuDraft, configs []DriverConfig, source InstallationMenuSources) (map[int64]int, map[int64]int) {
-	profileUse, answerUse := map[int64]int{}, map[int64]int{}
-	for _, item := range active.Items {
-		for _, installation := range source.Installations {
-			if installation.ID != item.InstallationID {
-				continue
-			}
-			for _, profile := range source.BootProfiles {
-				if profile.ID == installation.BootProfileID && isISOBootKind(profile.Kind) {
-					profileUse[profile.WindowsProfileID]++
-				}
-			}
-			installation = item.Components.apply(installation)
-			answerID := installation.AnswerID
-			for _, config := range configs {
-				if config.ID == installation.DriverConfigID {
-					answerID = config.AnswerID
-				}
-			}
-			if answerID > 0 {
-				answerUse[answerID]++
-			}
-		}
-	}
-	return profileUse, answerUse
-}

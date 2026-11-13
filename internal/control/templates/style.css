@@ -248,6 +248,9 @@ tr.dragging{opacity:.5;background:var(--chip)}
 .step-grid legend{grid-column:1/-1}.step-grid label{margin-top:0}
 .new-install-side{flex:1 1 300px;max-width:400px;display:flex;flex-direction:column;gap:12px}
 .installation-edit-actions{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:16px;margin-top:4px}
+.installation-edit-actions .btn{background:transparent}
+.installation-edit-actions .btn:hover{background:var(--chip)}
+.installation-edit-actions .btn-danger-outline:hover{background:var(--bad-bg)}
 .screen.screen-small{min-height:0;font-size:13px;padding:16px 18px}
 .summary{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:12px 14px}
 .btn-wide{width:100%;margin-top:0;min-height:40px}

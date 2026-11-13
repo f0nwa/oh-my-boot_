@@ -1,7 +1,7 @@
 {{define "installation_edit_actions"}}{{with .EditInstallation}}
 <div class="installation-edit-actions">
-{{if .InDraft}}<button type="submit" form="installation-remove-form" class="secondary btn-wide">{{t "Убрать из меню"}}</button>{{else}}<button type="submit" form="installation-add-form" class="secondary btn-wide">{{t "Добавить в меню"}}</button>{{end}}
-{{if eq $.Info.User.Role "admin"}}<button type="button" class="secondary danger-text btn-wide" data-download-delete-open="installation-edit-delete">{{if .InMenu}}{{t "Убрать из меню и удалить"}}{{else}}{{t "Удалить"}}{{end}}</button>{{end}}
+{{if .InDraft}}<button type="submit" form="installation-remove-form" class="btn btn-wide">{{t "Убрать из меню"}}</button>{{else}}<button type="submit" form="installation-add-form" class="btn btn-wide">{{t "Добавить в меню"}}</button>{{end}}
+{{if eq $.Info.User.Role "admin"}}<button type="button" class="btn btn-danger-outline btn-wide" data-download-delete-open="installation-edit-delete">{{if .InMenu}}{{t "Убрать из меню и удалить"}}{{else}}{{t "Удалить"}}{{end}}</button>{{end}}
 </div>{{end}}{{end}}
 
 {{define "installation_edit_menu_form"}}{{with .EditInstallation}}{{if .InDraft}}

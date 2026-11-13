@@ -1,11 +1,12 @@
 {{define "installation_edit_actions"}}{{with .EditInstallation}}
-{{if or .InDraft (eq $.Info.User.Role "admin")}}<div class="installation-edit-actions">
-{{if .InDraft}}<button type="submit" form="installation-remove-form" class="secondary btn-wide">{{t "Убрать из меню"}}</button>{{end}}
+<div class="installation-edit-actions">
+{{if .InDraft}}<button type="submit" form="installation-remove-form" class="secondary btn-wide">{{t "Убрать из меню"}}</button>{{else}}<button type="submit" form="installation-add-form" class="secondary btn-wide">{{t "Добавить в меню"}}</button>{{end}}
 {{if eq $.Info.User.Role "admin"}}<button type="button" class="secondary danger-text btn-wide" data-download-delete-open="installation-edit-delete">{{if .InMenu}}{{t "Убрать из меню и удалить"}}{{else}}{{t "Удалить"}}{{end}}</button>{{end}}
-</div>{{end}}{{end}}{{end}}
+</div>{{end}}{{end}}
 
-{{define "installation_edit_remove_form"}}{{with .EditInstallation}}{{if .InDraft}}
+{{define "installation_edit_menu_form"}}{{with .EditInstallation}}{{if .InDraft}}
 <form id="installation-remove-form" method="post" action="/menu/items/install_{{.ID}}/remove"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="return" value="/installations/{{.ID}}/edit"></form>
+{{else}}<form id="installation-add-form" method="post" action="/installations/{{.ID}}/add"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="return" value="/installations/{{.ID}}/edit"></form>
 {{end}}{{end}}{{end}}
 
 {{define "installation_edit_delete_dialog"}}{{if eq .Info.User.Role "admin"}}{{with .EditInstallation}}

@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"net/http"
+	"net/url"
 	"omb/internal/boot"
 	"omb/internal/images"
 	"path"
@@ -478,7 +479,9 @@ func (s *Server) installationAddByID(w http.ResponseWriter, r *http.Request, id 
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "menu.draft.add", "ok", fmt.Sprintf("install_%d", id))
 	target := "/installations?message=Добавлено+в+черновик+меню"
-	if strings.HasPrefix(r.URL.Path, "/menu/") {
+	if edit := fmt.Sprintf("/installations/%d/edit", id); r.FormValue("return") == edit {
+		target = edit + "?message=" + url.QueryEscape("Добавлено в черновик меню")
+	} else if strings.HasPrefix(r.URL.Path, "/menu/") {
 		target = "/menu?message=Пункт+возвращён+в+меню"
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)

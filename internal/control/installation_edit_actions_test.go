@@ -218,6 +218,37 @@ func TestInstallationRemoveAndDelete(t *testing.T) {
 }
 
 // Catches missing editor actions or admin-only deletion exposed to operators.
+func TestInstallationEditorAddsToDraft(t *testing.T) {
+	for _, role := range []string{"admin", "operator"} {
+		t.Run(role, func(t *testing.T) {
+			s, store := newInstallServer(t)
+			store.user.Role = role
+			store.installations = []Installation{{ID: 100, BootProfileID: 50, Title: "Saved title", Folder: "Windows"}}
+			store.draft = &MenuDraft{Title: productMenuTitle}
+			before := len(store.versions)
+			body := libraryGet(t, s, "/installations/100/edit")
+			if !strings.Contains(body, `action="/installations/100/add"`) || !strings.Contains(body, `form="installation-add-form"`) {
+				t.Fatal("editor does not offer adding the saved entry to the menu")
+			}
+			res := menuPost(t, s, "/installations/100/add", url.Values{"return": {"/installations/100/edit"}, "title": {"Unsaved title"}})
+			if res.Code != 303 || !strings.HasPrefix(res.Header().Get("Location"), "/installations/100/edit?") {
+				t.Fatalf("add: %d location=%s", res.Code, res.Header().Get("Location"))
+			}
+			if len(store.draft.Items) != 1 || store.draft.Items[0].InstallationID != 100 || store.draft.Items[0].Title != "Saved title" || store.draft.Items[0].Folder != "Windows" || len(store.versions) != before {
+				t.Fatalf("add changed the saved entry or published it: %+v", store.draft)
+			}
+			body = libraryGet(t, s, "/installations/100/edit")
+			if strings.Contains(body, `form="installation-add-form"`) || !strings.Contains(body, `form="installation-remove-form"`) {
+				t.Fatal("added entry does not switch to the remove action")
+			}
+			res = menuPost(t, s, "/installations/100/add", url.Values{"return": {"https://example.invalid/"}})
+			if res.Code != 303 || !strings.HasPrefix(res.Header().Get("Location"), "/installations?") || len(store.draft.Items) != 1 {
+				t.Fatal("repeated add duplicated the placement or accepted an external return URL")
+			}
+		})
+	}
+}
+
 func TestInstallationEditorActions(t *testing.T) {
 	s, store := newInstallServer(t)
 	store.user.Role = "admin"

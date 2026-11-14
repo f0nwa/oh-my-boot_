@@ -151,7 +151,7 @@ func TestUbuntuConstructorReturnsToAnswerLibrary(t *testing.T) {
 				t.Fatal(err)
 			}
 			library := libraryGet(t, s, back.RequestURI())
-			if !strings.Contains(library, `<h1>Файлы ответов</h1>`) || !strings.Contains(library, `href="/answers" class="active" aria-current="page"`) {
+			if !strings.Contains(library, `<h1>Скрипты установки</h1>`) || !strings.Contains(library, `href="/answers" class="active" aria-current="page"`) {
 				t.Fatal("return link leaves the answer-file library and its navigation")
 			}
 			if back.Fragment == "" || !strings.Contains(library, `id="`+back.Fragment+`"`) {

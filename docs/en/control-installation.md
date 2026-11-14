@@ -163,11 +163,11 @@ Recovery WinPE attempts every selected INF. A nonzero driver result is recorded 
 
 Library → Drivers accepts directories containing INF files and their supporting files, or a ZIP with the same structure. A boot entry selects specific INFs when created or edited. Its derived driver WIM is used by that entry; the source ISO remains on storage.
 
-Answer files are under Library → Answer files. A Windows XML belongs to a source image. Publish a choice only after its files have been prepared and checked. Dependencies prevent deletion of images or files that are still used.
+Answer files are under Library → Installation scripts. A Windows XML belongs to a source image. Publish a choice only after its files have been prepared and checked. Dependencies prevent deletion of images or files that are still used.
 
 ## Ubuntu Autoinstall
 
-In Library → Answer files, use Create Ubuntu file in the Ubuntu Autoinstall block. The same action is available when creating an Ubuntu boot entry. The editor targets Ubuntu Desktop and has eight sections: source, language, user, disk, hardware, software and repository, networking and SSH, and completion.
+In Library → Installation scripts, use Create Ubuntu file in the Ubuntu Autoinstall block. The same action is available when creating an Ubuntu boot entry. The editor targets Ubuntu Desktop and has eight sections: source, language, user, disk, hardware, software and repository, networking and SSH, and completion.
 
 The extra package list accepts package names and rejects the removal suffix `-`; names such as `g++` remain valid.
 

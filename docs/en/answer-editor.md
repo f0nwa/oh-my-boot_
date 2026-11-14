@@ -2,7 +2,7 @@
 
 > This guide uses current OMB names. See the [stand status and remaining checks](../research/2026-10-31-omb-technical-migration.md).
 
-“Library → Answer files → Create in editor” builds an `autounattend.xml` for Windows Setup. Every ready file in the list has an “Open in editor” button. The editor is a Go port of [cschneegans/unattend-generator](https://github.com/cschneegans/unattend-generator), the library behind [schneegans.de](https://schneegans.de/windows/unattend-generator/), so the settings and the output are those of the site.
+“Library → Installation scripts → Create in editor” builds an `autounattend.xml` for Windows Setup. Every ready file in the list has an “Open in editor” button. The editor is a Go port of [cschneegans/unattend-generator](https://github.com/cschneegans/unattend-generator), the library behind [schneegans.de](https://schneegans.de/windows/unattend-generator/), so the settings and the output are those of the site.
 
 ## The page
 
@@ -45,7 +45,7 @@ Details: [internal/unattend/UPSTREAM.md](../../internal/unattend/UPSTREAM.md) (i
 
 ## Shared answer-file lists
 
-Library → Answer files has two tables: **Windows** and **Ubuntu**. Both have the same ten columns: name, image, added by, created, target disk / action, usage, state, installation check, SHA-256 and actions.
+Library → Installation scripts has two tables: **Windows** and **Ubuntu**. Both have the same ten columns: name, image, added by, created, target disk / action, usage, state, installation check, SHA-256 and actions.
 
 “Added by” identifies the OMB account that created or uploaded the file, not necessarily the author of an external XML. Missing history is shown as “Unknown”. Creation dates include the time zone. Windows shows its bound image; current Ubuntu files show “Not bound to an ISO”, which does not imply compatibility with every ISO.
 

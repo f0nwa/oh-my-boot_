@@ -247,7 +247,7 @@ func buildStorageSpaceView(in storageSpaceInput) storageSpaceView {
 			view.Artifacts = append(view.Artifacts, serverArtifactRow{
 				Category: artifactCategoryBootWIM,
 				Title:    "Файлы ответов Windows (XML)",
-				Links:    []artifactLink{{Label: "Файлы ответов", Href: "/answers"}},
+				Links:    []artifactLink{{Label: "Скрипты установки", Href: "/answers"}},
 				Bytes:    report.WindowsAnswersBytes,
 			})
 		}

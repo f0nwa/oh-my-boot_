@@ -167,7 +167,7 @@ Answer files are under Library → Installation scripts. A Windows XML belongs t
 
 ## Ubuntu Autoinstall
 
-In Library → Installation scripts, use Create Ubuntu file in the Ubuntu Autoinstall block. The same action is available when creating an Ubuntu boot entry. The editor targets Ubuntu Desktop and has eight sections: source, language, user, disk, hardware, software and repository, networking and SSH, and completion.
+In Library → Installation scripts, open Add script… → Ubuntu → Create in editor. When creating an Ubuntu boot entry, the editor is available through Create Ubuntu file. The editor targets Ubuntu Desktop and has eight sections: source, language, user, disk, hardware, software and repository, networking and SSH, and completion.
 
 The extra package list accepts package names and rejects the removal suffix `-`; names such as `g++` remain valid.
 

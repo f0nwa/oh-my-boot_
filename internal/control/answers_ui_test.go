@@ -139,8 +139,8 @@ func TestAnswerFilesCommonColumns(t *testing.T) {
 				t.Fatal("missing semantic header")
 			}
 			cols := regexp.MustCompile(`<th(?:\s[^>]*)?>`).FindAllString(head[1], -1)
-			if len(cols) != 9 {
-				t.Fatalf("got %d columns, want 9", len(cols))
+			if len(cols) != 10 {
+				t.Fatalf("got %d columns, want 10", len(cols))
 			}
 			headers = append(headers, head[1])
 		}

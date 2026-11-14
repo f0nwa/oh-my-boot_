@@ -13,6 +13,11 @@ type authOnlyStore struct {
 	user User
 }
 
+func (a authOnlyStore) LatestAnswerChecks(context.Context) ([]AnswerCheck, error) { return nil, nil }
+func (a authOnlyStore) AnswerCheckHistory(context.Context, string, int64, int64) ([]AnswerCheck, error) {
+	return nil, nil
+}
+
 func (a authOnlyStore) Session(context.Context, string) (User, error)              { return a.user, nil }
 func (a authOnlyStore) Audit(context.Context, int64, string, string, string) error { return nil }
 func (a authOnlyStore) WindowsProfiles(context.Context) ([]WindowsProfile, error) {

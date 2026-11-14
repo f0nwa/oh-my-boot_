@@ -183,7 +183,7 @@ func installationTestStore(t *testing.T) Store {
 			t.Fatalf("%s: %v\n%s", name, err, out)
 		}
 	}
-	run("initdb", "-D", data, "-A", "trust", "--no-locale", "-U", "postgres")
+	run("initdb", "-D", data, "-A", "trust", "--no-locale", "--encoding=UTF8", "-U", "postgres")
 	run("pg_ctl", "-D", data, "-l", filepath.Join(root, "server.log"), "-o", fmt.Sprintf("-F -h '' -k %s", root), "-w", "start")
 	t.Cleanup(func() {
 		out, err := exec.Command("pg_ctl", "-D", data, "-m", "immediate", "-w", "stop").CombinedOutput()

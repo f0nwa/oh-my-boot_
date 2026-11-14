@@ -41,6 +41,9 @@ type menuVersionRow struct {
 }
 
 type pageData struct {
+	AnswerChecksKnown     bool
+	WindowsChecks         map[int64]AnswerCheck
+	UbuntuChecks          map[int64]AnswerCheck
 	EventsAsync           bool
 	UbuntuEditor          *ubuntuAutoinstallEditorView
 	UbuntuAutoinstalls    []UbuntuAutoinstallSummary

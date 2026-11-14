@@ -83,6 +83,7 @@ func (s *Server) answersLibraryData(r *http.Request) pageData {
 		}
 	}
 	data.AnswerFileUsage = s.loadAnswerFileUsage(r.Context())
+	s.loadAnswerChecks(r.Context(), &data)
 
 	return data
 }

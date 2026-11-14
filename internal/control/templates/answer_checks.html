@@ -1,0 +1,30 @@
+{{define "answer_check_cell"}}
+<td class="answer-check-cell">
+{{if not .Known}}<span class="muted">{{t "Сведения недоступны"}}</span>
+{{else if .Check.ID}}{{if ne .Check.SHA256 .SHA256}}<span><span class="dot dot-accent"></span>{{t "Нужна повторная проверка"}}</span>{{else}}<span class="answer-check-result"><span class="dot {{if eq .Check.Result "success"}}dot-ok{{else}}dot-error{{end}}"></span>{{t .Check.Label}}</span>{{end}}
+<small class="answer-meta">{{.Check.Author}}</small><time class="answer-meta" datetime="{{.Check.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Check.CreatedAt.Local.Format "2006-01-02 15:04 MST"}}</time>
+{{else}}<span class="muted">{{t "Не проверено"}}</span>{{end}}
+<button type="button" class="answer-check-history" data-answer-history data-check-kind="{{.Kind}}" data-check-id="{{.ID}}" data-check-title="{{.Title}}" data-check-sha="{{.SHA256}}">{{t "История"}}</button>
+</td>
+{{end}}
+
+{{define "answer_check_action"}}<button type="button" class="row-menu-item" role="menuitem" data-answer-check-open data-check-kind="{{.Kind}}" data-check-id="{{.ID}}" data-check-title="{{.Title}}" data-check-sha="{{.SHA256}}">{{t "Записать результат…"}}</button>{{end}}
+
+{{define "answer_check_dialog"}}
+<dialog id="answer-check-dialog" class="user-dialog answer-check-dialog" aria-labelledby="answer-check-heading"
+ data-success="{{t "Установка успешна"}}" data-failure="{{t "Ошибка установки"}}" data-empty="{{t "Проверок пока нет"}}" data-old="{{t "Для прежнего содержимого"}}"
+ data-load-error="{{t "Не удалось прочитать историю проверок"}}" data-save-error="{{t "Не удалось сохранить результат проверки"}}" data-saved="{{t "Результат проверки сохранён"}}" data-loading="{{t "Загрузка…"}}">
+<h2 id="answer-check-heading">{{t "Проверка установки"}}</h2><p class="answer-check-title"></p>
+<p class="error" data-check-error role="alert" hidden></p>
+<form id="answer-check-form" class="machine-form" hidden>
+<input type="hidden" name="csrf" value="{{.Info.CSRF}}"><input type="hidden" name="sha256">
+<fieldset class="answer-check-options"><legend>{{t "Результат"}}</legend><label><input type="radio" name="result" value="success" required> {{t "Установка успешна"}}</label><label><input type="radio" name="result" value="failure" required> {{t "Ошибка установки"}}</label></fieldset>
+<label><span>{{t "Машина или модель"}} <span class="muted">· {{t "необязательно"}}</span></span><input name="machine" maxlength="200" autocomplete="off"></label>
+<label><span>{{t "Комментарий"}} <span class="muted">· {{t "необязательно"}}</span></span><textarea name="comment" maxlength="2000" rows="3"></textarea></label>
+<p class="hint">{{t "Автор и дата сохранятся автоматически. Результат относится к этому файлу ответов."}}</p>
+<div class="user-dialog-actions"><button type="button" class="btn btn-ghost" data-close-dialog>{{t "Отмена"}}</button><button class="btn btn-primary" type="submit" data-check-submit>{{t "Записать результат"}}</button></div>
+</form>
+<section class="answer-check-history-section" aria-labelledby="answer-check-history-heading"><h3 id="answer-check-history-heading">{{t "История проверок"}}</h3><div data-check-history-list aria-live="polite"></div><button type="button" class="secondary" data-check-more hidden>{{t "Показать ещё"}}</button></section>
+<div class="user-dialog-actions" data-check-view-close><button type="button" class="btn btn-ghost" data-close-dialog>{{t "Закрыть"}}</button></div>
+</dialog>
+{{end}}

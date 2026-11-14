@@ -167,7 +167,7 @@ func TestUbuntuAutoinstallMigration(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
 	// Reproduce the unified schema immediately before this additive migration.
-	if _, err := store.Pool.Exec(ctx, `DROP TRIGGER IF EXISTS installation_autoinstall_immutable ON installations; ALTER TABLE installations DROP COLUMN autoinstall_id; DROP TABLE ubuntu_autoinstall_files`); err != nil {
+	if _, err := store.Pool.Exec(ctx, `DROP TABLE answer_installation_checks; DROP TRIGGER IF EXISTS installation_autoinstall_immutable ON installations; ALTER TABLE installations DROP COLUMN autoinstall_id; DROP TABLE ubuntu_autoinstall_files`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Pool.Exec(ctx, `

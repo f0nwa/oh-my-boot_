@@ -20,6 +20,9 @@ import (
 )
 
 type Storage interface {
+	SaveAnswerCheck(context.Context, AnswerCheck) error
+	LatestAnswerChecks(context.Context) ([]AnswerCheck, error)
+	AnswerCheckHistory(context.Context, string, int64, int64) ([]AnswerCheck, error)
 	SetUserLanguage(context.Context, int64, string) error
 	SetUserTheme(context.Context, int64, string) error
 	ChangeOwnPassword(context.Context, int64, string, string, string) error
@@ -184,6 +187,8 @@ func (s *Server) Handler() http.Handler {
 		s.SysMon = NewSystemMonitor(nil)
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /answers/{kind}/{id}/checks", s.protect("view", s.answerCheckHistory))
+	mux.HandleFunc("POST /answers/{kind}/{id}/checks", s.protect("images", s.answerCheckRecord))
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("POST /logout", s.protect("view", s.logout))
@@ -375,6 +380,15 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 				}
 				r.Body = http.MaxBytesReader(w, r.Body, maxMachineCSVBytes+(64<<10))
 				err = r.ParseMultipartForm(2 << 20)
+			} else if r.Pattern == "POST /answers/{kind}/{id}/checks" {
+				// 2200 Unicode characters may need 26400 bytes in percent-encoded UTF-8.
+				r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
+				err = r.ParseForm()
+				var sizeError *http.MaxBytesError
+				if errors.As(err, &sizeError) {
+					http.Error(w, translate(normalizeLanguage(user.Language), "Форма больше 32 КиБ"), http.StatusRequestEntityTooLarge)
+					return
+				}
 			} else if r.Pattern == "POST /answers/editor" || r.Pattern == "POST /answers/editor/save" {
 				// The editor posts all its settings, kept XML included.
 				r.Body = http.MaxBytesReader(w, r.Body, 2*maxWindowsAnswerBytes+(64<<10))

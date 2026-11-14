@@ -738,8 +738,8 @@ a.machine-name-accent:hover{text-decoration:underline}
 
 /* Shared Windows and Ubuntu answer-file tables. */
 .answer-section h2,.autoinstall-section h2{margin:0 0 14px;font-size:14px;font-weight:600}
-.answers-table{table-layout:fixed;min-width:1120px}
-.answers-table .answer-col-name{width:17%}.answers-table .answer-col-image{width:11%}.answers-table .answer-col-author{width:7%}.answers-table .answer-col-created{width:10%}.answers-table .answer-col-disk{width:16%}.answers-table .answer-col-use{width:12%}.answers-table .answer-col-state{width:9%}.answers-table .answer-col-sha{width:10%}.answers-table .answer-col-actions{width:8%}
+.answers-table{table-layout:fixed;min-width:1320px}
+.answers-table .answer-col-name{width:15%}.answers-table .answer-col-image{width:10%}.answers-table .answer-col-author{width:6%}.answers-table .answer-col-created{width:9%}.answers-table .answer-col-disk{width:14%}.answers-table .answer-col-use{width:11%}.answers-table .answer-col-state{width:7%}.answers-table .answer-col-sha{width:8%}.answers-table .answer-col-actions{width:7%}
 .answers-table th,.answers-table td{overflow-wrap:anywhere}
 .answers-table td{padding-top:14px;padding-bottom:14px}
 .answers-table .answer-name{font-weight:500}
@@ -748,3 +748,20 @@ a.machine-name-accent:hover{text-decoration:underline}
 .answers-table .answer-state{white-space:nowrap}
 .answers-table time{font-variant-numeric:tabular-nums;white-space:nowrap}
 .answers-table .answer-actions>button{margin-top:0}
+
+.answers-table .answer-col-check{width:13%}
+.answer-check-history{display:block;margin:5px 0 0;padding:0;min-height:0;border:0;border-radius:0;background:none;color:var(--text);font-size:12px;text-decoration:underline;text-underline-offset:3px}
+.answer-check-history:hover{background:none}
+.answer-check-dialog{width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;text-align:left;white-space:normal}
+.answer-check-title{overflow-wrap:anywhere}
+.answer-check-options{display:flex;flex-wrap:wrap;gap:10px 20px;border:0;padding:0;margin:0}
+.answer-check-options legend{margin-bottom:8px}
+.answer-check-options label{display:flex;flex-direction:row;align-items:center;gap:6px;font-weight:400;margin:0}
+.answer-check-options input{width:auto;margin:0}
+.answer-check-history-section{margin-top:22px;border-top:1px solid var(--line);padding-top:16px}
+.answer-check-history-section h3{font-size:14px;margin:0 0 12px}
+.answer-check-entry{padding:12px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.answer-check-entry p{margin:4px 0;white-space:pre-wrap}
+.answer-check-entry small{display:block;color:var(--muted);margin-top:4px}
+.answer-check-entry .check-failure{color:var(--bad)}
+.answer-check-dialog .user-dialog-actions{flex-wrap:wrap}

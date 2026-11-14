@@ -45,7 +45,7 @@ Details: [internal/unattend/UPSTREAM.md](../../internal/unattend/UPSTREAM.md) (i
 
 ## Shared answer-file lists
 
-Library → Answer files has two tables: **Windows** and **Ubuntu**. Both have the same nine columns: name, image, added by, created, target disk / action, usage, state, SHA-256 and actions.
+Library → Answer files has two tables: **Windows** and **Ubuntu**. Both have the same ten columns: name, image, added by, created, target disk / action, usage, state, installation check, SHA-256 and actions.
 
 “Added by” identifies the OMB account that created or uploaded the file, not necessarily the author of an external XML. Missing history is shown as “Unknown”. Creation dates include the time zone. Windows shows its bound image; current Ubuntu files show “Not bound to an ISO”, which does not imply compatibility with every ISO.
 
@@ -75,3 +75,12 @@ The port is checked against the original with golden files: `internal/unattend/t
 5. Update the date in `UPSTREAM.md`, run `go test ./...`, commit.
 
 A dry run — the script on the current commit — changes no golden file or resource and the tests pass. On 24.10.2026 upstream had no commits after `27237f8`.
+
+
+## Manual installation checks
+
+The Installation check column in both answer-file tables records an operator's test result. Ready still describes technical file preparation. New files and copies start without a check.
+
+After testing a scenario, open its hamburger menu → Record result…. Choose Installation succeeded or Installation failed, optionally enter the machine/model and a comment, then save. The server records the author and date. The latest entry determines the current result; History retains previous entries and loads longer histories in batches. Changed content requires a new check. The observation applies to this answer file and the described test conditions.
+
+Operators and administrators record results; observers can read history. Recording does not start an installation or require menu publication. Read failures are shown as unavailable information, not an untested file. Failed submissions keep the entered fields in the dialog.

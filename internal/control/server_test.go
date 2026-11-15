@@ -32,6 +32,9 @@ func (a authOnlyStore) DriverConfigs(context.Context) ([]DriverConfig, error) {
 func (a authOnlyStore) DriverPackages(context.Context) ([]DriverPackage, error) {
 	return []DriverPackage{}, nil
 }
+func (a authOnlyStore) Users(context.Context) ([]User, error) {
+	return nil, nil
+}
 
 func TestServerRedirectsAnonymousDashboard(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}

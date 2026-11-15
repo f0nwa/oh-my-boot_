@@ -23,7 +23,7 @@ func TestAnswersScriptEndpoint(t *testing.T) {
 		t.Fatalf("unexpected Content-Type: %q", ct)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"answer-upload-dialog", "data-answer-upload-open", "data-close-dialog", "showModal"} {
+	for _, want := range []string{"answer-upload-dialog", "data-answer-upload-open", "data-close-dialog", "showModal", "data-answers-search"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("answers.js lacks %q", want)
 		}
@@ -186,5 +186,27 @@ func TestAnswerDeleteAvailability(t *testing.T) {
 				t.Fatalf("dialog present=%v, disabled=%v", hasDialog, tc.disabled)
 			}
 		})
+	}
+}
+
+func TestAnswersPageSearchByAuthorAndSHA(t *testing.T) {
+	s := libraryServer()
+
+	s.authorsCache.set(ResourceAuthors{
+		Answers:       map[int64]string{5: "vlad_author"},
+		UbuntuAnswers: map[int64]string{7: "ivan_author"},
+	}, time.Now())
+
+	body := libraryGet(t, s, "/answers?q=vlad_author")
+	if !strings.Contains(body, "data-answers-search") {
+		t.Fatalf("expected answers search toolbar in response, got: %s", body)
+	}
+	if !strings.Contains(body, "vlad_author") {
+		t.Fatalf("expected search by author to find vlad_author in answers, got: %s", body)
+	}
+
+	emptyBody := libraryGet(t, s, "/answers?q=nonexistent_query_xyz")
+	if strings.Contains(emptyBody, "vlad_author") {
+		t.Fatalf("expected non-matching search to exclude vlad_author")
 	}
 }

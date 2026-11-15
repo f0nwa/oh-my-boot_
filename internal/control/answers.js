@@ -3,6 +3,24 @@
 
   var uploadDialog = document.getElementById('answer-upload-dialog');
 
+  var searchForm = document.querySelector('[data-answers-search]');
+  if (searchForm) {
+    var searchInput = searchForm.querySelector('input[name="q"]');
+    if (searchInput) {
+      searchInput.addEventListener('input', function () {
+        var query = searchInput.value.trim().toLowerCase();
+        var rows = document.querySelectorAll('.answers-table tbody tr');
+        rows.forEach(function (row) {
+          var text = (row.textContent || '').toLowerCase();
+          var shaChip = row.querySelector('[data-sha-chip]');
+          var fullSha = shaChip ? (shaChip.getAttribute('data-full') || '').toLowerCase() : '';
+          var matches = !query || text.indexOf(query) !== -1 || (fullSha && fullSha.indexOf(query) !== -1);
+          row.style.display = matches ? '' : 'none';
+        });
+      });
+    }
+  }
+
   document.addEventListener('click', function (event) {
     var deleteBtn = event.target.closest('[data-answer-delete-open]');
     if (deleteBtn) {

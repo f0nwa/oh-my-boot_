@@ -200,6 +200,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/infinite-scroll.js", infiniteScrollScript)
 	mux.HandleFunc("GET /assets/async-block.js", asyncBlockScript)
 	mux.HandleFunc("GET /assets/account.js", accountScript)
+	mux.HandleFunc("GET /assets/sha-chip.js", shaChipScript)
 	mux.HandleFunc("GET /assets/style.css", stylesheet)
 	mux.HandleFunc("GET /assets/fonts/{name}", fontFile)
 	mux.HandleFunc("GET /favicon.ico", brandFile)

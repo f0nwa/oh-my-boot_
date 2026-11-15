@@ -180,6 +180,15 @@ td,th{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vert
 th{color:var(--muted);font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
 tr:last-child td{border-bottom:0}
 td small.mono,td .mono{color:var(--faint)}
+.sha-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:1px 6px;background:var(--chip);border:1px solid var(--line);border-radius:4px;font-family:var(--mono);font-size:11px;color:var(--text);cursor:pointer;user-select:none;vertical-align:middle;transition:border-color .15s ease,background .15s ease;text-decoration:none;outline:none;box-sizing:border-box}
+.sha-chip:hover,.sha-chip:focus-visible{border-color:var(--line-strong)}
+.sha-chip:focus-visible{outline:2px solid var(--focus)}
+.sha-chip-text{font-family:var(--mono);color:var(--text)}
+.sha-chip-copy{display:none;align-items:center;justify-content:center;width:18px;height:18px;min-height:18px;padding:0;margin:0;border:1px solid var(--line-strong);border-radius:3px;background:var(--panel);color:var(--text-2);cursor:pointer;flex-shrink:0;box-sizing:border-box}
+.sha-chip-copy:hover{border-color:var(--accent);color:var(--accent)}
+.sha-chip-copy.is-copied{border-color:var(--ok);color:var(--ok)}
+.sha-chip.is-expanded{background:var(--panel);border-color:var(--line-strong);white-space:normal;word-break:break-all;user-select:all}
+.sha-chip.is-expanded .sha-chip-copy{display:inline-flex}
 td button{min-height:28px}
 td button.secondary{border-color:var(--line-strong)}
 td details{margin:6px 0 0}td details:last-child{margin-bottom:0}

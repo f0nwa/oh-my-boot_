@@ -3,6 +3,7 @@ package control
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -36,6 +37,23 @@ func searchMatch(query string, fields ...string) bool {
 		if strings.Contains(strings.ToLower(field), q) || (compact != "" && strings.Contains(searchKey(field), compact)) {
 			return true
 		}
+	}
+	return false
+}
+
+// searchMatchSHA matches a search query against a SHA-256 hash.
+func searchMatchSHA(query string, sha string) bool {
+	q := strings.ToLower(strings.TrimSpace(query))
+	sha = strings.ToLower(strings.TrimSpace(sha))
+	if q == "" || sha == "" || len(q) < 3 {
+		return false
+	}
+	if strings.Contains(sha, q) {
+		return true
+	}
+	short := strings.ToLower(shortSHA(sha))
+	if strings.Contains(short, q) || strings.Contains(strings.ReplaceAll(short, "…", "..."), q) {
+		return true
 	}
 	return false
 }
@@ -87,6 +105,7 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 			add(machineSearchResult(info.MAC, info.LastIP, "", info))
 		}
 	}
+	authors := s.resourceAuthors(r.Context())
 	profiles, answers, configs, err := s.menuSources(r.Context())
 	if err == nil {
 		if draft, active, err := s.currentDraft(r.Context()); err == nil {
@@ -95,24 +114,84 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 				inDraft[menuDraftItemKey(item)] = true
 			}
 			sources, _ := s.installationMenuSources(r.Context())
-			for _, row := range installationRows(profiles, answers, configs, draft, active, sources) {
-				if searchMatch(query, row.Title, row.Key, row.Image, row.Answer, row.Drivers) {
+			for _, row := range s.installationRows(r.Context(), profiles, answers, configs, draft, active, sources) {
+				if searchMatch(query, row.Title, row.Key, row.Image, row.Answer, row.Drivers, row.Author, row.AnswerAuthor, row.ImageAuthor) ||
+					searchMatchSHA(query, row.AnswerSHA) || searchMatchSHA(query, row.DriverSHA) {
 					href := "/installations?q=" + row.Key
 					if inDraft[row.Key] {
 						href = "/menu?item=" + row.Key
 					}
-					add(searchResult{Kind: "Загрузка", Title: row.Title, Sub: row.Key, Href: href})
+					sub := row.Key
+					if row.Author != "" {
+						sub += " · " + row.Author
+					}
+					add(searchResult{Kind: "Загрузка", Title: row.Title, Sub: sub, Href: href})
 				}
 			}
 		}
 		for _, profile := range profiles {
-			if searchMatch(query, profile.Title, profile.Path) {
-				add(searchResult{Kind: "Образ", Title: profile.Title, Sub: profile.Path, Href: "/images"})
+			author := authors.Images[imageAuthorKey(profile.StorageID, profile.Path)]
+			if searchMatch(query, profile.Title, profile.Path, author) {
+				sub := profile.Path
+				if author != "" {
+					sub += " · " + author
+				}
+				add(searchResult{Kind: "Образ", Title: profile.Title, Sub: sub, Href: "/images"})
 			}
 		}
 		for _, answer := range answers {
-			if searchMatch(query, answer.Title) {
-				add(searchResult{Kind: "Файл ответов", Title: answer.Title, Sub: keyFor("answer", answer.ID), Href: "/answers"})
+			author := authors.Answers[answer.ID]
+			if searchMatch(query, answer.Title, author) || searchMatchSHA(query, answer.SHA256) {
+				sub := shortSHA(answer.SHA256)
+				if author != "" {
+					sub += " · " + author
+				}
+				add(searchResult{Kind: "Скрипт установки", Title: answer.Title, Sub: sub, Href: "/answers?q=" + answer.Title})
+			}
+		}
+	}
+	if s.Store != nil {
+		if autoinstalls, err := s.Store.UbuntuAutoinstalls(r.Context()); err == nil {
+			for _, file := range autoinstalls {
+				author := authors.UbuntuAnswers[file.ID]
+				if searchMatch(query, file.Title, author) || searchMatchSHA(query, file.SHA256) {
+					sub := shortSHA(file.SHA256)
+					if author != "" {
+						sub += " · " + author
+					}
+					add(searchResult{Kind: "Скрипт установки", Title: file.Title, Sub: sub, Href: "/answers?q=" + file.Title})
+				}
+			}
+		}
+		if packages, err := s.Store.DriverPackages(r.Context()); err == nil {
+			for _, pkg := range packages {
+				author := authors.Drivers[pkg.SHA256]
+				if searchMatch(query, author) || searchMatchSHA(query, pkg.SHA256) {
+					title := fmt.Sprintf("Пакет %s", shortSHA(pkg.SHA256))
+					sub := author
+					if sub == "" {
+						sub = pkg.SHA256[:min(12, len(pkg.SHA256))]
+					}
+					add(searchResult{Kind: "Пакет драйверов", Title: title, Sub: sub, Href: "/drivers"})
+				}
+			}
+		}
+		if versions, err := s.Store.MenuVersions(r.Context()); err == nil {
+			for _, ver := range versions {
+				if searchMatch(query, ver.Author) || searchMatchSHA(query, ver.SHA256) {
+					title := fmt.Sprintf("Версия меню #%d", ver.ID)
+					if ver.Active {
+						title += " (активна)"
+					}
+					add(searchResult{Kind: "Версия меню", Title: title, Sub: ver.Author + " · " + shortSHA(ver.SHA256), Href: "/menu"})
+				}
+			}
+		}
+		if users, err := s.Store.Users(r.Context()); err == nil {
+			for _, u := range users {
+				if searchMatch(query, u.Username) {
+					add(searchResult{Kind: "Пользователь", Title: u.Username, Sub: u.Role, Href: "/users"})
+				}
 			}
 		}
 	}

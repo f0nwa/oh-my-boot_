@@ -299,3 +299,26 @@ func TestDownloadListShowsSourceAndSearchesIt(t *testing.T) {
 		t.Fatal("observer cannot see source")
 	}
 }
+
+func TestDownloadListSearchesByAuthorAndSHA(t *testing.T) {
+	s, store, _ := downloadsServer(t)
+	store.user.Role = "admin"
+	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"iso:7:Windows-new.iso"}, "title": {"Workstation Special"}})
+	if res.Code != 303 {
+		t.Fatalf("create: %d", res.Code)
+	}
+
+	s.authorsCache.set(ResourceAuthors{
+		Installations: map[int64]string{100: "vlad_installer"},
+	}, time.Now())
+
+	body := libraryGet(t, s, "/installations?q=vlad_installer")
+	if !strings.Contains(body, "Workstation Special") {
+		t.Fatalf("expected search by author to find Workstation Special, got: %s", body)
+	}
+
+	emptyBody := libraryGet(t, s, "/installations?q=unknown_author_xyz")
+	if strings.Contains(emptyBody, "Workstation Special") {
+		t.Fatalf("expected non-matching author search to exclude Workstation Special")
+	}
+}

@@ -28,6 +28,7 @@ func downloadSearchScript(w http.ResponseWriter, _ *http.Request) {
 type installationRow struct {
 	Key, Title, Image, Drivers, Answer string
 	Author, AnswerAuthor, ImageAuthor  string
+	AnswerSHA, DriverSHA               string
 	AnswerID                           int64
 	ID                                 int64
 	Kind                               string
@@ -168,6 +169,10 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 		for _, config := range configs {
 			if config.ID == installation.DriverConfigID {
 				row.ConfigID, row.Drivers = config.ID, driverSummary(config)
+				row.DriverSHA = config.Build.ScriptSHA256
+				if row.DriverSHA == "" {
+					row.DriverSHA = config.Build.WIMSHA256
+				}
 				if row.Status != "" {
 					continue
 				}
@@ -186,12 +191,14 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 		for _, answer := range answers {
 			if answer.ID == answerID {
 				row.Answer, row.AnswerWipesDisk, row.AnswerID = answer.Title, answer.WipesDisk, answer.ID
+				row.AnswerSHA = answer.SHA256
 			}
 		}
 		for _, file := range source.Autoinstalls {
 			if file.ID == installation.AutoinstallID {
 				wipes := file.DiskMode == "default" || file.DiskMode == "serial"
 				row.Answer, row.AnswerWipesDisk = file.Title, &wipes
+				row.AnswerSHA = file.SHA256
 			}
 		}
 		if row.Status == "" {
@@ -347,6 +354,33 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 			rows[i].Status, rows[i].Error = "unavailable", problem.Error()
 		}
 	}
+	authors := s.resourceAuthors(ctx)
+	profileByID := make(map[int64]WindowsProfile, len(profiles))
+	for _, profile := range profiles {
+		profileByID[profile.ID] = profile
+	}
+	bootByID := make(map[int64]int64, len(sources.BootProfiles))
+	for _, profile := range sources.BootProfiles {
+		bootByID[profile.ID] = profile.WindowsProfileID
+	}
+	installationByID := make(map[int64]Installation, len(sources.Installations))
+	for _, installation := range sources.Installations {
+		installationByID[installation.ID] = installation
+	}
+	for i := range rows {
+		rows[i].Author = authors.Installations[rows[i].ID]
+		if rows[i].AnswerID > 0 {
+			rows[i].AnswerAuthor = authors.Answers[rows[i].AnswerID]
+		}
+		if inst, ok := installationByID[rows[i].ID]; ok {
+			if inst.AutoinstallID > 0 && rows[i].AnswerAuthor == "" {
+				rows[i].AnswerAuthor = authors.UbuntuAnswers[inst.AutoinstallID]
+			}
+			if profile, ok := profileByID[bootByID[inst.BootProfileID]]; ok {
+				rows[i].ImageAuthor = authors.Images[imageAuthorKey(profile.StorageID, profile.Path)]
+			}
+		}
+	}
 	return rows
 }
 
@@ -393,29 +427,9 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.InstallCounts = map[string]int{}
-	authors := s.resourceAuthors(r.Context())
-	profileByID := make(map[int64]WindowsProfile, len(profiles))
-	for _, profile := range profiles {
-		profileByID[profile.ID] = profile
-	}
-	bootByID := make(map[int64]int64, len(sources.BootProfiles))
-	for _, profile := range sources.BootProfiles {
-		bootByID[profile.ID] = profile.WindowsProfileID
-	}
-	installationByID := make(map[int64]Installation, len(sources.Installations))
-	for _, installation := range sources.Installations {
-		installationByID[installation.ID] = installation
-	}
 	for _, row := range s.installationRows(r.Context(), profiles, answers, configs, draft, active, sources) {
-		row.Author = authors.Installations[row.ID]
-		row.AnswerAuthor = authors.Answers[row.AnswerID]
-		if installation, ok := installationByID[row.ID]; ok {
-			if profile, ok := profileByID[bootByID[installation.BootProfileID]]; ok {
-				row.ImageAuthor = authors.Images[imageAuthorKey(profile.StorageID, profile.Path)]
-			}
-		}
-		haystack := strings.ToLower(row.Title + " " + row.Key + " " + row.Image + " " + row.Answer + " " + row.Drivers + " " + row.SourcePath + " " + row.StorageName)
-		if data.Query != "" && !strings.Contains(haystack, strings.ToLower(data.Query)) {
+		haystack := strings.ToLower(row.Title + " " + row.Key + " " + row.Image + " " + row.Answer + " " + row.Drivers + " " + row.SourcePath + " " + row.StorageName + " " + row.Author + " " + row.AnswerAuthor + " " + row.ImageAuthor + " " + row.AnswerSHA + " " + row.DriverSHA)
+		if data.Query != "" && !strings.Contains(haystack, strings.ToLower(data.Query)) && !searchMatchSHA(data.Query, row.AnswerSHA) && !searchMatchSHA(data.Query, row.DriverSHA) {
 			continue
 		}
 		row.Used, row.LastUsed = use[row.Key].Count, use[row.Key].Last

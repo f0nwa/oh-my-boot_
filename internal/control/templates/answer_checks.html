@@ -22,9 +22,9 @@
 <label><span>{{t "Машина или модель"}} <span class="muted">· {{t "необязательно"}}</span></span><input name="machine" maxlength="200" autocomplete="off"></label>
 <label><span>{{t "Комментарий"}} <span class="muted">· {{t "необязательно"}}</span></span><textarea name="comment" maxlength="2000" rows="3"></textarea></label>
 <p class="hint">{{t "Автор и дата сохранятся автоматически. Результат относится к этому файлу ответов."}}</p>
-<div class="user-dialog-actions"><button type="button" class="btn btn-ghost" data-close-dialog>{{t "Отмена"}}</button><button class="btn btn-primary" type="submit" data-check-submit>{{t "Записать результат"}}</button></div>
+<div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button class="btn btn-primary" type="submit" data-check-submit>{{t "Записать результат"}}</button></div>
 </form>
 <section class="answer-check-history-section" aria-labelledby="answer-check-history-heading"><h3 id="answer-check-history-heading">{{t "История проверок"}}</h3><div data-check-history-list aria-live="polite"></div><button type="button" class="secondary" data-check-more hidden>{{t "Показать ещё"}}</button></section>
-<div class="user-dialog-actions" data-check-view-close><button type="button" class="btn btn-ghost" data-close-dialog>{{t "Закрыть"}}</button></div>
+<div class="user-dialog-actions" data-check-view-close><button type="button" class="btn" data-close-dialog>{{t "Закрыть"}}</button></div>
 </dialog>
 {{end}}

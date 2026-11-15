@@ -17,7 +17,7 @@
 </div>
 <aside class="new-install-side"><div class="screen-frame"><div class="screen-caption"><span>{{t "Так появится на экране машины"}}</span></div><div class="screen screen-small" aria-live="polite"><div class="screen-title">oh my boot_<span id="preview-folder"></span></div><div class="screen-row selected"><span class="screen-text" id="preview-title">Windows 11 x64</span><span class="screen-hint" id="preview-hint"></span></div></div></div>
 <dl class="kv summary"><dt id="summary-build-label"{{if eq .SelectedBootKind "ubuntu_builtin"}} hidden{{end}}>{{t "Сборка WinPE"}}</dt><dd id="summary-build"{{if eq .SelectedBootKind "ubuntu_builtin"}} hidden{{end}}>{{t "не нужна"}}</dd></dl><p class="hint">{{t "После подготовки загрузку можно добавить в черновик меню и опубликовать."}}</p>
-<button class="btn btn-primary btn-wide">{{if .EditInstallationID}}{{t "Сохранить загрузку"}}{{else}}{{t "Создать и подготовить"}}{{end}}</button><a class="btn btn-ghost btn-wide" href="/installations">{{t "Отмена"}}</a>{{template "installation_edit_actions" .}}</aside>
+<button class="btn btn-primary btn-wide">{{if .EditInstallationID}}{{t "Сохранить загрузку"}}{{else}}{{t "Создать и подготовить"}}{{end}}</button><a class="btn btn-wide" href="/installations">{{t "Отмена"}}</a>{{template "installation_edit_actions" .}}</aside>
 </form>
 {{template "installation_edit_delete_dialog" .}}
 <script defer src="/assets/installation-form.js"></script><script defer src="/assets/iso-check.js"></script>{{if .EditInstallationID}}<script defer src="/assets/download-search.js"></script>{{end}}{{template "bottom" .}}{{end}}

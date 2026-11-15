@@ -55,7 +55,7 @@ func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
 	if !strings.Contains(previewBody, "не используется (GRUB)") {
 		t.Fatalf("preview should mark iPXE options as not used for GRUB: %s", previewBody)
 	}
-	if !strings.Contains(previewBody, `<div class="form-actions"><button class="btn btn-primary">Применить</button><a class="btn btn-ghost" href="/network">Отмена</a></div>`) {
+	if !strings.Contains(previewBody, `<div class="form-actions"><button class="btn btn-primary">Применить</button><a class="btn" href="/network">Отмена</a></div>`) {
 		t.Fatalf("preview RU should render Apply and Cancel buttons inside form-actions: %s", previewBody)
 	}
 
@@ -81,7 +81,7 @@ func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
 	if !strings.Contains(previewEN.Body.String(), "not used (GRUB)") {
 		t.Fatalf("preview EN should mark iPXE options as not used for GRUB: %s", previewEN.Body.String())
 	}
-	if !strings.Contains(previewEN.Body.String(), `<div class="form-actions"><button class="btn btn-primary">Apply</button><a class="btn btn-ghost" href="/network">Cancel</a></div>`) {
+	if !strings.Contains(previewEN.Body.String(), `<div class="form-actions"><button class="btn btn-primary">Apply</button><a class="btn" href="/network">Cancel</a></div>`) {
 		t.Fatalf("preview EN should render Apply and Cancel buttons inside form-actions: %s", previewEN.Body.String())
 	}
 

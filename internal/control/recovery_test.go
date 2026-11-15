@@ -6,6 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -130,5 +134,86 @@ func TestImagesPageSurvivesUnavailableRecovery(t *testing.T) {
 	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/storages", nil))
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "Состояние восстановления недоступно") {
 		t.Fatalf("page with unavailable recovery: %d", res.Code)
+	}
+}
+
+func TestStorageRecoveryDialog(t *testing.T) {
+	for _, role := range []string{"admin", "operator", "observer"} {
+		for _, lang := range []string{langRU, langEN} {
+			t.Run(role+"/"+lang, func(t *testing.T) {
+				s, store, _ := recoveryServer(role)
+				store.user.Language = lang
+				body := libraryGet(t, s, "/storages")
+				start := strings.Index(body, `<dialog id="storage-recovery-dialog"`)
+				if start < 0 {
+					t.Fatal("recovery settings must be inside a dialog")
+				}
+				end := strings.Index(body[start:], `</dialog>`)
+				if end < 0 {
+					t.Fatal("recovery dialog not closed")
+				}
+				dialog := body[start : start+end]
+				if !strings.Contains(body[:start], `data-storage-recovery-open`) || !strings.Contains(body, `src="/assets/storages.js"`) {
+					t.Fatal("recovery dialog must be openable for every role")
+				}
+				for _, want := range []string{"restarted omb-winiso@1.service", "mnt-x.mount: start failed"} {
+					if !strings.Contains(dialog, want) {
+						t.Errorf("dialog lost recovery result %q", want)
+					}
+				}
+				if strings.Contains(body[:start], `action="/images/storage-recovery"`) {
+					t.Fatal("recovery settings still appear outside the dialog")
+				}
+				if role == "admin" {
+					if !strings.Contains(dialog, `data-storage-recovery-save disabled`) {
+						t.Error("save must be disabled before settings change")
+					}
+				} else if strings.Contains(dialog, `<form`) {
+					t.Error("read-only roles must not receive recovery forms")
+				}
+			})
+		}
+	}
+}
+
+// The optional browser check uses an existing Playwright installation; no dependency is downloaded.
+func TestStorageRecoveryDialogBrowser(t *testing.T) {
+	if os.Getenv("OMB_UI_TEST") != "1" {
+		t.Skip("set OMB_UI_TEST=1 and NODE_PATH to the existing Playwright installation")
+	}
+	dir := t.TempDir()
+	assets := regexp.MustCompile(`(?:src|href)="(/assets/[^"?]+)"`)
+	for _, role := range []string{"admin", "operator", "observer", "offline"} {
+		for _, lang := range []string{langRU, langEN} {
+			s, store, api := recoveryServer(role)
+			store.user.Language = lang
+			if role == "offline" {
+				store.user.Role = "admin"
+				api.err = errors.New("agent down")
+			}
+			body := libraryGet(t, s, "/storages")
+			if err := os.WriteFile(filepath.Join(dir, role+"-"+lang+".html"), []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			for _, match := range assets.FindAllStringSubmatch(body, -1) {
+				res := httptest.NewRecorder()
+				s.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, match[1], nil))
+				path := filepath.Join(dir, match[1])
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, res.Body.Bytes(), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "node", "../../scripts/test-storage-recovery-ui.cjs", dir)
+	out, err := cmd.CombinedOutput()
+	t.Log(string(out))
+	if err != nil {
+		t.Fatalf("browser check: %v", err)
 	}
 }

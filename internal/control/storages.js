@@ -3,8 +3,45 @@
 
   var smbDialog = document.getElementById('smb-create-dialog');
   var retryDialog = document.getElementById('smb-retry-dialog');
+  var recoveryDialog = document.getElementById('storage-recovery-dialog');
+  var recoveryForm = document.getElementById('storage-recovery-settings');
+  var recoverySave = recoveryDialog && recoveryDialog.querySelector('[data-storage-recovery-save]');
+
+  function updateRecoverySave() {
+    if (!recoveryForm || !recoverySave) {
+      return;
+    }
+    var enabled = recoveryForm.elements.enabled;
+    var interval = recoveryForm.elements.interval_minutes;
+    var changed = enabled.checked !== enabled.defaultChecked ||
+      interval.valueAsNumber !== Number(interval.defaultValue);
+    recoverySave.disabled = !changed || !interval.validity.valid;
+  }
+
+  if (recoveryForm) {
+    recoveryForm.addEventListener('input', updateRecoverySave);
+    recoveryForm.addEventListener('change', updateRecoverySave);
+    recoveryForm.addEventListener('submit', function (event) {
+      updateRecoverySave();
+      if (recoverySave.disabled) {
+        event.preventDefault();
+      }
+    });
+    updateRecoverySave();
+  }
 
   document.addEventListener('click', function (event) {
+    var recoveryBtn = event.target.closest('[data-storage-recovery-open]');
+    if (recoveryBtn && recoveryDialog && typeof recoveryDialog.showModal === 'function') {
+      event.preventDefault();
+      if (recoveryForm) {
+        recoveryForm.reset();
+        updateRecoverySave();
+      }
+      recoveryDialog.showModal();
+      return;
+    }
+
     var addBtn = event.target.closest('[data-smb-add]');
     if (addBtn && smbDialog && typeof smbDialog.showModal === 'function') {
       event.preventDefault();

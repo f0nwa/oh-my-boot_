@@ -765,3 +765,23 @@ a.machine-name-accent:hover{text-decoration:underline}
 .answer-check-entry small{display:block;color:var(--muted);margin-top:4px}
 .answer-check-entry .check-failure{color:var(--bad)}
 .answer-check-dialog .user-dialog-actions{flex-wrap:wrap}
+
+.storage-page-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.storage-recovery-dialog{width:min(560px,calc(100vw - 32px))}
+.storage-recovery-dialog .user-dialog-head{align-items:flex-start;gap:12px}
+.storage-recovery-dialog .user-dialog-head h2{font-size:18px;line-height:1.35}
+.storage-recovery-dialog .user-dialog-head>button{flex-shrink:0;min-width:28px;padding:0 6px;margin:0}
+.storage-recovery-dialog>p.hint{margin:0 0 20px;font-size:13px}
+.storage-recovery-dialog label.storage-recovery-enabled{flex-direction:row;align-items:center;gap:8px;margin:0;font-weight:400}
+.storage-recovery-enabled input[type=checkbox]{width:16px;flex-shrink:0;margin:0}
+.storage-recovery-interval{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.storage-recovery-interval label{margin:0;color:var(--text-2);font-weight:400}
+.storage-recovery-interval input{width:88px;flex-shrink:0}
+.storage-recovery-status{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.storage-recovery-status p{margin:0 0 4px}
+.storage-recovery-status time{display:block;font-variant-numeric:tabular-nums}
+.storage-recovery-status form{margin:0}
+.storage-recovery-results{padding-left:20px;overflow-wrap:anywhere}
+.storage-recovery-dialog>.error{overflow-wrap:anywhere}
+.storage-recovery-dialog .user-dialog-actions{flex-wrap:wrap}
+.storage-recovery-dialog button:disabled{opacity:.45;color:var(--muted);background:var(--chip);border-color:var(--line);cursor:default;filter:none}

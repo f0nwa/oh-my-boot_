@@ -103,8 +103,11 @@ func TestStoragesPageUsesRowMenuAndRetryModalWithNoDetails(t *testing.T) {
 			`id="storage-menu-5"`,
 			`>☰<`,
 			`data-smb-retry-id="5"`,
-			`action="/images/smb/5/remove"`,
+			`data-smb-delete-id="5"`,
 			`id="smb-retry-dialog"`,
+			`id="smb-delete-dialog"`,
+			`id="smb-delete-form"`,
+			`class="storage-delete-warning"`,
 			`src="/assets/row-menu.js"`,
 		} {
 			if !strings.Contains(body, want) {
@@ -120,13 +123,13 @@ func TestStoragesPageUsesRowMenuAndRetryModalWithNoDetails(t *testing.T) {
 
 	op := sampleSpaceTestServer("operator", langRU, fakeDiskUsageAPI{})
 	opBody := libraryGet(t, op, "/storages")
-	if !strings.Contains(opBody, `action="/images/scan"`) || !strings.Contains(opBody, `data-row-menu`) || strings.Contains(opBody, `data-smb-retry-id=`) || strings.Contains(opBody, `id="smb-retry-dialog"`) {
+	if !strings.Contains(opBody, `action="/images/scan"`) || !strings.Contains(opBody, `data-row-menu`) || strings.Contains(opBody, `data-smb-retry-id=`) || strings.Contains(opBody, `id="smb-retry-dialog"`) || strings.Contains(opBody, `data-smb-delete-id=`) || strings.Contains(opBody, `id="smb-delete-dialog"`) {
 		t.Fatalf("operator permissions mismatch on /storages")
 	}
 
 	obs := sampleSpaceTestServer("observer", langRU, fakeDiskUsageAPI{})
 	obsBody := libraryGet(t, obs, "/storages")
-	if strings.Contains(obsBody, `action="/images/scan"`) || strings.Contains(obsBody, `data-row-menu`) {
+	if strings.Contains(obsBody, `action="/images/scan"`) || strings.Contains(obsBody, `data-row-menu`) || strings.Contains(obsBody, `data-smb-delete-id=`) || strings.Contains(obsBody, `id="smb-delete-dialog"`) {
 		t.Fatalf("observer permissions mismatch on /storages")
 	}
 }
@@ -198,6 +201,57 @@ func TestStoragesPageShowsTypeAndAccessMode(t *testing.T) {
 		}
 		if strings.Contains(body, tc.forbidOldNote) {
 			t.Fatalf("/storages (%s) must not contain obsolete note %q", tc.lang, tc.forbidOldNote)
+		}
+	}
+}
+
+func TestStoragesDeleteConfirmationModal(t *testing.T) {
+	for _, tc := range []struct {
+		lang        string
+		wantTitle   string
+		wantWarn    string
+		wantDesc    string
+		wantHint    string
+		wantConfirm string
+		wantCancel  string
+	}{
+		{
+			lang:        langRU,
+			wantTitle:   "Удалить хранилище",
+			wantWarn:    "Внимание",
+			wantDesc:    "Связанные образы ISO будут удалены из библиотеки OMB. Если образы используются активными загрузками Windows, сервер заблокирует удаление.",
+			wantHint:    "Исходные файлы на сервере SMB останутся без изменений.",
+			wantConfirm: "Подтвердить удаление",
+			wantCancel:  "Отмена",
+		},
+		{
+			lang:        langEN,
+			wantTitle:   "Delete storage",
+			wantWarn:    "Warning",
+			wantDesc:    "Linked ISO images will be removed from the OMB library. If the images are used by active Windows boot entries, the server will block deletion.",
+			wantHint:    "Original files on the SMB server will remain unchanged.",
+			wantConfirm: "Confirm deletion",
+			wantCancel:  "Cancel",
+		},
+	} {
+		s := sampleSpaceTestServer("admin", tc.lang, fakeDiskUsageAPI{})
+		body := libraryGet(t, s, "/storages")
+
+		for _, want := range []string{
+			`id="smb-delete-dialog"`,
+			`id="smb-delete-form"`,
+			`id="smb-delete-name"`,
+			`id="smb-delete-path"`,
+			tc.wantTitle,
+			tc.wantWarn,
+			tc.wantDesc,
+			tc.wantHint,
+			tc.wantConfirm,
+			tc.wantCancel,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("/storages (%s) missing %q in delete dialog", tc.lang, want)
+			}
 		}
 	}
 }

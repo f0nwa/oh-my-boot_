@@ -3,6 +3,7 @@
 
   var smbDialog = document.getElementById('smb-create-dialog');
   var retryDialog = document.getElementById('smb-retry-dialog');
+  var deleteDialog = document.getElementById('smb-delete-dialog');
   var recoveryDialog = document.getElementById('storage-recovery-dialog');
   var recoveryForm = document.getElementById('storage-recovery-settings');
   var recoverySave = recoveryDialog && recoveryDialog.querySelector('[data-storage-recovery-save]');
@@ -82,6 +83,35 @@
       if (userInput) {
         userInput.focus();
       }
+      return;
+    }
+
+    var deleteBtn = event.target.closest('[data-smb-delete-id]');
+    if (deleteBtn && deleteDialog && typeof deleteDialog.showModal === 'function') {
+      event.preventDefault();
+      var deleteId = deleteBtn.getAttribute('data-smb-delete-id') || '';
+      var deleteName = deleteBtn.getAttribute('data-smb-delete-name') || '';
+      var deletePath = deleteBtn.getAttribute('data-smb-delete-path') || '';
+
+      var popover = deleteBtn.closest('[popover]');
+      if (popover && typeof popover.hidePopover === 'function') {
+        popover.hidePopover();
+      }
+
+      var deleteForm = deleteDialog.querySelector('form');
+      if (deleteForm) {
+        deleteForm.reset();
+        deleteForm.action = '/images/smb/' + encodeURIComponent(deleteId) + '/remove';
+      }
+      var deleteNameEl = document.getElementById('smb-delete-name');
+      if (deleteNameEl) {
+        deleteNameEl.textContent = deleteName;
+      }
+      var deletePathEl = document.getElementById('smb-delete-path');
+      if (deletePathEl) {
+        deletePathEl.textContent = deletePath;
+      }
+      deleteDialog.showModal();
       return;
     }
 

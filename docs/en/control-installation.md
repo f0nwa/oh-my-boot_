@@ -203,7 +203,7 @@ For an update, back up binaries, configuration, the Agent unit and the Control d
 
 System → Storages shows storage state and errors. Images checks reachability in the background; an error does not erase the previous catalog. Publication rejects an installation with an unavailable source.
 
-Agent recovers its SMB mounts before Windows ISO profiles. On System → Storages, Recovery beside Connect SMB storage opens a dialog with settings and the last check. Administrators can enable recovery, set a 1–60 minute interval and run a check manually. Save becomes available only after settings change; restoring the original values disables it again. Closing the dialog discards unsaved changes. Operators and observers can view the status without editing it. The file storage account and access permissions determine whether writes are allowed.
+Agent recovers its SMB mounts before Windows ISO profiles. On System → Storages, Connection recovery beside Connect SMB storage opens a dialog with settings and the last check. Administrators can enable recovery, set a 1–60 minute interval and run a check manually. Save becomes available only after settings change; restoring the original values disables it again. Closing the dialog discards unsaved changes. Operators and observers can view the status without editing it. The file storage account and access permissions determine whether writes are allowed.
 
 ## Diagnostics and rollback
 

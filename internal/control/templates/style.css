@@ -766,7 +766,9 @@ a.machine-name-accent:hover{text-decoration:underline}
 .answer-check-entry .check-failure{color:var(--bad)}
 .answer-check-dialog .user-dialog-actions{flex-wrap:wrap}
 
-.storage-page-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.storage-page-actions{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);align-items:stretch;gap:8px;max-width:100%}
+.storage-page-actions>.btn{min-width:0;min-height:36px;white-space:normal}
+@media(max-width:600px){.storage-page-actions{grid-auto-flow:row;grid-template-columns:minmax(0,1fr);width:100%}}
 .storage-recovery-dialog{width:min(560px,calc(100vw - 32px))}
 .storage-recovery-dialog .user-dialog-head{align-items:flex-start;gap:12px}
 .storage-recovery-dialog .user-dialog-head h2{font-size:18px;line-height:1.35}

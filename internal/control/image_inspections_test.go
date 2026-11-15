@@ -68,7 +68,7 @@ func TestLibraryDoesNotInferTypeFromFilename(t *testing.T) {
 	s, store, _ := downloadsServer(t)
 	setTestInspection(s, store, "ubuntu-arm64-strelec.iso", "windows")
 	page := libraryGet(t, s, "/images")
-	if strings.Contains(page, "Тип по имени файла") || !strings.Contains(page, "Тип образа") || !strings.Contains(page, ">Windows</td>") {
+	if strings.Contains(page, "Тип по имени файла") || !strings.Contains(page, "<th>Образ</th>") || !strings.Contains(page, "<td>Windows<br>") {
 		t.Fatal("library still guesses the type from a name")
 	}
 }
@@ -129,13 +129,17 @@ func TestInspectionPersistsContentResultAndInvalidatesAfterReplacement(t *testin
 				t.Fatalf("record=%+v", record)
 			}
 			page := libraryGet(t, s, "/images")
-			if !strings.Contains(page, ">"+tc.label+"</td>") {
+			wantCell := "<td>" + tc.label + "</td>"
+			if tc.label == "Windows" || tc.label == "WinPE Strelec" {
+				wantCell = "<td>" + tc.label + "<br>"
+			}
+			if !strings.Contains(page, wantCell) {
 				t.Fatalf("missing type %s", tc.label)
 			}
 			api.catalog.Images[1].Size++
 			page = libraryGet(t, s, "/images")
 			if tc.kind != "windows" || !tc.fail {
-				if strings.Contains(page, ">"+tc.label+"</td>") {
+				if strings.Contains(page, wantCell) {
 					t.Fatal("stale inspection is shown for replaced ISO")
 				}
 			}

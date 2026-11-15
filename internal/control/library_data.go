@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
+	"omb/internal/agent"
 	"omb/internal/images"
 )
 
@@ -90,10 +92,14 @@ func (s *Server) answersLibraryData(r *http.Request) pageData {
 
 func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	data := s.profileLibraryData(r)
+	data.Query = strings.TrimSpace(r.URL.Query().Get("q"))
+	data.Tab = r.URL.Query().Get("show")
+	data.ImageCounts = map[string]int{}
 	catalog := s.loadLibraryCatalog(r.Context(), &data)
 	if catalog == nil {
 		return data
 	}
+	data.HasAnyISOImages = len(catalog.Images) > 0
 	authors := s.resourceAuthors(r.Context())
 	names := map[int64]string{}
 	for _, storage := range catalog.Storages {
@@ -103,6 +109,30 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	uses := imageDownloadsBySource(data.WindowsProfiles, sources)
 	if usageErr != nil {
 		data.Error = "Не удалось проверить загрузки"
+	}
+	var diskReport *agent.DiskUsageReport
+	diskAPI := s.DiskUsage
+	if diskAPI == nil && s.Agent != nil {
+		diskAPI = s.Agent
+	}
+	if diskAPI != nil {
+		if rep, err := diskAPI.DiskUsage(r.Context()); err == nil {
+			diskReport = &rep
+		}
+	}
+	ubuntuSourceIDs := map[string][]int64{}
+	seenUbuntuSource := map[string]map[int64]bool{}
+	for _, bp := range sources.BootProfiles {
+		if (bp.Kind == BootProfileUbuntuISO || bp.Kind == BootProfileUbuntuBuiltin) && bp.UbuntuStorageID > 0 && bp.UbuntuPath != "" && bp.UbuntuSourceID > 0 {
+			key := imageAuthorKey(bp.UbuntuStorageID, bp.UbuntuPath)
+			if seenUbuntuSource[key] == nil {
+				seenUbuntuSource[key] = map[int64]bool{}
+			}
+			if !seenUbuntuSource[key][bp.UbuntuSourceID] {
+				seenUbuntuSource[key][bp.UbuntuSourceID] = true
+				ubuntuSourceIDs[key] = append(ubuntuSourceIDs[key], bp.UbuntuSourceID)
+			}
+		}
 	}
 	namesByImage, namesErr := s.imageNames(r.Context())
 	if namesErr != nil {
@@ -139,8 +169,56 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 			if row.DeleteBlockedReason == "" {
 				row.CleanupProfileID = p.ID
 			}
+			if diskReport != nil && diskReport.WindowsProfiles[p.ID] > 0 {
+				row.ServerBytes += diskReport.WindowsProfiles[p.ID]
+				row.ServerNote = "boot.wim"
+			}
 		}
-		data.ISOImages = append(data.ISOImages, row)
+		if diskReport != nil {
+			for _, srcID := range ubuntuSourceIDs[key] {
+				if b := diskReport.UbuntuSources[srcID]; b > 0 {
+					row.ServerBytes += b
+					if row.ServerNote == "" {
+						row.ServerNote = "источник Ubuntu"
+					}
+				}
+			}
+		}
+		if data.Query != "" && !imageMatchesQuery(row, data.Query) {
+			continue
+		}
+		data.ImageCounts["all"]++
+		if len(row.Downloads) > 0 {
+			data.ImageCounts["used"]++
+		} else {
+			data.ImageCounts["free"]++
+		}
+		if !row.Image.Present || row.Problem != "" {
+			data.ImageCounts["attention"]++
+		}
+		if row.MatchesTab(data.Tab) {
+			data.ISOImages = append(data.ISOImages, row)
+		}
 	}
 	return data
+}
+
+func imageMatchesQuery(row imageRow, query string) bool {
+	q := strings.ToLower(query)
+	parts := []string{
+		row.DisplayName,
+		row.Image.Path,
+		row.Kind,
+		translate(langEN, row.Kind),
+		row.Arch,
+		row.StorageName,
+		row.Author,
+		row.AddedVia,
+		translate(langEN, row.AddedVia),
+		row.Problem,
+	}
+	for _, d := range row.Downloads {
+		parts = append(parts, d.Title)
+	}
+	return strings.Contains(strings.ToLower(strings.Join(parts, " ")), q)
 }

@@ -25,10 +25,35 @@ type imageRow struct {
 	DisplayName         string
 	Kind, Problem       string
 	Arch                string
+	ServerBytes         int64
+	ServerNote          string
 	CleanupProfileID    int64
 	Downloads           []imageDownload
 	DeleteBlockedReason string
 }
+
+func (r imageRow) MatchesTab(tab string) bool {
+	switch tab {
+	case "used":
+		return len(r.Downloads) > 0
+	case "free":
+		return len(r.Downloads) == 0
+	case "attention":
+		return !r.Image.Present || r.Problem != ""
+	default:
+		return true
+	}
+}
+
+func imageFilters() []installationFilter {
+	return []installationFilter{
+		{"Все", "", "all"},
+		{"В загрузках", "used", "used"},
+		{"Свободные", "free", "free"},
+		{"Требуют внимания", "attention", "attention"},
+	}
+}
+
 type imageDownload struct {
 	ID    int64
 	Title string
@@ -94,6 +119,8 @@ type pageData struct {
 	Now                   *nowView
 	Preview               *menuPreview
 	InstallCounts         map[string]int
+	ImageCounts           map[string]int
+	HasAnyISOImages       bool
 	SearchResults         []searchResult
 	SessionIndex          int
 	DHCPEvents            []agent.DHCPEvent
@@ -177,14 +204,15 @@ func parsePages(lang string) *template.Template {
 			}
 			return m
 		},
-		"add1":        func(i int) int { return i + 1 },
-		"list":        func(s ...string) []string { return s },
-		"filterList":  installationFilters,
-		"size":        func(n int64) string { return humanSize(lang, n) },
-		"arch":        isoArch,
-		"usedPercent": usedPercent,
-		"usedBytes":   func(total, free int64) int64 { return max(total-free, 0) },
-		"join":        joinStrings,
+		"add1":            func(i int) int { return i + 1 },
+		"list":            func(s ...string) []string { return s },
+		"filterList":      installationFilters,
+		"imageFilterList": imageFilters,
+		"size":            func(n int64) string { return humanSize(lang, n) },
+		"arch":            isoArch,
+		"usedPercent":     usedPercent,
+		"usedBytes":       func(total, free int64) int64 { return max(total-free, 0) },
+		"join":            joinStrings,
 		"shortSHA": func(s string) string {
 			if len(s) <= 8 {
 				return s

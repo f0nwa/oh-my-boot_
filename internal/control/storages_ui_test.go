@@ -120,7 +120,7 @@ func TestStoragesPageUsesRowMenuAndRetryModalWithNoDetails(t *testing.T) {
 
 	op := sampleSpaceTestServer("operator", langRU, fakeDiskUsageAPI{})
 	opBody := libraryGet(t, op, "/storages")
-	if !strings.Contains(opBody, `action="/images/scan"`) || strings.Contains(opBody, `data-row-menu`) || strings.Contains(opBody, `id="smb-retry-dialog"`) {
+	if !strings.Contains(opBody, `action="/images/scan"`) || !strings.Contains(opBody, `data-row-menu`) || strings.Contains(opBody, `data-smb-retry-id=`) || strings.Contains(opBody, `id="smb-retry-dialog"`) {
 		t.Fatalf("operator permissions mismatch on /storages")
 	}
 

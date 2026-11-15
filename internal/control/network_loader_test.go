@@ -1,9 +1,16 @@
 package control
 
 import (
+	"context"
+	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
@@ -37,7 +44,7 @@ func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
 		!strings.Contains(body, "Полный DHCP (OMB выдаёт IP-адреса и опции PXE)") {
 		t.Fatalf("page RU should display updated DHCP mode labels: %s", body)
 	}
-	if !strings.Contains(body, `<div class="form-actions"><button class="btn btn-primary">Сохранить</button></div>`) {
+	if !strings.Contains(body, `<div class="form-actions"><button class="btn btn-primary" disabled>Сохранить</button></div>`) {
 		t.Fatalf("page RU should render Save button inside form-actions: %s", body)
 	}
 	if strings.Contains(body, "Активный режим:") {
@@ -70,7 +77,7 @@ func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
 		!strings.Contains(pageEN.Body.String(), "Full DHCP (OMB assigns IP addresses and PXE options)") {
 		t.Fatalf("page EN should display updated DHCP mode labels: %s", pageEN.Body.String())
 	}
-	if !strings.Contains(pageEN.Body.String(), `<div class="form-actions"><button class="btn btn-primary">Save</button></div>`) {
+	if !strings.Contains(pageEN.Body.String(), `<div class="form-actions"><button class="btn btn-primary" disabled>Save</button></div>`) {
 		t.Fatalf("page EN should render Save button inside form-actions: %s", pageEN.Body.String())
 	}
 	if strings.Contains(pageEN.Body.String(), "Active mode:") {
@@ -102,5 +109,44 @@ func TestNetworkPageCarriesGRUBSelectionThroughPreview(t *testing.T) {
 	render(pageObsEN, "network", dataObserverEN)
 	if !strings.Contains(pageObsEN.Body.String(), "PXE network settings") {
 		t.Fatalf("page observer EN should show network settings card: %s", pageObsEN.Body.String())
+	}
+}
+
+func TestNetworkPageBrowser(t *testing.T) {
+	if os.Getenv("OMB_UI_TEST") != "1" {
+		t.Skip("set OMB_UI_TEST=1 and NODE_PATH to run browser check")
+	}
+	dir := t.TempDir()
+	assets := regexp.MustCompile(`(?:src|href)="(/assets/[^"?]+)"`)
+	s := &Server{}
+	for _, lang := range []string{langRU, langEN} {
+		data := samplePageData(lang)
+		data.HasNetwork = true
+		rec := httptest.NewRecorder()
+		render(rec, "network", data)
+		body := rec.Body.String()
+		if err := os.WriteFile(filepath.Join(dir, "network-"+lang+".html"), rec.Body.Bytes(), 0600); err != nil {
+			t.Fatal(err)
+		}
+		for _, match := range assets.FindAllStringSubmatch(body, -1) {
+			res := httptest.NewRecorder()
+			s.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, match[1], nil))
+			path := filepath.Join(dir, match[1])
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, res.Body.Bytes(), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "node", "../../scripts/test-network-ui.cjs", dir)
+	cmd.Env = os.Environ()
+	out, err := cmd.CombinedOutput()
+	t.Log(string(out))
+	if err != nil {
+		t.Fatalf("browser check: %v, output: %s", err, string(out))
 	}
 }

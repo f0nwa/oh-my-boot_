@@ -9,6 +9,7 @@
   var chkReuse = form.querySelector('input[name="reuse_firmware_network"]');
   var ipxeGroup = document.getElementById('ipxe-options');
   var grubNote = document.getElementById('grub-loader-note');
+  var saveBtn = form.querySelector('.form-actions button');
 
   var dynFile = document.getElementById('dyn-file');
   var dynDriver = document.getElementById('dyn-driver');
@@ -17,6 +18,38 @@
   var condLoader = document.getElementById('dyn-cond-loader');
   var condDriver = document.getElementById('dyn-cond-driver');
   var dynSummary = document.getElementById('dyn-summary');
+
+  var initialValues = {};
+  var trackedElements = form.querySelectorAll('input:not([type="hidden"]), select, textarea');
+  for (var i = 0; i < trackedElements.length; i++) {
+    var el = trackedElements[i];
+    if (!el.name) continue;
+    if (el.type === 'checkbox') {
+      initialValues[el.name] = el.checked;
+    } else {
+      initialValues[el.name] = el.value;
+    }
+  }
+
+  function isFormChanged() {
+    for (var i = 0; i < trackedElements.length; i++) {
+      var el = trackedElements[i];
+      if (!el.name) continue;
+      if (el.type === 'checkbox') {
+        if (el.checked !== initialValues[el.name]) return true;
+      } else {
+        if (el.value !== initialValues[el.name]) return true;
+      }
+    }
+    return false;
+  }
+
+  function updateSaveButton() {
+    if (!saveBtn) return;
+    var changed = isFormChanged();
+    var valid = typeof form.checkValidity === 'function' ? form.checkValidity() : true;
+    saveBtn.disabled = !changed || !valid;
+  }
 
   function update() {
     var isGrub = selLoader.value === 'grub-test';
@@ -64,6 +97,8 @@
     } else {
       dynSummary.innerHTML = '<span class="dot dot-accent"></span>' + card.dataset.txtInactive;
     }
+
+    updateSaveButton();
   }
 
   function setCondition(li, ok) {
@@ -77,5 +112,11 @@
 
   form.addEventListener('change', update);
   form.addEventListener('input', update);
+  form.addEventListener('submit', function (event) {
+    updateSaveButton();
+    if (saveBtn && saveBtn.disabled) {
+      event.preventDefault();
+    }
+  });
   update();
 })();

@@ -432,10 +432,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	title, folder := strings.TrimSpace(r.FormValue("title")), strings.TrimSpace(r.FormValue("folder"))
 	if title == "" {
-		title = shared.Title
-		if answerTitle != "" {
-			title = answerTitle
-		}
+		title = composeMenuTitle(shared.Title, answerTitle)
 	}
 	if !safeMenuText(title, 80) || !isASCII(title) {
 		http.Error(w, "Название в меню — только латиница, цифры и простые знаки, до 80 символов", http.StatusBadRequest)
@@ -618,4 +615,41 @@ func sameDriverSelection(a, b DriverConfig) bool {
 		}
 	}
 	return true
+}
+
+// composeMenuTitle builds the installation menu title combining the OS profile title
+// and the installation script title, deduplicating matching OS family prefixes.
+func composeMenuTitle(osTitle, scriptTitle string) string {
+	osTitle = strings.TrimSpace(osTitle)
+	scriptTitle = strings.TrimSpace(scriptTitle)
+	if osTitle == "" {
+		return scriptTitle
+	}
+	if scriptTitle == "" {
+		return osTitle
+	}
+	cleanScript := scriptTitle
+	osWords := strings.Fields(osTitle)
+	var prefixes []string
+	// Order prefixes from longest to shortest so that full matches take precedence.
+	prefixes = append(prefixes, strings.ToLower(osTitle))
+	if len(osWords) >= 2 {
+		prefixes = append(prefixes, strings.ToLower(osWords[0]+" "+osWords[1]))
+	}
+	prefixes = append(prefixes, strings.ToLower(osWords[0]))
+	for _, p := range prefixes {
+		if strings.HasPrefix(strings.ToLower(cleanScript), p) {
+			cleanScript = strings.TrimSpace(strings.TrimLeft(cleanScript[len(p):], " -–—:_/"))
+			break
+		}
+	}
+	if cleanScript == "" {
+		return osTitle
+	}
+	combined := osTitle + " - " + cleanScript
+	runes := []rune(combined)
+	if len(runes) > 80 {
+		return strings.TrimSpace(string(runes[:80]))
+	}
+	return combined
 }

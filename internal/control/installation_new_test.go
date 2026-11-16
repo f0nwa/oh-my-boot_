@@ -499,3 +499,36 @@ func (s *newInstallStore) SetWindowsProfileResult(_ context.Context, id int64, s
 	}
 	return nil
 }
+
+func TestComposeMenuTitle(t *testing.T) {
+	tests := []struct {
+		name        string
+		osTitle     string
+		scriptTitle string
+		want        string
+	}{
+		{"empty script keeps OS", "Windows 11 Pro 23H2", "", "Windows 11 Pro 23H2"},
+		{"empty OS keeps script", "", "key no-disk test", "key no-disk test"},
+		{"both empty returns empty", "", "", ""},
+		{"simple composition", "Windows 10 x64", "key no-disk test", "Windows 10 x64 - key no-disk test"},
+		{"deduplicate 2-word OS prefix", "Windows 11 Pro 23H2", "Windows 11 key no-disk test", "Windows 11 Pro 23H2 - key no-disk test"},
+		{"deduplicate full OS prefix", "Windows 11 Pro 23H2", "Windows 11 Pro 23H2 - Autoinstall", "Windows 11 Pro 23H2 - Autoinstall"},
+		{"deduplicate 1-word OS prefix", "Ubuntu 24.04 Server", "Ubuntu autoinstall serial", "Ubuntu 24.04 Server - autoinstall serial"},
+		{"case insensitive prefix match", "Windows 11 Pro", "windows 11 minimal setup", "Windows 11 Pro - minimal setup"},
+		{"strip leading punctuation and em-dash", "Windows 10 LTSC", "Windows 10 — unattended", "Windows 10 LTSC - unattended"},
+		{"script matches OS completely", "Windows 11", "Windows 11", "Windows 11"},
+		{"whitespace trimmed", "  Windows 11  ", "  Lab  ", "Windows 11 - Lab"},
+		{"max length 80 enforced", strings.Repeat("A", 50), strings.Repeat("B", 50), strings.Repeat("A", 50) + " - " + strings.Repeat("B", 27)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := composeMenuTitle(tc.osTitle, tc.scriptTitle)
+			if got != tc.want {
+				t.Errorf("composeMenuTitle(%q, %q) = %q, want %q", tc.osTitle, tc.scriptTitle, got, tc.want)
+			}
+			if len([]rune(got)) > 80 {
+				t.Errorf("len(got) = %d > 80", len([]rune(got)))
+			}
+		})
+	}
+}

@@ -13,6 +13,36 @@
   var titleEdited = title.value !== "";
   title.addEventListener("input", function () { titleEdited = true; });
 
+  function composeMenuTitle(osTitle, scriptTitle) {
+    osTitle = (osTitle || "").trim();
+    scriptTitle = (scriptTitle || "").trim();
+    if (!osTitle) return scriptTitle;
+    if (!scriptTitle) return osTitle;
+
+    var cleanScript = scriptTitle;
+    var osWords = osTitle.split(/\s+/);
+    var prefixes = [osTitle.toLowerCase()];
+    if (osWords.length >= 2) {
+      prefixes.push((osWords[0] + " " + osWords[1]).toLowerCase());
+    }
+    prefixes.push(osWords[0].toLowerCase());
+
+    for (var i = 0; i < prefixes.length; i++) {
+      var p = prefixes[i];
+      if (cleanScript.toLowerCase().indexOf(p) === 0) {
+        cleanScript = cleanScript.slice(p.length).replace(/^[\s\-–—:_/]+/, "").trim();
+        break;
+      }
+    }
+
+    if (!cleanScript) return osTitle;
+    var combined = osTitle + " - " + cleanScript;
+    if (combined.length > 80) {
+      combined = combined.slice(0, 80).trim();
+    }
+    return combined;
+  }
+
   var EDITION_ALIASES = {
     home: ["Core"],
     home_n: ["CoreN"],
@@ -347,6 +377,9 @@
   }
 
   function update(e) {
+    if (e && e.target && e.target.type === "radio" && title.value.trim() === "") {
+      titleEdited = false;
+    }
     if (e && e.target && e.target.name === "package") {
       form.querySelectorAll('input[name="inf"][data-package="' + e.target.value + '"]').forEach(function (inf) {
         inf.checked = e.target.checked;
@@ -386,9 +419,16 @@
     text("menu-step-no", windows ? "4" : winpe ? "3" : isUbuntu ? "3" : "2");
     var answer = windows ? checked("answer_id") : null;
     var autoinstall = isUbuntu ? checked("autoinstall_id") : null;
+    var scriptTitle = "";
+    if (answer && answer.value !== "0") {
+      scriptTitle = answer.dataset.title || "";
+    } else if (autoinstall && autoinstall.value !== "0") {
+      scriptTitle = autoinstall.dataset.title || "";
+    }
+    var osTitle = profile ? (profile.dataset.title || "") : "";
+
     if (!titleEdited) {
-      var base = answer && answer.value !== "0" ? answer : profile;
-      title.value = base ? base.dataset.title : "";
+      title.value = composeMenuTitle(osTitle, scriptTitle);
     }
     var drivers = winpe && form.querySelectorAll('input[name="package"]:checked, input[name="inf"]:checked').length > 0;
     var wipes = (answer && answer.dataset.wipes === "true") || (autoinstall && autoinstall.dataset.wipes === "true");

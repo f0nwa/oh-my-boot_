@@ -34,10 +34,10 @@ func TestReaddingRemovedItemRestoresItsTitleAndFolder(t *testing.T) {
 	}
 }
 
-func TestNewInstallationWithAnswerDefaultsToAnswerTitle(t *testing.T) {
+func TestNewInstallationWithAnswerComposesMenuTitle(t *testing.T) {
 	s, store := newInstallServer(t)
 	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"51"}, "answer_id": {"31"}})
-	if res.Code != http.StatusSeeOther || len(store.installations) != 1 || store.installations[0].Title != "Lab" {
+	if res.Code != http.StatusSeeOther || len(store.installations) != 1 || store.installations[0].Title != "Windows 11 - Lab" {
 		t.Fatalf("status=%d installations=%+v", res.Code, store.installations)
 	}
 }

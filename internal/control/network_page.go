@@ -35,6 +35,7 @@ func networkForm(r *http.Request) network.Config {
 		ReuseFirmwareNetwork: r.FormValue("reuse_firmware_network") == "true",
 		WinPETimeoutSeconds:  parseWinPEFormInt(r.FormValue("winpe_timeout")),
 		WinPERetrySeconds:    parseWinPEFormInt(r.FormValue("winpe_retry")),
+		WinPEExitAction:      strings.TrimSpace(r.FormValue("winpe_exit_action")),
 	}
 }
 
@@ -163,7 +164,7 @@ func (s *Server) networkApply(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		result = "error"
 	}
-	_ = s.Store.Audit(r.Context(), info.User.ID, "network.apply", result, fmt.Sprintf("mode=%s interface=%s subnet=%s reuse_firmware_network=%t winpe_timeout=%d winpe_retry=%d", c.Mode, c.Interface, c.Subnet, c.ReuseFirmwareNetwork, c.EffectiveWinPETimeout(), c.EffectiveWinPERetry()))
+	_ = s.Store.Audit(r.Context(), info.User.ID, "network.apply", result, fmt.Sprintf("mode=%s interface=%s subnet=%s reuse_firmware_network=%t winpe_timeout=%d winpe_retry=%d winpe_exit_action=%s", c.Mode, c.Interface, c.Subnet, c.ReuseFirmwareNetwork, c.EffectiveWinPETimeout(), c.EffectiveWinPERetry(), c.EffectiveWinPEExitAction()))
 	active, readErr := s.Agent.Config(r.Context())
 	data := pageData{Info: info, Network: active, HasNetwork: readErr == nil}
 	if err != nil {

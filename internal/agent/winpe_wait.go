@@ -40,15 +40,15 @@ type fileMutation struct {
 	newContent []byte
 }
 
-// UpdateWinPEScripts applies the given attempt limit and retry pause to the
+// UpdateWinPEScripts applies the given attempt limit, retry pause, and exit action to the
 // template and all prepared scripts, returning driver-config checksum updates.
-func (a *Applier) UpdateWinPEScripts(ctx context.Context, attempts, retrySeconds int) ([]DriverScriptUpdate, error) {
+func (a *Applier) UpdateWinPEScripts(ctx context.Context, attempts, retrySeconds int, exitAction string) ([]DriverScriptUpdate, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.WinPE == nil {
 		return nil, nil
 	}
-	updates, _, err := a.WinPE.apply(ctx, attempts, retrySeconds)
+	updates, _, err := a.WinPE.apply(ctx, attempts, retrySeconds, exitAction)
 	return updates, err
 }
 
@@ -61,7 +61,7 @@ func (a *Applier) LastDriverUpdates() []DriverScriptUpdate {
 	return out
 }
 
-func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int) ([]DriverScriptUpdate, func() error, error) {
+func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int, exitAction string) ([]DriverScriptUpdate, func() error, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -74,6 +74,10 @@ func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int
 	newTmpl, _, err := winpe.UpdateStartupWait(tmpl, attempts, retrySeconds)
 	if err != nil {
 		return nil, nil, fmt.Errorf("update WinPE template: %w", err)
+	}
+	newTmpl, _, err = winpe.UpdateStartupExitAction(newTmpl, exitAction)
+	if err != nil {
+		return nil, nil, fmt.Errorf("update WinPE template exit action: %w", err)
 	}
 	var oldCustom []byte
 	customExisted := false
@@ -99,13 +103,13 @@ func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int
 		})
 	}
 
-	profileMutations, err := planScriptDirUpdates(u.ProfileRoot, attempts, retrySeconds)
+	profileMutations, err := planScriptDirUpdates(u.ProfileRoot, attempts, retrySeconds, exitAction)
 	if err != nil {
 		return nil, nil, err
 	}
 	mutations = append(mutations, profileMutations...)
 
-	driverMutations, updates, err := planDriverConfigUpdates(u.DriverConfigRoot, attempts, retrySeconds)
+	driverMutations, updates, err := planDriverConfigUpdates(u.DriverConfigRoot, attempts, retrySeconds, exitAction)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -138,7 +142,7 @@ func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int
 	return updates, rollback, nil
 }
 
-func planScriptDirUpdates(root string, attempts, retrySeconds int) ([]fileMutation, error) {
+func planScriptDirUpdates(root string, attempts, retrySeconds int, exitAction string) ([]fileMutation, error) {
 	if root == "" {
 		return nil, nil
 	}
@@ -164,11 +168,15 @@ func planScriptDirUpdates(root string, attempts, retrySeconds int) ([]fileMutati
 			if err != nil {
 				return nil, err
 			}
-			newBytes, changed, err := winpe.UpdateStartupWait(oldBytes, attempts, retrySeconds)
+			newBytes, changedWait, err := winpe.UpdateStartupWait(oldBytes, attempts, retrySeconds)
 			if err != nil {
 				return nil, fmt.Errorf("update %s: %w", scriptPath, err)
 			}
-			if changed {
+			newBytes, changedExit, err := winpe.UpdateStartupExitAction(newBytes, exitAction)
+			if err != nil {
+				return nil, fmt.Errorf("update %s exit action: %w", scriptPath, err)
+			}
+			if changedWait || changedExit {
 				mutations = append(mutations, fileMutation{
 					path:       scriptPath,
 					mode:       info.Mode().Perm(),
@@ -182,7 +190,7 @@ func planScriptDirUpdates(root string, attempts, retrySeconds int) ([]fileMutati
 	return mutations, nil
 }
 
-func planDriverConfigUpdates(root string, attempts, retrySeconds int) ([]fileMutation, []DriverScriptUpdate, error) {
+func planDriverConfigUpdates(root string, attempts, retrySeconds int, exitAction string) ([]fileMutation, []DriverScriptUpdate, error) {
 	if root == "" {
 		return nil, nil, nil
 	}
@@ -230,9 +238,13 @@ func planDriverConfigUpdates(root string, attempts, retrySeconds int) ([]fileMut
 			return nil, nil, fmt.Errorf("driver manifest %d identity or script checksum mismatch", id)
 		}
 
-		newScript, changed, err := winpe.UpdateStartupWait(oldScript, attempts, retrySeconds)
+		newScript, changedWait, err := winpe.UpdateStartupWait(oldScript, attempts, retrySeconds)
 		if err != nil {
 			return nil, nil, fmt.Errorf("update driver script %d: %w", id, err)
+		}
+		newScript, changedExit, err := winpe.UpdateStartupExitAction(newScript, exitAction)
+		if err != nil {
+			return nil, nil, fmt.Errorf("update driver script %d exit action: %w", id, err)
 		}
 		newSum := sha256.Sum256(newScript)
 		newSHA := hex.EncodeToString(newSum[:])
@@ -241,7 +253,7 @@ func planDriverConfigUpdates(root string, attempts, retrySeconds int) ([]fileMut
 			OldSHA:   oldSHA,
 			NewSHA:   newSHA,
 		})
-		if changed {
+		if changedWait || changedExit {
 			manifest.Result.ScriptSHA256 = newSHA
 			newManifest, err := json.Marshal(manifest)
 			if err != nil {

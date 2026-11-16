@@ -93,17 +93,21 @@ func TestNetworkWaitFormAndPreview(t *testing.T) {
 		data.HasNetwork = true
 		data.Network.WinPETimeoutSeconds = 120
 		data.Network.WinPERetrySeconds = 3
+		data.Network.WinPEExitAction = network.WinPEExitActionRebootTimer
 		data.OldNetwork.WinPETimeoutSeconds = 90
 		data.OldNetwork.WinPERetrySeconds = 2
+		data.OldNetwork.WinPEExitAction = network.WinPEExitActionCMD
 
 		page := httptest.NewRecorder()
 		render(page, "network", data)
 		body := page.Body.String()
 		for _, want := range []string{
+			`id="winpe-options"`,
 			`name="winpe_timeout"`,
 			`value="120"`,
 			`name="winpe_retry"`,
 			`value="3"`,
+			`name="winpe_exit_action"`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("lang=%s network page missing %q:\n%s", lang, want, body)
@@ -116,6 +120,7 @@ func TestNetworkWaitFormAndPreview(t *testing.T) {
 		for _, want := range []string{
 			`name="winpe_timeout" value="120"`,
 			`name="winpe_retry" value="3"`,
+			`name="winpe_exit_action" value="reboot_timer"`,
 			`45`,
 			`40`,
 		} {
@@ -125,10 +130,10 @@ func TestNetworkWaitFormAndPreview(t *testing.T) {
 		}
 	}
 
-	req := httptest.NewRequest("POST", "/network/preview", strings.NewReader("winpe_timeout=150&winpe_retry=5"))
+	req := httptest.NewRequest("POST", "/network/preview", strings.NewReader("winpe_timeout=150&winpe_retry=5&winpe_exit_action=reboot_timer"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	cfg := networkForm(req)
-	if cfg.WinPETimeoutSeconds != 150 || cfg.WinPERetrySeconds != 5 {
+	if cfg.WinPETimeoutSeconds != 150 || cfg.WinPERetrySeconds != 5 || cfg.WinPEExitAction != "reboot_timer" {
 		t.Fatalf("parsed form = %+v", cfg)
 	}
 
@@ -137,6 +142,13 @@ func TestNetworkWaitFormAndPreview(t *testing.T) {
 	badCfg := networkForm(badReq)
 	if err := network.Validate(badCfg); err == nil {
 		t.Fatal("accepted non-numeric winpe_timeout")
+	}
+
+	badActionReq := httptest.NewRequest("POST", "/network/preview", strings.NewReader("winpe_timeout=120&winpe_retry=2&winpe_exit_action=invalid_action"))
+	badActionReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	badActionCfg := networkForm(badActionReq)
+	if err := network.Validate(badActionCfg); err == nil {
+		t.Fatal("accepted invalid winpe_exit_action")
 	}
 }
 

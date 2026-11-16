@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"omb/internal/network"
 	"omb/internal/winpe"
 )
 
@@ -120,7 +121,7 @@ func TestWinPEWaitUpdatesTemplateScriptsAndManifests(t *testing.T) {
 	}
 	oldSHA := sha256Hex(oldDriverScript)
 
-	updates, err := applier.UpdateWinPEScripts(context.Background(), 30, 5)
+	updates, err := applier.UpdateWinPEScripts(context.Background(), 30, 5, network.WinPEExitActionRebootTimer)
 	if err != nil {
 		t.Fatalf("UpdateWinPEScripts failed: %v", err)
 	}
@@ -135,6 +136,9 @@ func TestWinPEWaitUpdatesTemplateScriptsAndManifests(t *testing.T) {
 	if attempts, pause, ok := winpe.WaitFromScript(customTmpl); !ok || attempts != 30 || pause != 5 {
 		t.Fatalf("custom template wait = %d/%d/%t, want 30/5/true", attempts, pause, ok)
 	}
+	if action, ok := winpe.ExitActionFromScript(customTmpl); !ok || action != network.WinPEExitActionRebootTimer {
+		t.Fatalf("custom template exit action = %q/%t, want reboot_timer/true", action, ok)
+	}
 
 	for _, rel := range []string{
 		"tftp/windows-profiles/17/omb-setup.cmd",
@@ -147,6 +151,9 @@ func TestWinPEWaitUpdatesTemplateScriptsAndManifests(t *testing.T) {
 		}
 		if attempts, pause, ok := winpe.WaitFromScript(data); !ok || attempts != 30 || pause != 5 {
 			t.Fatalf("%s: wait = %d/%d/%t, want 30/5/true", rel, attempts, pause, ok)
+		}
+		if action, ok := winpe.ExitActionFromScript(data); !ok || action != network.WinPEExitActionRebootTimer {
+			t.Fatalf("%s: exit action = %q/%t, want reboot_timer/true", rel, action, ok)
 		}
 	}
 
@@ -188,7 +195,7 @@ func TestWinPEWaitRollsBackOnCorruptDriverManifest(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "tftp", "windows-driver-configs", "4", "build.json"), []byte("{corrupt"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := applier.UpdateWinPEScripts(context.Background(), 25, 3); err == nil {
+	if _, err := applier.UpdateWinPEScripts(context.Background(), 25, 3, network.WinPEExitActionReboot); err == nil {
 		t.Fatal("expected failure on corrupt driver manifest")
 	}
 	afterProfile, err := os.ReadFile(profilePath)
@@ -215,6 +222,7 @@ func TestWinPEWaitSkipsDnsmasqRestartWhenOnlyWinPEChanges(t *testing.T) {
 
 	cfg.WinPETimeoutSeconds = 120
 	cfg.WinPERetrySeconds = 3
+	cfg.WinPEExitAction = network.WinPEExitActionReboot
 	if err := applier.Apply(context.Background(), cfg); err != nil {
 		t.Fatalf("WinPE-only apply failed: %v", err)
 	}
@@ -227,6 +235,9 @@ func TestWinPEWaitSkipsDnsmasqRestartWhenOnlyWinPEChanges(t *testing.T) {
 	}
 	if attempts, pause, ok := winpe.WaitFromScript(profileData); !ok || attempts != 40 || pause != 3 {
 		t.Fatalf("profile wait after Apply = %d/%d/%t, want 40/3/true", attempts, pause, ok)
+	}
+	if action, ok := winpe.ExitActionFromScript(profileData); !ok || action != network.WinPEExitActionReboot {
+		t.Fatalf("profile exit action after Apply = %q/%t, want reboot/true", action, ok)
 	}
 }
 

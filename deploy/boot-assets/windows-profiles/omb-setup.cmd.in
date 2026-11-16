@@ -29,8 +29,10 @@ goto failed
 if not exist Y:\__OMB_PROFILE_ID__\sources\__OMB_INSTALL_FILE__ goto failed
 echo OMB: starting Windows Setup...
 Y:\__OMB_PROFILE_ID__\sources\setup.exe /InstallFrom:Y:\__OMB_PROFILE_ID__\sources\__OMB_INSTALL_FILE__
-if errorlevel 1 goto failed
-exit /b 0
+set OMB_SETUP_EXIT=%errorlevel%
+if "%OMB_SETUP_EXIT%"=="0" exit /b 0
+echo OMB: Windows Setup closed (exit code %OMB_SETUP_EXIT%).
+cmd /k
 
 :failed
 echo OMB: installation media is unavailable or Setup failed.

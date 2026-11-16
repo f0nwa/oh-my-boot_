@@ -130,14 +130,14 @@ func (a *Applier) Apply(ctx context.Context, c network.Config) error {
 	winpeRollback := func() error { return nil }
 	if a.WinPE != nil {
 		var err error
-		updates, winpeRollback, err = a.WinPE.apply(ctx, c.WinPEAttempts(), c.EffectiveWinPERetry())
+		updates, winpeRollback, err = a.WinPE.apply(ctx, c.WinPEAttempts(), c.EffectiveWinPERetry(), c.EffectiveWinPEExitAction())
 		if err != nil {
 			return err
 		}
 	}
 
 	dnsmasqUnchanged := a.status.Applied && previousExists && string(previous) == content &&
-		(c.EffectiveWinPETimeout() != a.current.EffectiveWinPETimeout() || c.EffectiveWinPERetry() != a.current.EffectiveWinPERetry())
+		(c.EffectiveWinPETimeout() != a.current.EffectiveWinPETimeout() || c.EffectiveWinPERetry() != a.current.EffectiveWinPERetry() || c.EffectiveWinPEExitAction() != a.current.EffectiveWinPEExitAction())
 	if !dnsmasqUnchanged {
 		candidate, err := writeCandidate(a.configPath, []byte(content), 0o640)
 		if err != nil {

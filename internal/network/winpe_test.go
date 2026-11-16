@@ -13,9 +13,16 @@ func TestWinPEConfigDefaults(t *testing.T) {
 	if got := c.WinPEAttempts(); got != 45 {
 		t.Fatalf("default attempts = %d, want 45", got)
 	}
+	if c.EffectiveWinPEExitAction() != WinPEExitActionCMD {
+		t.Fatalf("default exit action = %q, want %q", c.EffectiveWinPEExitAction(), WinPEExitActionCMD)
+	}
 	c.WinPETimeoutSeconds, c.WinPERetrySeconds = 120, 5
+	c.WinPEExitAction = WinPEExitActionRebootTimer
 	if c.EffectiveWinPETimeout() != 120 || c.EffectiveWinPERetry() != 5 {
 		t.Fatal("explicit values are not used")
+	}
+	if c.EffectiveWinPEExitAction() != WinPEExitActionRebootTimer {
+		t.Fatalf("explicit exit action = %q, want %q", c.EffectiveWinPEExitAction(), WinPEExitActionRebootTimer)
 	}
 }
 
@@ -33,22 +40,26 @@ func TestWinPEConfigValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		timeout, retry int
+		exitAction     string
 		ok             bool
 	}{
-		{"defaults", 0, 0, true},
-		{"bounds low", 10, 1, true},
-		{"bounds high", 600, 30, true},
-		{"timeout only", 300, 0, true},
-		{"timeout too small", 9, 1, false},
-		{"timeout too large", 601, 2, false},
-		{"retry too small", 90, -1, false},
-		{"retry too large", 90, 31, false},
-		{"timeout negative", -5, 2, false},
-		{"timeout below retry", 20, 25, false},
-		{"default retry above timeout", 0, 30, true},
+		{"defaults", 0, 0, "", true},
+		{"bounds low", 10, 1, "cmd", true},
+		{"bounds high", 600, 30, "reboot_timer", true},
+		{"reboot action", 60, 2, "reboot", true},
+		{"timeout only", 300, 0, "", true},
+		{"timeout too small", 9, 1, "", false},
+		{"timeout too large", 601, 2, "", false},
+		{"retry too small", 90, -1, "", false},
+		{"retry too large", 90, 31, "", false},
+		{"timeout negative", -5, 2, "", false},
+		{"timeout below retry", 20, 25, "", false},
+		{"default retry above timeout", 0, 30, "", true},
+		{"invalid exit action", 90, 2, "shutdown", false},
 	} {
 		c := fullConfig()
 		c.WinPETimeoutSeconds, c.WinPERetrySeconds = tc.timeout, tc.retry
+		c.WinPEExitAction = tc.exitAction
 		if err := Validate(c); (err == nil) != tc.ok {
 			t.Errorf("%s: Validate error = %v, want ok=%t", tc.name, err, tc.ok)
 		}

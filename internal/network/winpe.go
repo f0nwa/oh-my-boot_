@@ -12,7 +12,24 @@ const (
 	maxWinPETimeoutSeconds     = 600
 	minWinPERetrySeconds       = 1
 	maxWinPERetrySeconds       = 30
+
+	WinPEExitActionCMD         = "cmd"
+	WinPEExitActionRebootTimer = "reboot_timer"
+	WinPEExitActionReboot      = "reboot"
 )
+
+// EffectiveWinPEExitAction returns the configured action upon Setup exit,
+// defaulting to WinPEExitActionCMD ("cmd") when unset or empty.
+func (c Config) EffectiveWinPEExitAction() string {
+	switch c.WinPEExitAction {
+	case WinPEExitActionRebootTimer:
+		return WinPEExitActionRebootTimer
+	case WinPEExitActionReboot:
+		return WinPEExitActionReboot
+	default:
+		return WinPEExitActionCMD
+	}
+}
 
 // EffectiveWinPETimeout is the configured wait limit, or the default when unset.
 func (c Config) EffectiveWinPETimeout() int {
@@ -52,6 +69,11 @@ func validateWinPE(c Config) error {
 	}
 	if c.EffectiveWinPETimeout() < c.EffectiveWinPERetry() {
 		return fmt.Errorf("WinPE wait limit must not be shorter than the retry pause")
+	}
+	switch c.WinPEExitAction {
+	case "", WinPEExitActionCMD, WinPEExitActionRebootTimer, WinPEExitActionReboot:
+	default:
+		return fmt.Errorf("WinPE exit action must be cmd, reboot_timer, or reboot")
 	}
 	return nil
 }

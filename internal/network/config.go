@@ -26,8 +26,9 @@ type Config struct {
 	TFTPRoot             string `json:"tftp_root"`
 	UEFILoader           string `json:"uefi_loader,omitempty"`
 	// WinPE wait for the installation share; zero means the default.
-	WinPETimeoutSeconds int `json:"winpe_timeout_seconds,omitempty"`
-	WinPERetrySeconds   int `json:"winpe_retry_seconds,omitempty"`
+	WinPETimeoutSeconds int    `json:"winpe_timeout_seconds,omitempty"`
+	WinPERetrySeconds   int    `json:"winpe_retry_seconds,omitempty"`
+	WinPEExitAction     string `json:"winpe_exit_action,omitempty"`
 }
 
 // Validate rejects settings that could enable DHCP on the wrong network.

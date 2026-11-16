@@ -1,4 +1,9 @@
-const { chromium } = require('playwright');
+let chromium;
+try {
+  ({ chromium } = require('playwright'));
+} catch {
+  ({ chromium } = require('playwright-core'));
+}
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -56,11 +61,44 @@ const path = require('node:path');
 
   try {
     for (const theme of ['light', 'dark']) {
-      for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+      for (const viewport of [{ width: 1920, height: 1080 }, { width: 1280, height: 900 }, { width: 390, height: 844 }]) {
         const context = await browser.newContext({ viewport });
         const page = await context.newPage();
         await page.goto(`${baseUrl}/login-ru.html`);
         await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+
+        // 0. Network-around-server background (D1), solid panel (no heavy blur) & cursor blink
+        await page.waitForTimeout(500);
+        const anim = await page.evaluate(() => {
+          const bg = document.querySelector('.login-net-bg');
+          const card = document.querySelector('section.login');
+          const cursor = document.querySelector('.login-brand .wordmark-cursor');
+          const bgStyle = getComputedStyle(bg);
+          const cardStyle = getComputedStyle(card);
+          const cursorStyle = getComputedStyle(cursor);
+          return {
+            bgDisplay: bgStyle.display,
+            bgPointer: bgStyle.pointerEvents,
+            nodeCount: document.querySelectorAll('.login-net-node').length,
+            activeNodes: document.querySelectorAll('.login-net-node.is-work, .login-net-node.is-done').length,
+            cardBackdrop: cardStyle.backdropFilter || cardStyle.webkitBackdropFilter || 'none',
+            cursorAnimName: cursorStyle.animationName,
+            cursorAnimDuration: cursorStyle.animationDuration,
+            overflowX: document.documentElement.scrollWidth > window.innerWidth
+          };
+        });
+        assert.equal(anim.overflowX, false, `no horizontal overflow at ${viewport.width}px (${theme})`);
+        assert.equal(anim.nodeCount, 10, 'D1 must render 10 client nodes around server');
+        assert.equal(anim.cursorAnimName, 'login-cursor-blink', 'login cursor must blink');
+        assert.equal(anim.cursorAnimDuration, '1.1s', 'cursor blink duration fixed at 1.1s');
+        assert.equal(anim.cardBackdrop, 'none', 'login card must avoid heavy backdrop-filter blur');
+        if (viewport.width >= 760) {
+          assert.notEqual(anim.bgDisplay, 'none', `network background visible at ${viewport.width}px`);
+          assert.equal(anim.bgPointer, 'none', 'network background must not intercept clicks');
+          assert.ok(anim.activeNodes >= 1, 'at least one network node should animate on desktop');
+        } else {
+          assert.equal(anim.bgDisplay, 'none', `network background hidden at ${viewport.width}px`);
+        }
 
         // 1. Initial state: button disabled, labels inside
         const btn = page.locator('button.btn-primary');
@@ -136,6 +174,41 @@ const path = require('node:path');
       assert.equal(userLabel, 'Username', 'English username label');
       assert.equal(passLabel, 'Password', 'English password label');
       assert.equal(btnText, 'Sign in', 'English button text');
+      await context.close();
+    }
+
+    // 11. Check exact <760px breakpoint (759px hidden vs 760px visible)
+    for (const [w, expectedHidden] of [[759, true], [760, false]]) {
+      const context = await browser.newContext({ viewport: { width: w, height: 800 } });
+      const page = await context.newPage();
+      await page.goto(`${baseUrl}/login-ru.html`);
+      const bgDisplay = await page.evaluate(() => getComputedStyle(document.querySelector('.login-net-bg')).display);
+      assert.equal(bgDisplay === 'none', expectedHidden, `network background at ${w}px hidden=${expectedHidden}`);
+      await context.close();
+    }
+
+    // 12. Check prefers-reduced-motion: reduce (static network frame, no cursor blink)
+    {
+      const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+      const page = await context.newPage();
+      await page.goto(`${baseUrl}/login-ru.html`);
+      const rm = await page.evaluate(() => {
+        const bg = getComputedStyle(document.querySelector('.login-net-bg'));
+        const cursor = getComputedStyle(document.querySelector('.login-brand .wordmark-cursor'));
+        const pkts = [...document.querySelectorAll('.login-net .pkt')];
+        return {
+          bgDisplay: bg.display,
+          doneCount: document.querySelectorAll('.login-net-node.is-done').length,
+          workCount: document.querySelectorAll('.login-net-node.is-work').length,
+          allPktsHidden: pkts.every(p => getComputedStyle(p).opacity === '0'),
+          cursorAnim: cursor.animationName
+        };
+      });
+      assert.notEqual(rm.bgDisplay, 'none', 'reduced motion keeps static network frame visible on desktop');
+      assert.equal(rm.doneCount, 3, 'reduced motion shows 3 done nodes');
+      assert.equal(rm.workCount, 3, 'reduced motion shows 3 working nodes');
+      assert.equal(rm.allPktsHidden, true, 'reduced motion hides moving packet dots');
+      assert.equal(rm.cursorAnim, 'none', 'reduced motion disables cursor blink');
       await context.close();
     }
 

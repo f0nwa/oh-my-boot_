@@ -29,7 +29,7 @@ func TestLoginScriptEndpoint(t *testing.T) {
 		t.Fatalf("expected Cache-Control no-store, got %q", cc)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"is-floating", "submitBtn.disabled", "addEventListener"} {
+	for _, want := range []string{"is-floating", "submitBtn.disabled", "addEventListener", "login-net", "DHCP DISCOVER", "ipxe-shim.efi", "snponly-shim.efi", "undionly.kpxe", "boot/menu.ipxe"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("login.js missing %q", want)
 		}
@@ -71,6 +71,28 @@ func TestLoginPageRendersFloatingLabelsAndDisabledSubmit(t *testing.T) {
 	if strings.Contains(body, "Авторизация на сервере OMB") {
 		t.Errorf("login page must not contain extra subtitle: %s", body)
 	}
+	if !strings.Contains(body, `<div class="login-net-bg" aria-hidden="true"><svg class="login-net"`) {
+		t.Errorf("login page lacks SVG network background wrapper")
+	}
+
+	cssBytes, err := templateFS.ReadFile("templates/style.css")
+	if err != nil {
+		t.Fatalf("read style.css: %v", err)
+	}
+	css := string(cssBytes)
+	for _, want := range []string{
+		".login-net-bg{position:fixed;inset:0;z-index:0",
+		"login-cursor-blink 1.1s steps(1,end) infinite",
+		"@media (max-width:759px){.login-net-bg{display:none}}",
+		".login-brand .wordmark-cursor{animation:none}",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("style.css missing login animation rule %q", want)
+		}
+	}
+	if strings.Contains(css, "backdrop-filter:blur") {
+		t.Errorf("style.css should not use heavy backdrop-filter blur on login")
+	}
 }
 
 func TestLoginPageEnglishLocalization(t *testing.T) {
@@ -104,8 +126,7 @@ func TestLoginPageBrowser(t *testing.T) {
 	assets := regexp.MustCompile(`(?:src|href)="(/assets/[^"?]+)"`)
 	s := &Server{}
 	for _, lang := range []string{langRU, langEN} {
-		data := samplePageData(lang)
-		data.CSRF = "test-csrf-token"
+		data := pageData{Lang: lang, CSRF: "test-csrf-token"}
 		rec := httptest.NewRecorder()
 		render(rec, "login", data)
 		body := rec.Body.String()

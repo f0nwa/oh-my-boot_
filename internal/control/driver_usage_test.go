@@ -175,3 +175,65 @@ func TestDriversPageShowsAuthorCardAndProperties(t *testing.T) {
 		t.Fatalf("observer should see read-only config dialog without rename/delete actions")
 	}
 }
+
+func TestDriversPageShowsConfigSizesAndSharedWIM(t *testing.T) {
+	store := &driverUsageStore{driverConfigStore: configFixture()}
+	store.user = User{ID: 1, Username: "admin", Role: "admin", Enabled: true}
+	store.profiles = []WindowsProfile{{
+		ID:                   17,
+		State:                "ready",
+		WindowsProfileSource: WindowsProfileSource{Title: "Win 11", Path: "win11.iso"},
+	}}
+	uniqueKey := strings.Repeat("1", 64)
+	sharedKey := strings.Repeat("2", 64)
+	store.configs = []DriverConfig{
+		{ID: 1, ProfileID: 17, Title: "Unique", State: "ready", Build: agent.DriverBuildResult{WIMKey: uniqueKey, WIMSHA256: strings.Repeat("a", 64)}},
+		{ID: 2, ProfileID: 17, Title: "Shared A", State: "ready", Build: agent.DriverBuildResult{WIMKey: sharedKey}},
+		{ID: 3, ProfileID: 17, Title: "Shared B", State: "ready", Build: agent.DriverBuildResult{WIMKey: sharedKey}},
+		{ID: 4, ProfileID: 17, Title: "Pending", State: "pending"},
+	}
+	disk := fakeDiskUsageAPI{
+		report: agent.DiskUsageReport{
+			WindowsDriverWIMs: map[string]int64{
+				uniqueKey: 572 << 20,
+				sharedKey: 599 << 20,
+			},
+			WindowsDriverConfigs: map[int64]int64{
+				1: 12 << 10,
+				2: 12 << 10,
+				3: 12 << 10,
+			},
+		},
+	}
+	s := &Server{Store: store, DiskUsage: disk}
+	body := libraryGet(t, s, "/drivers")
+	for _, want := range []string{
+		`<th>Размер</th>`,
+		`Размер на сервере`,
+		`572,0 МБ`,
+		`599,0 МБ`,
+		`boot.wim`,
+		`общий boot.wim`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("drivers page missing %q", want)
+		}
+	}
+
+	// English locale translates size labels and omits Russian text.
+	store.user.Language = langEN
+	enBody := libraryGet(t, s, "/drivers")
+	for _, want := range []string{`<th>Size</th>`, `Size on server`, `shared boot.wim`, `572.0 MB`, `599.0 MB`} {
+		if !strings.Contains(enBody, want) {
+			t.Fatalf("EN drivers page missing %q", want)
+		}
+	}
+
+	// Unavailable DiskUsage agent degrades gracefully to "—".
+	store.user.Language = langRU
+	s.DiskUsage = fakeDiskUsageAPI{err: errors.New("agent unavailable")}
+	fallbackBody := libraryGet(t, s, "/drivers")
+	if !strings.Contains(fallbackBody, `<th>Размер</th>`) || strings.Contains(fallbackBody, `572,0 МБ`) {
+		t.Fatalf("expected graceful fallback when DiskUsage fails")
+	}
+}

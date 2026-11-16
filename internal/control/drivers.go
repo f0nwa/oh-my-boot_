@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"omb/internal/agent"
 	"omb/internal/drivers"
 )
 
@@ -42,6 +43,17 @@ func (s *Server) driversPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	usage := s.loadDriverUsage(r.Context(), profiles, configs)
+	var diskReport *agent.DiskUsageReport
+	diskAPI := s.DiskUsage
+	if diskAPI == nil && s.Agent != nil {
+		diskAPI = s.Agent
+	}
+	if diskAPI != nil {
+		if rep, err := diskAPI.DiskUsage(r.Context()); err == nil {
+			diskReport = &rep
+		}
+	}
+	populateDriverConfigSizes(configs, diskReport)
 	for i := range configs {
 		if configs[i].Author != "" {
 			continue

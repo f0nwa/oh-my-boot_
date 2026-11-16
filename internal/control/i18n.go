@@ -1553,6 +1553,8 @@ var englishMessages = map[string]string{
 	"Подтвердите предупреждения совместимости скрипта установки":                                               "Confirm installation script compatibility warnings",
 	"Конфигурация WinPE": "WinPE configuration",
 	"Нет":                "None",
+	"Размер на сервере":  "Size on server",
+	"общий boot.wim":     "shared boot.wim",
 	"Только для списка драйверов. В PXE-меню идёт название загрузки.":                       "Only for the driver list. The PXE menu uses the boot entry title.",
 	"Определён по загрузке, при сохранении которой появилась конфигурация":                   "Inferred from the boot entry that created this configuration",
 	"Имя конфигурации сохранено":                                                             "Configuration name saved",

@@ -3,6 +3,8 @@ package control
 import (
 	"context"
 	"path"
+
+	"omb/internal/agent"
 )
 
 type driverUse struct {
@@ -99,6 +101,37 @@ func buildDriverUsage(profiles []WindowsProfile, configs []DriverConfig, items [
 		}
 	}
 	return result
+}
+
+func populateDriverConfigSizes(configs []DriverConfig, report *agent.DiskUsageReport) {
+	if report == nil {
+		for i := range configs {
+			configs[i].SizeBytes = 0
+			configs[i].SizeNote = ""
+		}
+		return
+	}
+	wimKeyCount := map[string]int{}
+	for _, cfg := range configs {
+		if cfg.Build.WIMKey != "" {
+			wimKeyCount[cfg.Build.WIMKey]++
+		}
+	}
+	for i := range configs {
+		var wimBytes int64
+		if configs[i].Build.WIMKey != "" {
+			wimBytes = report.WindowsDriverWIMs[configs[i].Build.WIMKey]
+		}
+		cfgBytes := report.WindowsDriverConfigs[configs[i].ID]
+		configs[i].SizeBytes = wimBytes + cfgBytes
+		if wimBytes > 0 {
+			if wimKeyCount[configs[i].Build.WIMKey] > 1 {
+				configs[i].SizeNote = "общий boot.wim"
+			} else {
+				configs[i].SizeNote = "boot.wim"
+			}
+		}
+	}
 }
 
 func (c DriverConfig) StateLabel() string {

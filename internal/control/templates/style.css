@@ -755,6 +755,7 @@ a.machine-name-accent:hover{text-decoration:underline}
 .driver-config-props{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px 14px;margin:0;padding:12px 0 4px;border-top:1px solid var(--line);font-size:13px}
 .driver-config-props dt{color:var(--muted);margin:0}
 .driver-config-props dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.driver-config-table td>span.mono,.driver-config-props .mono{color:var(--text)}
 .driver-config-dialog-buttons{display:flex;gap:8px;align-items:center;margin-left:auto}
 .driver-author-approx{cursor:help}
 @media(max-width:520px){.driver-config-props{grid-template-columns:1fr;gap:4px 0}.driver-config-props dt{margin-top:6px}.driver-config-props dt:first-child{margin-top:0}}

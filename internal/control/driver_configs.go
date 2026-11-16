@@ -29,6 +29,8 @@ type DriverConfig struct {
 	Author         string
 	AuthorInferred bool
 	CreatedAt      time.Time
+	SizeBytes      int64
+	SizeNote       string
 }
 
 func validDriverConfigTitle(title string) bool {

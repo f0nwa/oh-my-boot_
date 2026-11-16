@@ -92,6 +92,17 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line-strong);b
 .content-narrow{max-width:420px;min-height:100vh;margin:0 auto;padding:24px 16px 10vh;display:flex;flex-direction:column;justify-content:center}
 .content-narrow>section{margin:0;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:24px}
 .content-narrow>section form button{width:100%;min-height:40px;margin-top:20px}
+.content-narrow>section form button:disabled{opacity:.45;cursor:default;pointer-events:none}
+.field-float{position:relative;width:100%;margin-top:18px}
+.login form .field-float:first-of-type{margin-top:0}
+.field-float input{width:100%;max-width:none;min-height:42px;padding:9px 12px;border:1px solid var(--line-strong);border-radius:6px;font:inherit;font-size:13px;color:var(--text);background:var(--panel);outline:none;transition:border-color .18s ease,box-shadow .18s ease}
+.field-float input:focus{border-color:var(--focus);box-shadow:0 0 0 1px var(--focus);outline:none}
+.field-float label{position:absolute;left:12px;top:50%;transform:translateY(-50%);margin:0;padding:0 4px;font-size:13px;font-weight:400;color:var(--muted);pointer-events:none;background:transparent;line-height:1;transform-origin:left top;transition:transform .18s cubic-bezier(0.4,0,0.2,1),top .18s cubic-bezier(0.4,0,0.2,1),color .18s cubic-bezier(0.4,0,0.2,1),background-color .18s cubic-bezier(0.4,0,0.2,1);z-index:2}
+.field-float.is-floating label,.field-float:focus-within label{top:0;transform:translateY(-50%) scale(0.85);font-size:12px;font-weight:500;color:var(--text-2);background:var(--panel);border-radius:2px}
+.field-float:focus-within label{color:var(--focus)}
+.field-float .pw-wrap{position:relative;display:block;width:100%;max-width:none}
+.field-float .pw-wrap input{padding-right:38px}
+@media (prefers-reduced-motion:reduce){.field-float label{transition:none}}
 h1{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:0 0 2px}
 h2{font-size:14px;font-weight:600;margin:0 0 10px}
 .page-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px}

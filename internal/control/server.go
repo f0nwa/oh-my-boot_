@@ -200,6 +200,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /account", s.protect("view", s.accountPage))
 	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
+	mux.HandleFunc("GET /assets/login.js", loginScript)
 	mux.HandleFunc("GET /assets/infinite-scroll.js", infiniteScrollScript)
 	mux.HandleFunc("GET /assets/async-block.js", asyncBlockScript)
 	mux.HandleFunc("GET /assets/account.js", accountScript)

@@ -134,7 +134,7 @@ func windowsMenuProfile(installation Installation, profileID int64, base string,
 				continue
 			}
 			parent, ok := byID[config.ProfileID]
-			if !ok || !profileBootable(parent) || config.State != "ready" || len(config.PackageINFs) == 0 || !safeMenuText(config.Title, 80) || !isASCII(config.Title) || !validAnswerHash(config.Build.WIMKey) || !validAnswerHash(config.Build.WIMSHA256) || !validAnswerHash(config.Build.ScriptSHA256) {
+			if !ok || !profileBootable(parent) || config.State != "ready" || len(config.PackageINFs) == 0 || !validAnswerHash(config.Build.WIMKey) || !validAnswerHash(config.Build.WIMSHA256) || !validAnswerHash(config.Build.ScriptSHA256) {
 				return menuProfile{}, "", fmt.Errorf("WinPE driver configuration %d is not ready", config.ID)
 			}
 			answerHash := ""

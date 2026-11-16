@@ -15,17 +15,36 @@
   document.addEventListener('click', event => {
     const uploadButton = event.target.closest('[data-driver-upload-open]');
     const packageButton = event.target.closest('[data-driver-package-open]');
+    const configButton = event.target.closest('[data-driver-config-open]');
     const deleteButton = event.target.closest('[data-driver-delete-open]');
     const packageDeleteButton = event.target.closest('[data-driver-package-delete-open]');
     if ((deleteButton && deleteButton.disabled) || (packageDeleteButton && packageDeleteButton.disabled)) return;
+    if (deleteButton) {
+      const parentDialog = deleteButton.closest('dialog');
+      if (parentDialog && parentDialog.open) parentDialog.close();
+    }
     const dialogID = uploadButton ? 'driver-upload-dialog'
       : packageButton ? 'driver-package-dialog-' + packageButton.dataset.driverPackageOpen
+      : configButton ? 'driver-config-dialog-' + configButton.dataset.driverConfigOpen
       : packageDeleteButton ? 'driver-package-delete-dialog-' + packageDeleteButton.dataset.driverPackageDeleteOpen
       : deleteButton ? 'driver-delete-dialog-' + deleteButton.dataset.driverDeleteOpen
       : null;
     if (dialogID) {
       const dialog = document.getElementById(dialogID);
-      if (dialog && typeof dialog.showModal === 'function') dialog.showModal();
+      if (dialog && typeof dialog.showModal === 'function') {
+        const cfgForm = dialog.querySelector('[data-driver-config-form]');
+        if (cfgForm) {
+          const titleInput = cfgForm.querySelector('input[name="title"]');
+          const submitBtn = cfgForm.querySelector('button[type="submit"]');
+          if (titleInput) titleInput.value = titleInput.defaultValue;
+          if (submitBtn) submitBtn.disabled = true;
+        }
+        dialog.showModal();
+        if (cfgForm) {
+          const titleInput = cfgForm.querySelector('input[name="title"]');
+          if (titleInput) titleInput.focus();
+        }
+      }
       return;
     }
     const closeButton = event.target.closest('[data-close-dialog]');
@@ -39,6 +58,22 @@
       if (event.clientX < rect.left || event.clientX > rect.right ||
           event.clientY < rect.top || event.clientY > rect.bottom) event.target.close();
     }
+  });
+  document.querySelectorAll('[data-driver-config-form]').forEach(form => {
+    const titleInput = form.querySelector('input[name="title"]');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (!titleInput || !submitBtn) return;
+    const sync = () => {
+      const current = titleInput.value.trim();
+      const initial = titleInput.defaultValue.trim();
+      submitBtn.disabled = !current || current === initial || !form.checkValidity();
+    };
+    titleInput.addEventListener('input', sync);
+    form.addEventListener('submit', event => {
+      sync();
+      if (submitBtn.disabled) event.preventDefault();
+    });
+    sync();
   });
   const forms = document.querySelectorAll('[data-driver-upload]');
   forms.forEach(form => {

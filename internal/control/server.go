@@ -68,6 +68,7 @@ type Storage interface {
 	CreateDriverConfig(context.Context, DriverConfig) (DriverConfig, error)
 	DriverConfigs(context.Context) ([]DriverConfig, error)
 	DriverConfig(context.Context, int64) (DriverConfig, error)
+	SetDriverConfigTitle(context.Context, int64, string) error
 	SetDriverConfigResult(context.Context, int64, string, agent.DriverBuildResult, string) error
 	DeleteDriverConfig(context.Context, int64) error
 }
@@ -300,6 +301,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
 	mux.HandleFunc("POST /drivers/packages/{sha}/delete", s.protect("delete", withPageErrors(s.driversPage, s.driverPackageDelete)))
 	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))
+	mux.HandleFunc("POST /drivers/configs/{id}/title", s.protect("images", withPageErrors(s.driversPage, s.driverConfigRename)))
 	mux.HandleFunc("POST /drivers/configs/{id}/delete", s.protect("delete", withPageErrors(s.driversPage, s.driverConfigDelete)))
 	mux.HandleFunc("GET /assets/driver-upload.js", s.driverUploadScript)
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))

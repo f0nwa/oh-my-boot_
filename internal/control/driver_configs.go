@@ -1,25 +1,39 @@
 package control
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"omb/internal/agent"
 )
 
 type DriverConfig struct {
-	ID          int64
-	ProfileID   int64
-	AnswerID    int64
-	Title       string
-	Folder      string
-	PackageINFs []agent.SelectedINF
-	State       string
-	Build       agent.DriverBuildResult
-	Error       string
+	ID             int64
+	ProfileID      int64
+	AnswerID       int64
+	Title          string
+	Folder         string
+	PackageINFs    []agent.SelectedINF
+	State          string
+	Build          agent.DriverBuildResult
+	Error          string
+	Author         string
+	AuthorInferred bool
+	CreatedAt      time.Time
+}
+
+func validDriverConfigTitle(title string) bool {
+	title = strings.TrimSpace(title)
+	return title != "" && utf8.ValidString(title) && utf8.RuneCountInString(title) <= 80 && strings.IndexFunc(title, unicode.IsControl) < 0
 }
 
 func SelectDriverConfig(form url.Values, profiles []WindowsProfile, answers []WindowsAnswerVariant, packages []DriverPackage) (DriverConfig, error) {
@@ -103,13 +117,35 @@ func (s *Server) driverConfigCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверная конфигурация: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	config.Author = requestInfo(r).User.Username
+	config.AuthorInferred = false
 	config, err = s.Store.CreateDriverConfig(r.Context(), config)
 	if err != nil {
 		http.Error(w, "Не удалось создать конфигурацию", http.StatusServiceUnavailable)
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.create", "ok", fmt.Sprintf("id=%d profile=%d", config.ID, config.ProfileID))
+	s.InvalidateResourceAuthorsCache()
 	http.Redirect(w, r, "/drivers?message=Конфигурация+создана", http.StatusSeeOther)
+}
+
+func (s *Server) driverConfigRename(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	title := strings.TrimSpace(r.FormValue("title"))
+	if err != nil || id <= 0 || !validDriverConfigTitle(title) {
+		http.Error(w, "Укажите имя конфигурации: до 80 символов без управляющих знаков", http.StatusBadRequest)
+		return
+	}
+	if err := s.Store.SetDriverConfigTitle(r.Context(), id, title); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, os.ErrNotExist) {
+			http.Error(w, "Конфигурация не найдена", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Не удалось сохранить имя конфигурации", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.rename", "ok", fmt.Sprintf("id=%d title=%s", id, title))
+	http.Redirect(w, r, "/drivers?message="+url.QueryEscape("Имя конфигурации сохранено"), http.StatusSeeOther)
 }
 
 // selectDriverINFs validates a configuration before its source is prepared.

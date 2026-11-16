@@ -131,8 +131,12 @@ CREATE TABLE IF NOT EXISTS winpe_driver_configs (
  wim_sha256 TEXT NOT NULL DEFAULT '',
  script_sha256 TEXT NOT NULL DEFAULT '',
  last_error TEXT NOT NULL DEFAULT '',
+ author TEXT NOT NULL DEFAULT '',
+ author_inferred BOOLEAN NOT NULL DEFAULT FALSE,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE winpe_driver_configs ADD COLUMN IF NOT EXISTS author TEXT NOT NULL DEFAULT '';
+ALTER TABLE winpe_driver_configs ADD COLUMN IF NOT EXISTS author_inferred BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS winpe_driver_configs_profile_idx ON winpe_driver_configs (profile_id);
 
 CREATE TABLE IF NOT EXISTS boot_profiles (

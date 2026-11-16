@@ -59,6 +59,7 @@ func TestResourceAuthorsCacheHit(t *testing.T) {
 			Images:          map[string]string{"1:test.iso": "carol"},
 			ImageUploadedAt: map[string]time.Time{"1:test.iso": time.Now()},
 			Drivers:         map[string]string{"abc": "dave"},
+			DriverConfigs:   map[int64]string{40: "eve"},
 		},
 	}
 	s := &Server{Store: store}
@@ -70,17 +71,18 @@ func TestResourceAuthorsCacheHit(t *testing.T) {
 	if calls := store.calls.Load(); calls != 1 {
 		t.Fatalf("expected 1 store call, got %d", calls)
 	}
-	if first.Installations[10] != "alice" || first.Drivers["abc"] != "dave" || first.UbuntuAnswers[30] != "ubuntu-creator" {
+	if first.Installations[10] != "alice" || first.Drivers["abc"] != "dave" || first.UbuntuAnswers[30] != "ubuntu-creator" || first.DriverConfigs[40] != "eve" {
 		t.Fatalf("unexpected first authors: %+v", first)
 	}
 
 	first.UbuntuAnswers[30] = "changed outside cache"
+	first.DriverConfigs[40] = "mutated"
 	// 2nd call: should hit cache without calling store again
 	second := s.resourceAuthors(ctx)
 	if calls := store.calls.Load(); calls != 1 {
 		t.Fatalf("expected store calls to remain 1 (cache hit), got %d", calls)
 	}
-	if second.Installations[10] != "alice" || second.Drivers["abc"] != "dave" || second.UbuntuAnswers[30] != "ubuntu-creator" {
+	if second.Installations[10] != "alice" || second.Drivers["abc"] != "dave" || second.UbuntuAnswers[30] != "ubuntu-creator" || second.DriverConfigs[40] != "eve" {
 		t.Fatalf("unexpected cached authors: %+v", second)
 	}
 }

@@ -18,6 +18,7 @@ type driverUsage struct {
 	Packages     map[string][]int64
 	Profiles     map[int64]string
 	ProfilePaths map[int64]string
+	Answers      map[int64]string
 }
 
 // loadDriverUsage includes frozen menu bindings: editing a saved download does
@@ -31,11 +32,17 @@ func (s *Server) loadDriverUsage(ctx context.Context, profiles []WindowsProfile,
 	if err != nil {
 		return driverUsage{Error: "Не удалось проверить использование"}
 	}
-	return buildDriverUsage(profiles, configs, items, draft, active)
+	usage := buildDriverUsage(profiles, configs, items, draft, active)
+	if answers, err := s.Store.WindowsAnswers(ctx); err == nil {
+		for _, ans := range answers {
+			usage.Answers[ans.ID] = ans.Title
+		}
+	}
+	return usage
 }
 
 func buildDriverUsage(profiles []WindowsProfile, configs []DriverConfig, items []Installation, draft, active MenuDraft) driverUsage {
-	result := driverUsage{Available: true, Configs: map[int64][]driverUse{}, Packages: map[string][]int64{}, Profiles: map[int64]string{}, ProfilePaths: map[int64]string{}}
+	result := driverUsage{Available: true, Configs: map[int64][]driverUse{}, Packages: map[string][]int64{}, Profiles: map[int64]string{}, ProfilePaths: map[int64]string{}, Answers: map[int64]string{}}
 	for _, p := range profiles {
 		result.Profiles[p.ID] = p.Title
 		if p.Path != "" {

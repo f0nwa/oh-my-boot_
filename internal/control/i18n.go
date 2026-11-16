@@ -1551,5 +1551,12 @@ var englishMessages = map[string]string{
 	"неизвестная архитектура":                                                                                  "unknown architecture",
 	"Скрипт установки несовместим с образом: %s":                                                               "Installation script is incompatible with the image: %s",
 	"Подтвердите предупреждения совместимости скрипта установки":                                               "Confirm installation script compatibility warnings",
-	"Такой XML уже загружен: сценарий #%d «%s». Каталог в меню можно изменить при публикации.":                 "This XML is already uploaded: script #%d “%s”. The menu folder can be changed when publishing.",
+	"Конфигурация WinPE": "WinPE configuration",
+	"Нет":                "None",
+	"Только для списка драйверов. В PXE-меню идёт название загрузки.":                       "Only for the driver list. The PXE menu uses the boot entry title.",
+	"Определён по загрузке, при сохранении которой появилась конфигурация":                   "Inferred from the boot entry that created this configuration",
+	"Имя конфигурации сохранено":                                                             "Configuration name saved",
+	"Укажите имя конфигурации: до 80 символов без управляющих знаков":                        "Enter a configuration name: up to 80 characters without control characters",
+	"Не удалось сохранить имя конфигурации":                                                  "Could not save the configuration name",
+	"Такой XML уже загружен: сценарий #%d «%s». Каталог в меню можно изменить при публикации.": "This XML is already uploaded: script #%d “%s”. The menu folder can be changed when publishing.",
 }

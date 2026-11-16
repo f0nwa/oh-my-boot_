@@ -41,7 +41,25 @@ func (s *Server) driversPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Конфигурации установки недоступны", http.StatusServiceUnavailable)
 		return
 	}
-	render(w, "drivers", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), DriverPackages: packages, WindowsProfiles: profiles, DriverConfigs: configs, DriverUsage: s.loadDriverUsage(r.Context(), profiles, configs)})
+	usage := s.loadDriverUsage(r.Context(), profiles, configs)
+	for i := range configs {
+		if configs[i].Author != "" {
+			continue
+		}
+		if direct := authors.DriverConfigs[configs[i].ID]; direct != "" {
+			configs[i].Author = direct
+			configs[i].AuthorInferred = false
+			continue
+		}
+		for _, use := range usage.Configs[configs[i].ID] {
+			if inferred := authors.Installations[use.ID]; inferred != "" {
+				configs[i].Author = inferred
+				configs[i].AuthorInferred = true
+				break
+			}
+		}
+	}
+	render(w, "drivers", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), DriverPackages: packages, WindowsProfiles: profiles, DriverConfigs: configs, DriverUsage: usage})
 }
 
 func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {

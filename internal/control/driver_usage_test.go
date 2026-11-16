@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"omb/internal/agent"
 )
@@ -98,5 +99,79 @@ func TestDriverUsageDistinguishesSourcesWithGenericProfileTitles(t *testing.T) {
 	usage := buildDriverUsage(profiles, nil, nil, MenuDraft{}, MenuDraft{})
 	if usage.Profiles[17] != "Windows-11.iso" || usage.Profiles[18] != "Windows-10.iso" {
 		t.Fatalf("ISO identity lost: %v", usage.Profiles)
+	}
+}
+
+func TestDriversPageShowsAuthorCardAndProperties(t *testing.T) {
+	store := &driverUsageStore{driverConfigStore: configFixture()}
+	store.user = User{ID: 1, Username: "admin", Role: "admin", Enabled: true}
+	store.profiles = []WindowsProfile{{
+		ID:                   17,
+		State:                "ready",
+		WindowsProfileSource: WindowsProfileSource{Title: "Win 11", Path: "win/Win11_23H2.iso"},
+	}}
+	store.answers = []WindowsAnswerVariant{{ID: 4, Title: "Lab XML", State: "ready"}}
+	wimSHA := strings.Repeat("c", 64)
+	pkgSHA := strings.Repeat("a", 64)
+	created := time.Date(2026, 11, 12, 9, 53, 0, 0, time.UTC)
+	store.configs = []DriverConfig{
+		{
+			ID:          1,
+			ProfileID:   17,
+			AnswerID:    4,
+			Title:       "Direct Config",
+			State:       "ready",
+			Author:      "vlad",
+			CreatedAt:   created,
+			PackageINFs: []agent.SelectedINF{{PackageSHA256: pkgSHA, INFPath: "net.inf"}},
+			Build:       agent.DriverBuildResult{WIMSHA256: wimSHA},
+		},
+		{
+			ID:          2,
+			ProfileID:   17,
+			Title:       "Inferred Config",
+			State:       "ready",
+			CreatedAt:   created,
+			PackageINFs: []agent.SelectedINF{{PackageSHA256: pkgSHA, INFPath: "net.inf"}},
+		},
+		{
+			ID:        3,
+			ProfileID: 17,
+			Title:     "Unknown Author",
+			State:     "pending",
+		},
+	}
+	store.installations = []Installation{{ID: 14, Title: "Boot Entry 14", DriverConfigID: 2}}
+	s := &Server{Store: store}
+	s.authorsCache.set(ResourceAuthors{
+		Installations: map[int64]string{14: "fonwa"},
+	}, time.Now())
+
+	body := libraryGet(t, s, "/drivers")
+	for _, want := range []string{
+		`<th>Автор</th>`,
+		`data-driver-config-open="1"`,
+		`id="driver-config-dialog-1"`,
+		`action="/drivers/configs/1/title"`,
+		`data-driver-config-form`,
+		`Win11_23H2.iso`,
+		`Lab XML`,
+		`vlad`,
+		`fonwa`,
+		`≈`,
+		`Определён по загрузке, при сохранении которой появилась конфигурация`,
+		`Boot Entry 14`,
+		shortSHA(wimSHA),
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("drivers page missing %q", want)
+		}
+	}
+
+	// Observer sees properties card without edit form or delete button.
+	store.user.Role = "observer"
+	obsBody := libraryGet(t, s, "/drivers")
+	if !strings.Contains(obsBody, `id="driver-config-dialog-1"`) || strings.Contains(obsBody, `action="/drivers/configs/1/title"`) || strings.Contains(obsBody, `action="/drivers/configs/1/delete"`) {
+		t.Fatalf("observer should see read-only config dialog without rename/delete actions")
 	}
 }

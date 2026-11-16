@@ -538,11 +538,15 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if selectedConfig.ID == 0 {
+			selectedConfig.Author = requestInfo(r).User.Username
+			selectedConfig.AuthorInferred = false
 			created, e := s.Store.CreateDriverConfig(r.Context(), *selectedConfig)
 			if e != nil {
 				http.Error(w, "Не удалось создать конфигурацию", http.StatusServiceUnavailable)
 				return
 			}
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.create", "ok", fmt.Sprintf("id=%d profile=%d", created.ID, created.ProfileID))
+			s.InvalidateResourceAuthorsCache()
 			*selectedConfig = created
 		}
 		item.DriverConfigID = selectedConfig.ID

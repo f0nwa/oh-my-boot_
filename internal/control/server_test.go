@@ -37,6 +37,9 @@ func (a authOnlyStore) WindowsAnswers(context.Context) ([]WindowsAnswerVariant, 
 func (a authOnlyStore) DriverConfigs(context.Context) ([]DriverConfig, error) {
 	return []DriverConfig{}, nil
 }
+func (a authOnlyStore) SetDriverConfigTitle(context.Context, int64, string) error {
+	return nil
+}
 func (a authOnlyStore) DriverPackages(context.Context) ([]DriverPackage, error) {
 	return []DriverPackage{}, nil
 }

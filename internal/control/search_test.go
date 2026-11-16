@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"omb/internal/agent"
 )
 
 func TestSearchMatchFoldsMACSeparators(t *testing.T) {
@@ -54,6 +57,7 @@ type searchMockStore struct {
 	windowsAnswers     []WindowsAnswerVariant
 	ubuntuAutoinstalls []UbuntuAutoinstallSummary
 	driverPackages     []DriverPackage
+	driverConfigs      []DriverConfig
 	menuVersions       []MenuVersion
 }
 
@@ -66,6 +70,9 @@ func (s searchMockStore) UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstal
 }
 func (s searchMockStore) DriverPackages(context.Context) ([]DriverPackage, error) {
 	return s.driverPackages, nil
+}
+func (s searchMockStore) DriverConfigs(context.Context) ([]DriverConfig, error) {
+	return s.driverConfigs, nil
 }
 func (s searchMockStore) MenuVersions(context.Context) ([]MenuVersion, error) {
 	return s.menuVersions, nil
@@ -86,6 +93,9 @@ func TestSearchAllByAuthorAndSHA(t *testing.T) {
 		},
 		driverPackages: []DriverPackage{
 			{SHA256: "a1b490f82348cbe02934ef098234ea76123498a123908fde781293847a9889f0"},
+		},
+		driverConfigs: []DriverConfig{
+			{ID: 8, Title: "Ноутбуки Dell", Author: "vlad", Build: agent.DriverBuildResult{WIMSHA256: "f4120000111122223333444455556666777788889999aaaabbbbccccddddeeee"}},
 		},
 		menuVersions: []MenuVersion{
 			{ID: 42, Author: "vlad", Active: true, SHA256: "7c01593cba394f0982054ec098124ef98012354cde89123450918234912edd45"},
@@ -157,6 +167,27 @@ func TestSearchAllByAuthorAndSHA(t *testing.T) {
 	}
 	if !foundSHAMatch {
 		t.Errorf("expected to find Windows answer by SHA prefix '5eec', got: %+v", resultsSHA)
+	}
+
+	// 3. Search WinPE driver config by Cyrillic title and WIM SHA
+	for _, q := range []string{"Dell", "f4120000"} {
+		reqCfg := httptest.NewRequest(http.MethodGet, "/search?format=json&q="+url.QueryEscape(q), nil)
+		reqCfg.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+		resCfg := httptest.NewRecorder()
+		s.Handler().ServeHTTP(resCfg, reqCfg)
+		var cfgResults []searchResult
+		if err := json.Unmarshal(resCfg.Body.Bytes(), &cfgResults); err != nil {
+			t.Fatal(err)
+		}
+		foundCfg := false
+		for _, r := range cfgResults {
+			if r.Kind == "Конфигурация WinPE" && r.Title == "Ноутбуки Dell" && r.Href == "/drivers#driver-config-8" {
+				foundCfg = true
+			}
+		}
+		if !foundCfg {
+			t.Errorf("query %q did not match WinPE driver config: %+v", q, cfgResults)
+		}
 	}
 }
 

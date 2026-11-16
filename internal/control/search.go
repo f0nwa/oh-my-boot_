@@ -149,6 +149,26 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 				add(searchResult{Kind: "Скрипт установки", Title: answer.Title, Sub: sub, Href: "/answers?q=" + answer.Title})
 			}
 		}
+		for _, cfg := range configs {
+			author := cfg.Author
+			if author == "" {
+				author = authors.DriverConfigs[cfg.ID]
+			}
+			if searchMatch(query, cfg.Title, author) || searchMatchSHA(query, cfg.Build.WIMSHA256) {
+				title := cfg.Title
+				if title == "" {
+					title = fmt.Sprintf("%s %d", translate(normalizeLanguage(info.User.Language), "Конфигурация №"), cfg.ID)
+				}
+				sub := fmt.Sprintf("№ %d", cfg.ID)
+				if author != "" {
+					sub += " · " + author
+				}
+				if cfg.Build.WIMSHA256 != "" {
+					sub += " · " + shortSHA(cfg.Build.WIMSHA256)
+				}
+				add(searchResult{Kind: "Конфигурация WinPE", Title: title, Sub: sub, Href: fmt.Sprintf("/drivers#driver-config-%d", cfg.ID)})
+			}
+		}
 	}
 	if s.Store != nil {
 		if autoinstalls, err := s.Store.UbuntuAutoinstalls(r.Context()); err == nil {

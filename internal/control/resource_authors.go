@@ -19,6 +19,7 @@ type ResourceAuthors struct {
 	Images          map[string]string
 	ImageUploadedAt map[string]time.Time
 	Drivers         map[string]string
+	DriverConfigs   map[int64]string
 }
 
 func (a ResourceAuthors) clone() ResourceAuthors {
@@ -29,6 +30,7 @@ func (a ResourceAuthors) clone() ResourceAuthors {
 		Images:          make(map[string]string, len(a.Images)),
 		ImageUploadedAt: make(map[string]time.Time, len(a.ImageUploadedAt)),
 		Drivers:         make(map[string]string, len(a.Drivers)),
+		DriverConfigs:   make(map[int64]string, len(a.DriverConfigs)),
 	}
 	for k, v := range a.Installations {
 		out.Installations[k] = v
@@ -47,6 +49,9 @@ func (a ResourceAuthors) clone() ResourceAuthors {
 	}
 	for k, v := range a.Drivers {
 		out.Drivers[k] = v
+	}
+	for k, v := range a.DriverConfigs {
+		out.DriverConfigs[k] = v
 	}
 	return out
 }
@@ -130,7 +135,7 @@ func imageAuthorKey(storageID int64, path string) string {
 func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT a.action,a.detail,COALESCE(u.username,''),a.occurred_at
 		FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id
-		WHERE a.result='ok' AND a.action IN ('installation.create','windows-answer.create','ubuntu-autoinstall.create','iso.upload','driver.import')
+		WHERE a.result='ok' AND a.action IN ('installation.create','windows-answer.create','ubuntu-autoinstall.create','iso.upload','driver.import','driver-config.create')
 		ORDER BY a.id`)
 	if err != nil {
 		return ResourceAuthors{}, err
@@ -138,7 +143,8 @@ func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 	defer rows.Close()
 	authors := ResourceAuthors{
 		Installations: map[int64]string{}, Answers: map[int64]string{}, UbuntuAnswers: map[int64]string{},
-		Images: map[string]string{}, Drivers: map[string]string{}, ImageUploadedAt: map[string]time.Time{},
+		Images: map[string]string{}, Drivers: map[string]string{}, DriverConfigs: map[int64]string{},
+		ImageUploadedAt: map[string]time.Time{},
 	}
 	for rows.Next() {
 		var action, detail, actor string
@@ -194,6 +200,16 @@ func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 			}
 			if authors.Drivers[fields[0]] == "" {
 				authors.Drivers[fields[0]] = actor
+			}
+		case "driver-config.create":
+			for _, field := range strings.Fields(detail) {
+				if strings.HasPrefix(field, "id=") {
+					id, err := strconv.ParseInt(strings.TrimPrefix(field, "id="), 10, 64)
+					if err == nil && id > 0 && authors.DriverConfigs[id] == "" {
+						authors.DriverConfigs[id] = actor
+					}
+					break
+				}
 			}
 		}
 	}

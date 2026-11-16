@@ -121,23 +121,28 @@ func TestProfileWinPEStartupAssetIsOnlyServedToPXESubnet(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "omb-setup.cmd"), []byte("limited-secret"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "omb-answer-setup.cmd"), []byte("limited-answer-secret"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct {
-		remote string
-		want   int
-	}{{"10.30.0.7:12345", http.StatusOK}, {"192.168.10.55:12345", http.StatusNotFound}} {
-		req := httptest.NewRequest(http.MethodGet, "/assets/windows-profiles/17/omb-setup.cmd", nil)
-		req.RemoteAddr = tc.remote
-		res := httptest.NewRecorder()
-		h.ServeHTTP(res, req)
-		if res.Code != tc.want {
-			t.Fatalf("remote=%s status=%d want=%d", tc.remote, res.Code, tc.want)
-		}
-		if tc.want != http.StatusOK && strings.Contains(res.Body.String(), "limited-secret") {
-			t.Fatalf("startup script leaked to %s", tc.remote)
+	for _, scriptName := range []string{"omb-setup.cmd", "omb-answer-setup.cmd"} {
+		for _, tc := range []struct {
+			remote string
+			want   int
+		}{{"10.30.0.7:12345", http.StatusOK}, {"192.168.10.55:12345", http.StatusNotFound}} {
+			req := httptest.NewRequest(http.MethodGet, "/assets/windows-profiles/17/"+scriptName, nil)
+			req.RemoteAddr = tc.remote
+			res := httptest.NewRecorder()
+			h.ServeHTTP(res, req)
+			if res.Code != tc.want || (tc.want == http.StatusOK && res.Header().Get("Cache-Control") != "no-store") {
+				t.Fatalf("%s remote=%s status=%d want=%d cache=%q", scriptName, tc.remote, res.Code, tc.want, res.Header().Get("Cache-Control"))
+			}
+			if tc.want != http.StatusOK && strings.Contains(res.Body.String(), "limited") {
+				t.Fatalf("startup script %s leaked to %s", scriptName, tc.remote)
+			}
 		}
 	}
 }
@@ -157,19 +162,24 @@ func TestWindowsAnswerAssetsAreLimitedToPXESubnet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"omb-answer.xml", "omb-setup.cmd"} {
-		for _, tc := range []struct {
-			addr string
-			want int
-		}{{"10.30.0.7:1234", http.StatusOK}, {"192.168.10.55:1234", http.StatusNotFound}} {
-			req := httptest.NewRequest(http.MethodGet, "/assets/windows-answers/4/"+name, nil)
-			req.RemoteAddr = tc.addr
-			res := httptest.NewRecorder()
-			h.ServeHTTP(res, req)
-			if res.Code != tc.want || (tc.want == http.StatusOK && res.Header().Get("Cache-Control") != "no-store") {
-				t.Fatalf("%s %s: status=%d cache=%q", name, tc.addr, res.Code, res.Header().Get("Cache-Control"))
-			}
+	for _, tc := range []struct {
+		addr string
+		want int
+	}{{"10.30.0.7:1234", http.StatusOK}, {"192.168.10.55:1234", http.StatusNotFound}} {
+		req := httptest.NewRequest(http.MethodGet, "/assets/windows-answers/4/omb-answer.xml", nil)
+		req.RemoteAddr = tc.addr
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		if res.Code != tc.want || (tc.want == http.StatusOK && res.Header().Get("Cache-Control") != "no-store") {
+			t.Fatalf("omb-answer.xml %s: status=%d cache=%q", tc.addr, res.Code, res.Header().Get("Cache-Control"))
 		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/assets/windows-answers/4/omb-setup.cmd", nil)
+	req.RemoteAddr = "10.30.0.7:1234"
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("legacy omb-setup.cmd in windows-answers was still served: %d", res.Code)
 	}
 }
 

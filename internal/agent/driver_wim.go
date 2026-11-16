@@ -188,15 +188,18 @@ func (m *DriverManager) validateBuildRequest(req DriverBuildRequest) error {
 
 func (m *DriverManager) driverScript(req DriverBuildRequest) ([]byte, error) {
 	root := filepath.Join(m.ProfileRoot, strconv.FormatInt(req.ProfileID, 10))
-	if req.AnswerID > 0 {
-		root = filepath.Join(m.AnswerRoot, strconv.FormatInt(req.AnswerID, 10))
-	}
 	if err := requireRegularISOFile(root, "omb-setup.cmd"); err != nil {
 		return nil, err
 	}
 	base, err := os.ReadFile(filepath.Join(root, "omb-setup.cmd"))
 	if err != nil {
 		return nil, err
+	}
+	if req.AnswerID > 0 {
+		base, err = winpe.RenderAnswerStartup(base, req.ProfileID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	paths := make([]string, 0, len(req.PackageINFs))
 	for _, selected := range req.PackageINFs {

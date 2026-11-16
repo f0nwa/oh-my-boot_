@@ -59,7 +59,7 @@ func TestStrelecMigrationPreservesInstallerSourcesAndStoresServiceKind(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: original.ID, Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
+	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestStrelecDriverSelectionPersistsAndRejectsInstallerAnswers(t *testing.T) 
 			t.Fatal("driver removal not persisted")
 		}
 	}
-	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: p.ID, Title: "XML", SHA256: strings.Repeat("b", 64), Size: 10})
+	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{Title: "XML", SHA256: strings.Repeat("b", 64), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

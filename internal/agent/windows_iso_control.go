@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,30 +14,31 @@ import (
 // WindowsISOManager persists one immutable source reference per profile and
 // starts a dedicated systemd unit to mount and prepare it.
 type WindowsISOManager struct {
-	mu         sync.Mutex
-	SourceRoot string
-	LocalRoot  string
-	ConfigRoot string
-	MountRoot  string
-	AssetRoot  string
-	AnswerRoot string
-	Systemctl  SMBSystemctl
-	Mounter    WindowsISOMounter
+	mu          sync.Mutex
+	SourceRoot  string
+	LocalRoot   string
+	ConfigRoot  string
+	MountRoot   string
+	AssetRoot   string
+	AnswerRoot  string
+	Systemctl   SMBSystemctl
+	Mounter     WindowsISOMounter
+	WIMCommands DriverCommandRunner
 }
 
-func (m *WindowsISOManager) Check(ctx context.Context, req WindowsISORequest) error {
+func (m *WindowsISOManager) Check(ctx context.Context, req WindowsISORequest) (WindowsISOResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, err := resolveWindowsISOSource(m.SourceRoot, req, m.LocalRoot); err != nil {
-		return err
+		return WindowsISOResult{}, err
 	}
 	id := strconv.FormatInt(req.ID, 10)
 	content, err := os.ReadFile(filepath.Join(m.ConfigRoot, id+".json"))
 	if err != nil {
-		return err
+		return WindowsISOResult{}, err
 	}
 	if !sameStoredWindowsISORequest(content, req) {
-		return fmt.Errorf("Windows ISO profile source differs from prepared configuration")
+		return WindowsISOResult{}, fmt.Errorf("Windows ISO profile source differs from prepared configuration")
 	}
 	target := filepath.Join(m.MountRoot, id)
 	mounter := m.Mounter
@@ -45,15 +47,12 @@ func (m *WindowsISOManager) Check(ctx context.Context, req WindowsISORequest) er
 	}
 	mounted, err := mounter.IsMounted(ctx, target)
 	if err != nil {
-		return err
+		return WindowsISOResult{}, err
 	}
 	if !mounted {
-		return fmt.Errorf("Windows ISO is not mounted")
+		return WindowsISOResult{}, fmt.Errorf("Windows ISO is not mounted")
 	}
-	if _, err := inspectMountedISO(target, req.BootMode); err != nil {
-		return err
-	}
-	return m.checkWindowsISOAssets(id, req.BootMode)
+	return m.inspectAndCheckProfile(ctx, target, id, req.BootMode, req.ID)
 }
 
 func (m *WindowsISOManager) Prepare(ctx context.Context, req WindowsISORequest) (WindowsISOResult, error) {
@@ -91,14 +90,29 @@ func (m *WindowsISOManager) Prepare(ctx context.Context, req WindowsISORequest) 
 	if err := m.Systemctl.Run(ctx, "enable", "--now", unit); err != nil {
 		return WindowsISOResult{}, err
 	}
-	installFile, err := inspectMountedISO(filepath.Join(m.MountRoot, id), req.BootMode)
+	return m.inspectAndCheckProfile(ctx, filepath.Join(m.MountRoot, id), id, req.BootMode, req.ID)
+}
+
+func (m *WindowsISOManager) inspectAndCheckProfile(ctx context.Context, target, id, mode string, profileID int64) (WindowsISOResult, error) {
+	installFile, err := inspectMountedISO(target, mode)
 	if err != nil {
 		return WindowsISOResult{}, err
 	}
-	if err := m.checkWindowsISOAssets(id, req.BootMode); err != nil {
+	if err := m.checkWindowsISOAssets(id, mode); err != nil {
 		return WindowsISOResult{}, err
 	}
-	return WindowsISOResult{InstallFile: installFile}, nil
+	if mode != "" {
+		return WindowsISOResult{InstallFile: installFile}, nil
+	}
+	if err := ensureAnswerStartupAsset(filepath.Join(m.AssetRoot, id), profileID, nil); err != nil {
+		return WindowsISOResult{}, err
+	}
+	wimInfo, wimErr := inspectWindowsWIMInfo(ctx, m.WIMCommands, filepath.Join(target, "sources", installFile))
+	if wimErr != nil {
+		log.Printf("windows-iso %s: wim info check unavailable (%v); continuing with wim_info.known=false", id, wimErr)
+		wimInfo = WindowsWIMInfo{}
+	}
+	return WindowsISOResult{InstallFile: installFile, WIMInfo: wimInfo}, nil
 }
 
 func (m *WindowsISOManager) checkWindowsISOAssets(id, mode string) error {

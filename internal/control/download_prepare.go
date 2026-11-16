@@ -51,10 +51,14 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 	if profile.ID == 0 {
 		return fmt.Errorf("Источник загрузки недоступен")
 	}
-	if err := s.prepareDownloadISO(ctx, profile, actor); err != nil {
+	wimInfo, err := s.prepareDownloadISO(ctx, profile, actor)
+	if err != nil {
 		return err
 	}
 	if item.DriverConfigID == 0 {
+		if profile.BootMode == "" {
+			return s.checkPreparedAnswerCompatibility(ctx, item.AnswerID, wimInfo)
+		}
 		return nil
 	}
 	configs, err := s.Store.DriverConfigs(ctx)
@@ -63,6 +67,12 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 	}
 	for _, config := range configs {
 		if config.ID == item.DriverConfigID {
+			if profile.BootMode == "" {
+				if compatErr := s.checkPreparedAnswerCompatibility(ctx, config.AnswerID, wimInfo); compatErr != nil {
+					_ = s.Store.SetDriverConfigResult(ctx, config.ID, "error", agent.DriverBuildResult{}, compatErr.Error())
+					return compatErr
+				}
+			}
 			if config.State == "ready" {
 				return nil
 			}
@@ -139,25 +149,56 @@ func (s *Server) prepareUbuntuDownload(ctx context.Context, source BootProfile, 
 	return nil
 }
 
-func (s *Server) prepareDownloadISO(ctx context.Context, profile WindowsProfile, actor int64) error {
+func (s *Server) checkPreparedAnswerCompatibility(ctx context.Context, answerID int64, wim agent.WindowsWIMInfo) error {
+	if answerID <= 0 || !wim.Known {
+		return nil
+	}
+	answers, err := s.Store.WindowsAnswers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, a := range answers {
+		if a.ID == answerID && a.State == "ready" {
+			if compat := EvaluateWindowsAnswerCompatibility(a.Target, wim); compat.Status == "incompatible" {
+				return fmt.Errorf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; "))
+			}
+			break
+		}
+	}
+	return nil
+}
+
+func (s *Server) prepareDownloadISO(ctx context.Context, profile WindowsProfile, actor int64) (agent.WindowsWIMInfo, error) {
 	if s.Images != nil {
 		catalog, err := s.Images.Catalog(ctx)
 		if err != nil {
-			return s.saveDownloadISOError(ctx, profile.ID, "unavailable", "Каталог ISO недоступен")
+			return agent.WindowsWIMInfo{}, s.saveDownloadISOError(ctx, profile.ID, "unavailable", "Каталог ISO недоступен")
 		}
 		if problem := windowsProfileSourceProblem(catalog, profile); problem != nil {
-			return s.saveDownloadISOError(ctx, profile.ID, "unavailable", capitalizeFirst(problem.Error()))
+			return agent.WindowsWIMInfo{}, s.saveDownloadISOError(ctx, profile.ID, "unavailable", capitalizeFirst(problem.Error()))
 		}
 	}
 	request := agent.WindowsISORequest{ID: profile.ID, BootMode: profile.BootMode, StorageRoot: profile.StorageRoot, RelativePath: profile.Path, Size: profile.Size, Modified: profile.Modified}
-	if profileBootable(profile) && (s.WindowsISO == nil || s.WindowsISO.CheckWindowsISO(ctx, request) == nil) {
-		return nil
+	if profileBootable(profile) {
+		if s.WindowsISO == nil {
+			return profile.WIMInfo, nil
+		}
+		if checked, err := s.WindowsISO.CheckWindowsISO(ctx, request); err == nil {
+			wim := profile.WIMInfo
+			if checked.WIMInfo.Known {
+				wim = checked.WIMInfo
+				if !profile.WIMInfo.Known {
+					_ = s.Store.SetWindowsProfileWIMInfo(ctx, profile.ID, checked.WIMInfo)
+				}
+			}
+			return wim, nil
+		}
 	}
 	if s.Images == nil || s.WindowsISO == nil {
-		return s.saveDownloadISOError(ctx, profile.ID, "error", "Подготовка Windows ISO недоступна")
+		return agent.WindowsWIMInfo{}, s.saveDownloadISOError(ctx, profile.ID, "error", "Подготовка Windows ISO недоступна")
 	}
 	if err := s.Store.SetWindowsProfileResult(ctx, profile.ID, "preparing", "", ""); err != nil {
-		return err
+		return agent.WindowsWIMInfo{}, err
 	}
 	prepCtx, stop := context.WithTimeout(ctx, 5*time.Minute)
 	result, err := s.WindowsISO.PrepareWindowsISO(prepCtx, request)
@@ -167,16 +208,21 @@ func (s *Server) prepareDownloadISO(ctx context.Context, profile WindowsProfile,
 	if err != nil {
 		message := downloadISOError(err)
 		_ = s.Store.Audit(finalCtx, actor, "windows-profile.prepare", "error", fmt.Sprintf("id=%d", profile.ID))
-		return s.saveDownloadISOError(finalCtx, profile.ID, "error", message)
+		return agent.WindowsWIMInfo{}, s.saveDownloadISOError(finalCtx, profile.ID, "error", message)
 	}
 	if (profile.BootMode == agent.ISOStrelecMode && result.InstallFile != "") || (profile.BootMode == "" && result.InstallFile != "install.wim" && result.InstallFile != "install.esd") {
-		return s.saveDownloadISOError(finalCtx, profile.ID, "error", "В ISO не найден установочный образ Windows")
+		return agent.WindowsWIMInfo{}, s.saveDownloadISOError(finalCtx, profile.ID, "error", "В ISO не найден установочный образ Windows")
 	}
 	if err := s.Store.SetWindowsProfileResult(finalCtx, profile.ID, "ready", result.InstallFile, ""); err != nil {
-		return err
+		return agent.WindowsWIMInfo{}, err
+	}
+	if result.WIMInfo.Known {
+		if err := s.Store.SetWindowsProfileWIMInfo(finalCtx, profile.ID, result.WIMInfo); err != nil {
+			return agent.WindowsWIMInfo{}, err
+		}
 	}
 	_ = s.Store.Audit(finalCtx, actor, "windows-profile.prepare", "ok", fmt.Sprintf("id=%d", profile.ID))
-	return nil
+	return result.WIMInfo, nil
 }
 
 func (s *Server) saveDownloadISOError(ctx context.Context, id int64, state, message string) error {

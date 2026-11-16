@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,10 +18,11 @@ import (
 type newInstallStore struct {
 	inspections map[string]ImageInspection
 	*draftStore
-	packages      []DriverPackage
-	created       []DriverConfig
-	bootProfiles  []BootProfile
-	installations []Installation
+	packages           []DriverPackage
+	created            []DriverConfig
+	bootProfiles       []BootProfile
+	installations      []Installation
+	ubuntuAutoinstalls []UbuntuAutoinstallSummary
 }
 
 func (s *newInstallStore) DriverPackages(context.Context) ([]DriverPackage, error) {
@@ -43,6 +45,18 @@ func (s *newInstallStore) CreateInstallation(_ context.Context, item Installatio
 	item.ID = 100 + int64(len(s.installations))
 	s.installations = append(s.installations, item)
 	return item, nil
+}
+func (s *newInstallStore) UpdateInstallation(_ context.Context, item Installation) error {
+	for i := range s.installations {
+		if s.installations[i].ID == item.ID {
+			s.installations[i] = item
+			return nil
+		}
+	}
+	return fmt.Errorf("installation %d not found", item.ID)
+}
+func (s *newInstallStore) UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstallSummary, error) {
+	return s.ubuntuAutoinstalls, nil
 }
 
 func newInstallServer(t *testing.T) (*Server, *newInstallStore) {
@@ -97,11 +111,51 @@ func TestNewInstallationWithAnswer(t *testing.T) {
 	}
 }
 
-func TestNewInstallationRejectsForeignAnswer(t *testing.T) {
+func TestNewInstallationCompatibilityEnforcement(t *testing.T) {
+	// Cross-profile usage of a compatible unbound script works on create and edit.
 	s, store := newInstallServer(t)
-	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"50"}, "answer_id": {"31"}, "title": {"Mixed"}})
-	if res.Code < 400 || !strings.Contains(res.Body.String(), "другому образу") || store.draft != nil {
-		t.Fatalf("status=%d draft=%+v body=%s", res.Code, store.draft, res.Body.String())
+	store.profiles[0].WIMInfo = agent.WindowsWIMInfo{
+		Known:  true,
+		Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 11 Pro", DisplayName: "Windows 11 Pro", EditionID: "Professional", Architecture: "amd64", Languages: []string{"ru-RU"}, Build: 26100}},
+	}
+	store.profiles[1].WIMInfo = agent.WindowsWIMInfo{
+		Known:  true,
+		Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 10 Pro", DisplayName: "Windows 10 Pro", EditionID: "Professional", Architecture: "amd64", Languages: []string{"ru-RU"}, Build: 19045}},
+	}
+	store.answers = []WindowsAnswerVariant{
+		{ID: 31, Title: "Pro RU", State: "ready", Target: WindowsAnswerTarget{Architectures: []string{"amd64"}, ImageMode: "edition", EditionID: "pro", ImageLanguage: "ru-RU"}},
+		{ID: 32, Title: "Win11 Only", State: "ready", Target: WindowsAnswerTarget{Architectures: []string{"amd64"}, ImageMode: "edition", EditionID: "pro", Win11Only: true}},
+		{ID: 33, Title: "ARM64 Ent", State: "ready", Target: WindowsAnswerTarget{Architectures: []string{"arm64"}, ImageMode: "edition", EditionID: "enterprise"}},
+	}
+
+	// Compatible unbound script attaches to any matching image (profile 1 on boot_profile 50).
+	res := menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"50"}, "answer_id": {"31"}, "title": {"CrossProfile"}})
+	if res.Code != http.StatusSeeOther || len(store.installations) != 1 || store.installations[0].AnswerID != 31 {
+		t.Fatalf("cross-profile create status=%d installations=%+v body=%s", res.Code, store.installations, res.Body.String())
+	}
+
+	// Incompatible script is blocked on both create and edit.
+	res = menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"50"}, "answer_id": {"33"}, "title": {"Incompatible"}})
+	if res.Code != http.StatusBadRequest || len(store.installations) != 1 {
+		t.Fatalf("incompatible create status=%d body=%s", res.Code, res.Body.String())
+	}
+	res = menuPost(t, s, "/installations/100", url.Values{"boot_profile_id": {"50"}, "answer_id": {"33"}, "title": {"CrossProfile"}})
+	if res.Code != http.StatusBadRequest || store.installations[0].AnswerID != 31 {
+		t.Fatalf("incompatible edit status=%d body=%s", res.Code, res.Body.String())
+	}
+
+	// Warning script (Win11Only on Windows 10) requires confirm_warnings=1 on both create and edit.
+	res = menuPost(t, s, "/installations", url.Values{"boot_profile_id": {"50"}, "answer_id": {"32"}, "title": {"WarnUnconfirmed"}})
+	if res.Code != http.StatusBadRequest || len(store.installations) != 1 {
+		t.Fatalf("unconfirmed warning create status=%d body=%s", res.Code, res.Body.String())
+	}
+	res = menuPost(t, s, "/installations/100", url.Values{"boot_profile_id": {"50"}, "answer_id": {"32"}, "title": {"WarnEdit"}})
+	if res.Code != http.StatusBadRequest || store.installations[0].AnswerID != 31 {
+		t.Fatalf("unconfirmed warning edit status=%d body=%s", res.Code, res.Body.String())
+	}
+	res = menuPost(t, s, "/installations/100", url.Values{"boot_profile_id": {"50"}, "answer_id": {"32"}, "title": {"WarnEditOK"}, "confirm_warnings": {"1"}})
+	if res.Code != http.StatusSeeOther || store.installations[0].AnswerID != 32 {
+		t.Fatalf("confirmed warning edit status=%d installations=%+v body=%s", res.Code, store.installations, res.Body.String())
 	}
 }
 
@@ -177,21 +231,83 @@ func TestNewInstallationFormListsChoices(t *testing.T) {
 		{Path: "Intel/e1d68x86.inf", Architecture: "x86", Class: "Net"},
 	}}})
 	body := libraryGet(t, s, "/installations/new")
+	formHTML := body
+	if i := strings.Index(body, "<form id=\"installation-form\""); i >= 0 {
+		formHTML = body[i:]
+	}
 	for _, want := range []string{
-		`name="boot_profile_id"`, `value="51"`, `data-profile="17"`, `/assets/installation-form.js`,
+		`name="boot_profile_id"`, `value="51"`, `/assets/installation-form.js`,
+		`Скрипт установки`,
+		`Добавить скрипт…`,
+		`Без скрипта — по умолчанию`,
+		`Установщик задаёт вопросы на экране машины`,
 		`name="package" value="` + shaA + `"`,
 		`data-package="` + shaA + `" name="inf" value="` + shaA + `:NetKVM/netkvm.inf"`,
 		`data-package="` + shaA + `" name="inf" value="` + shaA + `:vioscsi/vioscsi.inf"`,
 		`name="inf" value="` + shaB + `:Intel/e1d68x64.inf"`,
 		`Intel/e1d68x64.inf · Net`,
 	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("form lacks %q: %s", want, body)
+		if !strings.Contains(formHTML, want) {
+			t.Fatalf("form lacks %q: %s", want, formHTML)
 		}
 	}
-	for _, forbidden := range []string{`<details class="step-more"`, `Выбрать отдельные INF`, `name="package" value="` + shaB + `"`, `data-package="` + shaB + `"`} {
-		if strings.Contains(body, forbidden) {
-			t.Fatalf("form contains forbidden %q: %s", forbidden, body)
+	for _, forbidden := range []string{`<details`, `<summary`, `Выбрать отдельные INF`, `Без файла ответов — установка вручную`, `name="package" value="` + shaB + `"`, `data-package="` + shaB + `"`} {
+		if strings.Contains(formHTML, forbidden) {
+			t.Fatalf("form contains forbidden %q: %s", forbidden, formHTML)
+		}
+	}
+}
+
+func TestNewInstallationFormStepLimitAndSearchActivation(t *testing.T) {
+	s, store := newInstallServer(t)
+	// <= 5 items: searches stay hidden & disabled and no expand button is rendered.
+	body := libraryGet(t, s, "/installations/new?boot_profile_id=50")
+	formBody := body
+	if i := strings.Index(body, "<form id=\"installation-form\""); i >= 0 {
+		formBody = body[i:]
+	}
+	for _, searchID := range []string{`id="boot-profile-search"`, `id="windows-driver-search"`, `id="windows-answer-search"`, `id="ubuntu-answer-search"`} {
+		if !strings.Contains(formBody, searchID) {
+			t.Fatalf("missing search input %s", searchID)
+		}
+	}
+	for _, forbidden := range []string{`data-step-more="`, `<details`, `<summary`} {
+		if strings.Contains(formBody, forbidden) {
+			t.Fatalf("<=5 items must not render %q", forbidden)
+		}
+	}
+
+	// > 5 items in each section: searches become active (not hidden) and Показать ещё N appears.
+	for i := 0; i < 6; i++ {
+		id := int64(200 + i)
+		store.profiles = append(store.profiles, WindowsProfile{ID: id, WindowsProfileSource: WindowsProfileSource{StorageID: 7, Path: fmt.Sprintf("win%d.iso", i), Title: fmt.Sprintf("Windows Extra %d", i)}, State: "ready", InstallFile: "install.wim"})
+		store.bootProfiles = append(store.bootProfiles, BootProfile{ID: 300 + int64(i), Kind: BootProfileWindowsISO, WindowsProfileID: id, Title: fmt.Sprintf("Windows Extra %d", i)})
+		store.packages = append(store.packages, DriverPackage{SHA256: strings.Repeat(fmt.Sprintf("%x", i+3), 64)[:64], Inventory: drivers.Inventory{INFs: []drivers.INF{{Path: fmt.Sprintf("drv%d.inf", i), Architecture: "amd64"}}}})
+		store.answers = append(store.answers, WindowsAnswerVariant{ID: 400 + int64(i), Title: fmt.Sprintf("Script %d", i), State: "ready"})
+		store.ubuntuAutoinstalls = append(store.ubuntuAutoinstalls, UbuntuAutoinstallSummary{ID: 500 + int64(i), Title: fmt.Sprintf("Ubuntu Script %d", i), State: "validated"})
+	}
+	bodyMany := libraryGet(t, s, "/installations/new?boot_profile_id=50")
+	for _, want := range []string{
+		`data-step-more="boot-profiles"`,
+		`data-step-more="windows-drivers"`,
+		`data-step-more="windows-answers"`,
+		`data-step-more="ubuntu-autoinstall"`,
+	} {
+		if !strings.Contains(bodyMany, want) {
+			t.Fatalf(">5 items form lacks %q", want)
+		}
+	}
+	for _, searchPrefix := range []string{`id="boot-profile-search"`, `id="windows-driver-search"`, `id="windows-answer-search"`, `id="ubuntu-answer-search"`} {
+		idx := strings.Index(bodyMany, searchPrefix)
+		if idx < 0 {
+			t.Fatalf("missing %s", searchPrefix)
+		}
+		tag := bodyMany[idx:]
+		if end := strings.Index(tag, ">"); end > 0 {
+			tag = tag[:end]
+		}
+		if strings.Contains(tag, " hidden") || strings.Contains(tag, " disabled") {
+			t.Fatalf("search %s must be active when >5 items: %s", searchPrefix, tag)
 		}
 	}
 }

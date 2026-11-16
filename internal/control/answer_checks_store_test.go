@@ -9,18 +9,18 @@ import (
 	"time"
 )
 
-func answerCheckFixtures(t *testing.T, store Store) (int64, WindowsAnswerVariant, UbuntuAutoinstallFile) {
+func answerCheckFixtures(t *testing.T, store Store) (int64, WindowsAnswerVariant, UbuntuAutoinstallFile, WindowsProfile) {
 	t.Helper()
 	ctx := context.Background()
 	var user int64
 	if err := store.Pool.QueryRow(ctx, `INSERT INTO users(username,password_hash,role) VALUES('checker','unused','operator') RETURNING id`).Scan(&user); err != nil {
 		t.Fatal(err)
 	}
-	profile, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 1, Path: "check.iso", StorageRoot: "/iso", Size: 100, Modified: time.Now(), Title: "Check", Folder: "Windows"})
+	profile, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 1, Path: "check.iso", StorageRoot: "/iso", Size: 100, Modified: time.Now(), Title: "Check ISO", Folder: "Windows"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: profile.ID, Title: "Check", SHA256: strings.Repeat("a", 64), Size: 10})
+	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{Title: "Check", SHA256: strings.Repeat("a", 64), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func answerCheckFixtures(t *testing.T, store Store) (int64, WindowsAnswerVariant
 	if err != nil {
 		t.Fatal(err)
 	}
-	return user, answer, ubuntu
+	return user, answer, ubuntu, profile
 }
 
 // Catches conflating OS-specific IDs, overwriting history, trusting form authors,
@@ -39,11 +39,16 @@ func answerCheckFixtures(t *testing.T, store Store) (int64, WindowsAnswerVariant
 func TestAnswerChecksStore(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
-	user, win, ubuntu := answerCheckFixtures(t, store)
+	user, win, ubuntu, profile := answerCheckFixtures(t, store)
+	profile2, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 1, Path: "check2.iso", StorageRoot: "/iso", Size: 200, Modified: time.Now(), Title: "Check ISO 2", Folder: "Windows"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, check := range []AnswerCheck{
-		{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, Result: "success", UserID: user, Author: "forged", Machine: "VM 113", Comment: "<script>alert(1)</script>"},
-		{Kind: "ubuntu", AnswerID: ubuntu.ID, SHA256: ubuntu.SHA256, Result: "success", UserID: user},
-		{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, Result: "failure", UserID: user, Comment: "No disk"},
+		{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, WindowsProfileID: profile.ID, Result: "success", UserID: user, Author: "forged", Machine: "VM 113", Comment: "<script>alert(1)</script>"},
+		{Kind: "ubuntu", AnswerID: ubuntu.ID, SHA256: ubuntu.SHA256, ProfileTitle: "Ubuntu Desktop 24.04", Result: "success", UserID: user},
+		{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, WindowsProfileID: profile.ID, Result: "failure", UserID: user, Comment: "No disk"},
+		{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, WindowsProfileID: profile2.ID, Result: "success", UserID: user},
 	} {
 		if err := store.SaveAnswerCheck(ctx, check); err != nil {
 			t.Fatal(err)
@@ -53,24 +58,45 @@ func TestAnswerChecksStore(t *testing.T) {
 	if err != nil || len(latest) != 2 {
 		t.Fatalf("latest=%+v err=%v", latest, err)
 	}
-	for _, check := range latest {
-		if check.Author != "checker" || check.CreatedAt.IsZero() || check.Kind == "windows" && check.Result != "failure" {
-			t.Fatalf("wrong latest: %+v", check)
-		}
+	byProfile, err := store.LatestAnswerChecksByProfile(ctx)
+	if err != nil || len(byProfile) != 3 {
+		t.Fatalf("byProfile=%+v err=%v", byProfile, err)
 	}
 	history, err := store.AnswerCheckHistory(ctx, "windows", win.ID, 0)
-	if err != nil || len(history) != 2 || history[0].Result != "failure" || history[1].Comment != "<script>alert(1)</script>" {
+	if err != nil || len(history) != 3 || history[0].WindowsProfileID != profile2.ID || history[0].ProfileTitle != "Check ISO 2" || history[1].Result != "failure" || history[2].Comment != "<script>alert(1)</script>" {
 		t.Fatalf("history=%+v err=%v", history, err)
 	}
 	older, err := store.AnswerCheckHistory(ctx, "windows", win.ID, history[0].ID)
-	if err != nil || len(older) != 1 || older[0].ID != history[1].ID {
+	if err != nil || len(older) != 2 || older[1].ID != history[2].ID {
 		t.Fatalf("older=%+v %v", older, err)
+	}
+	profile3, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 1, Path: "check3.iso", StorageRoot: "/iso", Size: 300, Modified: time.Now(), Title: "AAA Check ISO 3", Folder: "Windows"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile4, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 1, Path: "check4.iso", StorageRoot: "/iso", Size: 400, Modified: time.Now(), Title: "AAB Check ISO 4", Folder: "Windows"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pid := range []int64{profile3.ID, profile4.ID} {
+		if err := store.SaveAnswerCheck(ctx, AnswerCheck{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, WindowsProfileID: pid, Result: "success", UserID: user}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	orderedByProfile, err := store.LatestAnswerChecksByProfile(ctx)
+	if err != nil || len(orderedByProfile) != 5 {
+		t.Fatalf("orderedByProfile=%+v err=%v", orderedByProfile, err)
+	}
+	for i := 0; i+1 < len(orderedByProfile); i++ {
+		if orderedByProfile[i].ID <= orderedByProfile[i+1].ID {
+			t.Fatalf("LatestAnswerChecksByProfile must be newest-first, got %+v", orderedByProfile)
+		}
 	}
 	bad := AnswerCheck{Kind: "windows", AnswerID: win.ID, SHA256: strings.Repeat("b", 64), Result: "success", UserID: user}
 	if err := store.SaveAnswerCheck(ctx, bad); !errors.Is(err, errAnswerCheckConflict) {
 		t.Fatalf("stale digest accepted: %v", err)
 	}
-	copy, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: win.ProfileID, Title: "Copy", SHA256: win.SHA256, Size: 10})
+	copy, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{Title: "Copy", SHA256: strings.Repeat("c", 64), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,11 +125,11 @@ func TestAnswerChecksStore(t *testing.T) {
 func TestAnswerChecksMigration(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
-	user, win, _ := answerCheckFixtures(t, store)
-	if err := store.SaveAnswerCheck(ctx, AnswerCheck{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, Result: "success", UserID: user}); err != nil {
+	user, win, _, profile := answerCheckFixtures(t, store)
+	if err := store.SaveAnswerCheck(ctx, AnswerCheck{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, WindowsProfileID: profile.ID, Result: "success", UserID: user}); err != nil {
 		t.Fatal(err)
 	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-14-answer-checks.sql")
+	migration, err := os.ReadFile("../../deploy/sql/2026-11-16-unbound-installation-scripts.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,8 +138,8 @@ func TestAnswerChecksMigration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := store.LatestAnswerChecks(ctx)
-	if err != nil || len(got) != 1 || got[0].Author != "checker" {
+	got, err := store.LatestAnswerChecksByProfile(ctx)
+	if err != nil || len(got) != 1 || got[0].Author != "checker" || got[0].ProfileTitle != "Check ISO" {
 		t.Fatalf("migration changed checks: %+v %v", got, err)
 	}
 }

@@ -261,12 +261,17 @@ func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage st
 	out.WriteString("#!ipxe\n" + menuFolderMarker + base64.RawURLEncoding.EncodeToString(metadata) + "\n")
 	var selected []int64
 	var selectedAnswers []menuWindowsAnswerRef
+	seenAnswers := map[[2]int64]bool{}
 	var selectedDrivers []menuDriverConfigRef
 	for _, profile := range profiles {
 		if profile.driverConfigID > 0 {
 			selectedDrivers = append(selectedDrivers, menuDriverConfigRef{ID: profile.driverConfigID, ProfileID: profile.windowsISOID, AnswerID: profile.driverAnswerID, AnswerSHA256: profile.driverAnswerSHA256, WIMKey: profile.driverWIMKey, WIMSHA256: profile.driverWIMSHA256, ScriptSHA256: profile.driverScriptSHA256})
 		} else if profile.answerID > 0 {
-			selectedAnswers = append(selectedAnswers, menuWindowsAnswerRef{ID: profile.answerID, ProfileID: profile.windowsISOID, SHA256: profile.answerSHA256})
+			key := [2]int64{profile.answerID, profile.windowsISOID}
+			if !seenAnswers[key] {
+				seenAnswers[key] = true
+				selectedAnswers = append(selectedAnswers, menuWindowsAnswerRef{ID: profile.answerID, ProfileID: profile.windowsISOID, SHA256: profile.answerSHA256})
+			}
 		} else if profile.windowsISOID > 0 {
 			selected = append(selected, profile.windowsISOID)
 		}
@@ -418,7 +423,7 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 		files := []windowsInitrdFile{{name: "winpeshl.ini", url: prefix + "winpeshl.ini"}}
 		if profile.answerID > 0 {
 			answerPrefix := base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.answerID) + "/"
-			startup = answerPrefix + "omb-setup.cmd"
+			startup = prefix + "omb-answer-setup.cmd"
 			files = append(files, windowsInitrdFile{name: "omb-setup.cmd", url: startup}, windowsInitrdFile{name: "omb-answer.xml", url: answerPrefix + "omb-answer.xml"})
 		} else {
 			files = append(files, windowsInitrdFile{name: "omb-setup.cmd", url: startup})

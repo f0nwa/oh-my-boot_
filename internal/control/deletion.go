@@ -272,17 +272,6 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	answers, err := s.Store.WindowsAnswers(r.Context())
-	if err != nil {
-		http.Error(w, "Не удалось проверить сценарии", http.StatusServiceUnavailable)
-		return
-	}
-	for _, answer := range answers {
-		if answer.ProfileID == id {
-			s.rejectDeletion(w, r, "windows-profile.delete", id, fmt.Sprintf("used by answer %d", answer.ID), fmt.Sprintf("Сначала удалите XML-сценарий № %d", answer.ID))
-			return
-		}
-	}
 	configs, err := s.Store.DriverConfigs(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось проверить конфигурации", http.StatusServiceUnavailable)

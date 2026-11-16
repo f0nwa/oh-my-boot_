@@ -53,7 +53,7 @@ func TestDeletionProtectsInstallationComponentsBeforeCleanup(t *testing.T) {
 		{"/images/windows-profiles/17/delete", Installation{ID: 7, BootProfileID: 1, Title: "Manual"}},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
-			base := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4, ProfileID: 17}}, configs: []DriverConfig{{ID: 3, ProfileID: 17}}}
+			base := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4}}, configs: []DriverConfig{{ID: 3, ProfileID: 17}}}
 			store := &referencedDeletionStore{deletionStore: base, source: InstallationMenuSources{BootProfiles: []BootProfile{{ID: 1, Kind: BootProfileWindowsISO, WindowsProfileID: 17}}, Installations: []Installation{tc.item}}}
 			cleaner := &deletionCleaner{}
 			server := deletionTestServer(base, cleaner)

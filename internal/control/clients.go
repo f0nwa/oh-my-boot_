@@ -176,12 +176,16 @@ func (c *AgentClient) PrepareUbuntuISO(ctx context.Context, req agent.UbuntuISOR
 	client := &http.Client{Transport: c.http.Transport, Timeout: 20 * time.Minute}
 	return localCall(ctx, client, http.MethodPost, "/ubuntu-iso/prepare", body, nil)
 }
-func (c *AgentClient) CheckWindowsISO(ctx context.Context, req agent.WindowsISORequest) error {
+func (c *AgentClient) CheckWindowsISO(ctx context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
-		return err
+		return agent.WindowsISOResult{}, err
 	}
-	return localCall(ctx, c.http, "POST", "/windows-iso/check", body, nil)
+	var result agent.WindowsISOResult
+	if err := localCall(ctx, c.http, "POST", "/windows-iso/check", body, &result); err != nil {
+		return agent.WindowsISOResult{}, err
+	}
+	return result, nil
 }
 func (c *AgentClient) PrepareWindowsAnswer(ctx context.Context, req agent.WindowsAnswerRequest) error {
 	body, err := json.Marshal(req)

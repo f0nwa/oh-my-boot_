@@ -15,21 +15,15 @@ import (
 
 func preparedAnswer(t *testing.T) (*WindowsISOManager, WindowsAnswerCheck, []byte) {
 	t.Helper()
-	profiles, answers := t.TempDir(), t.TempDir()
-	if err := os.Mkdir(filepath.Join(profiles, "17"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(profiles, "17", "omb-setup.cmd"), []byte("@echo off\r\nY:\\17\\sources\\setup.exe /InstallFrom:Y:\\17\\sources\\install.wim\r\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	answers := t.TempDir()
 	xml := []byte("<unattend xmlns=\"urn:schemas-microsoft-com:unattend\">\r\n\t<!-- Привет -->\r\n</unattend>")
 	sum := sha256.Sum256(xml)
-	m := &WindowsISOManager{AssetRoot: profiles, AnswerRoot: answers}
-	req := WindowsAnswerRequest{ID: 4, ProfileID: 17, SHA256: hex.EncodeToString(sum[:]), XML: xml}
+	m := &WindowsISOManager{AnswerRoot: answers}
+	req := WindowsAnswerRequest{ID: 4, SHA256: hex.EncodeToString(sum[:]), XML: xml}
 	if err := m.PrepareAnswer(context.Background(), req); err != nil {
 		t.Fatal(err)
 	}
-	return m, WindowsAnswerCheck{ID: 4, ProfileID: 17, SHA256: req.SHA256}, xml
+	return m, WindowsAnswerCheck{ID: 4, SHA256: req.SHA256}, xml
 }
 
 func postAnswerXML(h http.Handler, check WindowsAnswerCheck) *httptest.ResponseRecorder {
@@ -60,7 +54,7 @@ func TestWindowsAnswerXML(t *testing.T) {
 		t.Fatalf("missing: %d", res.Code)
 	}
 
-	for _, bad := range []WindowsAnswerCheck{{ID: -1, ProfileID: 17, SHA256: check.SHA256}, {ID: 4, ProfileID: 17, SHA256: "../../etc/passwd"}} {
+	for _, bad := range []WindowsAnswerCheck{{ID: -1, SHA256: check.SHA256}, {ID: 4, SHA256: "../../etc/passwd"}} {
 		if res := postAnswerXML(h, bad); res.Code != http.StatusBadRequest {
 			t.Fatalf("%+v: %d", bad, res.Code)
 		}

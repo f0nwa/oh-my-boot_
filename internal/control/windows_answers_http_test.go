@@ -79,7 +79,7 @@ func answerUploadRequest(t *testing.T, body []byte, csrf string) *http.Request {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/images/windows-profiles/17/answers", &data)
+	req := httptest.NewRequest(http.MethodPost, "/answers/upload", &data)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	return req
@@ -87,7 +87,7 @@ func answerUploadRequest(t *testing.T, body []byte, csrf string) *http.Request {
 
 func TestWindowsAnswerUploadCreatesReadyVariantWithoutEchoingXML(t *testing.T) {
 	xml := []byte(`<unattend xmlns="urn:schemas-microsoft-com:unattend"><settings pass="windowsPE"><Password>private-token</Password></settings></unattend>`)
-	store := &answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 17, State: "ready"}}
+	store := &answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
 	agentAPI := &answerAgent{}
 	s := &Server{Store: store, WindowsAnswers: agentAPI, Images: &fakeImagesAPI{catalog: images.Catalog{}}}
 	res := httptest.NewRecorder()
@@ -108,19 +108,17 @@ func TestWindowsAnswerUploadCreatesReadyVariantWithoutEchoingXML(t *testing.T) {
 func TestWindowsAnswerUploadRejectsInvalidInputs(t *testing.T) {
 	valid := []byte(`<unattend xmlns="urn:schemas-microsoft-com:unattend"/>`)
 	for _, tc := range []struct {
-		name  string
-		body  []byte
-		csrf  string
-		state string
-		want  int
+		name string
+		body []byte
+		csrf string
+		want int
 	}{
-		{"csrf", valid, "wrong", "ready", http.StatusForbidden},
-		{"unready parent", valid, CSRFToken("test-token"), "pending", http.StatusConflict},
-		{"malformed XML", []byte(`<other/>`), CSRFToken("test-token"), "ready", http.StatusBadRequest},
-		{"oversize XML", bytes.Repeat([]byte("x"), 1<<20+1), CSRFToken("test-token"), "ready", http.StatusBadRequest},
+		{"csrf", valid, "wrong", http.StatusForbidden},
+		{"malformed XML", []byte(`<other/>`), CSRFToken("test-token"), http.StatusBadRequest},
+		{"oversize XML", bytes.Repeat([]byte("x"), 1<<20+1), CSRFToken("test-token"), http.StatusBadRequest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 17, State: tc.state}}
+			store := &answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
 			agentAPI := &answerAgent{}
 			s := &Server{Store: store, WindowsAnswers: agentAPI}
 			res := httptest.NewRecorder()
@@ -132,11 +130,11 @@ func TestWindowsAnswerUploadRejectsInvalidInputs(t *testing.T) {
 	}
 }
 
-func TestWindowsAnswerUploadRejectsSameXMLForSameISO(t *testing.T) {
+func TestWindowsAnswerUploadRejectsSameXMLGlobally(t *testing.T) {
 	xml := []byte(`<unattend xmlns="urn:schemas-microsoft-com:unattend"><settings pass="windowsPE"/></unattend>`)
 	sum := sha256.Sum256(xml)
-	store := &answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 17, State: "ready"},
-		answers: []WindowsAnswerVariant{{ID: 5, ProfileID: 17, Title: "Windows 11 key no-disk test", SHA256: hex.EncodeToString(sum[:]), State: "ready"}}}
+	store := &answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}},
+		answers: []WindowsAnswerVariant{{ID: 5, Title: "Windows 11 key no-disk test", SHA256: hex.EncodeToString(sum[:]), State: "ready"}}}
 	agentAPI := &answerAgent{}
 	s := &Server{Store: store, WindowsAnswers: agentAPI, Images: &fakeImagesAPI{catalog: images.Catalog{}}}
 	res := httptest.NewRecorder()
@@ -147,12 +145,5 @@ func TestWindowsAnswerUploadRejectsSameXMLForSameISO(t *testing.T) {
 	}
 	if !strings.Contains(body, `role="alert"`) || !strings.Contains(body, "#5") || !strings.Contains(body, "Windows 11 key no-disk test") {
 		t.Fatalf("duplicate is not explained on the page: %s", body)
-	}
-	other := &answerPageStore{authOnlyStore: store.authOnlyStore, profile: WindowsProfile{ID: 17, State: "ready"},
-		answers: []WindowsAnswerVariant{{ID: 5, ProfileID: 18, SHA256: hex.EncodeToString(sum[:]), State: "ready"}}}
-	res = httptest.NewRecorder()
-	(&Server{Store: other, WindowsAnswers: &answerAgent{}, Images: &fakeImagesAPI{catalog: images.Catalog{}}}).Handler().ServeHTTP(res, answerUploadRequest(t, xml, CSRFToken("test-token")))
-	if res.Code != http.StatusSeeOther {
-		t.Fatalf("same XML for another ISO rejected: %d %s", res.Code, res.Body.String())
 	}
 }

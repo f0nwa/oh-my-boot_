@@ -53,7 +53,7 @@ func (c *recordingPackageCheck) CheckDriverPackage(_ context.Context, hash strin
 
 func driverMenuFixture() (WindowsProfile, WindowsAnswerVariant, []DriverConfig) {
 	profile := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "windows.iso", Size: 123, Modified: time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC), Title: "Windows 11", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
-	answer := WindowsAnswerVariant{ID: 31, ProfileID: 17, Title: "Lab", State: "ready", SHA256: strings.Repeat("d", 64), Size: 100}
+	answer := WindowsAnswerVariant{ID: 31, Title: "Lab", State: "ready", SHA256: strings.Repeat("d", 64), Size: 100}
 	configs := []DriverConfig{
 		{ID: 1, ProfileID: 17, Title: "Windows 11 Laptop A", Folder: "Windows/Laptops", State: "ready", PackageINFs: []agent.SelectedINF{{PackageSHA256: strings.Repeat("a", 64), INFPath: "net.inf"}}, Build: agent.DriverBuildResult{WIMKey: strings.Repeat("b", 64), WIMSHA256: strings.Repeat("c", 64), ScriptSHA256: strings.Repeat("e", 64)}},
 		{ID: 2, ProfileID: 17, AnswerID: 31, Title: "Windows 11 Laptop B", Folder: "Windows/Laptops", State: "ready", PackageINFs: []agent.SelectedINF{{PackageSHA256: strings.Repeat("f", 64), INFPath: "storage.inf"}}, Build: agent.DriverBuildResult{WIMKey: strings.Repeat("1", 64), WIMSHA256: strings.Repeat("2", 64), ScriptSHA256: strings.Repeat("3", 64)}},

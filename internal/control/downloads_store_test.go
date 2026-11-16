@@ -12,8 +12,7 @@ import (
 func TestDownloadStoreEditsOptionsWithoutChangingIdentityOrOtherDownloads(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
-	source, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 7, Path: "Windows.iso", StorageRoot: "/iso", Size: 100, Modified: time.Now(), Title: "Windows"})
-	if err != nil {
+	if _, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 7, Path: "Windows.iso", StorageRoot: "/iso", Size: 100, Modified: time.Now(), Title: "Windows"}); err != nil {
 		t.Fatal(err)
 	}
 	profiles, err := store.BootProfiles(ctx)
@@ -29,7 +28,7 @@ func TestDownloadStoreEditsOptionsWithoutChangingIdentityOrOtherDownloads(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: source.ID, Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
+	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,15 +81,14 @@ func applyDownloadComponentsMigration(t *testing.T, store Store) {
 func TestDownloadMigrationCapturesComponentsOnceWithoutChangingMenu(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
-	source, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 7, Path: "Windows.iso", StorageRoot: "/iso", Size: 100, Modified: time.Now(), Title: "Windows"})
-	if err != nil {
+	if _, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 7, Path: "Windows.iso", StorageRoot: "/iso", Size: 100, Modified: time.Now(), Title: "Windows"}); err != nil {
 		t.Fatal(err)
 	}
 	profiles, err := store.BootProfiles(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: source.ID, Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
+	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -90,15 +90,11 @@ func (s *Server) answersLibraryData(r *http.Request) pageData {
 	data.Query = strings.TrimSpace(r.URL.Query().Get("q"))
 	if data.Query != "" {
 		q := strings.ToLower(data.Query)
-		profileNames := map[int64]string{}
-		for _, p := range data.WindowsProfiles {
-			profileNames[p.ID] = p.Title
-		}
 		filteredWin := []WindowsAnswerVariant{}
 		for _, ans := range data.WindowsAnswerVariants {
-			imageName := profileNames[ans.ProfileID]
 			disk := ans.DiskSummary()
-			haystack := strings.ToLower(ans.Title + " " + imageName + " " + ans.Author + " " + disk.Target + " " + disk.Title() + " " + ans.SHA256)
+			chips := strings.Join(ans.Target.Chips(), " ")
+			haystack := strings.ToLower(ans.Title + " " + chips + " " + ans.Author + " " + disk.Target + " " + disk.Title() + " " + ans.SHA256)
 			if strings.Contains(haystack, q) || searchMatchSHA(q, ans.SHA256) {
 				filteredWin = append(filteredWin, ans)
 			}

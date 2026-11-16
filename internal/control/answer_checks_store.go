@@ -29,24 +29,38 @@ func (s Store) SaveAnswerCheck(ctx context.Context, input AnswerCheck) error {
 	if digest != c.SHA256 || state != ready {
 		return errAnswerCheckConflict
 	}
+	profileID := c.WindowsProfileID
+	profileTitle := c.ProfileTitle
+	if c.Kind == "windows" {
+		if profileID > 0 {
+			if err := tx.QueryRow(ctx, `SELECT title FROM windows_profiles WHERE id=$1 FOR SHARE`, profileID).Scan(&profileTitle); err != nil {
+				return err
+			}
+		}
+	} else {
+		profileID = 0
+		if profileTitle == "" {
+			profileTitle = "Ubuntu Desktop"
+		}
+	}
 	var author string
 	if err := tx.QueryRow(ctx, `SELECT username FROM users WHERE id=$1 AND enabled AND role IN ('admin','operator') FOR SHARE`, c.UserID).Scan(&author); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO answer_installation_checks (`+column+`,sha256,result,machine,comment,user_id,author) VALUES($1,$2,$3,$4,$5,$6,$7)`, c.AnswerID, digest, c.Result, c.Machine, c.Comment, c.UserID, author); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO answer_installation_checks (`+column+`,windows_profile_id,profile_title,sha256,result,machine,comment,user_id,author) VALUES($1,NULLIF($2,0),$3,$4,$5,$6,$7,$8,$9)`, c.AnswerID, profileID, profileTitle, digest, c.Result, c.Machine, c.Comment, c.UserID, author); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-const answerCheckFields = `id,CASE WHEN windows_answer_id IS NOT NULL THEN 'windows' ELSE 'ubuntu' END,COALESCE(windows_answer_id,ubuntu_autoinstall_id),sha256,result,machine,comment,user_id,author,created_at`
+const answerCheckFields = `id,CASE WHEN windows_answer_id IS NOT NULL THEN 'windows' ELSE 'ubuntu' END,COALESCE(windows_answer_id,ubuntu_autoinstall_id),COALESCE(windows_profile_id,0),profile_title,sha256,result,machine,comment,user_id,author,created_at`
 
 func scanAnswerChecks(rows pgx.Rows) ([]AnswerCheck, error) {
 	defer rows.Close()
 	checks := []AnswerCheck{}
 	for rows.Next() {
 		var c AnswerCheck
-		if err := rows.Scan(&c.ID, &c.Kind, &c.AnswerID, &c.SHA256, &c.Result, &c.Machine, &c.Comment, &c.UserID, &c.Author, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.AnswerID, &c.WindowsProfileID, &c.ProfileTitle, &c.SHA256, &c.Result, &c.Machine, &c.Comment, &c.UserID, &c.Author, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		checks = append(checks, c)
@@ -56,6 +70,14 @@ func scanAnswerChecks(rows pgx.Rows) ([]AnswerCheck, error) {
 
 func (s Store) LatestAnswerChecks(ctx context.Context) ([]AnswerCheck, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT DISTINCT ON (COALESCE(windows_answer_id,0),COALESCE(ubuntu_autoinstall_id,0)) `+answerCheckFields+` FROM answer_installation_checks ORDER BY COALESCE(windows_answer_id,0),COALESCE(ubuntu_autoinstall_id,0),id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	return scanAnswerChecks(rows)
+}
+
+func (s Store) LatestAnswerChecksByProfile(ctx context.Context) ([]AnswerCheck, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT * FROM (SELECT DISTINCT ON (COALESCE(windows_answer_id,0),COALESCE(ubuntu_autoinstall_id,0),COALESCE(windows_profile_id,0),profile_title) `+answerCheckFields+` FROM answer_installation_checks ORDER BY COALESCE(windows_answer_id,0),COALESCE(ubuntu_autoinstall_id,0),COALESCE(windows_profile_id,0),profile_title,id DESC) latest ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}

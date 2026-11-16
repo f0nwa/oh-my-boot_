@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -53,7 +54,8 @@ type WindowsISORequest struct {
 }
 
 type WindowsISOResult struct {
-	InstallFile string `json:"install_file"`
+	InstallFile string         `json:"install_file"`
+	WIMInfo     WindowsWIMInfo `json:"wim_info,omitempty"`
 }
 
 type WindowsISOMounter interface {
@@ -131,10 +133,19 @@ func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequ
 		}
 	}
 	var installFile string
+	var wimInfo WindowsWIMInfo
 	if req.BootMode == ISOStrelecMode {
 		err = prepareStrelecISOAssets(ctx, target, runtime.AssetRoot, req.ID, runtime.Template, runtime.Password, runtime.WIMCommands)
 	} else {
 		installFile, err = prepareWindowsISOAssets(target, runtime.AssetRoot, req.ID, runtime.Template, runtime.Winpeshl, runtime.Password)
+		if err == nil {
+			info, wimErr := inspectWindowsWIMInfo(ctx, runtime.WIMCommands, filepath.Join(target, "sources", installFile))
+			if wimErr != nil {
+				log.Printf("windows-iso %d: wim info unavailable (%v); continuing with wim_info.known=false", req.ID, wimErr)
+			} else {
+				wimInfo = info
+			}
+		}
 	}
 	if err != nil {
 		if newMount {
@@ -142,7 +153,7 @@ func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequ
 		}
 		return WindowsISOResult{}, err
 	}
-	return WindowsISOResult{InstallFile: installFile}, nil
+	return WindowsISOResult{InstallFile: installFile, WIMInfo: wimInfo}, nil
 }
 
 // LocalISORoot holds the local ISO storages of this server; an ISO for a
@@ -249,6 +260,10 @@ func prepareWindowsISOAssets(mountedRoot, assetRoot string, profileID int64, tem
 	if err != nil {
 		return "", err
 	}
+	answerScript, err := winpe.RenderAnswerStartup(script, profileID)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(assetRoot, 0755); err != nil {
 		return "", err
 	}
@@ -261,6 +276,9 @@ func prepareWindowsISOAssets(mountedRoot, assetRoot string, profileID int64, tem
 			if err := requireRegularISOFile(final, name); err != nil {
 				return "", err
 			}
+		}
+		if err := ensureAnswerStartupAsset(final, profileID, answerScript); err != nil {
+			return "", err
 		}
 		if err := os.Chmod(final, 0755); err != nil {
 			return "", err
@@ -296,6 +314,9 @@ func prepareWindowsISOAssets(mountedRoot, assetRoot string, profileID int64, tem
 	if err := os.WriteFile(filepath.Join(stage, "omb-setup.cmd"), script, 0644); err != nil {
 		return "", err
 	}
+	if err := os.WriteFile(filepath.Join(stage, "omb-answer-setup.cmd"), answerScript, 0644); err != nil {
+		return "", err
+	}
 	if err := os.Chmod(stage, 0755); err != nil {
 		return "", err
 	}
@@ -303,4 +324,36 @@ func prepareWindowsISOAssets(mountedRoot, assetRoot string, profileID int64, tem
 		return "", err
 	}
 	return installFile, nil
+}
+
+// ensureAnswerStartupAsset makes sure omb-answer-setup.cmd exists in an already
+// prepared Windows profile directory, generating it atomically from omb-setup.cmd
+// (or preRendered when supplied) without touching boot.wim.
+func ensureAnswerStartupAsset(profileDir string, profileID int64, preRendered []byte) error {
+	target := filepath.Join(profileDir, "omb-answer-setup.cmd")
+	info, err := os.Lstat(target)
+	if err == nil {
+		if !info.Mode().IsRegular() || info.Size() == 0 {
+			return unsupportedISO("required Windows ISO file is missing: omb-answer-setup.cmd")
+		}
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return isoPathError(err)
+	}
+	content := preRendered
+	if len(content) == 0 {
+		if err := requireRegularISOFile(profileDir, "omb-setup.cmd"); err != nil {
+			return err
+		}
+		base, err := os.ReadFile(filepath.Join(profileDir, "omb-setup.cmd"))
+		if err != nil {
+			return err
+		}
+		content, err = winpe.RenderAnswerStartup(base, profileID)
+		if err != nil {
+			return err
+		}
+	}
+	return writeAtomic(target, content, 0644)
 }

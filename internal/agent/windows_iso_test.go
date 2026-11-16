@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,15 @@ type fakeWindowsISOSystemctl struct {
 	assetRoot string
 }
 
+type fakeWIMInfoRunner struct{}
+
+func (fakeWIMInfoRunner) Run(_ context.Context, _, name string, args ...string) ([]byte, error) {
+	if name == "wimlib-imagex" && len(args) >= 2 && args[0] == "info" {
+		return []byte(sampleWIMInfoOutput), nil
+	}
+	return nil, nil
+}
+
 func (f *fakeWindowsISOSystemctl) Run(_ context.Context, args ...string) error {
 	f.calls = append(f.calls, append([]string(nil), args...))
 	if len(args) > 0 && args[0] == "enable" {
@@ -35,12 +45,17 @@ func (f *fakeWindowsISOSystemctl) Run(_ context.Context, args ...string) error {
 				return err
 			}
 		}
-		for _, name := range []string{"boot.wim", "winpeshl.ini", "omb-setup.cmd"} {
+		files := map[string]string{
+			"boot.wim":     "x",
+			"winpeshl.ini": "x",
+			"omb-setup.cmd": "@echo off\r\nnet use Y: \\\\10.30.0.10\\ombisos AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA /user:omb-iso\r\nY:\\17\\sources\\setup.exe /InstallFrom:Y:\\17\\sources\\install.wim\r\n",
+		}
+		for name, body := range files {
 			file := filepath.Join(f.assetRoot, "17", name)
 			if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(file, []byte("x"), 0444); err != nil {
+			if err := os.WriteFile(file, []byte(body), 0644); err != nil {
 				return err
 			}
 		}
@@ -66,10 +81,10 @@ func TestWindowsISOManagerStoresImmutableConfigAndStartsIDUnit(t *testing.T) {
 	configRoot := t.TempDir()
 	assetRoot := t.TempDir()
 	systemctl := &fakeWindowsISOSystemctl{mountRoot: mountRoot, assetRoot: assetRoot}
-	manager := WindowsISOManager{SourceRoot: base, ConfigRoot: configRoot, MountRoot: mountRoot, AssetRoot: assetRoot, Systemctl: systemctl, Mounter: &fakeWindowsISOMounter{mounted: true}}
+	manager := WindowsISOManager{SourceRoot: base, ConfigRoot: configRoot, MountRoot: mountRoot, AssetRoot: assetRoot, Systemctl: systemctl, Mounter: &fakeWindowsISOMounter{mounted: true}, WIMCommands: fakeWIMInfoRunner{}}
 	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "win10.iso", Size: info.Size(), Modified: info.ModTime()}
 	result, err := manager.Prepare(context.Background(), req)
-	if err != nil || result.InstallFile != "install.wim" {
+	if err != nil || result.InstallFile != "install.wim" || !result.WIMInfo.Known || len(result.WIMInfo.Images) != 2 {
 		t.Fatalf("managed preparation: %+v %v", result, err)
 	}
 	config, err := os.ReadFile(filepath.Join(configRoot, "17.json"))
@@ -79,13 +94,19 @@ func TestWindowsISOManagerStoresImmutableConfigAndStartsIDUnit(t *testing.T) {
 	if len(systemctl.calls) != 1 || strings.Join(systemctl.calls[0], " ") != "enable --now omb-winiso@17.service" {
 		t.Fatalf("unexpected systemctl calls: %+v", systemctl.calls)
 	}
-	if err := manager.Check(context.Background(), req); err != nil {
-		t.Fatalf("prepared profile was unavailable: %v", err)
+	// Check backfills missing omb-answer-setup.cmd without touching boot.wim and returns WIMInfo.
+	checkResult, err := manager.Check(context.Background(), req)
+	if err != nil || !checkResult.WIMInfo.Known || len(checkResult.WIMInfo.Images) != 2 {
+		t.Fatalf("prepared profile check: %+v %v", checkResult, err)
+	}
+	answerSetup, err := os.ReadFile(filepath.Join(assetRoot, "17", "omb-answer-setup.cmd"))
+	if err != nil || !strings.Contains(string(answerSetup), `/Unattend:X:\Windows\System32\omb-answer.xml`) {
+		t.Fatalf("Check did not create omb-answer-setup.cmd: %q %v", answerSetup, err)
 	}
 	if err := os.Remove(filepath.Join(assetRoot, "17", "boot.wim")); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.Check(context.Background(), req); err == nil {
+	if _, err := manager.Check(context.Background(), req); err == nil {
 		t.Fatal("accepted profile without boot.wim")
 	}
 	changed := req
@@ -154,10 +175,22 @@ func TestWindowsISORuntimePreparesSelectedSourceAtStableID(t *testing.T) {
 	}
 	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "win10.iso", Size: info.Size(), Modified: info.ModTime()}
 	mounter := &fakeWindowsISOMounter{}
-	runtime := WindowsISORuntime{SourceRoot: base, MountRoot: t.TempDir(), AssetRoot: t.TempDir(), Template: []byte("__OMB_ISO_PASSWORD__ __OMB_PROFILE_ID__ __OMB_INSTALL_FILE__"), Winpeshl: []byte("launch"), Password: strings.Repeat("A", 32), Mounter: mounter}
+	runtime := WindowsISORuntime{
+		SourceRoot:  base,
+		MountRoot:   t.TempDir(),
+		AssetRoot:   t.TempDir(),
+		Template:    []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\ombisos __OMB_ISO_PASSWORD__ /user:omb-iso\r\nY:\\__OMB_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__OMB_PROFILE_ID__\\sources\\__OMB_INSTALL_FILE__\r\n"),
+		Winpeshl:    []byte("launch"),
+		Password:    strings.Repeat("A", 32),
+		Mounter:     mounter,
+		WIMCommands: fakeWIMInfoRunner{},
+	}
 	result, err := runtime.Prepare(context.Background(), req)
-	if err != nil || result.InstallFile != "install.wim" {
+	if err != nil || result.InstallFile != "install.wim" || !result.WIMInfo.Known || len(result.WIMInfo.Images) != 2 {
 		t.Fatalf("preparation: %+v %v", result, err)
+	}
+	if _, err := os.Stat(filepath.Join(runtime.AssetRoot, "17", "omb-answer-setup.cmd")); err != nil {
+		t.Fatalf("answer startup script is unavailable: %v", err)
 	}
 	if filepath.Base(mounter.target) != "17" || filepath.Base(mounter.source) != "win10.iso" {
 		t.Fatalf("wrong source or target: %+v", mounter)
@@ -235,7 +268,7 @@ func TestPrepareWindowsISOAssetsCopiesOnlyBootWIMAndRendersProfile(t *testing.T)
 		}
 	}
 	assets := t.TempDir()
-	template := []byte("@echo off\r\nset PASSWORD=__OMB_ISO_PASSWORD__\r\nY:\\__OMB_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__OMB_PROFILE_ID__\\sources\\__OMB_INSTALL_FILE__\r\n")
+	template := []byte("@echo off\r\nnet use Y: \\\\10.30.0.10\\ombisos __OMB_ISO_PASSWORD__ /user:omb-iso\r\nY:\\__OMB_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__OMB_PROFILE_ID__\\sources\\__OMB_INSTALL_FILE__\r\n")
 	installFile, err := prepareWindowsISOAssets(mounted, assets, 17, template, []byte("[LaunchApps]\r\nomb-setup.cmd\r\n"), strings.Repeat("A", 32))
 	if err != nil || installFile != "install.wim" {
 		t.Fatalf("asset preparation: %q %v", installFile, err)
@@ -247,6 +280,19 @@ func TestPrepareWindowsISOAssetsCopiesOnlyBootWIMAndRendersProfile(t *testing.T)
 	script, err := os.ReadFile(filepath.Join(assets, "17", "omb-setup.cmd"))
 	if err != nil || !strings.Contains(string(script), `Y:\17\sources\install.wim`) {
 		t.Fatalf("startup script missing profile path: %q %v", script, err)
+	}
+	answerScript, err := os.ReadFile(filepath.Join(assets, "17", "omb-answer-setup.cmd"))
+	if err != nil || !strings.Contains(string(answerScript), `/Unattend:X:\Windows\System32\omb-answer.xml`) {
+		t.Fatalf("answer startup script missing unattend option: %q %v", answerScript, err)
+	}
+	if err := os.Remove(filepath.Join(assets, "17", "omb-answer-setup.cmd")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareWindowsISOAssets(mounted, assets, 17, template, []byte("[LaunchApps]\r\nomb-setup.cmd\r\n"), strings.Repeat("A", 32)); err != nil {
+		t.Fatalf("re-prepare did not restore missing omb-answer-setup.cmd: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(assets, "17", "omb-answer-setup.cmd")); err != nil {
+		t.Fatalf("re-prepare missing omb-answer-setup.cmd: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(assets, "17", "install.wim")); !os.IsNotExist(err) {
 		t.Fatalf("full installation image was copied: %v", err)
@@ -332,19 +378,19 @@ func TestWindowsISOManagerAcceptsSameModifiedInstantFromAnotherZone(t *testing.T
 	}
 	mountRoot, configRoot, assetRoot := t.TempDir(), t.TempDir(), t.TempDir()
 	systemctl := &fakeWindowsISOSystemctl{mountRoot: mountRoot, assetRoot: assetRoot}
-	manager := WindowsISOManager{SourceRoot: base, ConfigRoot: configRoot, MountRoot: mountRoot, AssetRoot: assetRoot, Systemctl: systemctl, Mounter: &fakeWindowsISOMounter{mounted: true}}
+	manager := WindowsISOManager{SourceRoot: base, ConfigRoot: configRoot, MountRoot: mountRoot, AssetRoot: assetRoot, Systemctl: systemctl, Mounter: &fakeWindowsISOMounter{mounted: true}, WIMCommands: fakeWIMInfoRunner{}}
 	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "win10.iso", Size: info.Size(), Modified: info.ModTime().UTC()}
 	if _, err := manager.Prepare(context.Background(), req); err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
 	moscow := req
 	moscow.Modified = req.Modified.In(time.FixedZone("MSK", 3*60*60))
-	if err := manager.Check(context.Background(), moscow); err != nil {
+	if _, err := manager.Check(context.Background(), moscow); err != nil {
 		t.Fatalf("same instant in another zone rejected by Check: %v", err)
 	}
 	changed := req
 	changed.Size++
-	if err := manager.Check(context.Background(), changed); err == nil {
+	if _, err := manager.Check(context.Background(), changed); err == nil {
 		t.Fatal("accepted changed source")
 	}
 }
@@ -429,5 +475,47 @@ func TestResolveWinPETemplate(t *testing.T) {
 	}
 	if _, err := ResolveWinPETemplate(linked, fallback); err == nil {
 		t.Fatal("accepted symlink as custom template")
+	}
+}
+
+type failingWIMInfoRunner struct{}
+
+func (failingWIMInfoRunner) Run(context.Context, string, string, ...string) ([]byte, error) {
+	return nil, errors.New("wimlib-imagex missing")
+}
+
+func TestWindowsISOFallsBackWhenWIMInfoFails(t *testing.T) {
+	base := t.TempDir()
+	storage := filepath.Join(base, "key7")
+	if err := os.MkdirAll(storage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	iso := filepath.Join(storage, "win10.iso")
+	if err := os.WriteFile(iso, []byte("ISO"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mountRoot, configRoot, assetRoot := t.TempDir(), t.TempDir(), t.TempDir()
+	systemctl := &fakeWindowsISOSystemctl{mountRoot: mountRoot, assetRoot: assetRoot}
+	manager := WindowsISOManager{
+		SourceRoot:  base,
+		ConfigRoot:  configRoot,
+		MountRoot:   mountRoot,
+		AssetRoot:   assetRoot,
+		Systemctl:   systemctl,
+		Mounter:     &fakeWindowsISOMounter{mounted: true},
+		WIMCommands: failingWIMInfoRunner{},
+	}
+	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "win10.iso", Size: info.Size(), Modified: info.ModTime().UTC()}
+	prepared, err := manager.Prepare(context.Background(), req)
+	if err != nil || prepared.InstallFile != "install.wim" || prepared.WIMInfo.Known {
+		t.Fatalf("Prepare should fall back to WIMInfo.Known=false: res=%+v err=%v", prepared, err)
+	}
+	checked, err := manager.Check(context.Background(), req)
+	if err != nil || checked.InstallFile != "install.wim" || checked.WIMInfo.Known {
+		t.Fatalf("Check should fall back to WIMInfo.Known=false: res=%+v err=%v", checked, err)
 	}
 }

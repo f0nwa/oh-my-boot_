@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 	"unicode/utf8"
 
@@ -20,7 +19,6 @@ const windowsAnswerNamespace = "urn:schemas-microsoft-com:unattend"
 
 type WindowsAnswerVariant struct {
 	ID        int64
-	ProfileID int64
 	Title     string
 	Author    string
 	Folder    string
@@ -28,6 +26,7 @@ type WindowsAnswerVariant struct {
 	Size      int64
 	CreatedAt time.Time
 	Disk      AnswerFileDisk
+	Target    WindowsAnswerTarget
 	State     string
 	Error     string
 	// WipesDisk is nil for files uploaded before the check existed.
@@ -84,24 +83,6 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Подготовка сценариев недоступна", http.StatusServiceUnavailable)
 		return
 	}
-	rawProfile := r.PathValue("id")
-	if rawProfile == "" {
-		rawProfile = r.FormValue("profile_id")
-	}
-	profileID, err := strconv.ParseInt(rawProfile, 10, 64)
-	if err != nil || profileID <= 0 {
-		http.Error(w, "Неверный профиль ISO", http.StatusBadRequest)
-		return
-	}
-	profile, err := s.Store.WindowsProfile(r.Context(), profileID)
-	if err != nil {
-		http.Error(w, "Профиль ISO не найден", http.StatusNotFound)
-		return
-	}
-	if profile.State != "ready" || profile.BootMode != "" {
-		http.Error(w, "Сначала подготовьте профиль ISO", http.StatusConflict)
-		return
-	}
 	title, folder := r.FormValue("title"), r.FormValue("folder")
 	if !safeMenuText(title, 80) || !isASCII(title) || validateMenuFolder(folder) != nil || !isASCII(folder) {
 		http.Error(w, "Название и каталог должны быть латиницей", http.StatusBadRequest)
@@ -118,38 +99,38 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Некорректный XML-файл сценария", http.StatusBadRequest)
 		return
 	}
-	if _, status, message := s.saveWindowsAnswer(r, profileID, title, folder, data, false); status != 0 {
+	if _, status, message := s.saveWindowsAnswer(r, title, folder, data, false); status != 0 {
 		http.Error(w, message, status)
 		return
 	}
 	http.Redirect(w, r, "/answers?message=Сценарий+загружен", http.StatusSeeOther)
 }
 
-// saveWindowsAnswer stores a checked answer file as a new variant of a
-// profile and hands it to the Agent; the upload form and the editor use it.
-// The caller holds windowsMu and has checked the profile, title and folder.
+// saveWindowsAnswer stores a checked answer file as a standalone variant
+// and hands it to the Agent; the upload form and the editor use it.
+// The caller holds windowsMu and has checked title and folder.
 // A non-zero status comes with the message to show.
-func (s *Server) saveWindowsAnswer(r *http.Request, profileID int64, title, folder string, data []byte, editor bool) (WindowsAnswerVariant, int, string) {
+func (s *Server) saveWindowsAnswer(r *http.Request, title, folder string, data []byte, editor bool) (WindowsAnswerVariant, int, string) {
 	sum := sha256.Sum256(data)
 	digest := hex.EncodeToString(sum[:])
 	existing, err := s.Store.WindowsAnswers(r.Context())
 	if err != nil {
-		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось проверить сценарии этого ISO"
+		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось проверить сценарии"
 	}
 	for _, answer := range existing {
-		if answer.ProfileID == profileID && answer.SHA256 == digest {
-			return WindowsAnswerVariant{}, http.StatusConflict, fmt.Sprintf("Такой XML уже загружен для этого ISO: сценарий #%d «%s». Каталог в меню можно изменить при публикации.", answer.ID, answer.Title)
+		if answer.SHA256 == digest {
+			return WindowsAnswerVariant{}, http.StatusConflict, fmt.Sprintf("Такой XML уже загружен: сценарий #%d «%s». Каталог в меню можно изменить при публикации.", answer.ID, answer.Title)
 		}
 	}
 	var wipesDisk *bool
 	if wipes, known := AnswerWipesDisk(data); known {
 		wipesDisk = &wipes
 	}
-	variant, err := s.Store.CreateWindowsAnswer(r.Context(), WindowsAnswerVariant{ProfileID: profileID, Title: title, Folder: folder, SHA256: digest, Size: int64(len(data)), WipesDisk: wipesDisk, Disk: SummarizeWindowsAnswerDisk(data)})
+	variant, err := s.Store.CreateWindowsAnswer(r.Context(), WindowsAnswerVariant{Title: title, Folder: folder, SHA256: digest, Size: int64(len(data)), WipesDisk: wipesDisk, Disk: SummarizeWindowsAnswerDisk(data), Target: SummarizeWindowsAnswerTarget(data)})
 	if err != nil {
 		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось сохранить сценарий"
 	}
-	request := agent.WindowsAnswerRequest{ID: variant.ID, ProfileID: profileID, SHA256: variant.SHA256, XML: data}
+	request := agent.WindowsAnswerRequest{ID: variant.ID, SHA256: variant.SHA256, XML: data}
 	if err := s.WindowsAnswers.PrepareWindowsAnswer(r.Context(), request); err != nil {
 		_ = s.Store.SetWindowsAnswerState(r.Context(), variant.ID, "error", "Не удалось подготовить файл")
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.create", "error", fmt.Sprintf("id=%d", variant.ID))

@@ -21,7 +21,6 @@ type DriverManager struct {
 	WIMRoot     string
 	ConfigRoot  string
 	ProfileRoot string
-	AnswerRoot  string
 	Runner      DriverCommandRunner
 	FreeBytes   func(string) (uint64, error)
 }

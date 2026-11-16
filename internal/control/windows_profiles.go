@@ -28,6 +28,7 @@ type WindowsProfile struct {
 	InstallFile string
 	State       string
 	Error       string
+	WIMInfo     agent.WindowsWIMInfo
 }
 
 // SelectWindowsISO resolves a form selection against the current Images catalog.

@@ -21,8 +21,8 @@ import (
 func TestInstallationModelOptions(t *testing.T) {
 	windows := BootProfile{ID: 1, Kind: "windows_iso", Title: "Windows", WindowsProfileID: 42}
 	ubuntu := BootProfile{ID: 2, Kind: "ubuntu_builtin", Title: "Ubuntu Desktop"}
-	answers := []WindowsAnswerVariant{{ID: 10, ProfileID: 42}, {ID: 11, ProfileID: 43}}
-	configs := []DriverConfig{{ID: 20, ProfileID: 42, AnswerID: 10}, {ID: 21, ProfileID: 43}, {ID: 22, ProfileID: 42, AnswerID: 11}}
+	answers := []WindowsAnswerVariant{{ID: 10}, {ID: 11}}
+	configs := []DriverConfig{{ID: 20, ProfileID: 42, AnswerID: 10}, {ID: 21, ProfileID: 43}, {ID: 22, ProfileID: 42, AnswerID: 99}}
 	for _, tc := range []struct {
 		name    string
 		profile BootProfile
@@ -31,13 +31,13 @@ func TestInstallationModelOptions(t *testing.T) {
 	}{
 		{"Windows manual", windows, Installation{BootProfileID: 1, Title: "Manual"}, true},
 		{"Windows XML", windows, Installation{BootProfileID: 1, Title: "XML", AnswerID: 10}, true},
+		{"Windows shared XML", windows, Installation{BootProfileID: 1, Title: "Shared", AnswerID: 11}, true},
 		{"Windows drivers", windows, Installation{BootProfileID: 1, Title: "Drivers", DriverConfigID: 20}, true},
 		{"Ubuntu manual", ubuntu, Installation{BootProfileID: 2, Title: "Ubuntu"}, true},
 		{"two components", windows, Installation{BootProfileID: 1, Title: "Both", AnswerID: 10, DriverConfigID: 20}, false},
-		{"foreign XML", windows, Installation{BootProfileID: 1, Title: "Wrong", AnswerID: 11}, false},
 		{"missing XML", windows, Installation{BootProfileID: 1, Title: "Missing", AnswerID: 99}, false},
 		{"foreign drivers", windows, Installation{BootProfileID: 1, Title: "Wrong", DriverConfigID: 21}, false},
-		{"foreign driver XML", windows, Installation{BootProfileID: 1, Title: "Wrong", DriverConfigID: 22}, false},
+		{"missing driver XML", windows, Installation{BootProfileID: 1, Title: "Wrong", DriverConfigID: 22}, false},
 		{"missing drivers", windows, Installation{BootProfileID: 1, Title: "Missing", DriverConfigID: 99}, false},
 		{"Ubuntu XML", ubuntu, Installation{BootProfileID: 2, Title: "Wrong", AnswerID: 10}, false},
 		{"Ubuntu drivers", ubuntu, Installation{BootProfileID: 2, Title: "Wrong", DriverConfigID: 20}, false},
@@ -86,7 +86,7 @@ func TestInstallationModelStore(t *testing.T) {
 	if windows.WindowsProfileID != win.ID || ubuntu.WindowsProfileID != 0 {
 		t.Fatalf("profile links = %+v", profiles)
 	}
-	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: win.ID, Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
+	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func installationTestStore(t *testing.T) Store {
 func TestInstallationModelMigration(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
-	if _, err := store.Pool.Exec(ctx, `DROP TABLE ubuntu_sources,menu_version_items,menu_draft_items,windows_installation_options,installations,windows_boot_profiles,boot_profiles; ALTER TABLE menu_versions DROP COLUMN diagnostics_on,DROP COLUMN local_timeout,DROP COLUMN local_timer,DROP COLUMN look; ALTER TABLE menu_draft ADD COLUMN ubuntu BOOLEAN NOT NULL DEFAULT false,ADD COLUMN ubuntu_folder TEXT NOT NULL DEFAULT ''; CREATE TABLE menu_draft_items(position INT PRIMARY KEY,key TEXT NOT NULL UNIQUE,folder TEXT NOT NULL DEFAULT '',title TEXT NOT NULL DEFAULT '')`); err != nil {
+	if _, err := store.Pool.Exec(ctx, `DROP TABLE ubuntu_sources,menu_version_items,menu_draft_items,windows_installation_options,installations,windows_boot_profiles,boot_profiles; ALTER TABLE menu_versions DROP COLUMN diagnostics_on,DROP COLUMN local_timeout,DROP COLUMN local_timer,DROP COLUMN look; ALTER TABLE menu_draft ADD COLUMN ubuntu BOOLEAN NOT NULL DEFAULT false,ADD COLUMN ubuntu_folder TEXT NOT NULL DEFAULT ''; ALTER TABLE windows_answer_variants ADD COLUMN profile_id BIGINT REFERENCES windows_profiles(id) ON DELETE CASCADE; CREATE TABLE menu_draft_items(position INT PRIMARY KEY,key TEXT NOT NULL UNIQUE,folder TEXT NOT NULL DEFAULT '',title TEXT NOT NULL DEFAULT '')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Pool.Exec(ctx, `
@@ -324,7 +324,20 @@ func TestInstallationModelMigration(t *testing.T) {
 	if err != nil || !ok || !reflect.DeepEqual(newSaved.Items, newDraft.Items) {
 		t.Fatalf("rerun reset new draft: %+v ok=%v err=%v", newSaved, ok, err)
 	}
-
+	unboundMigration, err := os.ReadFile("../../deploy/sql/2026-11-16-unbound-installation-scripts.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Pool.Exec(ctx, string(unboundMigration)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Pool.Exec(ctx, string(unboundMigration)); err != nil {
+		t.Fatalf("unbound migration not idempotent: %v", err)
+	}
+	unboundAnswers, err := store.WindowsAnswers(ctx)
+	if err != nil || len(unboundAnswers) != 1 || unboundAnswers[0].Title != "Automated" {
+		t.Fatalf("unbound answers after migration: %+v err=%v", unboundAnswers, err)
+	}
 }
 
 func TestInstallationModelWindowsCreationAtomic(t *testing.T) {
@@ -404,16 +417,25 @@ func TestInstallationModelWindowsDeletion(t *testing.T) {
 			t.Fatalf("installation lost: count=%d err=%v", count, err)
 		}
 	})
-	t.Run("library reference rolls back common profile deletion", func(t *testing.T) {
-		profile, bootID := create(t, "WithXML")
-		answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: profile.ID, Title: "XML", SHA256: strings.Repeat("a", 64), Size: 10})
-		if err != nil {
+	t.Run("driver config reference rolls back common profile deletion", func(t *testing.T) {
+		profile, bootID := create(t, "WithDrivers")
+		if _, err := store.Pool.Exec(ctx, `INSERT INTO winpe_driver_configs(profile_id,title,selected_infs) VALUES($1,'Drivers','[{}]')`, profile.ID); err != nil {
 			t.Fatal(err)
 		}
 		if err := store.DeleteWindowsProfile(ctx, profile.ID); err == nil {
-			t.Fatal("deleted a profile referenced by a library answer")
+			t.Fatal("deleted a profile referenced by a driver config")
 		}
 		assertRows(t, profile.ID, bootID, 1)
+	})
+	t.Run("unused unbound answer does not block profile deletion", func(t *testing.T) {
+		profile, _ := create(t, "UnboundOK")
+		answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{Title: "SharedXML", SHA256: strings.Repeat("b", 64), Size: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.DeleteWindowsProfile(ctx, profile.ID); err != nil {
+			t.Fatalf("unbound answer blocked profile deletion: %v", err)
+		}
 		if _, err := store.WindowsAnswer(ctx, answer.ID); err != nil {
 			t.Fatalf("library answer lost: %v", err)
 		}

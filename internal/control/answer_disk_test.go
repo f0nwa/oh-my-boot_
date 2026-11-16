@@ -72,7 +72,7 @@ func inspectRequest(t *testing.T, path string, body []byte) *http.Request {
 }
 
 func TestAnswerInspectRejectsDifferentFile(t *testing.T) {
-	store := &inspectStore{answerPageStore: answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, answers: []WindowsAnswerVariant{{ID: 3, ProfileID: 1, SHA256: strings.Repeat("a", 64), State: "ready"}}}, flags: map[int64]bool{}}
+	store := &inspectStore{answerPageStore: answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, answers: []WindowsAnswerVariant{{ID: 3, SHA256: strings.Repeat("a", 64), State: "ready"}}}, flags: map[int64]bool{}}
 	s := &Server{Store: store, Images: &fakeImagesAPI{}}
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, inspectRequest(t, "/answers/3/inspect", []byte(`<unattend/>`)))
@@ -83,7 +83,7 @@ func TestAnswerInspectRejectsDifferentFile(t *testing.T) {
 
 func TestAnswerInspectStoresFlagForSameFile(t *testing.T) {
 	xml := []byte(`<unattend><DiskConfiguration><Disk><WillWipeDisk>true</WillWipeDisk></Disk></DiskConfiguration></unattend>`)
-	store := &inspectStore{answerPageStore: answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, answers: []WindowsAnswerVariant{{ID: 3, ProfileID: 1, SHA256: sha256Hex(xml), State: "ready"}}}, flags: map[int64]bool{}}
+	store := &inspectStore{answerPageStore: answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, answers: []WindowsAnswerVariant{{ID: 3, SHA256: sha256Hex(xml), State: "ready"}}}, flags: map[int64]bool{}}
 	s := &Server{Store: store, Images: &fakeImagesAPI{}}
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, inspectRequest(t, "/answers/3/inspect", xml))

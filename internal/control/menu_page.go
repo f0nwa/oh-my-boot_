@@ -568,24 +568,29 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 	selected := menuWindowsProfileIDs(script)
 	answerRefs := menuWindowsAnswerRefs(script)
 	driverRefs := menuDriverConfigRefs(script)
-	answerItems := map[int64]bool{}
+	answerItems := map[[2]int64]bool{}
 	driverItems := map[int64]bool{}
 	for _, entry := range entries {
 		if entry.windowsISOID > 0 {
 			selected[entry.windowsISOID] = true
 		}
 		if entry.answerID > 0 {
-			answerItems[entry.answerID] = true
+			answerItems[[2]int64{entry.answerID, entry.windowsISOID}] = true
 		}
 		if entry.driverConfigID > 0 {
 			driverItems[entry.driverConfigID] = true
 		}
 	}
-	if len(answerItems) != len(answerRefs) {
+	answerRefMap := make(map[[2]int64]menuWindowsAnswerRef, len(answerRefs))
+	for _, ref := range answerRefs {
+		answerRefMap[[2]int64{ref.ID, ref.ProfileID}] = ref
+		selected[ref.ProfileID] = true
+	}
+	if len(answerItems) != len(answerRefMap) {
 		return fmt.Errorf("ссылки на сценарии повреждены")
 	}
-	for id := range answerItems {
-		if _, ok := answerRefs[id]; !ok {
+	for pair := range answerItems {
+		if _, ok := answerRefMap[pair]; !ok {
 			return fmt.Errorf("ссылки на сценарии повреждены")
 		}
 	}
@@ -596,9 +601,6 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		if _, ok := driverRefs[id]; !ok {
 			return fmt.Errorf("ссылки на конфигурации драйверов повреждены")
 		}
-	}
-	for _, ref := range answerRefs {
-		selected[ref.ProfileID] = true
 	}
 	for _, ref := range driverRefs {
 		selected[ref.ProfileID] = true
@@ -639,10 +641,10 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 			}
 			if config.AnswerID > 0 {
 				answer, ok := answersByID[config.AnswerID]
-				if !ok || answer.State != "ready" || answer.ProfileID != config.ProfileID || answer.SHA256 != ref.AnswerSHA256 || answer.Size <= 0 || s.WindowsAnswers == nil {
+				if !ok || answer.State != "ready" || answer.SHA256 != ref.AnswerSHA256 || answer.Size <= 0 || s.WindowsAnswers == nil {
 					return fmt.Errorf("сценарий конфигурации драйверов %d недоступен", config.ID)
 				}
-				if err := s.WindowsAnswers.CheckWindowsAnswer(ctx, agent.WindowsAnswerCheck{ID: answer.ID, ProfileID: answer.ProfileID, SHA256: answer.SHA256}); err != nil {
+				if err := s.WindowsAnswers.CheckWindowsAnswer(ctx, agent.WindowsAnswerCheck{ID: answer.ID, SHA256: answer.SHA256}); err != nil {
 					return fmt.Errorf("файлы сценария %d недоступны", answer.ID)
 				}
 			}
@@ -668,21 +670,25 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		if err != nil {
 			return err
 		}
+		answersByID := make(map[int64]WindowsAnswerVariant, len(answers))
 		for _, answer := range answers {
-			ref, ok := answerRefs[answer.ID]
+			answersByID[answer.ID] = answer
+		}
+		checkedAnswers := map[int64]bool{}
+		for _, ref := range answerRefs {
+			answer, ok := answersByID[ref.ID]
 			if !ok {
-				continue
+				return fmt.Errorf("сценарий отсутствует")
 			}
-			if answer.State != "ready" || answer.ProfileID != ref.ProfileID || answer.SHA256 != ref.SHA256 || answer.Size <= 0 {
+			if answer.State != "ready" || answer.SHA256 != ref.SHA256 || answer.Size <= 0 {
 				return fmt.Errorf("сценарий %d изменился или не подготовлен", answer.ID)
 			}
-			if err := s.WindowsAnswers.CheckWindowsAnswer(ctx, agent.WindowsAnswerCheck{ID: answer.ID, ProfileID: answer.ProfileID, SHA256: answer.SHA256}); err != nil {
-				return fmt.Errorf("файлы сценария %d недоступны", answer.ID)
+			if !checkedAnswers[answer.ID] {
+				if err := s.WindowsAnswers.CheckWindowsAnswer(ctx, agent.WindowsAnswerCheck{ID: answer.ID, SHA256: answer.SHA256}); err != nil {
+					return fmt.Errorf("файлы сценария %d недоступны", answer.ID)
+				}
+				checkedAnswers[answer.ID] = true
 			}
-			delete(answerRefs, answer.ID)
-		}
-		if len(answerRefs) != 0 {
-			return fmt.Errorf("сценарий отсутствует")
 		}
 	}
 	catalog, err := s.Images.Catalog(ctx)
@@ -699,8 +705,12 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		if problem := windowsProfileSourceProblem(catalog, p); problem != nil {
 			return problem
 		}
-		if err := s.WindowsISO.CheckWindowsISO(ctx, agent.WindowsISORequest{ID: p.ID, BootMode: p.BootMode, StorageRoot: p.StorageRoot, RelativePath: p.Path, Size: p.Size, Modified: p.Modified}); err != nil {
+		checked, err := s.WindowsISO.CheckWindowsISO(ctx, agent.WindowsISORequest{ID: p.ID, BootMode: p.BootMode, StorageRoot: p.StorageRoot, RelativePath: p.Path, Size: p.Size, Modified: p.Modified})
+		if err != nil {
 			return fmt.Errorf("файлы профиля %d недоступны", p.ID)
+		}
+		if !p.WIMInfo.Known && checked.WIMInfo.Known {
+			_ = s.Store.SetWindowsProfileWIMInfo(ctx, p.ID, checked.WIMInfo)
 		}
 		delete(selected, p.ID)
 	}

@@ -13,7 +13,11 @@ func testInstallationSources(profiles []WindowsProfile, answers []WindowsAnswerV
 		source.Installations = append(source.Installations, Installation{ID: 1000 + p.ID, BootProfileID: p.ID, Title: p.Title, Folder: p.Folder})
 	}
 	for _, a := range answers {
-		source.Installations = append(source.Installations, Installation{ID: 2000 + a.ID, BootProfileID: a.ProfileID, Title: a.Title, Folder: a.Folder, AnswerID: a.ID})
+		var profileID int64
+		if len(profiles) > 0 {
+			profileID = profiles[0].ID
+		}
+		source.Installations = append(source.Installations, Installation{ID: 2000 + a.ID, BootProfileID: profileID, Title: a.Title, Folder: a.Folder, AnswerID: a.ID})
 	}
 	for _, c := range configs {
 		source.Installations = append(source.Installations, Installation{ID: 3000 + c.ID, BootProfileID: c.ProfileID, Title: c.Title, Folder: c.Folder, DriverConfigID: c.ID})

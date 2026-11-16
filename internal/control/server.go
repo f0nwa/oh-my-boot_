@@ -22,6 +22,7 @@ import (
 type Storage interface {
 	SaveAnswerCheck(context.Context, AnswerCheck) error
 	LatestAnswerChecks(context.Context) ([]AnswerCheck, error)
+	LatestAnswerChecksByProfile(context.Context) ([]AnswerCheck, error)
 	AnswerCheckHistory(context.Context, string, int64, int64) ([]AnswerCheck, error)
 	SetUserLanguage(context.Context, int64, string) error
 	SetUserTheme(context.Context, int64, string) error
@@ -53,6 +54,7 @@ type Storage interface {
 	WindowsProfile(context.Context, int64) (WindowsProfile, error)
 	WindowsProfiles(context.Context) ([]WindowsProfile, error)
 	SetWindowsProfileResult(context.Context, int64, string, string, string) error
+	SetWindowsProfileWIMInfo(context.Context, int64, agent.WindowsWIMInfo) error
 	DeleteWindowsProfile(context.Context, int64) error
 	CreateWindowsAnswer(context.Context, WindowsAnswerVariant) (WindowsAnswerVariant, error)
 	SetWindowsAnswerState(context.Context, int64, string, string) error
@@ -90,7 +92,7 @@ type SMBMountAPI interface {
 
 type WindowsISOAPI interface {
 	PrepareWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error)
-	CheckWindowsISO(context.Context, agent.WindowsISORequest) error
+	CheckWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error)
 }
 
 type UbuntuISOAPI interface {
@@ -311,7 +313,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/name", s.protect("images", withPageErrors(s.imagesPage, s.imageNameSave)))
 	mux.HandleFunc("POST /images/iso/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectISO)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsProfileDelete)))
-	mux.HandleFunc("POST /images/windows-profiles/{id}/answers", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("delete", withPageErrors(s.answersPage, s.windowsAnswerDelete)))
 	mux.HandleFunc("POST /images/smb", s.protect("smb", withPageErrors(s.storagesPage, s.imagesSMBCreate)))
 	mux.HandleFunc("POST /images/smb/{id}/retry", s.protect("smb", withPageErrors(s.storagesPage, s.imagesSMBRetry)))
@@ -394,7 +395,7 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 				// The editor posts all its settings, kept XML included.
 				r.Body = http.MaxBytesReader(w, r.Body, 2*maxWindowsAnswerBytes+(64<<10))
 				err = r.ParseForm()
-			} else if r.Pattern == "POST /images/windows-profiles/{id}/answers" || r.Pattern == "POST /answers/upload" || r.Pattern == "POST /answers/{id}/inspect" {
+			} else if r.Pattern == "POST /answers/upload" || r.Pattern == "POST /answers/{id}/inspect" {
 				r.Body = http.MaxBytesReader(w, r.Body, maxWindowsAnswerBytes+(32<<10))
 				err = r.ParseMultipartForm(2 << 20)
 			} else {

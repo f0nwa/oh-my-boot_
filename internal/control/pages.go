@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -69,6 +70,8 @@ type pageData struct {
 	AnswerChecksKnown     bool
 	WindowsChecks         map[int64]AnswerCheck
 	UbuntuChecks          map[int64]AnswerCheck
+	WindowsProfileChecks  map[int64][]AnswerCheck
+	SelectedWIM           agent.WindowsWIMInfo
 	EventsAsync           bool
 	UbuntuEditor          *ubuntuAutoinstallEditorView
 	UbuntuAutoinstalls    []UbuntuAutoinstallSummary
@@ -214,7 +217,136 @@ func parsePages(lang string) *template.Template {
 		"usedBytes":       func(total, free int64) int64 { return max(total-free, 0) },
 		"join":            joinStrings,
 		"shortSHA":        shortSHA,
+		"jsonAttr": func(v any) string {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return "{}"
+			}
+			return string(b)
+		},
+		"answerCheckSummary":      answerCheckCellSummary,
+		"answerCheckMap":          answerCheckProfileMap,
+		"readyWindowsAnswers":     filterReadyWindowsAnswers,
+		"validatedUbuntuAnswers":  filterValidatedUbuntuAutoinstalls,
+		"bootChoicesForPage":      filterBootChoicesForPage,
+		"stepMoreCount":           func(total, limit int) int { if total > limit { return total - limit }; return 0 },
+		"compatResult":            EvaluateWindowsAnswerCompatibility,
+		"compatSummaryText":       func(c CompatibilityResult) string { return compatSummaryLabel(lang, c) },
+		"selectedAnswerCompat":    selectedAnswerCompatibility,
+		"chipText":                func(s string) string { return chipText(lang, s) },
 	}).ParseFS(templateFS, "templates/*.html"))
+}
+
+func compatSummaryLabel(lang string, c CompatibilityResult) string {
+	translateAll := func(items []string) string {
+		out := make([]string, 0, len(items))
+		for _, item := range items {
+			out = append(out, translate(lang, item))
+		}
+		return strings.Join(out, "; ")
+	}
+	switch c.Status {
+	case "incompatible":
+		return translateAll(c.Errors)
+	case "warning":
+		return translateAll(c.Warnings)
+	}
+	return translate(lang, c.MatchedSummary)
+}
+
+func selectedAnswerCompatibility(form url.Values, list []WindowsAnswerVariant, wim agent.WindowsWIMInfo) CompatibilityResult {
+	if form == nil || !wim.Known {
+		return CompatibilityResult{}
+	}
+	raw := form.Get("answer_id")
+	if raw == "" || raw == "0" {
+		return CompatibilityResult{}
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return CompatibilityResult{}
+	}
+	for _, a := range list {
+		if a.ID == id && a.State == "ready" {
+			return EvaluateWindowsAnswerCompatibility(a.Target, wim)
+		}
+	}
+	return CompatibilityResult{}
+}
+
+func chipText(lang, s string) string {
+	return translate(lang, s)
+}
+
+type answerCheckSummary struct {
+	Known     bool
+	Visible   []AnswerCheck
+	MoreCount int
+}
+
+func answerCheckCellSummary(known bool, single AnswerCheck, byProfile []AnswerCheck) answerCheckSummary {
+	if !known {
+		return answerCheckSummary{}
+	}
+	list := byProfile
+	if len(list) == 0 && single.ID > 0 {
+		list = []AnswerCheck{single}
+	}
+	const maxVisible = 3
+	if len(list) > maxVisible {
+		return answerCheckSummary{Known: true, Visible: list[:maxVisible], MoreCount: len(list) - maxVisible}
+	}
+	return answerCheckSummary{Known: true, Visible: list}
+}
+
+func answerCheckProfileMap(all map[int64][]AnswerCheck, answerID int64) map[string]AnswerCheck {
+	checks := all[answerID]
+	if len(checks) == 0 {
+		return nil
+	}
+	out := make(map[string]AnswerCheck, len(checks))
+	for _, c := range checks {
+		if c.WindowsProfileID > 0 {
+			out[strconv.FormatInt(c.WindowsProfileID, 10)] = c
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func filterReadyWindowsAnswers(list []WindowsAnswerVariant) []WindowsAnswerVariant {
+	var out []WindowsAnswerVariant
+	for _, item := range list {
+		if item.State == "ready" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func filterValidatedUbuntuAutoinstalls(list []UbuntuAutoinstallSummary) []UbuntuAutoinstallSummary {
+	var out []UbuntuAutoinstallSummary
+	for _, item := range list {
+		if item.State == "validated" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func filterBootChoicesForPage(list []bootProfileChoice, editID int64, selected string) []bootProfileChoice {
+	if editID == 0 {
+		return list
+	}
+	var out []bootProfileChoice
+	for _, item := range list {
+		if item.Value == selected {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func shortSHA(s string) string {

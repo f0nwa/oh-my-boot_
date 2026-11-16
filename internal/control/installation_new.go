@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"omb/internal/agent"
 )
 
 //go:embed installation_form.js
@@ -80,6 +82,7 @@ type bootProfileChoice struct {
 	Value, StorageName string
 	DefaultTitle       string
 	InspectStorageID   int64
+	WIMInfo            agent.WindowsWIMInfo
 }
 
 // bootProfileChoices checks the shared Ubuntu resources once per request.
@@ -117,7 +120,7 @@ func (s *Server) bootProfileChoices(ctx context.Context, shared []BootProfile, w
 		case BootProfileWindowsISO, BootProfileWinPEISO:
 			for _, source := range windows {
 				if source.ID == profile.WindowsProfileID {
-					choice.State, choice.Error, choice.Path = source.State, source.Error, source.Path
+					choice.State, choice.Error, choice.Path, choice.WIMInfo = source.State, source.Error, source.Path, source.WIMInfo
 					if !profileBootable(source) && choice.State == "ready" {
 						choice.State = "unavailable"
 						if choice.Error == "" {
@@ -156,6 +159,7 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.WindowsAnswerVariants, data.PackageChoices = answers, packageChoices(packages)
 	data.UbuntuAutoinstalls = sources.Autoinstalls
+	s.loadAnswerChecks(r.Context(), &data)
 	if raw := r.PathValue("id"); raw != "" {
 		data.EditInstallationID, err = strconv.ParseInt(raw, 10, 64)
 		if err != nil || data.EditInstallationID <= 0 {
@@ -241,6 +245,7 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 	for _, profile := range data.BootProfileChoices {
 		if data.Form.Get("boot_profile_id") == profile.Value {
 			data.SelectedBootKind = profile.Kind
+			data.SelectedWIM = profile.WIMInfo
 		}
 	}
 	normalizeDriverForm(data.Form, data.PackageChoices)
@@ -400,21 +405,29 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	answerID, answerTitle := int64(0), ""
+	var selectedAnswer WindowsAnswerVariant
 	if raw := r.FormValue("answer_id"); raw != "" && raw != "0" {
 		answerID, err = strconv.ParseInt(raw, 10, 64)
 		found := false
 		for _, a := range answers {
 			if a.ID == answerID {
-				found, answerTitle = a.State == "ready", a.Title
-				if a.ProfileID != profile.ID {
-					http.Error(w, "Файл ответов относится к другому образу", http.StatusBadRequest)
-					return
-				}
+				found, answerTitle, selectedAnswer = a.State == "ready", a.Title, a
 			}
 		}
 		if err != nil || !found {
 			http.Error(w, "Файл ответов не найден", http.StatusBadRequest)
 			return
+		}
+		if profileBootable(profile) && profile.WIMInfo.Known {
+			compat := EvaluateWindowsAnswerCompatibility(selectedAnswer.Target, profile.WIMInfo)
+			if compat.Status == "incompatible" {
+				http.Error(w, fmt.Sprintf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; ")), http.StatusBadRequest)
+				return
+			}
+			if compat.Status == "warning" && r.FormValue("confirm_warnings") != "1" {
+				http.Error(w, "Подтвердите предупреждения совместимости скрипта установки", http.StatusBadRequest)
+				return
+			}
 		}
 	}
 	title, folder := strings.TrimSpace(r.FormValue("title")), strings.TrimSpace(r.FormValue("folder"))

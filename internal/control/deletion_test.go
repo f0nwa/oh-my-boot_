@@ -234,7 +234,7 @@ func TestDeleteDriverConfigUsesAgentManifestWhenDatabaseMissedBuild(t *testing.T
 }
 
 func TestDeleteProfileAndAnswerBlockDependencies(t *testing.T) {
-	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4, ProfileID: 17}}, configs: []DriverConfig{{ID: 3, ProfileID: 17, AnswerID: 4}}}
+	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4}}, configs: []DriverConfig{{ID: 3, ProfileID: 17, AnswerID: 4}}}
 	c := &deletionCleaner{}
 	server := deletionTestServer(s, c)
 	for _, path := range []string{"/images/windows-profiles/17/delete", "/images/windows-answers/4/delete"} {
@@ -244,6 +244,15 @@ func TestDeleteProfileAndAnswerBlockDependencies(t *testing.T) {
 	}
 	if len(c.calls) != 0 || len(s.deleted) != 0 {
 		t.Fatalf("dependent assets changed: %v %v", c.calls, s.deleted)
+	}
+}
+
+func TestDeleteProfileSucceedsWhenUnusedUnboundAnswersExist(t *testing.T) {
+	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4, Title: "Lab", State: "ready"}}}
+	c := &deletionCleaner{}
+	server := deletionTestServer(s, c)
+	if res := submitDeletion(t, server, "/images/windows-profiles/17/delete"); res.Code != http.StatusSeeOther {
+		t.Fatalf("profile deletion blocked by unbound answer: %d %s", res.Code, res.Body.String())
 	}
 }
 
@@ -281,7 +290,7 @@ func TestDeleteEndpointsRequireAdminAndCSRF(t *testing.T) {
 }
 
 func TestAdminPagesExposeRecordDeletionActions(t *testing.T) {
-	data := pageData{Info: requestContext{User: User{ID: 1, Role: "admin"}, CSRF: "test"}, WindowsProfiles: []WindowsProfile{{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows", Path: "win.iso"}, State: "ready"}}, WindowsAnswerVariants: []WindowsAnswerVariant{{ID: 4, ProfileID: 17, Title: "Lab"}}, DriverConfigs: []DriverConfig{{ID: 3, Title: "VirtIO"}}}
+	data := pageData{Info: requestContext{User: User{ID: 1, Role: "admin"}, CSRF: "test"}, WindowsProfiles: []WindowsProfile{{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows", Path: "win.iso"}, State: "ready"}}, WindowsAnswerVariants: []WindowsAnswerVariant{{ID: 4, Title: "Lab"}}, DriverConfigs: []DriverConfig{{ID: 3, Title: "VirtIO"}}}
 	data.AnswerFileUsage.DownloadsKnown = true
 	data.ISOImages = []imageRow{{CleanupProfileID: 17}}
 	for _, tc := range []struct{ page, action string }{
@@ -323,7 +332,7 @@ func TestMenuHistoryShowsVersionNumberAndTimeZone(t *testing.T) {
 
 func TestRejectedDeletionsAreAudited(t *testing.T) {
 	s := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
-		profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4, ProfileID: 17}},
+		profiles: []WindowsProfile{{ID: 17}}, answers: []WindowsAnswerVariant{{ID: 4}},
 		configs: []DriverConfig{{ID: 3, ProfileID: 17, AnswerID: 4}}}
 	server := deletionTestServer(s, &deletionCleaner{})
 	s.installations = []Installation{{ID: 3003, DriverConfigID: 3}}
@@ -336,7 +345,7 @@ func TestRejectedDeletionsAreAudited(t *testing.T) {
 	want := []string{
 		"driver-config.delete|rejected|id=3 published",
 		"windows-answer.delete|rejected|id=4 used by driver config 3",
-		"windows-profile.delete|rejected|id=17 used by answer 4",
+		"windows-profile.delete|rejected|id=17 used by driver config 3",
 	}
 	if strings.Join(s.audits, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("audits = %q, want %q", s.audits, want)

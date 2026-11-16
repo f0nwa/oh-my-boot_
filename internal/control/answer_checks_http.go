@@ -83,7 +83,15 @@ func (s *Server) answerCheckRecord(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный файл ответов", 400)
 		return
 	}
-	c := normalizedAnswerCheck(AnswerCheck{Kind: kind, AnswerID: id, SHA256: r.FormValue("sha256"), Result: r.FormValue("result"), Machine: r.FormValue("machine"), Comment: r.FormValue("comment"), UserID: requestInfo(r).User.ID})
+	var windowsProfileID int64
+	if raw := r.FormValue("windows_profile_id"); raw != "" {
+		windowsProfileID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || windowsProfileID < 0 {
+			http.Error(w, "Неверный профиль Windows", 400)
+			return
+		}
+	}
+	c := normalizedAnswerCheck(AnswerCheck{Kind: kind, AnswerID: id, WindowsProfileID: windowsProfileID, ProfileTitle: r.FormValue("profile_title"), SHA256: r.FormValue("sha256"), Result: r.FormValue("result"), Machine: r.FormValue("machine"), Comment: r.FormValue("comment"), UserID: requestInfo(r).User.ID})
 	if !validAnswerCheck(c) {
 		http.Error(w, "Проверьте результат и длину полей: машина — до 200, комментарий — до 2000 символов.", 400)
 		return
@@ -111,6 +119,7 @@ func (s *Server) loadAnswerChecks(ctx context.Context, data *pageData) {
 	data.AnswerChecksKnown = err == nil
 	data.WindowsChecks = map[int64]AnswerCheck{}
 	data.UbuntuChecks = map[int64]AnswerCheck{}
+	data.WindowsProfileChecks = map[int64][]AnswerCheck{}
 	if err != nil {
 		return
 	}
@@ -119,6 +128,16 @@ func (s *Server) loadAnswerChecks(ctx context.Context, data *pageData) {
 			data.WindowsChecks[check.AnswerID] = check
 		} else {
 			data.UbuntuChecks[check.AnswerID] = check
+		}
+	}
+	byProfile, err := s.Store.LatestAnswerChecksByProfile(ctx)
+	if err != nil {
+		data.AnswerChecksKnown = false
+		return
+	}
+	for _, check := range byProfile {
+		if check.Kind == "windows" {
+			data.WindowsProfileChecks[check.AnswerID] = append(data.WindowsProfileChecks[check.AnswerID], check)
 		}
 	}
 }

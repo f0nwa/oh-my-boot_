@@ -97,12 +97,10 @@ type editorView struct {
 	SourceID    int64
 	SourceTitle string
 	Report      *unattend.ImportReport
-	// Save target.
-	Profiles  []WindowsProfile
-	ProfileID int64
-	Title     string
-	Folder    string
-	CanSave   bool
+	// Saved variant defaults.
+	Title   string
+	Folder  string
+	CanSave bool
 	WipesDisk bool
 	AddRow    string
 	Presets   []editorOption
@@ -314,16 +312,6 @@ func editorForm(posted url.Values) url.Values {
 func (s *Server) newEditorView(r *http.Request, form url.Values) *editorView {
 	info := requestInfo(r)
 	v := &editorView{Form: form, Section: "language", CanSave: Allowed(info.User.Role, "images"), Folder: "Windows", Presets: editorPresets}
-	if profiles, err := s.Store.WindowsProfiles(r.Context()); err == nil {
-		for _, p := range profiles {
-			if p.State == "ready" && p.BootMode == "" {
-				v.Profiles = append(v.Profiles, p)
-			}
-		}
-	}
-	if len(v.Profiles) > 0 {
-		v.ProfileID = v.Profiles[0].ID
-	}
 	if book, ok := s.Store.(MachineBook); !ok {
 	} else if machines, err := book.Machines(r.Context()); err == nil {
 		seen := map[string]bool{}
@@ -686,7 +674,7 @@ func (s *Server) answerEditorEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Подготовка сценариев недоступна", http.StatusServiceUnavailable)
 		return
 	}
-	data, err := reader.WindowsAnswerXML(r.Context(), agent.WindowsAnswerCheck{ID: answer.ID, ProfileID: answer.ProfileID, SHA256: answer.SHA256})
+	data, err := reader.WindowsAnswerXML(r.Context(), agent.WindowsAnswerCheck{ID: answer.ID, SHA256: answer.SHA256})
 	if err != nil {
 		http.Error(w, "Не удалось прочитать файл ответов у агента", http.StatusServiceUnavailable)
 		return
@@ -703,7 +691,7 @@ func (s *Server) answerEditorEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	v := s.newEditorView(r, unattend.FormValues(cfg))
 	v.SourceID, v.SourceTitle, v.Report = answer.ID, answer.Title, &report
-	v.ProfileID, v.Title, v.Folder = answer.ProfileID, answer.Title, answer.Folder
+	v.Title, v.Folder = answer.Title, answer.Folder
 	s.renderEditor(w, r, v)
 }
 
@@ -727,9 +715,6 @@ func (s *Server) editorFromPost(v *editorView, posted url.Values) {
 	v.Form = editorForm(posted)
 	if sec := posted.Get("section"); editorSectionKnown(sec) {
 		v.Section = sec
-	}
-	if id, err := strconv.ParseInt(posted.Get("profile_id"), 10, 64); err == nil && id > 0 {
-		v.ProfileID = id
 	}
 	if posted.Has("title") {
 		v.Title = posted.Get("title")
@@ -796,7 +781,7 @@ func (s *Server) answerEditorSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(xml) > maxWindowsAnswerBytes {
-		fail(http.StatusRequestEntityTooLarge, "Файл больше 1 МБ: сохранить к образу нельзя, скачать можно")
+		fail(http.StatusRequestEntityTooLarge, "Файл больше 1 МБ: сохранить в библиотеку нельзя, скачать можно")
 		return
 	}
 	if ValidateWindowsAnswer(xml) != nil {
@@ -813,16 +798,7 @@ func (s *Server) answerEditorSave(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusServiceUnavailable, "Подготовка сценариев недоступна")
 		return
 	}
-	profile, err := s.Store.WindowsProfile(r.Context(), v.ProfileID)
-	if err != nil {
-		fail(http.StatusNotFound, "Профиль ISO не найден")
-		return
-	}
-	if profile.State != "ready" || profile.BootMode != "" {
-		fail(http.StatusConflict, "Сначала подготовьте профиль ISO")
-		return
-	}
-	variant, status, message := s.saveWindowsAnswer(r, profile.ID, v.Title, v.Folder, xml, true)
+	variant, status, message := s.saveWindowsAnswer(r, v.Title, v.Folder, xml, true)
 	if status != 0 {
 		fail(status, message)
 		return

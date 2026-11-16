@@ -52,9 +52,9 @@ func (a *recordingWindowsISOAPI) PrepareWindowsISO(_ context.Context, req agent.
 	a.req = req
 	return agent.WindowsISOResult{InstallFile: "install.wim"}, nil
 }
-func (a *recordingWindowsISOAPI) CheckWindowsISO(_ context.Context, req agent.WindowsISORequest) error {
+func (a *recordingWindowsISOAPI) CheckWindowsISO(_ context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
 	a.req = req
-	return nil
+	return agent.WindowsISOResult{}, nil
 }
 
 func TestImagesPageListsCatalogFilesWithoutProfileForms(t *testing.T) {

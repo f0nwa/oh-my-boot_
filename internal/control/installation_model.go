@@ -108,8 +108,8 @@ func ValidateInstallation(item Installation, profile BootProfile, answers []Wind
 		if profile.WindowsProfileID <= 0 {
 			return fmt.Errorf("Windows boot profile has no ISO")
 		}
-		if item.AnswerID > 0 && !installationAnswerBelongs(item.AnswerID, profile.WindowsProfileID, answers) {
-			return fmt.Errorf("answer does not belong to the selected Windows profile")
+		if item.AnswerID > 0 && !installationAnswerExists(item.AnswerID, answers) {
+			return fmt.Errorf("answer scenario does not exist")
 		}
 		if item.DriverConfigID > 0 {
 			for _, config := range configs {
@@ -117,8 +117,8 @@ func ValidateInstallation(item Installation, profile BootProfile, answers []Wind
 					if profile.Kind == BootProfileWinPEISO && config.AnswerID != 0 {
 						return fmt.Errorf("service WinPE driver configuration cannot contain installer answers")
 					}
-					if config.AnswerID > 0 && !installationAnswerBelongs(config.AnswerID, profile.WindowsProfileID, answers) {
-						return fmt.Errorf("driver configuration answer does not belong to the selected Windows profile")
+					if config.AnswerID > 0 && !installationAnswerExists(config.AnswerID, answers) {
+						return fmt.Errorf("driver configuration answer scenario does not exist")
 					}
 					return nil
 				}
@@ -131,10 +131,10 @@ func ValidateInstallation(item Installation, profile BootProfile, answers []Wind
 	return nil
 }
 
-func installationAnswerBelongs(id, profileID int64, answers []WindowsAnswerVariant) bool {
+func installationAnswerExists(id int64, answers []WindowsAnswerVariant) bool {
 	for _, answer := range answers {
 		if answer.ID == id {
-			return answer.ProfileID == profileID
+			return true
 		}
 	}
 	return false

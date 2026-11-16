@@ -40,14 +40,15 @@ func main() {
 		fatal(err)
 	}
 	runtime := agent.WindowsISORuntime{
-		SourceRoot: "/mnt/omb-smb",
-		LocalRoot:  agent.LocalISORoot,
-		MountRoot:  "/mnt/omb-iso/profiles",
-		AssetRoot:  "/srv/omb/tftp/windows-profiles",
-		Template:   template,
-		Winpeshl:   winpeshl,
-		Password:   strings.TrimSpace(string(secret)),
-		Mounter:    agent.CommandWindowsISOMounter{},
+		SourceRoot:  "/mnt/omb-smb",
+		LocalRoot:   agent.LocalISORoot,
+		MountRoot:   "/mnt/omb-iso/profiles",
+		AssetRoot:   "/srv/omb/tftp/windows-profiles",
+		Template:    template,
+		Winpeshl:    winpeshl,
+		Password:    strings.TrimSpace(string(secret)),
+		Mounter:     agent.CommandWindowsISOMounter{},
+		WIMCommands: agent.ExecDriverCommandRunner{},
 	}
 	if _, err := runtime.Prepare(context.Background(), req); err != nil {
 		fatal(err)

@@ -3,6 +3,8 @@ package control
 import (
 	"context"
 
+	"omb/internal/agent"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -33,7 +35,7 @@ func (s Store) CreateWindowsProfile(ctx context.Context, source WindowsProfileSo
 
 func (s Store) WindowsProfiles(ctx context.Context) ([]WindowsProfile, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id,storage_id,path,storage_root,size_bytes,modified_at,title,folder,install_file,state,last_error,boot_mode
+		`SELECT id,storage_id,path,storage_root,size_bytes,modified_at,title,folder,install_file,state,last_error,boot_mode,wim_info
 		 FROM windows_profiles ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -42,7 +44,7 @@ func (s Store) WindowsProfiles(ctx context.Context) ([]WindowsProfile, error) {
 	profiles := []WindowsProfile{}
 	for rows.Next() {
 		var p WindowsProfile
-		if err := rows.Scan(&p.ID, &p.StorageID, &p.Path, &p.StorageRoot, &p.Size, &p.Modified, &p.Title, &p.Folder, &p.InstallFile, &p.State, &p.Error, &p.BootMode); err != nil {
+		if err := rows.Scan(&p.ID, &p.StorageID, &p.Path, &p.StorageRoot, &p.Size, &p.Modified, &p.Title, &p.Folder, &p.InstallFile, &p.State, &p.Error, &p.BootMode, &p.WIMInfo); err != nil {
 			return nil, err
 		}
 		profiles = append(profiles, p)
@@ -53,15 +55,26 @@ func (s Store) WindowsProfiles(ctx context.Context) ([]WindowsProfile, error) {
 func (s Store) WindowsProfile(ctx context.Context, id int64) (WindowsProfile, error) {
 	var p WindowsProfile
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id,storage_id,path,storage_root,size_bytes,modified_at,title,folder,install_file,state,last_error,boot_mode
+		`SELECT id,storage_id,path,storage_root,size_bytes,modified_at,title,folder,install_file,state,last_error,boot_mode,wim_info
 		 FROM windows_profiles WHERE id=$1`, id,
-	).Scan(&p.ID, &p.StorageID, &p.Path, &p.StorageRoot, &p.Size, &p.Modified, &p.Title, &p.Folder, &p.InstallFile, &p.State, &p.Error, &p.BootMode)
+	).Scan(&p.ID, &p.StorageID, &p.Path, &p.StorageRoot, &p.Size, &p.Modified, &p.Title, &p.Folder, &p.InstallFile, &p.State, &p.Error, &p.BootMode, &p.WIMInfo)
 	return p, err
 }
 
 func (s Store) SetWindowsProfileResult(ctx context.Context, id int64, state, installFile, lastError string) error {
 	tag, err := s.Pool.Exec(ctx,
 		`UPDATE windows_profiles SET state=$2,install_file=$3,last_error=$4 WHERE id=$1`, id, state, installFile, lastError)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s Store) SetWindowsProfileWIMInfo(ctx context.Context, id int64, info agent.WindowsWIMInfo) error {
+	tag, err := s.Pool.Exec(ctx, `UPDATE windows_profiles SET wim_info=$2 WHERE id=$1`, id, info)
 	if err != nil {
 		return err
 	}

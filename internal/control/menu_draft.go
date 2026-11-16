@@ -113,15 +113,20 @@ func windowsMenuProfile(installation Installation, profileID int64, base string,
 			if answer.ID != id {
 				continue
 			}
-			parent, ok := byID[answer.ProfileID]
+			parent, ok := byID[profileID]
 			if !ok || !profileBootable(parent) || answer.State != "ready" || answer.Size <= 0 || !safeMenuText(answer.Title, 80) || !isASCII(answer.Title) || !validAnswerHash(answer.SHA256) {
 				return menuProfile{}, "", fmt.Errorf("Windows answer %d is not ready for PXE", answer.ID)
+			}
+			if parent.BootMode == "" && parent.WIMInfo.Known {
+				if compat := EvaluateWindowsAnswerCompatibility(answer.Target, parent.WIMInfo); compat.Status == "incompatible" {
+					return menuProfile{}, "", fmt.Errorf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; "))
+				}
 			}
 			hint := "auto install"
 			if answer.WipesDisk != nil && *answer.WipesDisk {
 				hint = "!! WIPES DISK"
 			}
-			return menuProfile{id: key, title: answer.Title, hint: hint, base: base, windowsISOID: answer.ProfileID, answerID: answer.ID, answerSHA256: answer.SHA256}, answer.Folder, nil
+			return menuProfile{id: key, title: answer.Title, hint: hint, base: base, windowsISOID: profileID, answerID: answer.ID, answerSHA256: answer.SHA256}, answer.Folder, nil
 		}
 	case "driver":
 		for _, config := range configs {
@@ -137,7 +142,12 @@ func windowsMenuProfile(installation Installation, profileID int64, base string,
 			if config.AnswerID > 0 {
 				found := false
 				for _, answer := range answers {
-					if answer.ID == config.AnswerID && answer.ProfileID == config.ProfileID && answer.State == "ready" && answer.Size > 0 && validAnswerHash(answer.SHA256) {
+					if answer.ID == config.AnswerID && answer.State == "ready" && answer.Size > 0 && validAnswerHash(answer.SHA256) {
+						if parent.BootMode == "" && parent.WIMInfo.Known {
+							if compat := EvaluateWindowsAnswerCompatibility(answer.Target, parent.WIMInfo); compat.Status == "incompatible" {
+								return menuProfile{}, "", fmt.Errorf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; "))
+							}
+						}
 						answerHash, found = answer.SHA256, true
 						if answer.WipesDisk != nil && *answer.WipesDisk {
 							hint = "!! WIPES DISK"

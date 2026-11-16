@@ -43,7 +43,7 @@
         popover.hidePopover();
       }
       uploadDialog.showModal();
-      var firstInput = uploadDialog.querySelector('select[name="profile_id"], input[name="title"]');
+      var firstInput = uploadDialog.querySelector('input[name="title"]');
       if (firstInput) {
         firstInput.focus();
       }
@@ -84,6 +84,8 @@
   var more = dialog.querySelector('[data-check-more]');
   var submit = dialog.querySelector('[data-check-submit]');
   var viewClose = dialog.querySelector('[data-check-view-close]');
+  var profileWrap = dialog.querySelector('[data-check-profile-wrap]');
+  var profileSelect = form ? form.querySelector('select[name="windows_profile_id"]') : null;
   var endpoint = '', digest = '', next = 0, serial = 0, saving = false;
   var historyRequest;
 
@@ -99,6 +101,12 @@
     result.textContent = check.result === 'success' ? dialog.dataset.success : dialog.dataset.failure;
     if (check.result === 'failure') result.className = 'check-failure';
     entry.appendChild(result);
+    if (check.profile_title) {
+      var profile = document.createElement('small');
+      profile.className = 'answer-check-image';
+      profile.textContent = check.profile_title;
+      entry.appendChild(profile);
+    }
     var meta = document.createElement('small');
     var date = new Date(check.created_at);
     meta.textContent = check.author + ' · ' + date.toLocaleString(document.documentElement.lang || 'ru');
@@ -159,6 +167,9 @@
     endpoint = '/answers/' + encodeURIComponent(trigger.dataset.checkKind) + '/' + encodeURIComponent(trigger.dataset.checkId) + '/checks';
     digest = trigger.dataset.checkSha;
     next = 0;
+    var isWindows = trigger.dataset.checkKind === 'windows';
+    if (profileWrap) profileWrap.hidden = !isWindows;
+    if (profileSelect) profileSelect.disabled = !isWindows;
     form.reset();
     form.hidden = true;
     viewClose.hidden = false;

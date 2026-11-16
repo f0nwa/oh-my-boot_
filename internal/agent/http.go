@@ -285,11 +285,13 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		if !decodeSMBRequest(w, r, &req) {
 			return
 		}
-		if err := windows.Check(r.Context(), req); err != nil {
+		result, err := windows.Check(r.Context(), req)
+		if err != nil {
 			http.Error(w, "Windows ISO profile unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		w.WriteHeader(http.StatusNoContent)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
 	})
 	mux.HandleFunc("POST /windows-iso/prepare", func(w http.ResponseWriter, r *http.Request) {
 		if windows == nil {

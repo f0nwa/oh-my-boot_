@@ -131,8 +131,8 @@ func TestWindowsMenuRejectsUnreadyOrUnknownProfile(t *testing.T) {
 func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 	profile := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 11 x64", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
 	answers := []WindowsAnswerVariant{
-		{ID: 31, ProfileID: 17, Title: "Windows 11 Lab A", Folder: "Windows/Lab", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"},
-		{ID: 32, ProfileID: 17, Title: "Windows 11 Lab B", Folder: "Windows/Lab", SHA256: strings.Repeat("b", 64), Size: 100, State: "ready"},
+		{ID: 31, Title: "Windows 11 Lab A", Folder: "Windows/Lab", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"},
+		{ID: 32, Title: "Windows 11 Lab B", Folder: "Windows/Lab", SHA256: strings.Repeat("b", 64), Size: 100, State: "ready"},
 	}
 	form := url.Values{"title": {"oh my boot_"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_1017": {"on"}, "install_2031": {"on"}, "install_2032": {"on"}, "folder_install_2032": {"Windows/Other"}}
 	script, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{profile}, answers)
@@ -145,7 +145,7 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 		"item install_2031 Windows 11 Lab A${sp",
 		"item install_2032 Windows 11 Lab B${sp",
 		"initrd -n omb-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/omb-answer.xml\n",
-		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-answers/32/omb-setup.cmd\n",
+		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-answer-setup.cmd\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim\n",
 	} {
 		if !strings.Contains(got, want) {
@@ -153,7 +153,7 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 		}
 	}
 	refs := menuWindowsAnswerRefs(got)
-	if len(refs) != 2 || refs[31].ProfileID != 17 || refs[31].SHA256 != strings.Repeat("a", 64) || menuFolderPaths(got)["install_2032"] != "Windows/Other" || !menuWindowsProfileIDs(got)[17] {
+	if len(refs) != 2 || refs[0].ID != 31 || refs[0].ProfileID != 17 || refs[0].SHA256 != strings.Repeat("a", 64) || menuFolderPaths(got)["install_2032"] != "Windows/Other" || !menuWindowsProfileIDs(got)[17] {
 		t.Fatalf("answer selection did not round trip: refs=%+v folders=%+v", refs, menuFolderPaths(got))
 	}
 	delete(form, "install_1017")
@@ -163,13 +163,60 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 	}
 }
 
+func TestWindowsMenuSharesOneAnswerAcrossTwoProfiles(t *testing.T) {
+	modified := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	p17 := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "win11-ru.iso", Size: 123, Modified: modified, Title: "Win 11 RU", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
+	p18 := WindowsProfile{ID: 18, WindowsProfileSource: WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "win11-en.iso", Size: 456, Modified: modified, Title: "Win 11 EN", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
+	a := WindowsAnswerVariant{ID: 31, Title: "Lab Shared", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"}
+	sources := InstallationMenuSources{
+		BootProfiles: []BootProfile{
+			{ID: 101, Kind: BootProfileWindowsISO, Title: p17.Title, WindowsProfileID: 17},
+			{ID: 102, Kind: BootProfileWindowsISO, Title: p18.Title, WindowsProfileID: 18},
+		},
+		Installations: []Installation{
+			{ID: 201, BootProfileID: 101, Title: "Win 11 RU Auto", Folder: "Windows", AnswerID: 31},
+			{ID: 202, BootProfileID: 102, Title: "Win 11 EN Auto", Folder: "Windows", AnswerID: 31},
+		},
+	}
+	draft := MenuDraft{Title: "PXE", Label: "Diagnostics", Message: "Ready", Items: []MenuDraftItem{{InstallationID: 201}, {InstallationID: 202}}}
+	script, err := buildTestMenuFromDraft(draft, "http://10.30.0.10:8080", []WindowsProfile{p17, p18}, []WindowsAnswerVariant{a}, nil, sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(script)
+	for _, want := range []string{
+		"http://10.30.0.10:8080/assets/windows-profiles/17/omb-answer-setup.cmd",
+		"http://10.30.0.10:8080/assets/windows-profiles/18/omb-answer-setup.cmd",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %s", want, got)
+		}
+	}
+	refs := menuWindowsAnswerRefs(got)
+	if len(refs) != 2 {
+		t.Fatalf("refs=%+v, want 2 profile references for shared answer", refs)
+	}
+	store := windowsMenuPageStore{profiles: []WindowsProfile{p17, p18}, answers: []WindowsAnswerVariant{a}}
+	api := &fakeImagesAPI{catalog: images.Catalog{
+		Storages: []images.Storage{{ID: 7, Kind: "smb", Root: "/mnt/omb-smb/key7", State: "ready"}},
+		Images: []images.Image{
+			{StorageID: 7, Path: "win11-ru.iso", Size: 123, Modified: modified, Present: true},
+			{StorageID: 7, Path: "win11-en.iso", Size: 456, Modified: modified, Present: true},
+		},
+	}}
+	s := &Server{Store: store, Images: api, WindowsISO: &recordingWindowsISOAPI{}, WindowsAnswers: &answerAgent{}}
+	if err := s.verifyMenuWindowsProfiles(context.Background(), got, menuProfile{windowsISOID: 17, answerID: 31}, menuProfile{windowsISOID: 18, answerID: 31}); err != nil {
+		t.Fatalf("verify failed: %v", err)
+	}
+}
+
 func TestWindowsMenuRejectsUnknownOrUnreadyAnswer(t *testing.T) {
 	p := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 11", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
 	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_2031": {"on"}}
 	if _, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, nil); err == nil {
 		t.Fatal("accepted unknown answer variant")
 	}
-	answer := WindowsAnswerVariant{ID: 31, ProfileID: 17, Title: "Lab", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "pending"}
+	answer := WindowsAnswerVariant{ID: 31, Title: "Lab", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "pending"}
 	if _, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, []WindowsAnswerVariant{answer}); err == nil {
 		t.Fatal("accepted unready answer variant")
 	}
@@ -182,7 +229,7 @@ func TestWindowsMenuRejectsUnknownOrUnreadyAnswer(t *testing.T) {
 
 func TestWindowsMenuPagePrefillsActiveAnswer(t *testing.T) {
 	p := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 11", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
-	a := WindowsAnswerVariant{ID: 31, ProfileID: 17, Title: "Lab", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"}
+	a := WindowsAnswerVariant{ID: 31, Title: "Lab", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"}
 	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_2031": {"on"}, "folder_install_2031": {"Windows/Tests"}}
 	script, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, []WindowsAnswerVariant{a})
 	if err != nil {
@@ -204,8 +251,8 @@ func TestWindowsMenuRejectsAnswerItemMissingFromSnapshotMetadata(t *testing.T) {
 	source := WindowsProfileSource{StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "windows.iso", Size: 123, Modified: modified, Title: "Windows 11", Folder: "Windows"}
 	p := WindowsProfile{ID: 17, WindowsProfileSource: source, State: "ready", InstallFile: "install.wim"}
 	answers := []WindowsAnswerVariant{
-		{ID: 31, ProfileID: 17, Title: "Lab A", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"},
-		{ID: 32, ProfileID: 17, Title: "Lab B", Folder: "Windows", SHA256: strings.Repeat("b", 64), Size: 100, State: "ready"},
+		{ID: 31, Title: "Lab A", Folder: "Windows", SHA256: strings.Repeat("a", 64), Size: 100, State: "ready"},
+		{ID: 32, Title: "Lab B", Folder: "Windows", SHA256: strings.Repeat("b", 64), Size: 100, State: "ready"},
 	}
 	form := url.Values{"title": {"PXE"}, "label": {"Diagnostics"}, "message": {"Ready"}, "install_2031": {"on"}, "install_2032": {"on"}}
 	script, err := buildTestMenuWithAnswers(form, "http://10.30.0.10:8080", []WindowsProfile{p}, answers)

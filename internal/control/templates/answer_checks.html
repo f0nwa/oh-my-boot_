@@ -1,10 +1,15 @@
 {{define "answer_check_cell"}}
+{{$sum := .Summary}}
 <td class="answer-check-cell">
-{{if not .Known}}<span class="muted">{{t "Сведения недоступны"}}</span>
-{{else if .Check.ID}}{{if ne .Check.SHA256 .SHA256}}<span><span class="dot dot-accent"></span>{{t "Нужна повторная проверка"}}</span>{{else}}<span class="answer-check-result"><span class="dot {{if eq .Check.Result "success"}}dot-ok{{else}}dot-error{{end}}"></span>{{t .Check.Label}}</span>{{end}}
-<small class="answer-meta">{{.Check.Author}}</small><time class="answer-meta" datetime="{{.Check.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Check.CreatedAt.Local.Format "2006-01-02 15:04 MST"}}</time>
+{{if not $sum.Known}}<span class="muted">{{t "Сведения недоступны"}}</span>
+{{else if $sum.Visible}}
+<div class="answer-check-list">{{range $sum.Visible}}<div class="answer-check-item">
+{{if ne .SHA256 $.SHA256}}<span class="dot dot-accent"></span>{{else}}<span class="dot {{if eq .Result "success"}}dot-ok{{else}}dot-error{{end}}"></span>{{end}}
+<span class="answer-check-item-text">{{if .ProfileTitle}}{{.ProfileTitle}}{{else}}{{t .Label}}{{end}}</span>
+<small class="answer-meta">{{if .ProfileTitle}}{{t .Label}} · {{end}}{{.Author}} · <time datetime="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.CreatedAt.Local.Format "2006-01-02 15:04 MST"}}</time></small>
+</div>{{end}}</div>
 {{else}}<span class="muted">{{t "Не проверено"}}</span>{{end}}
-<button type="button" class="answer-check-history" data-answer-history data-check-kind="{{.Kind}}" data-check-id="{{.ID}}" data-check-title="{{.Title}}" data-check-sha="{{.SHA256}}">{{t "История"}}</button>
+<button type="button" class="answer-check-history" data-answer-history data-check-kind="{{.Kind}}" data-check-id="{{.ID}}" data-check-title="{{.Title}}" data-check-sha="{{.SHA256}}">{{if gt $sum.MoreCount 0}}{{t "ещё"}} {{$sum.MoreCount}}{{else}}{{t "История"}}{{end}}</button>
 </td>
 {{end}}
 
@@ -18,6 +23,7 @@
 <p class="error" data-check-error role="alert" hidden></p>
 <form id="answer-check-form" class="machine-form" hidden>
 <input type="hidden" name="csrf" value="{{.Info.CSRF}}"><input type="hidden" name="sha256">
+<label data-check-profile-wrap><span>{{t "Образ Windows"}} <span class="muted">· {{t "необязательно"}}</span></span><select name="windows_profile_id"><option value="">{{t "Не выбран (общая проверка)"}}</option>{{range .WindowsProfiles}}{{if and (eq .State "ready") (eq .BootMode "")}}<option value="{{.ID}}">{{.Title}}</option>{{end}}{{end}}</select></label>
 <fieldset class="answer-check-options"><legend>{{t "Результат"}}</legend><label><input type="radio" name="result" value="success" required> {{t "Установка успешна"}}</label><label><input type="radio" name="result" value="failure" required> {{t "Ошибка установки"}}</label></fieldset>
 <label><span>{{t "Машина или модель"}} <span class="muted">· {{t "необязательно"}}</span></span><input name="machine" maxlength="200" autocomplete="off"></label>
 <label><span>{{t "Комментарий"}} <span class="muted">· {{t "необязательно"}}</span></span><textarea name="comment" maxlength="2000" rows="3"></textarea></label>

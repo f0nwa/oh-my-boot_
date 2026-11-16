@@ -59,11 +59,11 @@ func TestSMBErrorRendersOnStoragesPage(t *testing.T) {
 }
 
 func TestAnswerUploadFromAnswersPage(t *testing.T) {
-	store := &answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, profile: WindowsProfile{ID: 3, State: "ready"}}
+	store := &answerPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
 	s := &Server{Store: store, WindowsAnswers: &answerAgent{}, Images: &fakeImagesAPI{}}
 	var data bytes.Buffer
 	w := multipart.NewWriter(&data)
-	for key, value := range map[string]string{"csrf": CSRFToken("test-token"), "profile_id": "3", "title": "Win11 key", "folder": ""} {
+	for key, value := range map[string]string{"csrf": CSRFToken("test-token"), "title": "Win11 key", "folder": ""} {
 		_ = w.WriteField(key, value)
 	}
 	f, _ := w.CreateFormFile("file", "autounattend.xml")
@@ -74,7 +74,7 @@ func TestAnswerUploadFromAnswersPage(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, req)
-	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/answers?message=") || len(store.answers) != 1 || store.answers[0].ProfileID != 3 {
+	if res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/answers?message=") || len(store.answers) != 1 || store.answers[0].Title != "Win11 key" {
 		t.Fatalf("status=%d location=%q answers=%+v body=%s", res.Code, res.Header().Get("Location"), store.answers, res.Body.String())
 	}
 	page := libraryGet(t, s, "/answers")

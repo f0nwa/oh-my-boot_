@@ -184,11 +184,11 @@
 <div data-panel="questions" hidden><ul class="ed-say" id="ed-questions">{{range $v.Warnings}}<li>{{.Text}}</li>{{else}}<li class="muted">{{t "Вопросов нет."}}</li>{{end}}</ul></div>
 </div>
 <div class="ed-warn" id="ed-wipes"{{if not $v.WipesDisk}} hidden{{end}}><b>{{t "Стирает диск."}}</b> {{t "Пункт меню с этим файлом получит метку «WIPES DISK»."}}</div>
-<div class="summary ed-save">{{if $v.CanSave}}<h2>{{t "Сохранить к образу"}}</h2>{{if $v.Profiles}}<label for="ed-profile">{{t "Образ"}}</label><select id="ed-profile" name="profile_id">{{range $v.Profiles}}<option value="{{.ID}}"{{if eq .ID $v.ProfileID}} selected{{end}}>{{.Title}} (#{{.ID}})</option>{{end}}</select>
+<div class="summary ed-save">{{if $v.CanSave}}<h2>{{t "Сохранить скрипт"}}</h2>
 <label for="ed-title">{{t "Название пункта меню, латиницей"}}</label><input id="ed-title" class="mono" name="title" value="{{$v.Title}}" maxlength="80" placeholder="Windows 11 Lab">
 <label for="ed-folder">{{t "Каталог в меню"}}</label><input id="ed-folder" class="mono" name="folder" value="{{$v.Folder}}">
-<button class="btn btn-primary btn-wide ed-savebtn" formaction="/answers/editor/save" formnovalidate>{{if $v.SourceID}}{{t "Сохранить как новый файл"}}{{else}}{{t "Сохранить к образу"}}{{end}}</button>
-<p class="hint">{{if $v.SourceID}}{{t "Исходный файл и пункт меню с ним не меняются."}} {{end}}{{t "Компьютеры в доверенном PXE-сегменте могут получить содержимое файла, включая пароли и ключи."}}</p>{{else}}<p class="muted">{{t "Нет готовых образов: сначала подготовьте ISO."}} <a href="/images">{{t "Образы ISO"}}</a></p>{{end}}{{end}}
+<button class="btn btn-primary btn-wide ed-savebtn" formaction="/answers/editor/save" formnovalidate>{{if $v.SourceID}}{{t "Сохранить как новый файл"}}{{else}}{{t "Сохранить скрипт"}}{{end}}</button>
+<p class="hint">{{if $v.SourceID}}{{t "Исходный файл и пункт меню с ним не меняются."}} {{end}}{{t "Компьютеры в доверенном PXE-сегменте могут получить содержимое файла, включая пароли и ключи."}}</p>{{end}}
 <button class="btn btn-wide" name="do" value="download" formnovalidate>{{t "Скачать autounattend.xml"}}</button></div>
 </aside>
 </form>

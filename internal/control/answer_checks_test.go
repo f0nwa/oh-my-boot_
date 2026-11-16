@@ -26,10 +26,17 @@ func (s answerChecksHTTPStore) LatestAnswerChecks(ctx context.Context) ([]Answer
 	return s.Store.LatestAnswerChecks(ctx)
 }
 
+func (s answerChecksHTTPStore) LatestAnswerChecksByProfile(ctx context.Context) ([]AnswerCheck, error) {
+	if s.readError {
+		return nil, errors.New("offline")
+	}
+	return s.Store.LatestAnswerChecksByProfile(ctx)
+}
+
 func TestAnswerChecksHTTP(t *testing.T) {
 	ctx := context.Background()
 	store := installationTestStore(t)
-	user, win, ubuntu := answerCheckFixtures(t, store)
+	user, win, ubuntu, _ := answerCheckFixtures(t, store)
 	backend := &answerChecksHTTPStore{Store: store, user: User{ID: user, Username: "checker", Role: "operator", Enabled: true}}
 	s := &Server{Store: backend}
 	path := fmt.Sprintf("/answers/windows/%d/checks", win.ID)
@@ -126,8 +133,11 @@ func TestAnswerChecksPageActions(t *testing.T) {
 		if strings.Contains(body, "Установка ОС не проверялась") {
 			t.Fatal("obsolete permanent claim")
 		}
-		if strings.Count(body, `>Проверка установки</th>`) != 2 {
+		if strings.Count(body, `>Проверки по образам</th>`) != 2 {
 			t.Fatal("missing shared check column")
+		}
+		if !strings.Contains(body, `name="windows_profile_id"`) {
+			t.Fatal("check dialog missing windows_profile_id selector")
 		}
 		for _, want := range []string{`id="answer-check-dialog"`, `data-answer-history`, `data-check-kind="windows"`, `data-check-kind="ubuntu"`} {
 			if !strings.Contains(body, want) {

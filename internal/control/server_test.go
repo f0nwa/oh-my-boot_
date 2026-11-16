@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"omb/internal/agent"
 )
 
 type authOnlyStore struct {
@@ -14,8 +16,14 @@ type authOnlyStore struct {
 }
 
 func (a authOnlyStore) LatestAnswerChecks(context.Context) ([]AnswerCheck, error) { return nil, nil }
+func (a authOnlyStore) LatestAnswerChecksByProfile(context.Context) ([]AnswerCheck, error) {
+	return nil, nil
+}
 func (a authOnlyStore) AnswerCheckHistory(context.Context, string, int64, int64) ([]AnswerCheck, error) {
 	return nil, nil
+}
+func (a authOnlyStore) SetWindowsProfileWIMInfo(context.Context, int64, agent.WindowsWIMInfo) error {
+	return nil
 }
 
 func (a authOnlyStore) Session(context.Context, string) (User, error)              { return a.user, nil }

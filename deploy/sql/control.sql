@@ -57,13 +57,13 @@ CREATE TABLE IF NOT EXISTS windows_profiles (
  install_file TEXT NOT NULL DEFAULT '' CHECK (install_file IN ('','install.wim','install.esd')),
  state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','preparing','ready','error','unavailable')),
  last_error TEXT NOT NULL DEFAULT '',
+ wim_info JSONB NOT NULL DEFAULT '{}'::jsonb,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  UNIQUE (storage_id,path)
 );
 
 CREATE TABLE IF NOT EXISTS windows_answer_variants (
  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
- profile_id BIGINT NOT NULL REFERENCES windows_profiles(id) ON DELETE RESTRICT,
  title TEXT NOT NULL,
  folder TEXT NOT NULL DEFAULT '',
  sha256 TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
@@ -72,13 +72,16 @@ CREATE TABLE IF NOT EXISTS windows_answer_variants (
  last_error TEXT NOT NULL DEFAULT '',
  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS windows_answer_variants_profile_idx ON windows_answer_variants (profile_id);
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'ru' CHECK (language IN ('ru','en'));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system' CHECK (theme IN ('system','light','dark'));
 
+ALTER TABLE windows_profiles ADD COLUMN IF NOT EXISTS wim_info JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE windows_answer_variants ADD COLUMN IF NOT EXISTS wipes_disk BOOLEAN;
 ALTER TABLE windows_answer_variants ADD COLUMN IF NOT EXISTS disk_summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE windows_answer_variants ADD COLUMN IF NOT EXISTS target_summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+DROP INDEX IF EXISTS windows_answer_variants_profile_idx;
+ALTER TABLE windows_answer_variants DROP COLUMN IF EXISTS profile_id;
 CREATE TABLE IF NOT EXISTS menu_draft (id SMALLINT PRIMARY KEY CHECK (id = 1), title TEXT NOT NULL, label TEXT NOT NULL, message TEXT NOT NULL, local_timeout INT NOT NULL DEFAULT 10 CHECK (local_timeout BETWEEN 1 AND 3600), local_timer BOOLEAN NOT NULL DEFAULT true, diagnostics_on BOOLEAN NOT NULL DEFAULT true, default_installation_id BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
 
 CREATE TABLE IF NOT EXISTS machines (
@@ -251,6 +254,8 @@ CREATE TABLE IF NOT EXISTS answer_installation_checks (
  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  windows_answer_id BIGINT REFERENCES windows_answer_variants(id) ON DELETE CASCADE,
  ubuntu_autoinstall_id BIGINT REFERENCES ubuntu_autoinstall_files(id) ON DELETE CASCADE,
+ windows_profile_id BIGINT REFERENCES windows_profiles(id) ON DELETE SET NULL,
+ profile_title TEXT NOT NULL DEFAULT '',
  sha256 TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
  result TEXT NOT NULL CHECK (result IN ('success','failure')),
  machine TEXT NOT NULL DEFAULT '' CHECK (char_length(machine) <= 200),
@@ -260,5 +265,8 @@ CREATE TABLE IF NOT EXISTS answer_installation_checks (
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  CHECK (num_nonnulls(windows_answer_id,ubuntu_autoinstall_id) = 1)
 );
+ALTER TABLE answer_installation_checks ADD COLUMN IF NOT EXISTS windows_profile_id BIGINT REFERENCES windows_profiles(id) ON DELETE SET NULL;
+ALTER TABLE answer_installation_checks ADD COLUMN IF NOT EXISTS profile_title TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS answer_checks_windows_idx ON answer_installation_checks (windows_answer_id,id DESC) WHERE windows_answer_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS answer_checks_ubuntu_idx ON answer_installation_checks (ubuntu_autoinstall_id,id DESC) WHERE ubuntu_autoinstall_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS answer_checks_profile_idx ON answer_installation_checks (COALESCE(windows_answer_id,0), COALESCE(ubuntu_autoinstall_id,0), COALESCE(windows_profile_id,0), profile_title, id DESC);

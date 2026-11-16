@@ -59,7 +59,6 @@ func (a *editorAgent) WindowsAnswerXML(_ context.Context, req agent.WindowsAnswe
 func editorServer(role, lang string) (*Server, *editorStore, *editorAgent) {
 	store := &editorStore{answerPageStore: &answerPageStore{
 		authOnlyStore: authOnlyStore{user: User{ID: 1, Username: "u", Role: role, Enabled: true, Language: lang}},
-		profile:       WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Windows 11"}, State: "ready"},
 	}}
 	ag := &editorAgent{}
 	return &Server{Store: store, WindowsAnswers: ag, Images: &fakeImagesAPI{catalog: images.Catalog{}}}, store, ag
@@ -86,7 +85,6 @@ func editorPost(s *Server, path string, form url.Values) *httptest.ResponseRecor
 func labForm() url.Values {
 	c, _ := editorPreset("lab")
 	form := unattend.FormValues(c)
-	form.Set("profile_id", "17")
 	form.Set("title", "Windows 11 Lab")
 	form.Set("folder", "Windows")
 	return form
@@ -126,7 +124,7 @@ func TestEditorDownloadAndSave(t *testing.T) {
 	if string(ag.files[7]) != string(downloaded) {
 		t.Fatal("the agent got other bytes than the download")
 	}
-	if a := store.answers[0]; a.Title != "Windows 11 Lab" || a.ProfileID != 17 || a.State != "ready" {
+	if a := store.answers[0]; a.Title != "Windows 11 Lab" || len(a.Target.Architectures) == 0 || a.State != "ready" {
 		t.Fatalf("answer %+v", a)
 	}
 	found := false
@@ -257,7 +255,7 @@ func TestEditorEnglishPageHasNoRussian(t *testing.T) {
 	}
 	ag.files = map[int64][]byte{5: raw}
 	store := s.Store.(*editorStore)
-	store.answers = []WindowsAnswerVariant{{ID: 5, ProfileID: 17, Title: "Old", Folder: "Windows", State: "ready"}}
+	store.answers = []WindowsAnswerVariant{{ID: 5, Title: "Old", Folder: "Windows", State: "ready"}}
 	body := editorGet(s, "/answers/5/edit").Body.String()
 	if !strings.Contains(body, "was not made by the editor") {
 		t.Fatal("no import report")

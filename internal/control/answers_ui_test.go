@@ -65,6 +65,9 @@ func TestAnswersPageLayout(t *testing.T) {
 	if strings.Contains(body, `Проверить`) {
 		t.Fatalf("/answers should not contain inspect/verify button in table")
 	}
+	if strings.Contains(body, `name="profile_id"`) {
+		t.Fatalf("/answers upload dialog should not contain profile_id selector")
+	}
 }
 
 func TestAnswersPageDiskWarning(t *testing.T) {
@@ -208,5 +211,64 @@ func TestAnswersPageSearchByAuthorAndSHA(t *testing.T) {
 	emptyBody := libraryGet(t, s, "/answers?q=nonexistent_query_xyz")
 	if strings.Contains(emptyBody, "vlad_author") {
 		t.Fatalf("expected non-matching search to exclude vlad_author")
+	}
+}
+
+func TestAnswersPageUnboundTargetsAndPerImageChecks(t *testing.T) {
+	data := samplePageData(langRU)
+	data.AnswerChecksKnown = true
+	data.WindowsAnswerVariants = []WindowsAnswerVariant{{
+		ID:     5,
+		Title:  "Universal Pro",
+		State:  "ready",
+		SHA256: strings.Repeat("a", 64),
+		Target: WindowsAnswerTarget{
+			Architectures: []string{"amd64"},
+			ImageMode:     "edition",
+			EditionID:     "pro",
+			ImageLanguage: "ru-RU",
+			Win11Only:     true,
+		},
+	}}
+	data.UbuntuAutoinstalls = []UbuntuAutoinstallSummary{{ID: 41, Title: "Ubuntu shared", State: "validated", DiskMode: "interactive", SHA256: strings.Repeat("b", 64)}}
+	now := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+	data.WindowsProfileChecks = map[int64][]AnswerCheck{
+		5: {
+			{ID: 1, Kind: "windows", AnswerID: 5, WindowsProfileID: 11, ProfileTitle: "Win 11 24H2", SHA256: strings.Repeat("a", 64), Result: "success", Author: "op", CreatedAt: now},
+			{ID: 2, Kind: "windows", AnswerID: 5, WindowsProfileID: 12, ProfileTitle: "Win 11 23H2", SHA256: strings.Repeat("a", 64), Result: "success", Author: "op", CreatedAt: now.Add(-time.Hour)},
+			{ID: 3, Kind: "windows", AnswerID: 5, WindowsProfileID: 13, ProfileTitle: "Win 10 22H2", SHA256: strings.Repeat("a", 64), Result: "failure", Author: "op", CreatedAt: now.Add(-2 * time.Hour)},
+			{ID: 4, Kind: "windows", AnswerID: 5, WindowsProfileID: 14, ProfileTitle: "Win 10 LTSC", SHA256: strings.Repeat("a", 64), Result: "success", Author: "op", CreatedAt: now.Add(-3 * time.Hour)},
+		},
+	}
+
+	body := renderPage("answers", data)
+	for _, want := range []string{
+		`>Рассчитан на</th>`,
+		`>Проверки по образам</th>`,
+		`amd64`,
+		`Win 11`,
+		`Pro`,
+		`ru-RU`,
+		`Ubuntu Desktop`,
+		`Win 11 24H2`,
+		`Win 11 23H2`,
+		`Win 10 22H2`,
+		`ещё 1`,
+		`name="windows_profile_id"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("/answers missing %q in:\n%s", want, body)
+		}
+	}
+	for _, forbidden := range []string{`>Образ</th>`, `>Проверка установки</th>`, `Без привязки к ISO`, `Win 10 LTSC`, `name="profile_id"`} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("/answers contains forbidden %q", forbidden)
+		}
+	}
+
+	ed, _, _ := editorServer("operator", langRU)
+	edPage := editorGet(ed, "/answers/editor")
+	if edPage.Code != http.StatusOK || strings.Contains(edPage.Body.String(), `name="profile_id"`) {
+		t.Fatalf("/answers/editor status=%d or still has profile_id", edPage.Code)
 	}
 }

@@ -85,7 +85,7 @@ func configFixture() *driverConfigStore {
 	return &driverConfigStore{
 		driverPageStore: driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}, packages: []DriverPackage{{SHA256: hash, Inventory: drivers.Inventory{SHA256: hash, INFs: []drivers.INF{{Path: "net.inf", Architecture: "amd64", Class: "Net"}, {Path: "old.inf", Architecture: "x86"}}}}}},
 		profiles:        []WindowsProfile{{ID: 17, State: "ready", InstallFile: "install.wim", WindowsProfileSource: WindowsProfileSource{Title: "Windows 11", Folder: "Windows"}}},
-		answers:         []WindowsAnswerVariant{{ID: 4, ProfileID: 17, State: "ready", Size: 100, SHA256: strings.Repeat("d", 64)}},
+		answers:         []WindowsAnswerVariant{{ID: 4, State: "ready", Size: 100, SHA256: strings.Repeat("d", 64)}},
 	}
 }
 

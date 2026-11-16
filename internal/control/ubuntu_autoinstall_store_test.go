@@ -172,7 +172,7 @@ func TestUbuntuAutoinstallMigration(t *testing.T) {
 	}
 	if _, err := store.Pool.Exec(ctx, `
  INSERT INTO windows_profiles(storage_id,path,storage_root,size_bytes,modified_at,title) VALUES(1,'win.iso','/iso',100,now(),'Windows');
- INSERT INTO windows_answer_variants(profile_id,title,sha256,size_bytes) VALUES(1,'XML',repeat('a',64),10);
+ INSERT INTO windows_answer_variants(title,sha256,size_bytes) VALUES('XML',repeat('a',64),10);
  INSERT INTO winpe_driver_configs(profile_id,answer_id,title,selected_infs) VALUES(1,1,'Drivers','[{}]');
  INSERT INTO boot_profiles(kind,title) VALUES('windows_iso','Windows'),('ubuntu_builtin','Ubuntu');
  INSERT INTO windows_boot_profiles VALUES(1,1);

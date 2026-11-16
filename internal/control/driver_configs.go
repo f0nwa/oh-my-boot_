@@ -41,10 +41,12 @@ func SelectDriverConfig(form url.Values, profiles []WindowsProfile, answers []Wi
 	}
 	parentReady := false
 	service := false
+	var selectedProfile WindowsProfile
 	for _, profile := range profiles {
 		if profile.ID == profileID && profileBootable(profile) {
 			parentReady = true
 			service = profile.BootMode == agent.ISOStrelecMode
+			selectedProfile = profile
 			break
 		}
 	}
@@ -57,13 +59,16 @@ func SelectDriverConfig(form url.Values, profiles []WindowsProfile, answers []Wi
 	if answerID > 0 {
 		answerReady := false
 		for _, answer := range answers {
-			if answer.ID == answerID && answer.ProfileID == profileID && answer.State == "ready" && answer.Size > 0 && validAnswerHash(answer.SHA256) {
+			if answer.ID == answerID && answer.State == "ready" && answer.Size > 0 && validAnswerHash(answer.SHA256) {
+				if selectedProfile.WIMInfo.Known && EvaluateWindowsAnswerCompatibility(answer.Target, selectedProfile.WIMInfo).Status == "incompatible" {
+					return result, fmt.Errorf("answer scenario is incompatible with this Windows ISO")
+				}
 				answerReady = true
 				break
 			}
 		}
 		if !answerReady {
-			return result, fmt.Errorf("answer scenario is not ready for this ISO")
+			return result, fmt.Errorf("answer scenario is not ready")
 		}
 	}
 	selected, err := selectDriverINFs(form["inf"], packages)

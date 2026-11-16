@@ -9,19 +9,19 @@
 - **Contents on the left:** 12 sections — language and region, disk and setup, edition and key, name and time, accounts, Explorer and Start, appearance, network and VMs, remove apps, tweaks and security, scripts, custom XML. Marks: “changed” — the section differs from Windows defaults; a number — how many apps, scripts or custom XML elements; “N notes” — the section has notes.
 - **One section in the middle.** Above it are presets: “Windows defaults”, “Language and key only — disk by hand”, “Lab: local account, automatic sign-in”. A preset replaces all settings.
 - **Tabs on the right:** “Result” — a plain summary; “XML” — the whole file with changed lines highlighted; “Notes” — for example, plain-text passwords or Windows protection turned off. “Wipes the disk” appears when the file partitions the disk itself; its menu item gets “WIPES DISK”.
-- **Save to image** — ISO image, menu item title in Latin letters and folder. The file is saved as a new answer file of that image; it reaches the menu when picked in a new installation and the menu is published. Editing an existing file **always saves a new file**: the original and its menu item stay unchanged.
+- **Save script** — menu item title in Latin letters and folder (not tied to a single ISO image). The script is saved to the shared Windows script library and can be attached to any compatible Windows image when creating or editing an installation in New boot. Editing an existing file **always saves a new file**: the original and existing menu items stay unchanged.
 - **Download autounattend.xml** — the same file, for USB, ISO or checking.
 - The computer name field suggests names from the machine list.
 - Generator errors (“line longer than 255 characters”, “at least one administrator is needed” and so on) are shown above the form, and the input stays.
-- A file over 1 MB cannot be saved to an image but can be downloaded.
+- A file over 1 MB cannot be saved to the library but can be downloaded.
 - The page works without JavaScript: moving between sections, presets and “another row” submit the form. With JavaScript, sections switch in place and the summary and XML follow every change.
 
-Permissions: everyone can open and download; administrators and operators can save to an image. Audit: `windows-answer.create` marked `editor=1`. Computers in the trusted PXE segment can fetch the file, passwords and keys included; “Obscure passwords” is only base64 encoding.
+Permissions: everyone can open and download; administrators and operators can save scripts to the library. Audit: `windows-answer.create` marked `editor=1`. Computers in the trusted PXE segment can fetch the file, passwords and keys included; “Obscure passwords” is only base64 encoding.
 
 ## Partitioning in network installs
 
 - **“Windows Setup”** — the disk is chosen on the Setup screen; the answer file does not touch it. Works for every install.
-- **“Wipe and partition the disk automatically”** — a generated `pe.cmd` replaces Setup in the windowsPE pass: it picks the disk (by number, by size and type, or asks), partitions it (GPT/MBR by firmware, with or without a recovery partition), applies the image with `dism`, makes the system partition bootable and restarts. `pe.cmd` looks for the image as `<drive>:\sources\install.wim`, so for network installs the WinPE script of every answer file maps the profile folder once more as `I:` and copies the answer file to `X:\autounattend.xml`. Files saved to an image before 24.10.2026 lack this mapping; save them again to use `pe.cmd`.
+- **“Wipe and partition the disk automatically”** — a generated `pe.cmd` replaces Setup in the windowsPE pass: it picks the disk (by number, by size and type, or asks), partitions it (GPT/MBR by firmware, with or without a recovery partition), applies the image with `dism`, makes the system partition bootable and restarts. `pe.cmd` looks for the image as `<drive>:\sources\install.wim`, so for network installs the Windows image boot script (`omb-answer-setup.cmd`) maps the profile folder once more as `I:` and copies the selected script (`omb-answer.xml`) to `X:\autounattend.xml`. Windows profiles prepared previously can be updated by preparing the profile again.
 - **“Custom pe.cmd script”** — the same with your own script.
 
 ## How files open
@@ -45,9 +45,9 @@ Details: [internal/unattend/UPSTREAM.md](../../internal/unattend/UPSTREAM.md) (i
 
 ## Shared answer-file lists
 
-Library → Installation scripts has two tables: **Windows** and **Ubuntu**. Both have the same ten columns: name, image, added by, created, target disk / action, usage, state, installation check, SHA-256 and actions.
+Library → Installation scripts has two tables: **Windows** and **Ubuntu**. Both have the same ten columns: name, designed for, added by, created, target disk / action, usage, state, checks by image, SHA-256 and actions.
 
-“Added by” identifies the OMB account that created or uploaded the file, not necessarily the author of an external XML. Missing history is shown as “Unknown”. Creation dates include the time zone. Windows shows its bound image; current Ubuntu files show “Not bound to an ISO”, which does not imply compatibility with every ISO.
+“Added by” identifies the OMB account that created or uploaded the file, not necessarily the author of an external XML. Missing history is shown as “Unknown”. Creation dates include the time zone. “Designed for” shows extracted Windows script target chips (architecture, edition/index, language, partitioning, Win11 bypasses, key) or “Ubuntu Desktop” for Ubuntu; scripts are not hard-bound to a single ISO. When selecting a script in New boot (unified Installation script step starting with “No script — default”, capped at 5 items with search enabled when > 5 items), OMB runs three-layer compatibility checks against the selected Windows image: hard blocking mismatches (architecture, WIM index/edition), confirmable warnings (Win11 bypasses on Windows 10, language mismatch, MBR partitioning), and per-image manual verification status.
 
 “Ready” means the file has been saved and prepared for use in OMB. It does not confirm a successful OS installation. The state tooltip describes the checks performed; the SHA-256 tooltip contains the complete digest.
 
@@ -79,8 +79,8 @@ A dry run — the script on the current commit — changes no golden file or res
 
 ## Manual installation checks
 
-The Installation check column in both answer-file tables records an operator's test result. Ready still describes technical file preparation. New files and copies start without a check.
+The Checks by image column in both answer-file tables records operators' test results per image (up to three recent entries inline plus a button for remaining history). Ready still describes technical file preparation. New files and copies start without a check.
 
-After testing a scenario, open its hamburger menu → Record result…. Choose Installation succeeded or Installation failed, optionally enter the machine/model and a comment, then save. The server records the author and date. The latest entry determines the current result; History retains previous entries and loads longer histories in batches. Changed content requires a new check. The observation applies to this answer file and the described test conditions.
+After testing a scenario, open its hamburger menu → Record result…. For Windows scripts, optionally select the tested Windows image (or leave “Not selected (general check)”), choose Installation succeeded or Installation failed, optionally enter the machine/model and a comment, then save. The server records the author and date. The latest entry per image determines the current status for that image; History retains previous entries and loads longer histories in batches. Changed content requires a new check. The observation applies to this answer file and the described test conditions.
 
 Operators and administrators record results; observers can read history. Recording does not start an installation or require menu publication. Read failures are shown as unavailable information, not an untested file. Failed submissions keep the entered fields in the dialog.

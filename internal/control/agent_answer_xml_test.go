@@ -43,11 +43,11 @@ func TestAgentClientWindowsAnswerXML(t *testing.T) {
 	defer srv.Close()
 
 	c := NewAgentClient(socket)
-	got, err := c.WindowsAnswerXML(context.Background(), agent.WindowsAnswerCheck{ID: 4, ProfileID: 17, SHA256: strings.Repeat("a", 64)})
+	got, err := c.WindowsAnswerXML(context.Background(), agent.WindowsAnswerCheck{ID: 4, SHA256: strings.Repeat("a", 64)})
 	if err != nil || string(got) != body {
 		t.Fatalf("got %q %v", got, err)
 	}
-	if _, err := c.WindowsAnswerXML(context.Background(), agent.WindowsAnswerCheck{ID: 9, ProfileID: 17, SHA256: strings.Repeat("a", 64)}); err == nil || !strings.Contains(err.Error(), "409") {
+	if _, err := c.WindowsAnswerXML(context.Background(), agent.WindowsAnswerCheck{ID: 9, SHA256: strings.Repeat("a", 64)}); err == nil || !strings.Contains(err.Error(), "409") {
 		t.Fatalf("want 409, got %v", err)
 	}
 }

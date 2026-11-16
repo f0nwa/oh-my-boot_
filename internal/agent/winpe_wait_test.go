@@ -46,7 +46,6 @@ func setupWinPEWaitFixture(t *testing.T) (*Applier, *fakeRunner, string) {
 	}
 
 	profilesRoot := filepath.Join(dir, "tftp", "windows-profiles")
-	answersRoot := filepath.Join(dir, "tftp", "windows-answers")
 	driversRoot := filepath.Join(dir, "tftp", "windows-driver-configs")
 
 	baseScript, err := winpe.RenderProfileStartup(rawTemplate, strings.Repeat("A", 32), 17, "install.wim")
@@ -68,10 +67,10 @@ func setupWinPEWaitFixture(t *testing.T) (*Applier, *fakeRunner, string) {
 	}
 
 	for path, data := range map[string][]byte{
-		filepath.Join(profilesRoot, "17", "omb-setup.cmd"): baseScript,
-		filepath.Join(profilesRoot, "80", "omb-setup.cmd"): strelecScript,
-		filepath.Join(answersRoot, "31", "omb-setup.cmd"):  answerScript,
-		filepath.Join(driversRoot, "4", "omb-setup.cmd"):   driverScript,
+		filepath.Join(profilesRoot, "17", "omb-setup.cmd"):        baseScript,
+		filepath.Join(profilesRoot, "17", "omb-answer-setup.cmd"): answerScript,
+		filepath.Join(profilesRoot, "80", "omb-setup.cmd"):        strelecScript,
+		filepath.Join(driversRoot, "4", "omb-setup.cmd"):          driverScript,
 	} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -108,7 +107,6 @@ func setupWinPEWaitFixture(t *testing.T) (*Applier, *fakeRunner, string) {
 		CustomTemplatePath:  customTemplate,
 		DefaultTemplatePath: fallbackTemplate,
 		ProfileRoot:         profilesRoot,
-		AnswerRoot:          answersRoot,
 		DriverConfigRoot:    driversRoot,
 	}
 	return applier, runner, dir
@@ -140,7 +138,7 @@ func TestWinPEWaitUpdatesTemplateScriptsAndManifests(t *testing.T) {
 
 	for _, rel := range []string{
 		"tftp/windows-profiles/17/omb-setup.cmd",
-		"tftp/windows-answers/31/omb-setup.cmd",
+		"tftp/windows-profiles/17/omb-answer-setup.cmd",
 		"tftp/windows-driver-configs/4/omb-setup.cmd",
 	} {
 		data, err := os.ReadFile(filepath.Join(dir, rel))

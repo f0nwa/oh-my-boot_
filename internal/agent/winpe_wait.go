@@ -24,12 +24,11 @@ type DriverScriptUpdate struct {
 }
 
 // WinPEWaitUpdater updates the WinPE startup template and all prepared profile,
-// answer, Strelec, and driver-configuration startup scripts.
+// Strelec, and driver-configuration startup scripts.
 type WinPEWaitUpdater struct {
 	CustomTemplatePath  string
 	DefaultTemplatePath string
 	ProfileRoot         string
-	AnswerRoot          string
 	DriverConfigRoot    string
 }
 
@@ -100,13 +99,11 @@ func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int
 		})
 	}
 
-	for _, root := range []string{u.ProfileRoot, u.AnswerRoot} {
-		rootMutations, err := planScriptDirUpdates(root, attempts, retrySeconds)
-		if err != nil {
-			return nil, nil, err
-		}
-		mutations = append(mutations, rootMutations...)
+	profileMutations, err := planScriptDirUpdates(u.ProfileRoot, attempts, retrySeconds)
+	if err != nil {
+		return nil, nil, err
 	}
+	mutations = append(mutations, profileMutations...)
 
 	driverMutations, updates, err := planDriverConfigUpdates(u.DriverConfigRoot, attempts, retrySeconds)
 	if err != nil {
@@ -151,33 +148,35 @@ func planScriptDirUpdates(root string, attempts, retrySeconds int) ([]fileMutati
 	}
 	var mutations []fileMutation
 	for _, id := range ids {
-		scriptPath := filepath.Join(root, strconv.FormatInt(id, 10), "omb-setup.cmd")
-		info, err := os.Lstat(scriptPath)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		if !info.Mode().IsRegular() || info.Size() == 0 {
-			return nil, fmt.Errorf("WinPE script %s is not a regular non-empty file", scriptPath)
-		}
-		oldBytes, err := os.ReadFile(scriptPath)
-		if err != nil {
-			return nil, err
-		}
-		newBytes, changed, err := winpe.UpdateStartupWait(oldBytes, attempts, retrySeconds)
-		if err != nil {
-			return nil, fmt.Errorf("update %s: %w", scriptPath, err)
-		}
-		if changed {
-			mutations = append(mutations, fileMutation{
-				path:       scriptPath,
-				mode:       info.Mode().Perm(),
-				existed:    true,
-				oldContent: oldBytes,
-				newContent: newBytes,
-			})
+		for _, scriptName := range []string{"omb-setup.cmd", "omb-answer-setup.cmd"} {
+			scriptPath := filepath.Join(root, strconv.FormatInt(id, 10), scriptName)
+			info, err := os.Lstat(scriptPath)
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			if !info.Mode().IsRegular() || info.Size() == 0 {
+				return nil, fmt.Errorf("WinPE script %s is not a regular non-empty file", scriptPath)
+			}
+			oldBytes, err := os.ReadFile(scriptPath)
+			if err != nil {
+				return nil, err
+			}
+			newBytes, changed, err := winpe.UpdateStartupWait(oldBytes, attempts, retrySeconds)
+			if err != nil {
+				return nil, fmt.Errorf("update %s: %w", scriptPath, err)
+			}
+			if changed {
+				mutations = append(mutations, fileMutation{
+					path:       scriptPath,
+					mode:       info.Mode().Perm(),
+					existed:    true,
+					oldContent: oldBytes,
+					newContent: newBytes,
+				})
+			}
 		}
 	}
 	return mutations, nil

@@ -21,8 +21,9 @@ type menuWindowsAnswerRef struct {
 	SHA256    string `json:"sha256"`
 }
 
-func menuWindowsAnswerRefs(script string) map[int64]menuWindowsAnswerRef {
-	selected := map[int64]menuWindowsAnswerRef{}
+func menuWindowsAnswerRefs(script string) []menuWindowsAnswerRef {
+	var selected []menuWindowsAnswerRef
+	seen := map[[2]int64]bool{}
 	for _, line := range strings.Split(script, "\n") {
 		if !strings.HasPrefix(line, menuAnswerMarker) {
 			continue
@@ -37,7 +38,11 @@ func menuWindowsAnswerRefs(script string) map[int64]menuWindowsAnswerRef {
 		}
 		for _, ref := range refs {
 			if ref.ID > 0 && ref.ProfileID > 0 && validAnswerHash(ref.SHA256) {
-				selected[ref.ID] = ref
+				key := [2]int64{ref.ID, ref.ProfileID}
+				if !seen[key] {
+					seen[key] = true
+					selected = append(selected, ref)
+				}
 			}
 		}
 		return selected

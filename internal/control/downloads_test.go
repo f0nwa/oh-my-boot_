@@ -61,12 +61,22 @@ func (s *downloadsStore) UpdateInstallation(_ context.Context, item Installation
 	}
 	return errors.New("missing download")
 }
+func (s *downloadsStore) SetWindowsProfileWIMInfo(_ context.Context, id int64, info agent.WindowsWIMInfo) error {
+	for i := range s.profiles {
+		if s.profiles[i].ID == id {
+			s.profiles[i].WIMInfo = info
+			return nil
+		}
+	}
+	return errors.New("missing source")
+}
 
 type downloadPreparer struct {
 	store  *downloadsStore
 	err    error
 	calls  int
 	req    agent.WindowsISORequest
+	wim    agent.WindowsWIMInfo
 	cancel context.CancelFunc
 }
 
@@ -82,9 +92,11 @@ func (p *downloadPreparer) PrepareWindowsISO(_ context.Context, req agent.Window
 	if req.BootMode == agent.ISOStrelecMode {
 		return agent.WindowsISOResult{}, p.err
 	}
-	return agent.WindowsISOResult{InstallFile: "install.wim"}, p.err
+	return agent.WindowsISOResult{InstallFile: "install.wim", WIMInfo: p.wim}, p.err
 }
-func (*downloadPreparer) CheckWindowsISO(context.Context, agent.WindowsISORequest) error { return nil }
+func (*downloadPreparer) CheckWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error) {
+	return agent.WindowsISOResult{}, nil
+}
 
 func downloadsServer(t *testing.T) (*Server, *downloadsStore, *downloadPreparer) {
 	t.Helper()
@@ -145,7 +157,7 @@ func TestDownloadPreparationErrorPersistsAndCanRetry(t *testing.T) {
 }
 
 func TestDownloadRejectsInvalidOptionsBeforeCreatingSource(t *testing.T) {
-	for _, extra := range []url.Values{{"title": {"Кириллица"}}, {"inf": {"bad"}}, {"answer_id": {"31"}}, {"folder": {"../escape"}}} {
+	for _, extra := range []url.Values{{"title": {"Кириллица"}}, {"inf": {"bad"}}, {"answer_id": {"999"}}, {"folder": {"../escape"}}} {
 		s, store, prep := downloadsServer(t)
 		form := url.Values{"boot_profile_id": {"iso:7:Windows-new.iso"}, "title": {"Windows"}}
 		for k, v := range extra {
@@ -371,5 +383,46 @@ func TestDownloadCanRetryInterruptedPreparation(t *testing.T) {
 	res := menuPost(t, s, "/installations/100/prepare", url.Values{})
 	if res.Code != http.StatusSeeOther || prep.calls != 2 || store.profiles[len(store.profiles)-1].State != "ready" {
 		t.Fatalf("retry status=%d calls=%d sources=%+v", res.Code, prep.calls, store.profiles)
+	}
+}
+
+func TestDownloadFlagsIncompatibleAnswerAfterISOInspection(t *testing.T) {
+	s, store, prep := downloadsServer(t)
+	prep.wim = agent.WindowsWIMInfo{
+		Known:  true,
+		Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 11 Home", EditionID: "Core", Architecture: "amd64", Languages: []string{"en-US"}}},
+	}
+	store.answers = append(store.answers, WindowsAnswerVariant{
+		ID:     35,
+		Title:  "ARM64 Ent",
+		State:  "ready",
+		Size:   12,
+		SHA256: strings.Repeat("e", 64),
+		Target: WindowsAnswerTarget{Architectures: []string{"arm64"}, ImageMode: "edition", EditionID: "enterprise"},
+	})
+	res := menuPost(t, s, "/installations", url.Values{
+		"boot_profile_id": {"iso:7:Windows-new.iso"},
+		"answer_id":       {"35"},
+		"package":         {strings.Repeat("a", 64)},
+		"title":           {"Mismatch"},
+	})
+	if res.Code != http.StatusSeeOther || prep.calls != 1 {
+		t.Fatalf("status=%d calls=%d", res.Code, prep.calls)
+	}
+	if !strings.Contains(res.Header().Get("Location"), url.QueryEscape("Загрузка сохранена. Подготовка не завершена; подробности в строке загрузки.")) {
+		t.Fatalf("expected incomplete preparation warning redirect, got %q", res.Header().Get("Location"))
+	}
+	foundError := false
+	for _, cfg := range store.configs {
+		if cfg.AnswerID == 35 && cfg.State == "error" && strings.Contains(cfg.Error, "несовместим") {
+			foundError = true
+		}
+	}
+	if !foundError {
+		t.Fatalf("driver config should fail compatibility without WinPE build, got %+v", store.configs)
+	}
+	body := libraryGet(t, s, "/installations")
+	if !strings.Contains(body, "несовместим") {
+		t.Fatalf("installations page lacks compatibility diagnostic: %s", body)
 	}
 }

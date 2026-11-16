@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
 	"omb/internal/agent"
 
 	"github.com/jackc/pgx/v5"
@@ -116,6 +118,12 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 	if !update && profile.Kind == BootProfileUbuntuISO && profile.UbuntuState != "verified" && profile.UbuntuState != "ready" && profile.UbuntuState != "error" {
 		return Installation{}, fmt.Errorf("Ubuntu source has not been verified")
 	}
+	var winProfile WindowsProfile
+	if isISOBootKind(profile.Kind) && profile.WindowsProfileID > 0 {
+		if err := tx.QueryRow(ctx, `SELECT id,wim_info FROM windows_profiles WHERE id=$1 FOR SHARE`, profile.WindowsProfileID).Scan(&winProfile.ID, &winProfile.WIMInfo); err != nil {
+			return Installation{}, err
+		}
+	}
 	// Lock selected components while validating and writing their references.
 	var configs []DriverConfig
 	if item.DriverConfigID > 0 {
@@ -133,7 +141,7 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 	}
 	if answerID > 0 {
 		var answer WindowsAnswerVariant
-		if err := tx.QueryRow(ctx, `SELECT id,profile_id FROM windows_answer_variants WHERE id=$1 FOR SHARE`, answerID).Scan(&answer.ID, &answer.ProfileID); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT id,state,target_summary FROM windows_answer_variants WHERE id=$1 FOR SHARE`, answerID).Scan(&answer.ID, &answer.State, &answer.Target); err != nil {
 			return Installation{}, err
 		}
 		answers = append(answers, answer)
@@ -148,6 +156,11 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 	}
 	if err := ValidateInstallation(item, profile, answers, configs, files); err != nil {
 		return Installation{}, err
+	}
+	if len(answers) > 0 && winProfile.WIMInfo.Known {
+		if res := EvaluateWindowsAnswerCompatibility(answers[0].Target, winProfile.WIMInfo); res.Status == "incompatible" {
+			return Installation{}, fmt.Errorf("%s", strings.Join(res.Errors, "; "))
+		}
 	}
 	if update {
 		if _, err := tx.Exec(ctx, `UPDATE installations SET title=$2,folder=$3,autoinstall_id=NULLIF($4,0) WHERE id=$1`, item.ID, item.Title, item.Folder, item.AutoinstallID); err != nil {

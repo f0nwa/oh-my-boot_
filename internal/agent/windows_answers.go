@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,27 +9,23 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-
-	"omb/internal/winpe"
 )
 
 type WindowsAnswerRequest struct {
-	ID        int64  `json:"id"`
-	ProfileID int64  `json:"profile_id"`
-	SHA256    string `json:"sha256"`
-	XML       []byte `json:"xml"`
+	ID     int64  `json:"id"`
+	SHA256 string `json:"sha256"`
+	XML    []byte `json:"xml"`
 }
 
 type WindowsAnswerCheck struct {
-	ID        int64  `json:"id"`
-	ProfileID int64  `json:"profile_id"`
-	SHA256    string `json:"sha256"`
+	ID     int64  `json:"id"`
+	SHA256 string `json:"sha256"`
 }
 
 func (m *WindowsISOManager) PrepareAnswer(_ context.Context, req WindowsAnswerRequest) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	check := WindowsAnswerCheck{ID: req.ID, ProfileID: req.ProfileID, SHA256: req.SHA256}
+	check := WindowsAnswerCheck{ID: req.ID, SHA256: req.SHA256}
 	if err := validWindowsAnswerRequest(check); err != nil {
 		return err
 	}
@@ -41,10 +36,6 @@ func (m *WindowsISOManager) PrepareAnswer(_ context.Context, req WindowsAnswerRe
 	if hex.EncodeToString(sum[:]) != req.SHA256 {
 		return fmt.Errorf("answer file hash differs")
 	}
-	script, err := m.answerStartup(req.ProfileID)
-	if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(m.AnswerRoot, 0750); err != nil {
 		return err
 	}
@@ -54,7 +45,7 @@ func (m *WindowsISOManager) PrepareAnswer(_ context.Context, req WindowsAnswerRe
 	}
 	final := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
 	if _, err := os.Lstat(final); err == nil {
-		return m.checkAnswerAssets(check, script)
+		return m.checkAnswerAssets(check)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -66,16 +57,13 @@ func (m *WindowsISOManager) PrepareAnswer(_ context.Context, req WindowsAnswerRe
 	if err := os.WriteFile(filepath.Join(stage, "omb-answer.xml"), req.XML, 0640); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(stage, "omb-setup.cmd"), script, 0640); err != nil {
-		return err
-	}
 	if err := os.Chmod(stage, 0750); err != nil {
 		return err
 	}
 	if err := os.Rename(stage, final); err != nil {
 		return err
 	}
-	return m.checkAnswerAssets(check, script)
+	return m.checkAnswerAssets(check)
 }
 
 func (m *WindowsISOManager) CheckAnswer(_ context.Context, req WindowsAnswerCheck) error {
@@ -84,15 +72,11 @@ func (m *WindowsISOManager) CheckAnswer(_ context.Context, req WindowsAnswerChec
 	if err := validWindowsAnswerRequest(req); err != nil {
 		return err
 	}
-	script, err := m.answerStartup(req.ProfileID)
-	if err != nil {
-		return err
-	}
-	return m.checkAnswerAssets(req, script)
+	return m.checkAnswerAssets(req)
 }
 
 func validWindowsAnswerRequest(req WindowsAnswerCheck) error {
-	if req.ID <= 0 || req.ProfileID <= 0 || len(req.SHA256) != 64 {
+	if req.ID <= 0 || len(req.SHA256) != 64 {
 		return fmt.Errorf("invalid answer asset identity")
 	}
 	for _, c := range req.SHA256 {
@@ -103,42 +87,14 @@ func validWindowsAnswerRequest(req WindowsAnswerCheck) error {
 	return nil
 }
 
-func (m *WindowsISOManager) answerStartup(profileID int64) ([]byte, error) {
-	parent := filepath.Join(m.AssetRoot, strconv.FormatInt(profileID, 10))
-	if err := requireRegularISOFile(parent, "omb-setup.cmd"); err != nil {
-		return nil, err
-	}
-	base, err := os.ReadFile(filepath.Join(parent, "omb-setup.cmd"))
-	if err != nil {
-		return nil, err
-	}
-	return winpe.RenderAnswerStartup(base, profileID)
-}
-
-// legacyAnswerStartup is the script of variants prepared before the
-// profile folder was mapped for pe.cmd; such variants stay valid.
-func (m *WindowsISOManager) legacyAnswerStartup(profileID int64) []byte {
-	base, err := os.ReadFile(filepath.Join(m.AssetRoot, strconv.FormatInt(profileID, 10), "omb-setup.cmd"))
-	if err != nil {
-		return nil
-	}
-	legacy, err := winpe.RenderAnswerStartupLegacy(base, profileID)
-	if err != nil {
-		return nil
-	}
-	return legacy
-}
-
-func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck, expectedScript []byte) error {
+func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck) error {
 	final := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
 	info, err := os.Lstat(final)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("answer asset directory is unavailable")
 	}
-	for _, name := range []string{"omb-answer.xml", "omb-setup.cmd"} {
-		if err := requireRegularISOFile(final, name); err != nil {
-			return err
-		}
+	if err := requireRegularISOFile(final, "omb-answer.xml"); err != nil {
+		return err
 	}
 	xml, err := os.ReadFile(filepath.Join(final, "omb-answer.xml"))
 	if err != nil {
@@ -147,16 +103,6 @@ func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck, expectedSc
 	sum := sha256.Sum256(xml)
 	if hex.EncodeToString(sum[:]) != req.SHA256 {
 		return fmt.Errorf("answer asset hash differs")
-	}
-	script, err := os.ReadFile(filepath.Join(final, "omb-setup.cmd"))
-	if err != nil {
-		return err
-	}
-	if !bytes.Equal(script, expectedScript) {
-		legacy := m.legacyAnswerStartup(req.ProfileID)
-		if legacy == nil || !bytes.Equal(script, legacy) {
-			return fmt.Errorf("answer startup script differs")
-		}
 	}
 	return nil
 }

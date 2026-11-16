@@ -49,7 +49,7 @@ func TestWindowsISOAgentPreparesRegisteredSource(t *testing.T) {
 	mountRoot := t.TempDir()
 	assetRoot := t.TempDir()
 	systemctl := &fakeWindowsISOSystemctl{mountRoot: mountRoot, assetRoot: assetRoot}
-	manager := &WindowsISOManager{SourceRoot: base, ConfigRoot: t.TempDir(), MountRoot: mountRoot, AssetRoot: assetRoot, Systemctl: systemctl, Mounter: &fakeWindowsISOMounter{mounted: true}}
+	manager := &WindowsISOManager{SourceRoot: base, ConfigRoot: t.TempDir(), MountRoot: mountRoot, AssetRoot: assetRoot, Systemctl: systemctl, Mounter: &fakeWindowsISOMounter{mounted: true}, WIMCommands: fakeWIMInfoRunner{}}
 	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "win10.iso", Size: info.Size(), Modified: info.ModTime()}
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -57,12 +57,12 @@ func TestWindowsISOAgentPreparesRegisteredSource(t *testing.T) {
 	}
 	res := httptest.NewRecorder()
 	HandlerWithManagers(nil, nil, manager).ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/windows-iso/prepare", bytes.NewReader(body)))
-	if res.Code != http.StatusOK || !bytes.Contains(res.Body.Bytes(), []byte(`"install_file":"install.wim"`)) {
+	if res.Code != http.StatusOK || !bytes.Contains(res.Body.Bytes(), []byte(`"install_file":"install.wim"`)) || !bytes.Contains(res.Body.Bytes(), []byte(`"known":true`)) {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
 	check := httptest.NewRecorder()
 	HandlerWithManagers(nil, nil, manager).ServeHTTP(check, httptest.NewRequest(http.MethodPost, "/windows-iso/check", bytes.NewReader(body)))
-	if check.Code != http.StatusNoContent {
+	if check.Code != http.StatusOK || !bytes.Contains(check.Body.Bytes(), []byte(`"known":true`)) {
 		t.Fatalf("prepared profile status=%d: %s", check.Code, check.Body.String())
 	}
 }

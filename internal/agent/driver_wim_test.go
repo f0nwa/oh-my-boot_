@@ -31,7 +31,7 @@ func (f *fakeDriverRunner) Run(_ context.Context, input, name string, args ...st
 
 func setupDriverBuild(t *testing.T) (*DriverManager, string) {
 	t.Helper()
-	m := &DriverManager{Root: t.TempDir(), ProfileRoot: t.TempDir(), AnswerRoot: t.TempDir(), WIMRoot: t.TempDir(), ConfigRoot: t.TempDir(), Runner: &fakeDriverRunner{}}
+	m := &DriverManager{Root: t.TempDir(), ProfileRoot: t.TempDir(), WIMRoot: t.TempDir(), ConfigRoot: t.TempDir(), Runner: &fakeDriverRunner{}}
 	parent := filepath.Join(m.ProfileRoot, "17")
 	if err := os.Mkdir(parent, 0755); err != nil {
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func setupDriverBuild(t *testing.T) (*DriverManager, string) {
 	if err := os.WriteFile(filepath.Join(parent, "boot.wim"), []byte("fake source WIM"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(parent, "omb-setup.cmd"), []byte("@echo off\r\nwpeinit\r\nY:\\17\\sources\\setup.exe\r\n:failed\r\ncmd /k\r\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(parent, "omb-setup.cmd"), []byte("@echo off\r\nwpeinit\r\nnet use Y: \\\\10.30.0.10\\ombisos AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA /user:omb-iso\r\nY:\\17\\sources\\setup.exe /InstallFrom:Y:\\17\\sources\\install.wim\r\n:failed\r\ncmd /k\r\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	archive := driverArchive(t)
@@ -217,5 +217,26 @@ func TestPublishedDriverConfigKeepsItsFrozenStartupAfterRecipeChange(t *testing.
 	}
 	if err := m.CheckConfig(context.Background(), req, result); err == nil {
 		t.Fatal("accepted tampered published script")
+	}
+}
+
+func TestDriverWIMWithAnswerRendersAnswerStartupFromProfile(t *testing.T) {
+	m, hash := setupDriverBuild(t)
+	req := DriverBuildRequest{ConfigID: 15, ProfileID: 17, AnswerID: 42, PackageINFs: []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}}}
+	result, err := m.PrepareConfig(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.CheckConfig(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	script, err := os.ReadFile(filepath.Join(m.ConfigRoot, "15", "omb-setup.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"drvload", `/Unattend:X:\Windows\System32\omb-answer.xml`, "copy /y X:\\Windows\\System32\\omb-answer.xml X:\\autounattend.xml"} {
+		if !strings.Contains(string(script), want) {
+			t.Fatalf("driver script with answer missing %q:\n%s", want, script)
+		}
 	}
 }

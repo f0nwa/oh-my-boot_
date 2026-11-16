@@ -20,12 +20,8 @@ func TestAnswerFileMetadata(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	var pid int64
-	if err := store.Pool.QueryRow(ctx, `INSERT INTO windows_profiles(storage_id,path,storage_root,size_bytes,modified_at,title) VALUES(1,'test.iso','/test',1,now(),'Windows') RETURNING id`).Scan(&pid); err != nil {
-		t.Fatal(err)
-	}
 	disk := AnswerFileDisk{Kind: "wipe", Target: "Диск 2"}
-	saved, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{ProfileID: pid, Title: "Test", SHA256: strings.Repeat("a", 64), Size: 10, Disk: disk})
+	saved, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{Title: "Test", SHA256: strings.Repeat("a", 64), Size: 10, Disk: disk})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -47,7 +47,7 @@ func samplePageDataBase(lang string) pageData {
 	now := time.Date(2026, 10, 20, 1, 0, 0, 0, time.UTC)
 	cfg := network.Config{Mode: "proxy", Interface: "ens19", ServerIP: "10.30.0.10", Subnet: "10.30.0.0/24", DHCPStart: "10.30.0.100", DHCPEnd: "10.30.0.200", BootURL: "http://10.30.0.10:8080/boot/menu.ipxe", TFTPRoot: "/srv/omb/tftp"}
 	profile := WindowsProfile{ID: 2, WindowsProfileSource: WindowsProfileSource{StorageID: 6, Path: "win11.iso", Title: "Windows 11", Folder: "Windows"}, State: "unavailable", Error: "Исходный ISO изменился или недоступен"}
-	answer := WindowsAnswerVariant{ID: 3, ProfileID: 2, Title: "Lab", Folder: "Windows/Tests", State: "error", Error: "Не удалось подготовить сценарий"}
+	answer := WindowsAnswerVariant{ID: 3, Title: "Lab", Folder: "Windows/Tests", State: "error", Error: "Не удалось подготовить сценарий"}
 	config := DriverConfig{ID: 4, ProfileID: 2, AnswerID: 3, Title: "VirtIO", Folder: "Windows/Tests", PackageINFs: []agent.SelectedINF{{PackageSHA256: "abc", INFPath: "netkvm.inf"}}, State: "error", Error: "Не удалось подготовить WinPE: недостаточно свободного места"}
 	return pageData{
 		Lang:       lang,
@@ -74,7 +74,7 @@ func samplePageDataBase(lang string) pageData {
 		},
 		ISOImages:             []imageRow{{Image: images.Image{StorageID: 7, Path: "win10.iso", Size: 1, Present: true}, StorageName: "Upload"}, {Image: images.Image{StorageID: 7, Path: "arm64.iso", Present: false}, StorageName: "Upload", Problem: "ARM64 пока не поддерживается"}},
 		WindowsProfiles:       []WindowsProfile{profile, {ID: 3, WindowsProfileSource: WindowsProfileSource{Title: "Ready"}, State: "ready"}},
-		WindowsAnswerVariants: []WindowsAnswerVariant{answer, {ID: 5, ProfileID: 3, Title: "Ready", State: "ready", WipesDisk: &wipesTrue}, {ID: 6, ProfileID: 3, Title: "Safe", State: "ready", WipesDisk: &wipesFalse}},
+		WindowsAnswerVariants: []WindowsAnswerVariant{answer, {ID: 5, Title: "Ready", State: "ready", WipesDisk: &wipesTrue}, {ID: 6, Title: "Safe", State: "ready", WipesDisk: &wipesFalse}},
 		PackageChoices:        []packageChoice{{SHA256: "abc", Label: "netkvm", INFs: []infChoice{{Value: "abc:netkvm.inf", Label: "netkvm.inf · Net"}}}, {SHA256: "def", Label: "netkvm, vioscsi", INFs: []infChoice{{Value: "def:netkvm.inf", Label: "netkvm.inf · Net"}, {Value: "def:vioscsi.inf", Label: "vioscsi.inf · SCSIAdapter"}}}},
 		DriverPackages:        []DriverPackage{{SHA256: "abc", Inventory: drivers.Inventory{Files: []drivers.File{{}}, INFs: []drivers.INF{{Path: "netkvm.inf", Architecture: "amd64", Class: "Net", HardwareIDs: []string{"PCI\\VEN_1AF4"}}}}}},
 		DriverConfigs:         []DriverConfig{config},

@@ -6,10 +6,33 @@
   var retryDialog = document.getElementById('smb-retry-dialog');
   var nfsRetryDialog = document.getElementById('nfs-retry-dialog');
   var renameDialog = document.getElementById('storage-rename-dialog');
+  var renameForm = renameDialog && renameDialog.querySelector('form');
+  var renameNameInput = document.getElementById('storage-rename-name');
+  var renameSave = renameDialog && renameDialog.querySelector('[data-storage-rename-save]');
   var deleteDialog = document.getElementById('storage-delete-dialog') || document.getElementById('smb-delete-dialog');
   var recoveryDialog = document.getElementById('storage-recovery-dialog');
   var recoveryForm = document.getElementById('storage-recovery-settings');
   var recoverySave = recoveryDialog && recoveryDialog.querySelector('[data-storage-recovery-save]');
+
+  function updateRenameSave() {
+    if (!renameNameInput || !renameSave) {
+      return;
+    }
+    var current = renameNameInput.value.trim();
+    var initial = (renameNameInput.defaultValue || '').trim();
+    renameSave.disabled = !current || current === initial || !renameNameInput.validity.valid;
+  }
+
+  if (renameForm) {
+    renameForm.addEventListener('input', updateRenameSave);
+    renameForm.addEventListener('change', updateRenameSave);
+    renameForm.addEventListener('submit', function (event) {
+      updateRenameSave();
+      if (renameSave.disabled) {
+        event.preventDefault();
+      }
+    });
+  }
 
   function updateRecoverySave() {
     if (!recoveryForm || !recoverySave) {
@@ -168,11 +191,13 @@
       var renameNameInput = document.getElementById('storage-rename-name');
       if (renameNameInput) {
         renameNameInput.value = renameName;
+        renameNameInput.defaultValue = renameName;
       }
       var renamePathEl = document.getElementById('storage-rename-path');
       if (renamePathEl) {
         renamePathEl.textContent = renamePath;
       }
+      updateRenameSave();
       renameDialog.showModal();
       if (renameNameInput) {
         renameNameInput.focus();

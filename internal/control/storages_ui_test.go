@@ -33,7 +33,7 @@ func TestStoragesScriptEndpoint(t *testing.T) {
 		"smb-create-dialog", "data-smb-add",
 		"nfs-create-dialog", "data-nfs-add",
 		"nfs-retry-dialog", "data-nfs-retry-id",
-		"storage-rename-dialog", "data-storage-rename-id",
+		"storage-rename-dialog", "data-storage-rename-id", "data-storage-rename-save",
 		"storage-delete-dialog", "data-storage-delete-id",
 		"data-close-dialog",
 	} {
@@ -66,6 +66,8 @@ func TestStoragesPageConnectStorageMenuAndModals(t *testing.T) {
 			`id="storage-rename-dialog"`,
 			`action="/images/storages/0/rename"`,
 			`id="storage-rename-name"`,
+			`data-storage-rename-save`,
+			`disabled`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("/storages (%s) missing %q", lang, want)

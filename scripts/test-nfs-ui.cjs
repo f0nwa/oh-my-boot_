@@ -108,7 +108,24 @@ const path = require('node:path');
               await renameBtn.click();
               const renameDialog = page.locator('#storage-rename-dialog');
               assert.equal(await renameDialog.isVisible(), true, 'Storage rename dialog opened');
-              assert.equal(await renameDialog.locator('#storage-rename-name').isVisible(), true, 'Rename name input visible');
+              const nameInput = renameDialog.locator('#storage-rename-name');
+              const saveBtn = renameDialog.locator('[data-storage-rename-save]');
+              assert.equal(await nameInput.isVisible(), true, 'Rename name input visible');
+              assert.equal(await saveBtn.isDisabled(), true, 'Save button initially disabled');
+
+              // Type new name -> becomes enabled
+              await nameInput.fill('Changed Name');
+              assert.equal(await saveBtn.isDisabled(), false, 'Save button enabled when name changed');
+
+              // Empty or spaces only -> becomes disabled
+              await nameInput.fill('   ');
+              assert.equal(await saveBtn.isDisabled(), true, 'Save button disabled on empty name');
+
+              // Restore original name -> becomes disabled
+              const originalName = (await renameBtn.getAttribute('data-storage-rename-name')) || '';
+              await nameInput.fill(originalName);
+              assert.equal(await saveBtn.isDisabled(), true, 'Save button disabled when restored to original');
+
               await renameDialog.locator('[data-close-dialog]').click();
               assert.equal(await renameDialog.isVisible(), false, 'Storage rename dialog closed');
             }

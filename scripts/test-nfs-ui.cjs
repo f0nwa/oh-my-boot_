@@ -102,6 +102,16 @@ const path = require('node:path');
               assert.equal(await retryDialog.isVisible(), true, 'NFS retry dialog opened');
               await retryDialog.locator('[data-close-dialog]').click();
             }
+
+            const renameBtn = rowMenu.locator('[data-storage-rename-id]');
+            if (await renameBtn.count() > 0) {
+              await renameBtn.click();
+              const renameDialog = page.locator('#storage-rename-dialog');
+              assert.equal(await renameDialog.isVisible(), true, 'Storage rename dialog opened');
+              assert.equal(await renameDialog.locator('#storage-rename-name').isVisible(), true, 'Rename name input visible');
+              await renameDialog.locator('[data-close-dialog]').click();
+              assert.equal(await renameDialog.isVisible(), false, 'Storage rename dialog closed');
+            }
           }
         }
       }

@@ -45,6 +45,9 @@ func (r *httpRepository) SetUploadsEnabled(_ context.Context, _ int64, _ bool) e
 	return nil
 }
 func (r *httpRepository) DeleteNFS(_ context.Context, _ int64) error    { return nil }
+func (r *httpRepository) RenameStorage(_ context.Context, _ int64, _ string) error {
+	return nil
+}
 func (r *httpRepository) RecordUpload(_ context.Context, _ Image) error { return nil }
 func (r *httpRepository) SaveScan(ctx context.Context, id int64, found []Image, otherBytes int64) error {
 	err := r.memoryRepository.SaveScan(ctx, id, found, otherBytes)

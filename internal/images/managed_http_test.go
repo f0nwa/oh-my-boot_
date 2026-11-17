@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type managedHTTPRepository struct {
@@ -54,6 +56,21 @@ func (r *managedHTTPRepository) SetUploadsEnabled(_ context.Context, id int64, e
 func (r *managedHTTPRepository) DeleteNFS(_ context.Context, id int64) error {
 	r.deletedNFS = true
 	delete(r.storages, id)
+	return nil
+}
+
+func (r *managedHTTPRepository) RenameStorage(_ context.Context, id int64, name string) error {
+	s, ok := r.storages[id]
+	if !ok {
+		return pgx.ErrNoRows
+	}
+	for otherID, other := range r.storages {
+		if otherID != id && other.Name == name {
+			return ErrStorageNameTaken
+		}
+	}
+	s.Name = name
+	r.storages[id] = s
 	return nil
 }
 
@@ -187,6 +204,59 @@ func TestManagedNFSStorageAPIRejectsInvalidInput(t *testing.T) {
 		handler.ServeHTTP(res, httptest.NewRequest("POST", "/nfs-storages", strings.NewReader(body)))
 		if res.Code != http.StatusBadRequest {
 			t.Fatalf("invalid request body=%s status=%d", body, res.Code)
+		}
+	}
+}
+
+func TestRenameStorageAPI(t *testing.T) {
+	repo := &managedHTTPRepository{httpRepository: httpRepository{memoryRepository: memoryRepository{
+		storages: map[int64]Storage{
+			1: {ID: 1, Name: "Existing Storage", Kind: "smb"},
+			2: {ID: 2, Name: "Another Storage", Kind: "nfs"},
+		},
+		images: map[int64]map[string]Image{},
+		state:  map[int64]string{},
+	}}}
+	handler := NewServer(repo).Handler()
+
+	// 1. Success
+	resOK := httptest.NewRecorder()
+	handler.ServeHTTP(resOK, httptest.NewRequest("POST", "/storages/1/rename", strings.NewReader(`{"name":"New Name"}`)))
+	if resOK.Code != http.StatusOK {
+		t.Fatalf("rename status=%d body=%s", resOK.Code, resOK.Body.String())
+	}
+	if repo.storages[1].Name != "New Name" {
+		t.Fatalf("expected storage 1 name 'New Name', got %q", repo.storages[1].Name)
+	}
+
+	// 2. Duplicate name (409 Conflict)
+	resDup := httptest.NewRecorder()
+	handler.ServeHTTP(resDup, httptest.NewRequest("POST", "/storages/1/rename", strings.NewReader(`{"name":"Another Storage"}`)))
+	if resDup.Code != http.StatusConflict {
+		t.Fatalf("duplicate status=%d body=%s", resDup.Code, resDup.Body.String())
+	}
+
+	// 3. Not found (404 Not Found)
+	resNotFound := httptest.NewRecorder()
+	handler.ServeHTTP(resNotFound, httptest.NewRequest("POST", "/storages/999/rename", strings.NewReader(`{"name":"Valid Name"}`)))
+	if resNotFound.Code != http.StatusNotFound {
+		t.Fatalf("not found status=%d body=%s", resNotFound.Code, resNotFound.Body.String())
+	}
+
+	// 4. Invalid name: empty, whitespace-only, too long (>120 runes), extra fields
+	tooLong := strings.Repeat("a", 121)
+	for _, body := range []string{
+		`{"name":""}`,
+		`{"name":"   "}`,
+		`{"name":"` + tooLong + `"}`,
+		`{"name":"Valid","extra":true}`,
+		`{}`,
+		`invalid json`,
+	} {
+		resBad := httptest.NewRecorder()
+		handler.ServeHTTP(resBad, httptest.NewRequest("POST", "/storages/1/rename", strings.NewReader(body)))
+		if resBad.Code != http.StatusBadRequest {
+			t.Fatalf("invalid name body=%s status=%d", body, resBad.Code)
 		}
 	}
 }

@@ -2,13 +2,21 @@ package images
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"omb/internal/nfsstorage"
 	"omb/internal/smbstorage"
+)
+
+var (
+	ErrStorageNameTaken   = errors.New("storage name is already in use")
+	ErrInvalidStorageName = errors.New("invalid storage name")
 )
 
 type Catalog struct {
@@ -109,6 +117,28 @@ func (s Store) SetUploadsEnabled(ctx context.Context, id int64, enabled bool) er
 func (s Store) DeleteNFS(ctx context.Context, id int64) error {
 	command, err := s.Pool.Exec(ctx, "DELETE FROM storages WHERE id=$1 AND kind='nfs'", id)
 	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s Store) RenameStorage(ctx context.Context, id int64, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || utf8.RuneCountInString(name) > 120 {
+		return ErrInvalidStorageName
+	}
+	command, err := s.Pool.Exec(ctx, "UPDATE storages SET name=$2 WHERE id=$1", id, name)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return ErrStorageNameTaken
+		}
+		if strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "storages_name_key") {
+			return ErrStorageNameTaken
+		}
 		return err
 	}
 	if command.RowsAffected() == 0 {

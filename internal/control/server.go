@@ -88,6 +88,7 @@ type ImagesAPI interface {
 	MarkNFSError(context.Context, int64) error
 	MarkNFSScanError(context.Context, int64) error
 	DeleteNFS(context.Context, int64) error
+	RenameStorage(context.Context, int64, string) error
 	DeleteImage(context.Context, int64, string) error
 }
 
@@ -340,6 +341,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/nfs", s.protect("nfs", withPageErrors(s.storagesPage, s.imagesNFSCreate)))
 	mux.HandleFunc("POST /images/nfs/{id}/retry", s.protect("nfs", withPageErrors(s.storagesPage, s.imagesNFSRetry)))
 	mux.HandleFunc("POST /images/nfs/{id}/remove", s.protect("nfs", withPageErrors(s.storagesPage, s.imagesNFSRemove)))
+	mux.HandleFunc("POST /images/storages/{id}/rename", s.protect("smb", withPageErrors(s.storagesPage, s.storageRename)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"omb/internal/agent"
@@ -335,6 +336,18 @@ func (c *ImagesClient) MarkNFSScanError(ctx context.Context, id int64) error {
 
 func (c *ImagesClient) DeleteNFS(ctx context.Context, id int64) error {
 	return localCall(ctx, c.http, "DELETE", "/nfs-storages/"+strconv.FormatInt(id, 10), nil, nil)
+}
+
+func (c *ImagesClient) RenameStorage(ctx context.Context, id int64, name string) error {
+	body, err := json.Marshal(map[string]string{"name": name})
+	if err != nil {
+		return err
+	}
+	err = localCall(ctx, c.http, "POST", "/storages/"+strconv.FormatInt(id, 10)+"/rename", body, nil)
+	if err != nil && (strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "storage name already taken")) {
+		return images.ErrStorageNameTaken
+	}
+	return err
 }
 
 func (c *ImagesClient) DeleteImage(ctx context.Context, id int64, path string) error {

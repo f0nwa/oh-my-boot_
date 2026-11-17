@@ -57,6 +57,23 @@ func (f *fakeImagesAPI) SetNFSUploads(context.Context, int64, bool) error     { 
 func (f *fakeImagesAPI) MarkNFSError(context.Context, int64) error            { return f.err }
 func (f *fakeImagesAPI) MarkNFSScanError(context.Context, int64) error        { return f.err }
 func (f *fakeImagesAPI) DeleteNFS(context.Context, int64) error               { return f.err }
+func (f *fakeImagesAPI) RenameStorage(_ context.Context, id int64, name string) error {
+	if f.err != nil {
+		return f.err
+	}
+	for _, s := range f.catalog.Storages {
+		if s.ID != id && s.Name == name {
+			return images.ErrStorageNameTaken
+		}
+	}
+	for i, s := range f.catalog.Storages {
+		if s.ID == id {
+			f.catalog.Storages[i].Name = name
+			return nil
+		}
+	}
+	return errors.New("storage not found")
+}
 func (f *fakeImagesAPI) Folders(context.Context, int64) ([]string, error) { return f.folders, f.err }
 func (f *fakeImagesAPI) DeleteImage(_ context.Context, id int64, path string) error {
 	if f.deleteErr != nil {

@@ -33,6 +33,7 @@ func TestStoragesScriptEndpoint(t *testing.T) {
 		"smb-create-dialog", "data-smb-add",
 		"nfs-create-dialog", "data-nfs-add",
 		"nfs-retry-dialog", "data-nfs-retry-id",
+		"storage-rename-dialog", "data-storage-rename-id",
 		"storage-delete-dialog", "data-storage-delete-id",
 		"data-close-dialog",
 	} {
@@ -61,20 +62,24 @@ func TestStoragesPageConnectStorageMenuAndModals(t *testing.T) {
 			`name="version"`,
 			`data-close-dialog`,
 			`src="/assets/storages.js"`,
+			`data-storage-rename-id=`,
+			`id="storage-rename-dialog"`,
+			`action="/images/storages/0/rename"`,
+			`id="storage-rename-name"`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("/storages (%s) missing %q", lang, want)
 			}
 		}
 		if lang == langRU {
-			for _, want := range []string{"Подключить хранилище", "Подключить SMB", "Подключить NFS", "Версия протокола"} {
+			for _, want := range []string{"Подключить хранилище", "Подключить SMB", "Подключить NFS", "Версия протокола", "Переименовать…", "Переименовать хранилище", "Название хранилища"} {
 				if !strings.Contains(body, want) {
 					t.Fatalf("/storages (ru) missing %q", want)
 				}
 			}
 		}
 		if lang == langEN {
-			for _, want := range []string{"Connect storage", "Connect SMB", "Connect NFS", "Protocol version"} {
+			for _, want := range []string{"Connect storage", "Connect SMB", "Connect NFS", "Protocol version", "Rename…", "Rename storage", "Storage name"} {
 				if !strings.Contains(body, want) {
 					t.Fatalf("/storages (en) missing %q", want)
 				}
@@ -168,6 +173,7 @@ func TestStoragesPageUsesRowMenuAndRetryModalWithNoDetails(t *testing.T) {
 	if !strings.Contains(opBody, `action="/images/scan"`) || !strings.Contains(opBody, `data-row-menu`) ||
 		strings.Contains(opBody, `data-smb-retry-id=`) || strings.Contains(opBody, `data-nfs-retry-id=`) ||
 		strings.Contains(opBody, `id="smb-retry-dialog"`) || strings.Contains(opBody, `id="nfs-retry-dialog"`) ||
+		strings.Contains(opBody, `data-storage-rename-id=`) || strings.Contains(opBody, `id="storage-rename-dialog"`) ||
 		strings.Contains(opBody, `data-storage-delete-id=`) || strings.Contains(opBody, `id="storage-delete-dialog"`) {
 		t.Fatalf("operator permissions mismatch on /storages")
 	}
@@ -175,6 +181,7 @@ func TestStoragesPageUsesRowMenuAndRetryModalWithNoDetails(t *testing.T) {
 	obs := sampleSpaceTestServer("observer", langRU, fakeDiskUsageAPI{})
 	obsBody := libraryGet(t, obs, "/storages")
 	if strings.Contains(obsBody, `action="/images/scan"`) || strings.Contains(obsBody, `data-row-menu`) ||
+		strings.Contains(obsBody, `data-storage-rename-id=`) || strings.Contains(obsBody, `id="storage-rename-dialog"`) ||
 		strings.Contains(obsBody, `data-storage-delete-id=`) || strings.Contains(obsBody, `id="storage-delete-dialog"`) {
 		t.Fatalf("observer permissions mismatch on /storages")
 	}

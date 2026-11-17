@@ -5,6 +5,7 @@
   var nfsDialog = document.getElementById('nfs-create-dialog');
   var retryDialog = document.getElementById('smb-retry-dialog');
   var nfsRetryDialog = document.getElementById('nfs-retry-dialog');
+  var renameDialog = document.getElementById('storage-rename-dialog');
   var deleteDialog = document.getElementById('storage-delete-dialog') || document.getElementById('smb-delete-dialog');
   var recoveryDialog = document.getElementById('storage-recovery-dialog');
   var recoveryForm = document.getElementById('storage-recovery-settings');
@@ -143,6 +144,39 @@
       nfsRetryDialog.showModal();
       if (nfsVersionEl) {
         nfsVersionEl.focus();
+      }
+      return;
+    }
+
+    var renameBtn = event.target.closest('[data-storage-rename-id]');
+    if (renameBtn && renameDialog && typeof renameDialog.showModal === 'function') {
+      event.preventDefault();
+      hideClosestPopover(renameBtn);
+      var renameId = renameBtn.getAttribute('data-storage-rename-id') || '';
+      var renameName = renameBtn.getAttribute('data-storage-rename-name') || '';
+      var renamePath = renameBtn.getAttribute('data-storage-rename-path') || '';
+
+      var renameForm = renameDialog.querySelector('form');
+      if (renameForm) {
+        renameForm.reset();
+        renameForm.action = '/images/storages/' + encodeURIComponent(renameId) + '/rename';
+      }
+      var renameIdInput = document.getElementById('storage-rename-id');
+      if (renameIdInput) {
+        renameIdInput.value = renameId;
+      }
+      var renameNameInput = document.getElementById('storage-rename-name');
+      if (renameNameInput) {
+        renameNameInput.value = renameName;
+      }
+      var renamePathEl = document.getElementById('storage-rename-path');
+      if (renamePathEl) {
+        renamePathEl.textContent = renamePath;
+      }
+      renameDialog.showModal();
+      if (renameNameInput) {
+        renameNameInput.focus();
+        renameNameInput.select();
       }
       return;
     }

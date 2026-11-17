@@ -11,7 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"omb/internal/nfsstorage"
 	"omb/internal/smbstorage"
 )
@@ -26,6 +28,7 @@ type APIRepository interface {
 	UpdateNFSConfig(context.Context, int64, string) error
 	SetUploadsEnabled(context.Context, int64, bool) error
 	DeleteNFS(context.Context, int64) error
+	RenameStorage(context.Context, int64, string) error
 	RecordUpload(context.Context, Image) error
 	DeleteImage(context.Context, int64, string) error
 }
@@ -229,6 +232,46 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /storages/{id}/rename", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid storage ID", http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			Name string `json:"name"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(w, "invalid rename request", http.StatusBadRequest)
+			return
+		}
+		if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid rename request", http.StatusBadRequest)
+			return
+		}
+		name := strings.TrimSpace(input.Name)
+		if name == "" || utf8.RuneCountInString(name) > 120 {
+			http.Error(w, "invalid storage name", http.StatusBadRequest)
+			return
+		}
+		if err := s.repo.RenameStorage(r.Context(), id, name); err != nil {
+			if errors.Is(err, ErrStorageNameTaken) {
+				http.Error(w, "storage name already taken", http.StatusConflict)
+				return
+			}
+			if errors.Is(err, pgx.ErrNoRows) {
+				http.Error(w, "storage not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, "cannot rename storage", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
 	mux.HandleFunc("GET /catalog", func(w http.ResponseWriter, r *http.Request) {
 		catalog, err := s.repo.Catalog(r.Context())

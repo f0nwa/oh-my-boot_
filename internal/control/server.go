@@ -92,6 +92,11 @@ type ImagesAPI interface {
 	DeleteImage(context.Context, int64, string) error
 	CatalogSettings(context.Context) (images.CatalogSettings, error)
 	SetCatalogSettings(context.Context, images.CatalogSettings) (images.CatalogSettings, error)
+	StartMigration(ctx context.Context, sourceStorageID int64, path string, targetStorageID int64) (*images.MigrationJob, error)
+	ListMigrations(ctx context.Context) ([]*images.MigrationJob, error)
+	GetMigration(ctx context.Context, id string) (*images.MigrationJob, error)
+	CancelMigration(ctx context.Context, id string) error
+	CommitDeleteSource(ctx context.Context, id string) error
 }
 
 type SMBMountAPI interface {
@@ -110,11 +115,13 @@ type NFSMountAPI interface {
 type WindowsISOAPI interface {
 	PrepareWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error)
 	CheckWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error)
+	RebindWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error)
 }
 
 type UbuntuISOAPI interface {
 	InspectUbuntuISO(context.Context, agent.WindowsISORequest) (agent.UbuntuISOInspection, error)
 	PrepareUbuntuISO(context.Context, agent.UbuntuISORequest) error
+	RebindUbuntuISO(context.Context, agent.UbuntuISORequest) error
 }
 
 type WindowsAnswerAPI interface {
@@ -327,8 +334,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
 	mux.HandleFunc("GET /assets/image-delete.js", imageDeleteScript)
+	mux.HandleFunc("GET /assets/image-migrate.js", imageMigrateScript)
 	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
 	mux.HandleFunc("POST /images/delete", s.protect("delete", withPageErrors(s.imagesPage, s.imageDelete)))
+	mux.HandleFunc("POST /images/migrate", s.protect("delete", withPageErrors(s.imagesPage, s.imageMigrate)))
+	mux.HandleFunc("GET /api/images/migrations", s.protect("view", s.imageMigrationsAPI))
+	mux.HandleFunc("POST /images/migrate/{id}/cancel", s.protect("delete", s.imageMigrateCancel))
 	mux.HandleFunc("GET /assets/iso-check.js", isoCheckScript)
 	mux.HandleFunc("GET /assets/image-details.js", imageDetailsScript)
 	mux.HandleFunc("POST /images/name", s.protect("images", withPageErrors(s.imagesPage, s.imageNameSave)))
@@ -423,13 +434,27 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 			} else if r.Pattern == "POST /answers/upload" || r.Pattern == "POST /answers/{id}/inspect" {
 				r.Body = http.MaxBytesReader(w, r.Body, maxWindowsAnswerBytes+(32<<10))
 				err = r.ParseMultipartForm(2 << 20)
+			} else if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+				r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+				err = r.ParseMultipartForm(64 << 10)
 			} else {
 				r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 				err = r.ParseForm()
 			}
-			if r.Pattern != "POST /images/upload/{id}" && (err != nil || !CheckCSRF(cookie.Value, r.FormValue("csrf"))) {
+			csrf := r.FormValue("csrf")
+			if csrf == "" {
+				csrf = r.Header.Get("X-CSRF-Token")
+			}
+			if r.Pattern != "POST /images/upload/{id}" && (err != nil || !CheckCSRF(cookie.Value, csrf)) {
 				_ = s.Store.Audit(r.Context(), user.ID, "denied:"+action, "csrf", "")
-				http.Error(w, translate(normalizeLanguage(user.Language), "Недействительный токен формы"), http.StatusForbidden)
+				msg := translate(normalizeLanguage(user.Language), "Недействительный токен формы")
+				if strings.Contains(r.Header.Get("Accept"), "application/json") || r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+					return
+				}
+				http.Error(w, msg, http.StatusForbidden)
 				return
 			}
 		}

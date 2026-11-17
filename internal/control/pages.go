@@ -31,6 +31,7 @@ type imageRow struct {
 	CleanupProfileID    int64
 	Downloads           []imageDownload
 	DeleteBlockedReason string
+	ActiveMigration     *images.MigrationJob
 }
 
 func (r imageRow) MatchesTab(tab string) bool {
@@ -240,6 +241,7 @@ func parsePages(lang string) *template.Template {
 		"filterList":      installationFilters,
 		"imageFilterList": imageFilters,
 		"size":            func(n int64) string { return humanSize(lang, n) },
+		"hasEnoughSpace":  func(free, size int64) bool { return free >= size+(512<<20) },
 		"arch":            isoArch,
 		"usedPercent":     usedPercent,
 		"usedBytes":       func(total, free int64) int64 { return max(total-free, 0) },

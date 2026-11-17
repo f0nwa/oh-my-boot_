@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS ubuntu_sources (
 );
 CREATE OR REPLACE FUNCTION reject_ubuntu_source_identity_update() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
- IF (OLD.boot_profile_id, OLD.storage_id, OLD.path, OLD.sha256) IS DISTINCT FROM (NEW.boot_profile_id, NEW.storage_id, NEW.path, NEW.sha256) THEN
+ IF (OLD.boot_profile_id, OLD.path, OLD.sha256) IS DISTINCT FROM (NEW.boot_profile_id, NEW.path, NEW.sha256) OR NEW.storage_id <= 0 THEN
   RAISE EXCEPTION 'Ubuntu source identity is immutable';
  END IF;
  RETURN NEW;
@@ -274,3 +274,19 @@ ALTER TABLE answer_installation_checks ADD COLUMN IF NOT EXISTS profile_title TE
 CREATE INDEX IF NOT EXISTS answer_checks_windows_idx ON answer_installation_checks (windows_answer_id,id DESC) WHERE windows_answer_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS answer_checks_ubuntu_idx ON answer_installation_checks (ubuntu_autoinstall_id,id DESC) WHERE ubuntu_autoinstall_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS answer_checks_profile_idx ON answer_installation_checks (COALESCE(windows_answer_id,0), COALESCE(ubuntu_autoinstall_id,0), COALESCE(windows_profile_id,0), profile_title, id DESC);
+
+CREATE TABLE IF NOT EXISTS image_migrations (
+ id TEXT PRIMARY KEY,
+ source_storage_id BIGINT NOT NULL CHECK (source_storage_id > 0),
+ path TEXT NOT NULL,
+ target_storage_id BIGINT NOT NULL CHECK (target_storage_id > 0),
+ state TEXT NOT NULL CHECK (state IN ('copying', 'ready_to_rebind', 'rebinding', 'completed', 'failed', 'canceled')),
+ total_bytes BIGINT NOT NULL DEFAULT 0,
+ copied_bytes BIGINT NOT NULL DEFAULT 0,
+ error TEXT NOT NULL DEFAULT '',
+ user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS image_migrations_active_idx ON image_migrations (source_storage_id, path, state);
+

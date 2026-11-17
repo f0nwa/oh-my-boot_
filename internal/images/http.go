@@ -37,6 +37,7 @@ type APIRepository interface {
 
 type Server struct {
 	repo          APIRepository
+	migrations    *MigrationEngine
 	mu            sync.Mutex
 	active        map[int64]bool
 	uploads       map[int64]bool
@@ -48,7 +49,17 @@ type Server struct {
 }
 
 func NewServer(repo APIRepository) *Server {
-	return &Server{repo: repo, active: map[int64]bool{}, uploads: map[int64]bool{}, uploadRoot: smbstorage.UploadRoot, nfsUploadRoot: nfsstorage.UploadRoot, mountIdentity: MountIdentity, writable: Writable, space: Space}
+	return &Server{
+		repo:          repo,
+		migrations:    NewMigrationEngine(repo),
+		active:        map[int64]bool{},
+		uploads:       map[int64]bool{},
+		uploadRoot:    smbstorage.UploadRoot,
+		nfsUploadRoot: nfsstorage.UploadRoot,
+		mountIdentity: MountIdentity,
+		writable:      Writable,
+		space:         Space,
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -56,6 +67,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /storages/{id}/folders", s.folders)
 	mux.HandleFunc("POST /storages/{id}/upload", s.uploadISO)
 	mux.HandleFunc("DELETE /storages/{id}/images", s.deleteISO)
+	mux.HandleFunc("POST /images/migrate", s.startMigration)
+	mux.HandleFunc("GET /images/migrations", s.listMigrations)
+	mux.HandleFunc("GET /images/migrations/{id}", s.getMigration)
+	mux.HandleFunc("DELETE /images/migrations/{id}", s.cancelMigration)
+	mux.HandleFunc("POST /images/migrations/{id}/commit-delete-source", s.commitMigration)
 	// Earlier names, from when only SMB storages took uploads.
 	mux.HandleFunc("GET /smb-storages/{id}/folders", s.folders)
 	mux.HandleFunc("POST /smb-storages/{id}/upload", s.uploadISO)

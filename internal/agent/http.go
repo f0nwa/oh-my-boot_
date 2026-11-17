@@ -315,6 +315,27 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(result)
 	})
+	mux.HandleFunc("POST /windows-iso/rebind", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows ISO rebind unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req WindowsISORequest
+		if !decodeSMBRequest(w, r, &req) {
+			return
+		}
+		if _, err := resolveWindowsISOSourceRoots(windows.allowedRoots(), req, windows.LocalRoot); err != nil {
+			http.Error(w, "invalid Windows ISO source", http.StatusBadRequest)
+			return
+		}
+		result, err := windows.Rebind(r.Context(), req)
+		if err != nil {
+			http.Error(w, "Windows ISO rebind failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
+	})
 	mux.HandleFunc("POST /smb/mount", func(w http.ResponseWriter, r *http.Request) {
 		if manager == nil {
 			http.Error(w, "SMB unavailable", http.StatusServiceUnavailable)

@@ -135,7 +135,7 @@ func imageAuthorKey(storageID int64, path string) string {
 func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT a.action,a.detail,COALESCE(u.username,''),a.occurred_at
 		FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id
-		WHERE a.result='ok' AND a.action IN ('installation.create','windows-answer.create','ubuntu-autoinstall.create','iso.upload','driver.import','driver-config.create')
+		WHERE a.result='ok' AND a.action IN ('installation.create','windows-answer.create','ubuntu-autoinstall.create','iso.upload','iso.migrate','driver.import','driver-config.create')
 		ORDER BY a.id`)
 	if err != nil {
 		return ResourceAuthors{}, err
@@ -152,7 +152,7 @@ func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 		if err := rows.Scan(&action, &detail, &actor, &at); err != nil {
 			return ResourceAuthors{}, err
 		}
-		if actor == "" && action != "iso.upload" {
+		if actor == "" && action != "iso.upload" && action != "iso.migrate" {
 			continue
 		}
 		switch action {
@@ -191,6 +191,27 @@ func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 				}
 				if authors.Images[key] == "" {
 					authors.Images[key] = actor
+				}
+			}
+		case "iso.migrate":
+			fields := strings.Fields(detail)
+			if len(fields) >= 3 {
+				srcID, err1 := strconv.ParseInt(fields[0], 10, 64)
+				dstID, err2 := strconv.ParseInt(fields[1], 10, 64)
+				if err1 == nil && err2 == nil && srcID > 0 && dstID > 0 {
+					p := strings.Join(fields[2:], " ")
+					oldKey := imageAuthorKey(srcID, p)
+					newKey := imageAuthorKey(dstID, p)
+					if origTime, ok := authors.ImageUploadedAt[oldKey]; ok {
+						authors.ImageUploadedAt[newKey] = origTime
+					} else {
+						authors.ImageUploadedAt[newKey] = at
+					}
+					if origAuthor, ok := authors.Images[oldKey]; ok {
+						authors.Images[newKey] = origAuthor
+					} else if actor != "" {
+						authors.Images[newKey] = actor
+					}
 				}
 			}
 		case "driver.import":

@@ -94,6 +94,10 @@ func (p *downloadPreparer) PrepareWindowsISO(_ context.Context, req agent.Window
 	}
 	return agent.WindowsISOResult{InstallFile: "install.wim", WIMInfo: p.wim}, p.err
 }
+
+func (p *downloadPreparer) RebindWindowsISO(_ context.Context, _ agent.WindowsISORequest) (agent.WindowsISOResult, error) {
+	return agent.WindowsISOResult{InstallFile: "install.wim"}, nil
+}
 func (*downloadPreparer) CheckWindowsISO(context.Context, agent.WindowsISORequest) (agent.WindowsISOResult, error) {
 	return agent.WindowsISOResult{}, nil
 }

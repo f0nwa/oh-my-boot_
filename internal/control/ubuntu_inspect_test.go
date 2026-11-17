@@ -47,6 +47,9 @@ func (a *inspectUbuntuAgent) InspectISO(ctx context.Context, r agent.WindowsISOR
 func (*inspectUbuntuAgent) PrepareUbuntuISO(context.Context, agent.UbuntuISORequest) error {
 	return nil
 }
+func (*inspectUbuntuAgent) RebindUbuntuISO(context.Context, agent.UbuntuISORequest) error {
+	return nil
+}
 func TestInspectUbuntuISORequiresPresentCatalogFileAndValidInspection(t *testing.T) {
 	for _, tc := range []struct {
 		name, path string

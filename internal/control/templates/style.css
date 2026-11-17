@@ -690,8 +690,24 @@ td .mono.muted{color:var(--muted)}
 /* Align answer file actions with their row contents. */
 .answers-table td{vertical-align:middle}
 .answers-table .answer-actions{text-align:right}
-.answer-delete-dialog,.image-delete-dialog,.download-delete-dialog,.storage-delete-dialog{width:min(440px,calc(100vw - 32px));text-align:left;white-space:normal}
-.answer-delete-dialog .user-dialog-actions,.image-delete-dialog .user-dialog-actions,.download-delete-dialog .user-dialog-actions,.storage-delete-dialog .user-dialog-actions{flex-wrap:wrap}
+.answer-delete-dialog,.image-delete-dialog,.image-migrate-dialog,.download-delete-dialog,.storage-delete-dialog{width:min(460px,calc(100vw - 32px));text-align:left;white-space:normal}
+.answer-delete-dialog .user-dialog-actions,.image-delete-dialog .user-dialog-actions,.image-migrate-dialog .user-dialog-actions,.download-delete-dialog .user-dialog-actions,.storage-delete-dialog .user-dialog-actions{flex-wrap:wrap}
+.image-migrate-file{margin:4px 0 16px;word-break:break-all;font-size:13px;color:var(--text)}
+.migrate-meta{margin-bottom:16px;padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:6px}
+.migrate-meta .kv{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:6px}
+.migrate-meta .kv:last-child{margin-bottom:0}
+.migrate-downloads-hint{margin:8px 0 0;padding-top:8px;border-top:1px dashed var(--line);font-size:12px}
+.migrate-target-field{margin-bottom:20px}
+.migrate-target-field label{display:block;margin-bottom:6px;font-size:13px;font-weight:500}
+.migrate-target-field select{width:100%;box-sizing:border-box}
+
+.badge-migrating{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:var(--draft-bg);color:var(--accent-ink);border:1px solid var(--draft-line);vertical-align:middle}
+.dot-migrating{width:7px;height:7px;border-radius:50%;background:var(--accent-ink);display:inline-block;animation:pulse-migrating 1.6s ease-in-out infinite}
+@keyframes pulse-migrating{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.85)}}
+
+.progress-bar-micro{width:100%;max-width:140px;height:4px;border-radius:2px;background:var(--line);overflow:hidden;margin-top:4px}
+.progress-bar-micro .progress-bar-fill{height:100%;background:var(--accent-ink);transition:width .3s ease}
+tr.is-migrating td{opacity:.9}
 .storage-delete-warning{margin:14px 0 16px;padding:12px 14px;border:1px solid var(--bad-line);border-radius:8px;background:var(--bad-bg);color:var(--text);font-size:13px;line-height:1.45}
 .storage-delete-warning-title{margin:0 0 4px;font-weight:600;color:var(--bad)}
 .storage-delete-warning p{margin:0 0 6px}

@@ -188,6 +188,25 @@ func (c *AgentClient) CheckWindowsISO(ctx context.Context, req agent.WindowsISOR
 	}
 	return result, nil
 }
+
+func (c *AgentClient) RebindWindowsISO(ctx context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
+	var result agent.WindowsISOResult
+	body, err := json.Marshal(req)
+	if err != nil {
+		return result, err
+	}
+	err = localCall(ctx, c.http, http.MethodPost, "/windows-iso/rebind", body, &result)
+	return result, err
+}
+
+func (c *AgentClient) RebindUbuntuISO(ctx context.Context, req agent.UbuntuISORequest) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Transport: c.http.Transport, Timeout: 5 * time.Minute}
+	return localCall(ctx, client, http.MethodPost, "/ubuntu-iso/rebind", body, nil)
+}
 func (c *AgentClient) PrepareWindowsAnswer(ctx context.Context, req agent.WindowsAnswerRequest) error {
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -372,6 +391,46 @@ func (c *ImagesClient) SetCatalogSettings(ctx context.Context, s images.CatalogS
 	}
 	err = localCall(ctx, c.http, "PUT", "/settings", body, &v)
 	return v, err
+}
+
+func (c *ImagesClient) StartMigration(ctx context.Context, srcID int64, path string, dstID int64) (*images.MigrationJob, error) {
+	body, err := json.Marshal(images.MigrateRequest{
+		SourceStorageID: srcID,
+		Path:            path,
+		TargetStorageID: dstID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var job images.MigrationJob
+	if err := localCall(ctx, c.http, http.MethodPost, "/images/migrate", body, &job); err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+func (c *ImagesClient) ListMigrations(ctx context.Context) ([]*images.MigrationJob, error) {
+	var list []*images.MigrationJob
+	if err := localCall(ctx, c.http, http.MethodGet, "/images/migrations", nil, &list); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *ImagesClient) GetMigration(ctx context.Context, id string) (*images.MigrationJob, error) {
+	var job images.MigrationJob
+	if err := localCall(ctx, c.http, http.MethodGet, "/images/migrations/"+url.PathEscape(id), nil, &job); err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+func (c *ImagesClient) CancelMigration(ctx context.Context, id string) error {
+	return localCall(ctx, c.http, http.MethodDelete, "/images/migrations/"+url.PathEscape(id), nil, nil)
+}
+
+func (c *ImagesClient) CommitDeleteSource(ctx context.Context, id string) error {
+	return localCall(ctx, c.http, http.MethodPost, "/images/migrations/"+url.PathEscape(id)+"/commit-delete-source", nil, nil)
 }
 
 func (c *AgentClient) Mount(ctx context.Context, key, server, share, subpath, username, password, domain string) error {

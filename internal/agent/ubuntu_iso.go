@@ -429,6 +429,28 @@ func HandlerWithUbuntuISO(next http.Handler, manager UbuntuISOAPI) http.Handler 
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("POST /ubuntu-iso/rebind", func(w http.ResponseWriter, r *http.Request) {
+		rebinder, ok := manager.(interface {
+			Rebind(context.Context, UbuntuISORequest) error
+		})
+		if !ok || rebinder == nil {
+			http.Error(w, "Ubuntu ISO rebind unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req UbuntuISORequest
+		if !decodeSMBRequest(w, r, &req) {
+			return
+		}
+		if !validUbuntuISORequest(req.WindowsISORequest) || len(req.SHA256) != 64 || !validManagedChild(req.SHA256) {
+			http.Error(w, "invalid Ubuntu ISO source", http.StatusBadRequest)
+			return
+		}
+		if err := rebinder.Rebind(r.Context(), req); err != nil {
+			http.Error(w, "Ubuntu ISO rebind failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.Handle("/", next)
 	return mux
 }

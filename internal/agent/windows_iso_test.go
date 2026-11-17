@@ -34,14 +34,15 @@ func (fakeWIMInfoRunner) Run(_ context.Context, _, name string, args ...string) 
 
 func (f *fakeWindowsISOSystemctl) Run(_ context.Context, args ...string) error {
 	f.calls = append(f.calls, append([]string(nil), args...))
-	if len(args) > 0 && args[0] == "enable" {
+	if len(args) > 0 && (args[0] == "enable" || args[0] == "restart") {
 		root := filepath.Join(f.mountRoot, "17")
 		for _, name := range []string{"efi/boot/bootx64.efi", "sources/boot.wim", "sources/setup.exe", "sources/install.wim"} {
 			file := filepath.Join(root, filepath.FromSlash(name))
 			if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(file, []byte("x"), 0444); err != nil {
+			_ = os.Remove(file)
+			if err := os.WriteFile(file, []byte("x"), 0644); err != nil {
 				return err
 			}
 		}

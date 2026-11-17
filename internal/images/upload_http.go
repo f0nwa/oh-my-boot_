@@ -42,6 +42,45 @@ func safeUploadError(err error) string {
 	}
 }
 
+func (s *Server) storageUploadRoot(storage Storage) (string, int) {
+	switch storage.Kind {
+	case "smb":
+		if smbstorage.Validate(storage.Key, storage.Server, storage.Share, storage.Subpath) != nil {
+			return "", http.StatusNotFound
+		}
+		if storage.State != "ready" {
+			return "", http.StatusConflict
+		}
+		if _, ok := s.mountIdentity(storage.Root); !ok {
+			return "", http.StatusServiceUnavailable
+		}
+		return s.uploadRoot(storage.Key), 0
+	case "nfs":
+		if nfsstorage.Validate(storage.Key, storage.Server, storage.ExportPath, storage.NFSVersion) != nil {
+			return "", http.StatusNotFound
+		}
+		if storage.State != "ready" {
+			return "", http.StatusConflict
+		}
+		if !storage.UploadsEnabled {
+			return "", http.StatusForbidden
+		}
+		if _, ok := s.mountIdentity(storage.Root); !ok {
+			return "", http.StatusServiceUnavailable
+		}
+		return s.nfsUploadRoot(storage.Key), 0
+	case "local":
+		if storage.State != "ready" {
+			return "", http.StatusConflict
+		}
+		if validateRootPath(storage.Root) != nil || !s.writable(storage.Root) {
+			return "", http.StatusForbidden
+		}
+		return storage.Root, 0
+	}
+	return "", http.StatusNotFound
+}
+
 // uploadTarget finds a ready storage that accepts ISO uploads and the
 // directory to write into: the separate read-write mount of an SMB storage,
 // or the root of a local storage this service may write to.
@@ -54,42 +93,11 @@ func (s *Server) uploadTarget(r *http.Request) (Storage, string, int) {
 	if err != nil || storage.ID != id {
 		return Storage{}, "", http.StatusNotFound
 	}
-	switch storage.Kind {
-	case "smb":
-		if smbstorage.Validate(storage.Key, storage.Server, storage.Share, storage.Subpath) != nil {
-			return Storage{}, "", http.StatusNotFound
-		}
-		if storage.State != "ready" {
-			return Storage{}, "", http.StatusConflict
-		}
-		if _, ok := s.mountIdentity(storage.Root); !ok {
-			return Storage{}, "", http.StatusServiceUnavailable
-		}
-		return storage, s.uploadRoot(storage.Key), 0
-	case "nfs":
-		if nfsstorage.Validate(storage.Key, storage.Server, storage.ExportPath, storage.NFSVersion) != nil {
-			return Storage{}, "", http.StatusNotFound
-		}
-		if storage.State != "ready" {
-			return Storage{}, "", http.StatusConflict
-		}
-		if !storage.UploadsEnabled {
-			return Storage{}, "", http.StatusForbidden
-		}
-		if _, ok := s.mountIdentity(storage.Root); !ok {
-			return Storage{}, "", http.StatusServiceUnavailable
-		}
-		return storage, s.nfsUploadRoot(storage.Key), 0
-	case "local":
-		if storage.State != "ready" {
-			return Storage{}, "", http.StatusConflict
-		}
-		if validateRootPath(storage.Root) != nil || !s.writable(storage.Root) {
-			return Storage{}, "", http.StatusForbidden
-		}
-		return storage, storage.Root, 0
+	root, status := s.storageUploadRoot(storage)
+	if status != 0 {
+		return Storage{}, "", status
 	}
-	return Storage{}, "", http.StatusNotFound
+	return storage, root, 0
 }
 
 func (s *Server) folders(w http.ResponseWriter, r *http.Request) {

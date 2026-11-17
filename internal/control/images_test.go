@@ -108,6 +108,21 @@ func (f *fakeImagesAPI) UploadISO(_ context.Context, _ int64, folder, name strin
 	f.selectedFolder = folder
 	return images.UploadResult{Path: folder + "/" + name, Size: int64(len(data))}, f.err
 }
+func (f *fakeImagesAPI) StartMigration(context.Context, int64, string, int64) (*images.MigrationJob, error) {
+	return &images.MigrationJob{ID: "test-mig"}, f.err
+}
+func (f *fakeImagesAPI) ListMigrations(context.Context) ([]*images.MigrationJob, error) {
+	return nil, f.err
+}
+func (f *fakeImagesAPI) GetMigration(context.Context, string) (*images.MigrationJob, error) {
+	return nil, f.err
+}
+func (f *fakeImagesAPI) CancelMigration(context.Context, string) error {
+	return f.err
+}
+func (f *fakeImagesAPI) CommitDeleteSource(context.Context, string) error {
+	return f.err
+}
 
 func TestImagesPageEscapesISONameAndShowsStorage(t *testing.T) {
 	api := &fakeImagesAPI{catalog: images.Catalog{

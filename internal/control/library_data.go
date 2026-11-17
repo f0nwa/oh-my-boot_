@@ -291,13 +291,23 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	for _, p := range data.WindowsProfiles {
 		byPath[fmt.Sprintf("%d:%s", p.StorageID, p.Path)] = p
 	}
+	activeMigrations := map[string]*images.MigrationJob{}
+	if s.Images != nil {
+		if list, err := s.Images.ListMigrations(r.Context()); err == nil {
+			for _, m := range list {
+				if m.State == "copying" || m.State == "ready_to_rebind" || m.State == "rebinding" {
+					activeMigrations[imageAuthorKey(m.SourceStorageID, m.Path)] = m
+				}
+			}
+		}
+	}
 	for _, image := range catalog.Images {
 		key := imageAuthorKey(image.StorageID, image.Path)
 		kind, problem, arch := inspectionLabel("")
 		if record, ok := inspections[key]; ok {
 			kind, problem, arch = inspectionLabel(record.Kind)
 		}
-		row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem, DisplayName: namesByImage[key], Arch: arch}
+		row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem, DisplayName: namesByImage[key], Arch: arch, ActiveMigration: activeMigrations[key]}
 		if uploaded, ok := authors.ImageUploadedAt[key]; ok && !uploaded.IsZero() {
 			row.AddedAt, row.AddedVia = &uploaded, "Загружен"
 		} else if image.FirstSeenAt != nil {

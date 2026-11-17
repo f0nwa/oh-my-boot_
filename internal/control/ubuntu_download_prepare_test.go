@@ -54,6 +54,9 @@ func (p *fakeUbuntuPreparer) PrepareUbuntuISO(_ context.Context, req agent.Ubunt
 	}
 	return nil
 }
+func (p *fakeUbuntuPreparer) RebindUbuntuISO(_ context.Context, _ agent.UbuntuISORequest) error {
+	return nil
+}
 
 type fakeUbuntuCatalog struct {
 	digest string

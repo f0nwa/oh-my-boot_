@@ -56,6 +56,10 @@ func (a *recordingWindowsISOAPI) CheckWindowsISO(_ context.Context, req agent.Wi
 	a.req = req
 	return agent.WindowsISOResult{}, nil
 }
+func (a *recordingWindowsISOAPI) RebindWindowsISO(_ context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
+	a.req = req
+	return agent.WindowsISOResult{InstallFile: "install.wim"}, nil
+}
 
 func TestImagesPageListsCatalogFilesWithoutProfileForms(t *testing.T) {
 	store := &recordingWindowsProfileStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}

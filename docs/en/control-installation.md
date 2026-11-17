@@ -205,6 +205,14 @@ System → Storages shows storage state and errors. Images checks reachability i
 
 Agent recovers its SMB and NFS mounts before Windows ISO profiles. On System → Storages, Connection recovery beside the **Connect storage ▾** menu button opens a dialog with settings and the last check. Administrators can enable recovery, set a 1–60 minute interval and run a check manually. Save becomes available only after settings change; restoring the original values disables it again. Closing the dialog discards unsaved changes. Operators and observers can view the status without editing it. The file storage account (SMB) or `omb-images` user permissions (NFS) determine whether writes are allowed.
 
+### Disconnecting and removing storage
+
+Administrators can unbind a connected SMB or NFS storage via the row menu **☰ → Delete** on System → Storages. A modal confirmation dialog with a warning is displayed before deletion.
+
+1. **Protection of active installations:** If ISO images from this storage are used by active Windows profiles (`WindowsProfiles`) or active Ubuntu installations (`Installations`), the server blocks removal with HTTP `409 Conflict`. To unbind the storage, first remove or reassign the referencing installations in OMB.
+2. **If storage was disconnected externally:** Remote network unreachability (status `unavailable`) does not prevent clean unbinding. Agent safely stops and disables systemd mount units (`systemctl disable --now`; NFS uses `TimeoutSec=15s`), removes local mount points in `/mnt/omb-*/...`, cleans up credentials and configuration files, and Images removes the database entry while purging catalog records for its ISOs.
+3. **Data safety on NAS/server:** Removing storage from OMB removes only local mount points and OMB database entries. The original ISO files on the remote NAS/server remain untouched and are never deleted.
+
 ## Diagnostics and rollback
 
 Run as root:

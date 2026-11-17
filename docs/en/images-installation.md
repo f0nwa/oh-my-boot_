@@ -89,7 +89,7 @@ Because the `omb-images` catalog service runs under a local system UID/GID on th
    - **Security and file modes:** in `root_squash` mode (default on most NAS devices), when `omb-agent` and `omb-winiso-prepare` (running as `root`) loop-mount ISOs, files on NFS are accessed as `nobody`; therefore, export directories must grant `o+rx` and `.iso` files must be `0644` (OMB sets `0644` automatically on uploaded ISOs). With `no_root_squash`, the OMB server root retains direct access.
    - After changing NAS permissions, click **Refresh** in the storage's `☰` menu so OMB re-runs the write probe and updates the access mode.
 
-Operators and administrators can start scans; observers can view the catalog. Background availability checks preserve previous records on failure. Interrupted scans are marked as failed after a restart and can be retried. See [Control storage recovery](control-installation.md#storage-availability-and-recovery) for managed mounts.
+Operators and administrators can start scans; observers can view the catalog. Background availability checks preserve previous records on failure. Interrupted scans are marked as failed after a restart and can be retried. Managed mount recovery and storage unbinding are covered in the [Control manual](control-installation.md#storage-availability-and-recovery).
 
 ## ISO upload
 

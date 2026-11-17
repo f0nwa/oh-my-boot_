@@ -24,6 +24,7 @@ type StorageMonitor struct {
 	Repo          MonitorRepository
 	Probe         func(Storage) error
 	Rescan        func(int64) error
+	Settings      func(context.Context) (CatalogSettings, error)
 	Timeout       time.Duration
 	RescanBackoff time.Duration
 	Now           func() time.Time
@@ -61,6 +62,12 @@ func (m *StorageMonitor) CheckOnce(ctx context.Context) {
 		log.Printf("Images storage check: cannot list storages: %v", err)
 		return
 	}
+	var settings CatalogSettings
+	if m.Settings != nil {
+		if s, err := m.Settings(ctx); err == nil {
+			settings = s
+		}
+	}
 	var wg sync.WaitGroup
 	for _, storage := range storages {
 		if storage.State != "ready" && storage.State != "unavailable" {
@@ -69,13 +76,13 @@ func (m *StorageMonitor) CheckOnce(ctx context.Context) {
 		wg.Add(1)
 		go func(storage Storage) {
 			defer wg.Done()
-			m.check(ctx, storage)
+			m.check(ctx, storage, settings)
 		}(storage)
 	}
 	wg.Wait()
 }
 
-func (m *StorageMonitor) check(ctx context.Context, storage Storage) {
+func (m *StorageMonitor) check(ctx context.Context, storage Storage, settings CatalogSettings) {
 	probeErr, finished := m.probe(storage)
 	if !finished {
 		// A previous probe of this storage is still blocked; wait for it.
@@ -94,25 +101,53 @@ func (m *StorageMonitor) check(ctx context.Context, storage Storage) {
 		}
 		return
 	}
-	if storage.State != "unavailable" || m.Rescan == nil {
-		return
-	}
-	m.mu.Lock()
-	if m.lastRescan == nil {
-		m.lastRescan = map[int64]time.Time{}
-	}
-	last, seen := m.lastRescan[storage.ID]
-	if seen && m.RescanBackoff > 0 && m.now().Sub(last) < m.RescanBackoff {
+	if storage.State == "unavailable" {
+		if m.Rescan == nil {
+			return
+		}
+		m.mu.Lock()
+		if m.lastRescan == nil {
+			m.lastRescan = map[int64]time.Time{}
+		}
+		last, seen := m.lastRescan[storage.ID]
+		if seen && m.RescanBackoff > 0 && m.now().Sub(last) < m.RescanBackoff {
+			m.mu.Unlock()
+			return
+		}
+		m.lastRescan[storage.ID] = m.now()
 		m.mu.Unlock()
+		if err := m.Rescan(storage.ID); err != nil {
+			log.Printf("Images storage check: cannot rescan recovered storage %d: %v", storage.ID, err)
+			return
+		}
+		log.Printf("Images storage check: storage %d is reachable again, rescan started", storage.ID)
 		return
 	}
-	m.lastRescan[storage.ID] = m.now()
-	m.mu.Unlock()
-	if err := m.Rescan(storage.ID); err != nil {
-		log.Printf("Images storage check: cannot rescan recovered storage %d: %v", storage.ID, err)
-		return
+	if storage.State == "ready" && settings.RescanEnabled && m.Rescan != nil {
+		interval := time.Duration(settings.RescanIntervalMinutes) * time.Minute
+		if interval > 0 {
+			m.mu.Lock()
+			if m.lastRescan == nil {
+				m.lastRescan = map[int64]time.Time{}
+			}
+			last, seen := m.lastRescan[storage.ID]
+			tooSoonSinceLastTrigger := seen && m.now().Sub(last) < interval
+			tooSoonSinceLastScan := storage.LastScanAt != nil && m.now().Sub(*storage.LastScanAt) < interval
+			if tooSoonSinceLastTrigger || tooSoonSinceLastScan {
+				m.mu.Unlock()
+				return
+			}
+			m.lastRescan[storage.ID] = m.now()
+			m.mu.Unlock()
+			if err := m.Rescan(storage.ID); err != nil {
+				if !errors.Is(err, errScanRunning) {
+					log.Printf("Images storage check: periodic rescan of storage %d failed: %v", storage.ID, err)
+				}
+				return
+			}
+			log.Printf("Images storage check: periodic rescan of storage %d started", storage.ID)
+		}
 	}
-	log.Printf("Images storage check: storage %d is reachable again, rescan started", storage.ID)
 }
 
 // probe runs the probe with a timeout. finished is false when an earlier probe

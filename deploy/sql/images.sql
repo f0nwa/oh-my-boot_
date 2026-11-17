@@ -26,3 +26,15 @@ CREATE TABLE IF NOT EXISTS images (
  PRIMARY KEY (storage_id, path)
 );
 CREATE INDEX IF NOT EXISTS images_present_idx ON images (storage_id, present, path);
+
+CREATE TABLE IF NOT EXISTS catalog_settings (
+ id SMALLINT PRIMARY KEY CHECK (id = 1),
+ rescan_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+ rescan_interval_minutes INT NOT NULL DEFAULT 30 CHECK (rescan_interval_minutes BETWEEN 1 AND 1440),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO catalog_settings (id, rescan_enabled, rescan_interval_minutes)
+VALUES (1, TRUE, 30)
+ON CONFLICT (id) DO NOTHING;
+

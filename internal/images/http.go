@@ -31,6 +31,8 @@ type APIRepository interface {
 	RenameStorage(context.Context, int64, string) error
 	RecordUpload(context.Context, Image) error
 	DeleteImage(context.Context, int64, string) error
+	Settings(context.Context) (CatalogSettings, error)
+	UpdateSettings(context.Context, CatalogSettings) (CatalogSettings, error)
 }
 
 type Server struct {
@@ -305,7 +307,40 @@ func (s *Server) Handler() http.Handler {
 			w.WriteHeader(http.StatusAccepted)
 		}
 	})
+	mux.HandleFunc("GET /settings", s.getSettings)
+	mux.HandleFunc("PUT /settings", s.putSettings)
 	return mux
+}
+
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.repo.Settings(r.Context())
+	if err != nil {
+		http.Error(w, "cannot load catalog settings", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(settings)
+}
+
+func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
+	var input CatalogSettings
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if input.RescanIntervalMinutes < 1 || input.RescanIntervalMinutes > 1440 {
+		http.Error(w, "rescan_interval_minutes must be between 1 and 1440", http.StatusBadRequest)
+		return
+	}
+	updated, err := s.repo.UpdateSettings(r.Context(), input)
+	if err != nil {
+		http.Error(w, "cannot update catalog settings", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(updated)
 }
 
 var (

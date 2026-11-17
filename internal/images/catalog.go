@@ -45,6 +45,20 @@ type Image struct {
 	Present     bool       `json:"present"`
 }
 
+// CatalogSettings configures background catalog scanning in omb-images.
+type CatalogSettings struct {
+	RescanEnabled         bool      `json:"rescan_enabled"`
+	RescanIntervalMinutes int       `json:"rescan_interval_minutes"`
+	UpdatedAt             time.Time `json:"updated_at,omitempty"`
+}
+
+func DefaultCatalogSettings() CatalogSettings {
+	return CatalogSettings{
+		RescanEnabled:         true,
+		RescanIntervalMinutes: 30,
+	}
+}
+
 // ScanResult holds the ISO inventory and total size of non-ISO regular files
 // discovered in a storage root.
 type ScanResult struct {
@@ -64,7 +78,20 @@ func Scan(root string) (ScanResult, error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+		if entry.IsDir() {
+			if path != root {
+				name := entry.Name()
+				if strings.EqualFold(name, "#recycle") || strings.EqualFold(name, ".trash") || strings.HasPrefix(name, ".") {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, "._") || strings.EqualFold(name, ".ds_store") {
 			return nil
 		}
 		fileInfo, err := entry.Info()
@@ -74,7 +101,6 @@ func Scan(root string) (ScanResult, error) {
 		if !fileInfo.Mode().IsRegular() {
 			return nil
 		}
-		name := entry.Name()
 		if !strings.EqualFold(filepath.Ext(name), ".iso") {
 			if strings.HasPrefix(name, ".omb-upload-") && strings.HasSuffix(name, ".part") {
 				return nil

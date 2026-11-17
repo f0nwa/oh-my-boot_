@@ -134,6 +134,8 @@ type pageData struct {
 	Recovery              *agent.RecoveryStatus
 	RecoveryError         string
 	RecoveryMinutes       int
+	RescanSettings        *images.CatalogSettings
+	RescanMinutes         int
 	Storages              []images.Storage
 	ISOImages             []imageRow
 	WindowsProfiles       []WindowsProfile

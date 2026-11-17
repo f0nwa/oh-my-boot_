@@ -313,3 +313,39 @@ func (s Store) MarkUnavailableIfReady(ctx context.Context, id int64, message str
 	}
 	return command.RowsAffected() > 0, nil
 }
+
+// Settings returns the current background catalog scanning settings.
+func (s Store) Settings(ctx context.Context) (CatalogSettings, error) {
+	var settings CatalogSettings
+	err := s.Pool.QueryRow(ctx, "SELECT rescan_enabled, rescan_interval_minutes, updated_at FROM catalog_settings WHERE id = 1").
+		Scan(&settings.RescanEnabled, &settings.RescanIntervalMinutes, &settings.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DefaultCatalogSettings(), nil
+	}
+	if err != nil {
+		return CatalogSettings{}, err
+	}
+	return settings, nil
+}
+
+// UpdateSettings updates the background catalog scanning settings.
+func (s Store) UpdateSettings(ctx context.Context, settings CatalogSettings) (CatalogSettings, error) {
+	if settings.RescanIntervalMinutes < 1 || settings.RescanIntervalMinutes > 1440 {
+		return CatalogSettings{}, errors.New("rescan_interval_minutes must be between 1 and 1440")
+	}
+	var updated CatalogSettings
+	err := s.Pool.QueryRow(ctx, `
+		INSERT INTO catalog_settings (id, rescan_enabled, rescan_interval_minutes, updated_at)
+		VALUES (1, $1, $2, now())
+		ON CONFLICT (id) DO UPDATE SET
+			rescan_enabled = EXCLUDED.rescan_enabled,
+			rescan_interval_minutes = EXCLUDED.rescan_interval_minutes,
+			updated_at = EXCLUDED.updated_at
+		RETURNING rescan_enabled, rescan_interval_minutes, updated_at
+	`, settings.RescanEnabled, settings.RescanIntervalMinutes).
+		Scan(&updated.RescanEnabled, &updated.RescanIntervalMinutes, &updated.UpdatedAt)
+	if err != nil {
+		return CatalogSettings{}, err
+	}
+	return updated, nil
+}

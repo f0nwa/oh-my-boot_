@@ -92,3 +92,37 @@ func TestHandlerRejectsUnknownScan(t *testing.T) {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
 }
+
+func TestHandlerCatalogSettings(t *testing.T) {
+	repo := &httpRepository{memoryRepository: memoryRepository{storages: map[int64]Storage{}, images: map[int64]map[string]Image{}, state: map[int64]string{}}}
+	server := NewServer(repo)
+
+	// 1. GET returns default settings
+	getRes := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getRes, httptest.NewRequest("GET", "/settings", nil))
+	if getRes.Code != http.StatusOK {
+		t.Fatalf("GET /settings status = %d", getRes.Code)
+	}
+	var got CatalogSettings
+	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil || !got.RescanEnabled || got.RescanIntervalMinutes != 30 {
+		t.Fatalf("unexpected defaults: %+v err=%v", got, err)
+	}
+
+	// 2. PUT updates settings
+	putRes := httptest.NewRecorder()
+	server.Handler().ServeHTTP(putRes, httptest.NewRequest("PUT", "/settings", strings.NewReader(`{"rescan_enabled":false,"rescan_interval_minutes":45}`)))
+	if putRes.Code != http.StatusOK {
+		t.Fatalf("PUT /settings status = %d body = %s", putRes.Code, putRes.Body.String())
+	}
+	var updated CatalogSettings
+	if err := json.Unmarshal(putRes.Body.Bytes(), &updated); err != nil || updated.RescanEnabled || updated.RescanIntervalMinutes != 45 {
+		t.Fatalf("unexpected updated: %+v", updated)
+	}
+
+	// 3. PUT rejects invalid interval
+	badRes := httptest.NewRecorder()
+	server.Handler().ServeHTTP(badRes, httptest.NewRequest("PUT", "/settings", strings.NewReader(`{"rescan_enabled":true,"rescan_interval_minutes":0}`)))
+	if badRes.Code != http.StatusBadRequest {
+		t.Fatalf("PUT /settings with 0 minutes status = %d, want 400", badRes.Code)
+	}
+}

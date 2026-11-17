@@ -22,6 +22,7 @@ type fakeImagesAPI struct {
 	folders        []string
 	deleted        []images.Image
 	deleteErr      error
+	settings       images.CatalogSettings
 }
 
 type auditRecordingStore struct {
@@ -75,6 +76,22 @@ func (f *fakeImagesAPI) RenameStorage(_ context.Context, id int64, name string) 
 	return errors.New("storage not found")
 }
 func (f *fakeImagesAPI) Folders(context.Context, int64) ([]string, error) { return f.folders, f.err }
+func (f *fakeImagesAPI) CatalogSettings(context.Context) (images.CatalogSettings, error) {
+	if f.err != nil {
+		return images.CatalogSettings{}, f.err
+	}
+	if f.settings.RescanIntervalMinutes == 0 {
+		return images.DefaultCatalogSettings(), nil
+	}
+	return f.settings, nil
+}
+func (f *fakeImagesAPI) SetCatalogSettings(_ context.Context, s images.CatalogSettings) (images.CatalogSettings, error) {
+	if f.err != nil {
+		return images.CatalogSettings{}, f.err
+	}
+	f.settings = s
+	return s, nil
+}
 func (f *fakeImagesAPI) DeleteImage(_ context.Context, id int64, path string) error {
 	if f.deleteErr != nil {
 		return f.deleteErr

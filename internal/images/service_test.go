@@ -28,10 +28,21 @@ type memoryRepository struct {
 	storages map[int64]Storage
 	images   map[int64]map[string]Image
 	state    map[int64]string
+	settings CatalogSettings
 }
 
 func (m *memoryRepository) Storage(_ context.Context, id int64) (Storage, error) {
 	return m.storages[id], nil
+}
+func (m *memoryRepository) Settings(_ context.Context) (CatalogSettings, error) {
+	if m.settings.RescanIntervalMinutes == 0 {
+		return DefaultCatalogSettings(), nil
+	}
+	return m.settings, nil
+}
+func (m *memoryRepository) UpdateSettings(_ context.Context, s CatalogSettings) (CatalogSettings, error) {
+	m.settings = s
+	return s, nil
 }
 func (m *memoryRepository) SaveScan(_ context.Context, id int64, found []Image, otherBytes int64) error {
 	if m.images[id] == nil {

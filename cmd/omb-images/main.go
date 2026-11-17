@@ -69,6 +69,7 @@ func main() {
 			Repo:          store,
 			Probe:         images.ProbeStorage,
 			Rescan:        func(id int64) error { return api.StartScan(context.Background(), id) },
+			Settings:      store.Settings,
 			Timeout:       20 * time.Second,
 			RescanBackoff: 10 * time.Minute,
 		}

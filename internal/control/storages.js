@@ -40,9 +40,18 @@
     }
     var enabled = recoveryForm.elements.enabled;
     var interval = recoveryForm.elements.interval_minutes;
-    var changed = enabled.checked !== enabled.defaultChecked ||
-      interval.valueAsNumber !== Number(interval.defaultValue);
-    recoverySave.disabled = !changed || !interval.validity.valid;
+    var rescanEnabled = recoveryForm.elements.rescan_enabled;
+    var rescanInterval = recoveryForm.elements.rescan_interval_minutes;
+
+    var changed = (enabled && enabled.checked !== enabled.defaultChecked) ||
+      (interval && interval.valueAsNumber !== Number(interval.defaultValue)) ||
+      (rescanEnabled && rescanEnabled.checked !== rescanEnabled.defaultChecked) ||
+      (rescanInterval && rescanInterval.valueAsNumber !== Number(rescanInterval.defaultValue));
+
+    var valid = (!interval || interval.validity.valid) &&
+      (!rescanInterval || rescanInterval.validity.valid);
+
+    recoverySave.disabled = !changed || !valid;
   }
 
   if (recoveryForm) {

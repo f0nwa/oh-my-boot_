@@ -90,6 +90,8 @@ type ImagesAPI interface {
 	DeleteNFS(context.Context, int64) error
 	RenameStorage(context.Context, int64, string) error
 	DeleteImage(context.Context, int64, string) error
+	CatalogSettings(context.Context) (images.CatalogSettings, error)
+	SetCatalogSettings(context.Context, images.CatalogSettings) (images.CatalogSettings, error)
 }
 
 type SMBMountAPI interface {

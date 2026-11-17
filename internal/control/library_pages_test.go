@@ -39,7 +39,7 @@ func TestImagesPageNoLongerShowsStoragesOrAnswerForms(t *testing.T) {
 
 func TestStoragesPageShowsSMBAndRecovery(t *testing.T) {
 	body := libraryGet(t, libraryServer(), "/storages")
-	if !strings.Contains(body, `action="/images/smb"`) || !strings.Contains(body, "DSM") || !strings.Contains(body, "Автоматическое восстановление подключений") {
+	if !strings.Contains(body, `action="/images/smb"`) || !strings.Contains(body, "DSM") || !strings.Contains(body, "Фоновые задачи") {
 		t.Fatalf("storages page: %s", body)
 	}
 }

@@ -38,6 +38,38 @@ func TestScanFindsISOsAndSkipsSymlinks(t *testing.T) {
 	}
 }
 
+func TestScanSkipsMacOSMetadataAndRecycleDirs(t *testing.T) {
+	root := realTempDir(t)
+	for _, dir := range []string{"#recycle", ".trash", ".hidden", "valid"} {
+		if err := os.Mkdir(filepath.Join(root, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, content := range map[string]string{
+		filepath.Join(root, "valid", "real.iso"):                "real-iso",
+		filepath.Join(root, "valid", "._real.iso"):              "appledouble",
+		filepath.Join(root, "valid", ".DS_Store"):               "ds-store",
+		filepath.Join(root, "#recycle", "deleted.iso"):          "recycle-iso",
+		filepath.Join(root, ".trash", "trashed.iso"):            "trash-iso",
+		filepath.Join(root, ".hidden", "hidden.iso"):           "hidden-iso",
+	} {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Images) != 1 || got.Images[0].Path != "valid/real.iso" {
+		t.Fatalf("expected only valid/real.iso, got: %+v", got.Images)
+	}
+	if got.OtherBytes != 0 {
+		t.Fatalf("expected 0 otherBytes, got: %d", got.OtherBytes)
+	}
+}
+
 func TestScanRejectsSymlinkedRoot(t *testing.T) {
 	realRoot := realTempDir(t)
 	link := filepath.Join(realTempDir(t), "linked-root")

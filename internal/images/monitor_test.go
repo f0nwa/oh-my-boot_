@@ -100,6 +100,50 @@ func TestMonitorRescansRecoveredStorageWithBackoff(t *testing.T) {
 	}
 }
 
+func TestMonitorPeriodicRescan(t *testing.T) {
+	past := time.Date(2026, 10, 20, 1, 0, 0, 0, time.UTC)
+	repo := &monitorRepository{storages: []Storage{{ID: 6, Kind: "smb", Root: "/mnt/nas", State: "ready", LastScanAt: &past}}}
+	rescan := &recordingRescan{}
+	now := past.Add(15 * time.Minute)
+
+	settings := CatalogSettings{RescanEnabled: true, RescanIntervalMinutes: 30}
+	m := &StorageMonitor{
+		Repo:     repo,
+		Rescan:   rescan.start,
+		Settings: func(context.Context) (CatalogSettings, error) { return settings, nil },
+		Timeout:  time.Second,
+		Now:      func() time.Time { return now },
+		Probe:    func(Storage) error { return nil },
+	}
+
+	// 1. Only 15 minutes elapsed (interval is 30) -> no rescan
+	m.CheckOnce(context.Background())
+	if rescan.count() != 0 {
+		t.Fatalf("rescan triggered too early: %d", rescan.count())
+	}
+
+	// 2. Advance to 31 minutes -> rescan triggered once
+	now = past.Add(31 * time.Minute)
+	m.CheckOnce(context.Background())
+	if rescan.count() != 1 {
+		t.Fatalf("rescan not triggered when due: %d", rescan.count())
+	}
+
+	// 3. Subsequent check right after -> not triggered again immediately
+	m.CheckOnce(context.Background())
+	if rescan.count() != 1 {
+		t.Fatalf("rescan triggered repeatedly: %d", rescan.count())
+	}
+
+	// 4. If disabled -> no rescan even if interval passed
+	now = now.Add(40 * time.Minute)
+	settings.RescanEnabled = false
+	m.CheckOnce(context.Background())
+	if rescan.count() != 1 {
+		t.Fatalf("rescan triggered when disabled: %d", rescan.count())
+	}
+}
+
 func TestMonitorDoesNotRescanStorageThatStillFails(t *testing.T) {
 	repo := &monitorRepository{storages: []Storage{{ID: 6, Kind: "smb", Root: "/mnt/nas", State: "unavailable", Error: "Ожидает подключения"}}}
 	rescan := &recordingRescan{}

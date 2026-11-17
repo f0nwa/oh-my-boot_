@@ -358,6 +358,22 @@ func (c *ImagesClient) DeleteImage(ctx context.Context, id int64, path string) e
 	return localCall(ctx, c.http, "DELETE", "/storages/"+strconv.FormatInt(id, 10)+"/images", body, nil)
 }
 
+func (c *ImagesClient) CatalogSettings(ctx context.Context) (images.CatalogSettings, error) {
+	var v images.CatalogSettings
+	err := localCall(ctx, c.http, "GET", "/settings", nil, &v)
+	return v, err
+}
+
+func (c *ImagesClient) SetCatalogSettings(ctx context.Context, s images.CatalogSettings) (images.CatalogSettings, error) {
+	var v images.CatalogSettings
+	body, err := json.Marshal(s)
+	if err != nil {
+		return v, err
+	}
+	err = localCall(ctx, c.http, "PUT", "/settings", body, &v)
+	return v, err
+}
+
 func (c *AgentClient) Mount(ctx context.Context, key, server, share, subpath, username, password, domain string) error {
 	body, err := json.Marshal(map[string]string{"key": key, "server": server, "share": share, "subpath": subpath, "username": username, "password": password, "domain": domain})
 	if err != nil {

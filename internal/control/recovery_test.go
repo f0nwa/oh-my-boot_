@@ -68,7 +68,7 @@ func TestImagesPageShowsStorageRecovery(t *testing.T) {
 		res := httptest.NewRecorder()
 		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/storages", nil))
 		body := res.Body.String()
-		for _, want := range []string{"Автоматическое восстановление подключений", "restarted omb-winiso@1.service", "mnt-x.mount: start failed", "каждые 2 мин"} {
+		for _, want := range []string{"Фоновые задачи хранилищ", "restarted omb-winiso@1.service", "mnt-x.mount: start failed", "каждые 2 мин"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: images page lacks %q", tc.role, want)
 			}
@@ -110,6 +110,22 @@ func TestStorageRecoverySettings(t *testing.T) {
 	want := "storage-recovery.update|ok|enabled=true interval=300s,storage-recovery.update|ok|enabled=false interval=600s,storage-recovery.run|error|actions=1"
 	if strings.Join(store.audits, ",") != want {
 		t.Fatalf("audits = %q", store.audits)
+	}
+
+	// Test saving rescan settings together with recovery
+	res = httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/images/storage-recovery", url.Values{
+		"enabled":                 {"on"},
+		"interval_minutes":        {"5"},
+		"rescan_enabled":          {"on"},
+		"rescan_interval_minutes": {"45"},
+	}))
+	if res.Code != http.StatusSeeOther {
+		t.Fatalf("save both: %d", res.Code)
+	}
+	fakeImg := s.Images.(*fakeImagesAPI)
+	if !fakeImg.settings.RescanEnabled || fakeImg.settings.RescanIntervalMinutes != 45 {
+		t.Fatalf("rescan settings not saved: %+v", fakeImg.settings)
 	}
 }
 

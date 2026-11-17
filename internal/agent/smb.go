@@ -262,18 +262,5 @@ func validCredential(value string, optional bool) bool {
 }
 
 func smbUnitName(target string) string {
-	var name strings.Builder
-	for _, c := range []byte(strings.TrimPrefix(filepath.Clean(target), "/")) {
-		switch {
-		case c == '/':
-			name.WriteByte('-')
-		case c == '-':
-			name.WriteString(`\x2d`)
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '.', c == ':':
-			name.WriteByte(c)
-		default:
-			fmt.Fprintf(&name, `\x%02x`, c)
-		}
-	}
-	return name.String() + ".mount"
+	return systemdMountUnitName(target)
 }

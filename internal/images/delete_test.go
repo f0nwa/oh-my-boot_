@@ -22,7 +22,7 @@ func (r *deleteRepository) DeleteImage(_ context.Context, id int64, path string)
 }
 
 func TestDeleteISOHTTPRemovesFileAndCatalogRecord(t *testing.T) {
-	for _, kind := range []string{"local", "mounted", "smb"} {
+	for _, kind := range []string{"local", "mounted", "smb", "nfs"} {
 		t.Run(kind, func(t *testing.T) {
 			root := realTempDir(t)
 			if err := os.Mkdir(filepath.Join(root, "Windows"), 0755); err != nil {
@@ -39,6 +39,13 @@ func TestDeleteISOHTTPRemovesFileAndCatalogRecord(t *testing.T) {
 				storage.Server = "192.168.10.10"
 				storage.Share = "Downloads"
 			}
+			if kind == "nfs" {
+				storage.Key = key
+				storage.Server = "192.168.10.10"
+				storage.ExportPath = "/export/iso"
+				storage.NFSVersion = "4.1"
+				storage.UploadsEnabled = true
+			}
 			repo := &deleteRepository{httpRepository: httpRepository{memoryRepository: memoryRepository{
 				storages: map[int64]Storage{3: storage},
 				images:   map[int64]map[string]Image{3: {"Windows/win.iso": {StorageID: 3, Path: "Windows/win.iso", Present: true}}},
@@ -48,6 +55,12 @@ func TestDeleteISOHTTPRemovesFileAndCatalogRecord(t *testing.T) {
 			server.uploadRoot = func(got string) string {
 				if got != key {
 					t.Fatalf("upload key = %q", got)
+				}
+				return root
+			}
+			server.nfsUploadRoot = func(got string) string {
+				if got != key {
+					t.Fatalf("nfs upload key = %q", got)
 				}
 				return root
 			}
@@ -65,6 +78,36 @@ func TestDeleteISOHTTPRemovesFileAndCatalogRecord(t *testing.T) {
 				t.Fatalf("deleted catalog records = %+v", repo.deleted)
 			}
 		})
+	}
+}
+
+func TestDeleteISONFSRejectsWhenUploadsDisabled(t *testing.T) {
+	root := realTempDir(t)
+	key := "0123456789abcdef0123456789abcdef"
+	storage := Storage{
+		ID:             3,
+		Name:           "NFS",
+		Kind:           "nfs",
+		Root:           root,
+		Key:            key,
+		Server:         "192.168.10.10",
+		ExportPath:     "/export/iso",
+		NFSVersion:     "4.1",
+		State:          "ready",
+		UploadsEnabled: false,
+	}
+	repo := &deleteRepository{httpRepository: httpRepository{memoryRepository: memoryRepository{
+		storages: map[int64]Storage{3: storage},
+		images:   map[int64]map[string]Image{3: {"win.iso": {StorageID: 3, Path: "win.iso", Present: true}}},
+		state:    map[int64]string{3: "ready"},
+	}}}
+	server := NewServer(repo)
+	server.mountIdentity = func(string) (string, bool) { return "mount-1", true }
+	req := httptest.NewRequest(http.MethodDelete, "/storages/3/images", strings.NewReader(`{"path":"win.iso"}`))
+	res := httptest.NewRecorder()
+	server.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("status=%d, want 403 Forbidden", res.Code)
 	}
 }
 

@@ -144,7 +144,7 @@ func TestISOPageListsUploadTargetsWithFreeSpace(t *testing.T) {
 		body := res.Body.String()
 		want := []string{"свободно 566,0 ГБ из 2,0 ТБ", "свободно 26,0 ГБ из 39,0 ГБ"}
 		if page == "/images" {
-			want = []string{`<option value="7" data-free="607737872384">DSM · сетевая папка · свободно 566,0 ГБ</option>`, `<option value="3" data-free="27917287424">Local · на этом сервере · свободно 26,0 ГБ</option>`}
+			want = []string{`<option value="7" data-free="607737872384">DSM · SMB · свободно 566,0 ГБ</option>`, `<option value="3" data-free="27917287424">Local · Локальный каталог · свободно 26,0 ГБ</option>`}
 		}
 		for _, w := range want {
 			if !strings.Contains(body, w) {

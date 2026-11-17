@@ -141,9 +141,11 @@ func TestImagesCatalogReportsSpaceAndUploads(t *testing.T) {
 			1: {ID: 1, Name: "NAS", Kind: "smb", Root: root, State: "ready"},
 			2: {ID: 2, Name: "Local", Kind: "local", Root: root, State: "ready"},
 			3: {ID: 3, Name: "Off", Kind: "local", Root: root, State: "unavailable"},
+			4: {ID: 4, Name: "NFS-RO", Kind: "nfs", Root: root, State: "ready", UploadsEnabled: false},
+			5: {ID: 5, Name: "NFS-RW", Kind: "nfs", Root: root, State: "ready", UploadsEnabled: true},
 		},
 		images: map[int64]map[string]Image{},
-		state:  map[int64]string{1: "ready", 2: "ready", 3: "unavailable"},
+		state:  map[int64]string{1: "ready", 2: "ready", 3: "unavailable", 4: "ready", 5: "ready"},
 	}}}
 	server := NewServer(repo)
 	server.space = func(string) (int64, int64, bool) { return 100 << 30, 40 << 30, true }
@@ -167,6 +169,12 @@ func TestImagesCatalogReportsSpaceAndUploads(t *testing.T) {
 	if s := got["Off"]; s.Total != 0 || s.Uploads {
 		t.Fatalf("unavailable = %+v", s)
 	}
+	if s := got["NFS-RO"]; s.Total != 100<<30 || s.Uploads {
+		t.Fatalf("NFS-RO = %+v", s)
+	}
+	if s := got["NFS-RW"]; s.Total != 100<<30 || !s.Uploads {
+		t.Fatalf("NFS-RW = %+v", s)
+	}
 }
 
 func TestSpaceAndWritableOnARealDirectory(t *testing.T) {
@@ -180,5 +188,84 @@ func TestSpaceAndWritableOnARealDirectory(t *testing.T) {
 	}
 	if _, _, ok := Space(filepath.Join(dir, "missing")); ok {
 		t.Fatal("space of a missing path")
+	}
+}
+
+func TestImagesUploadIntoNFSStorage(t *testing.T) {
+	root := realTempDir(t)
+	uploadDir := realTempDir(t)
+	key := "0123456789abcdef0123456789abcdef"
+	nfsStorage := Storage{
+		ID:             8,
+		Name:           "NFS",
+		Kind:           "nfs",
+		Root:           root,
+		Key:            key,
+		Server:         "192.168.10.10",
+		ExportPath:     "/export/iso",
+		NFSVersion:     "4.1",
+		State:          "ready",
+		UploadsEnabled: true,
+	}
+	repo := &uploadRepository{httpRepository: httpRepository{memoryRepository: memoryRepository{
+		storages: map[int64]Storage{8: nfsStorage},
+		images:   map[int64]map[string]Image{},
+		state:    map[int64]string{8: "ready"},
+	}}}
+	server := NewServer(repo)
+	server.uploadRoot = func(string) string { t.Fatal("SMB upload root used for NFS storage"); return "" }
+	server.nfsUploadRoot = func(got string) string {
+		if got != key {
+			t.Fatalf("nfs upload key = %q, want %q", got, key)
+		}
+		return uploadDir
+	}
+	mounted := true
+	server.mountIdentity = func(path string) (string, bool) {
+		if !mounted {
+			return "", false
+		}
+		return "mount-nfs", true
+	}
+
+	req := func() *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/storages/8/upload?name=win.iso", strings.NewReader("iso-data"))
+		r.ContentLength = 8
+		res := httptest.NewRecorder()
+		server.Handler().ServeHTTP(res, r)
+		return res
+	}
+
+	// 1. Success when ready, uploads_enabled, mounted
+	res := req()
+	if res.Code != http.StatusCreated || len(repo.recorded) != 1 || repo.recorded[0].Path != "win.iso" || repo.recorded[0].StorageID != 8 {
+		t.Fatalf("upload status=%d body=%s recorded=%+v", res.Code, res.Body.String(), repo.recorded)
+	}
+	if _, err := os.Stat(filepath.Join(uploadDir, "win.iso")); err != nil {
+		t.Fatalf("uploaded file missing: %v", err)
+	}
+
+	// 2. Reject when state != ready
+	s := repo.storages[8]
+	s.State = "unavailable"
+	repo.storages[8] = s
+	if res := req(); res.Code != http.StatusConflict {
+		t.Fatalf("unavailable NFS upload status=%d, want 409", res.Code)
+	}
+
+	// 3. Reject when !UploadsEnabled
+	s.State = "ready"
+	s.UploadsEnabled = false
+	repo.storages[8] = s
+	if res := req(); res.Code != http.StatusForbidden {
+		t.Fatalf("read-only NFS upload status=%d, want 403", res.Code)
+	}
+
+	// 4. Reject when mountIdentity fails
+	s.UploadsEnabled = true
+	repo.storages[8] = s
+	mounted = false
+	if res := req(); res.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unmounted NFS upload status=%d, want 503", res.Code)
 	}
 }

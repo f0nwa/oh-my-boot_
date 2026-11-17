@@ -31,7 +31,7 @@ func scanStorageWith(ctx context.Context, repo ScanRepository, id int64, mountId
 		return fail(err)
 	}
 	var mountBefore string
-	if storage.Kind == "mounted" || storage.Kind == "smb" {
+	if storage.Kind == "mounted" || storage.Kind == "smb" || storage.Kind == "nfs" {
 		var ok bool
 		mountBefore, ok = mountIdentity(storage.Root)
 		if !ok {
@@ -42,7 +42,7 @@ func scanStorageWith(ctx context.Context, repo ScanRepository, id int64, mountId
 	if err != nil {
 		return fail(err)
 	}
-	if storage.Kind == "mounted" || storage.Kind == "smb" {
+	if storage.Kind == "mounted" || storage.Kind == "smb" || storage.Kind == "nfs" {
 		mountAfter, ok := mountIdentity(storage.Root)
 		if !ok || mountAfter != mountBefore {
 			return fail(fmt.Errorf("storage %q mount changed during scan", storage.Name))

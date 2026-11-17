@@ -69,6 +69,7 @@ func samplePageDataBase(lang string) pageData {
 		Storages: []images.Storage{
 			{ID: 6, Name: "DSM", Kind: "smb", Server: "nas", Share: "iso", State: "unavailable", Error: "Хранилище недоступно: не отвечает дольше 20s"},
 			{ID: 7, Name: "Upload", Kind: "smb", Server: "nas", Share: "iso", State: "ready"},
+			{ID: 8, Name: "NFS", Kind: "nfs", Server: "nas", ExportPath: "/srv/nfs", NFSVersion: "4.1", State: "ready"},
 			{ID: 1, Name: "Local", Kind: "local", Root: "/srv/iso", State: "scanning"},
 			{ID: 2, Name: "Mounted", Kind: "mounted", Root: "/mnt/iso", State: "other", Error: "Ожидает подключения"},
 		},

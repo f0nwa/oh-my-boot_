@@ -156,7 +156,7 @@ func (m *StorageMonitor) probe(storage Storage) (err error, finished bool) {
 // a shared folder the CIFS client may still list the directory from its cache
 // while stat, which the rescan needs, fails with "stale file handle".
 func ProbeStorage(storage Storage) error {
-	if storage.Kind == "mounted" || storage.Kind == "smb" {
+	if storage.Kind == "mounted" || storage.Kind == "smb" || storage.Kind == "nfs" {
 		if _, ok := MountIdentity(storage.Root); !ok {
 			return fmt.Errorf("не смонтировано")
 		}

@@ -288,3 +288,32 @@ func TestImagesTableEnglishTranslation(t *testing.T) {
 		}
 	}
 }
+
+func TestImagesUploadTargetShowsStorageKind(t *testing.T) {
+	s := &Server{
+		Store: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}},
+		Images: &fakeImagesAPI{
+			catalog: images.Catalog{
+				Storages: []images.Storage{
+					{ID: 1, Name: "NAS-SMB", Kind: "smb", Uploads: true, Free: 500 << 30, Total: 1000 << 30},
+					{ID: 2, Name: "NAS-NFS", Kind: "nfs", NFSVersion: "4.1", Uploads: true, Free: 300 << 30, Total: 1000 << 30},
+					{ID: 3, Name: "NFS-RO", Kind: "nfs", NFSVersion: "4.1", Uploads: false, Free: 100 << 30, Total: 1000 << 30},
+					{ID: 4, Name: "Local-Storage", Kind: "local", Uploads: true, Free: 50 << 30, Total: 100 << 30},
+				},
+			},
+		},
+	}
+	body := libraryGet(t, s, "/images")
+	for _, want := range []string{
+		`NAS-SMB · SMB`,
+		`NAS-NFS · NFS`,
+		`Local-Storage · Локальный каталог`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("/images missing upload target %q", want)
+		}
+	}
+	if strings.Contains(body, "NFS-RO") {
+		t.Fatalf("/images should not include read-only storage in upload targets")
+	}
+}

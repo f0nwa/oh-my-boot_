@@ -159,6 +159,10 @@ func ReceiveISO(ctx context.Context, root, folder, name string, body io.Reader, 
 		temp.Close()
 		return UploadResult{}, err
 	}
+	if err := temp.Chmod(0644); err != nil {
+		temp.Close()
+		return UploadResult{}, err
+	}
 	if err := temp.Close(); err != nil {
 		return UploadResult{}, err
 	}

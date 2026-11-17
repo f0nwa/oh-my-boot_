@@ -496,3 +496,41 @@ type isoWithNonDirectoryEFI struct{ ubuntuInspectMounter }
 func (m *isoWithNonDirectoryEFI) Mount(_ context.Context, _ string, target string) error {
 	return os.WriteFile(filepath.Join(target, "efi"), []byte("not a directory"), 0600)
 }
+
+func TestUbuntuISOManagerAcceptsNFSSourceRoots(t *testing.T) {
+	smbRoot, nfsRoot := t.TempDir(), t.TempDir()
+	storage := filepath.Join(nfsRoot, "nfskey")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(storage, "ubuntu.iso")
+	if err := os.WriteFile(file, []byte("UbuntuISOData"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mounter := &ubuntuInspectMounter{
+		info:    "Ubuntu Desktop - Release amd64",
+		sources: "- id: ubuntu-desktop\n  name: Desktop\n",
+	}
+	manager := &UbuntuISOManager{
+		SourceRoots: []string{smbRoot, nfsRoot},
+		Mounter:     mounter,
+	}
+	req := WindowsISORequest{
+		ID:           12,
+		StorageRoot:  storage,
+		RelativePath: "ubuntu.iso",
+		Size:         info.Size(),
+		Modified:     info.ModTime(),
+	}
+	inspection, err := manager.InspectISO(context.Background(), req)
+	if err != nil {
+		t.Fatalf("InspectISO failed: %v", err)
+	}
+	if inspection.Kind != "ubuntu" {
+		t.Fatalf("inspection.Kind = %q, want ubuntu", inspection.Kind)
+	}
+}

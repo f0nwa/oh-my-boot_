@@ -62,6 +62,8 @@ func (s *Server) describeSpace(storages []Storage) {
 			switch storage.Kind {
 			case "smb":
 				storage.Uploads = true
+			case "nfs":
+				storage.Uploads = storage.UploadsEnabled
 			case "local":
 				storage.Uploads = s.writable != nil && validateRootPath(storage.Root) == nil && s.writable(storage.Root)
 			}

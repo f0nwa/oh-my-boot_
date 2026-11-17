@@ -88,7 +88,7 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		for _, storage := range catalog.Storages {
 			if storage.ID == image.StorageID {
 				choice.StorageName = storage.Name
-				if storage.State != "ready" || !(storage.Kind == "smb" || storage.Kind == "local" && localISOStorage(storage.Root)) {
+				if storage.State != "ready" || !(storage.Kind == "smb" || storage.Kind == "nfs" || storage.Kind == "local" && localISOStorage(storage.Root)) {
 					choice.State, choice.Error = "unavailable", "Хранилище недоступно"
 				}
 			}

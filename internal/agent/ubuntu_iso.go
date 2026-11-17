@@ -34,6 +34,7 @@ type UbuntuISOAPI interface {
 type UbuntuISOManager struct {
 	mu               sync.Mutex
 	SourceRoot       string
+	SourceRoots      []string
 	LocalRoot        string
 	AssetRoot        string
 	ScriptPath       string
@@ -41,6 +42,16 @@ type UbuntuISOManager struct {
 	RegistryRoot     string
 	LegacyConfigPath string
 	Mounter          WindowsISOMounter
+}
+
+func (m *UbuntuISOManager) allowedRoots() []string {
+	if len(m.SourceRoots) > 0 {
+		return m.SourceRoots
+	}
+	if m.SourceRoot != "" {
+		return []string{m.SourceRoot}
+	}
+	return nil
 }
 
 type UbuntuISOInspection struct {
@@ -63,7 +74,7 @@ func (m *UbuntuISOManager) InspectISO(ctx context.Context, req WindowsISORequest
 }
 
 func (m *UbuntuISOManager) inspect(ctx context.Context, req WindowsISORequest, detect bool) (result ISOInspection, resultErr error) {
-	source, err := resolveWindowsISOSource(m.SourceRoot, req, m.LocalRoot)
+	source, err := resolveWindowsISOSourceRoots(m.allowedRoots(), req, m.LocalRoot)
 	if err != nil {
 		return result, err
 	}
@@ -282,7 +293,7 @@ func (m *UbuntuISOManager) Validate(ctx context.Context, req UbuntuISORequest) (
 	if len(req.SHA256) != 64 || !validManagedChild(req.SHA256) {
 		return "", fmt.Errorf("invalid Ubuntu ISO digest")
 	}
-	source, err := resolveWindowsISOSource(m.SourceRoot, req.WindowsISORequest, m.LocalRoot)
+	source, err := resolveWindowsISOSourceRoots(m.allowedRoots(), req.WindowsISORequest, m.LocalRoot)
 	if err != nil {
 		return "", err
 	}

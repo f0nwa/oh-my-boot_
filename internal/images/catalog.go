@@ -17,8 +17,11 @@ type Storage struct {
 	Key        string     `json:"key,omitempty"`
 	Server     string     `json:"server,omitempty"`
 	Share      string     `json:"share,omitempty"`
-	Subpath    string     `json:"subpath,omitempty"`
-	State      string     `json:"state"`
+	Subpath        string     `json:"subpath,omitempty"`
+	ExportPath     string     `json:"export_path,omitempty"`
+	NFSVersion     string     `json:"nfs_version,omitempty"`
+	UploadsEnabled bool       `json:"uploads_enabled,omitempty"`
+	State          string     `json:"state"`
 	Error      string     `json:"error,omitempty"`
 	LastScanAt *time.Time `json:"last_scan_at,omitempty"`
 	// Filled when the catalog is served, not stored: the size of the file

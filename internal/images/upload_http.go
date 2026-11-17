@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"omb/internal/nfsstorage"
 	"omb/internal/smbstorage"
 )
 
@@ -65,6 +66,20 @@ func (s *Server) uploadTarget(r *http.Request) (Storage, string, int) {
 			return Storage{}, "", http.StatusServiceUnavailable
 		}
 		return storage, s.uploadRoot(storage.Key), 0
+	case "nfs":
+		if nfsstorage.Validate(storage.Key, storage.Server, storage.ExportPath, storage.NFSVersion) != nil {
+			return Storage{}, "", http.StatusNotFound
+		}
+		if storage.State != "ready" {
+			return Storage{}, "", http.StatusConflict
+		}
+		if !storage.UploadsEnabled {
+			return Storage{}, "", http.StatusForbidden
+		}
+		if _, ok := s.mountIdentity(storage.Root); !ok {
+			return Storage{}, "", http.StatusServiceUnavailable
+		}
+		return storage, s.nfsUploadRoot(storage.Key), 0
 	case "local":
 		if storage.State != "ready" {
 			return Storage{}, "", http.StatusConflict
@@ -104,11 +119,11 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid ISO name or size", http.StatusBadRequest)
 		return
 	}
-	// An SMB upload goes through its own mount; it must not change under
+	// An SMB or NFS upload goes through its own mount; it must not change under
 	// the transfer.
-	smb := storage.Kind == "smb"
+	separateMount := storage.Kind == "smb" || storage.Kind == "nfs"
 	mountBefore, ok := "", true
-	if smb {
+	if separateMount {
 		mountBefore, ok = s.mountIdentity(uploadRoot)
 	}
 	if !ok {
@@ -133,7 +148,7 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "ISO upload failed: "+safeUploadError(err), uploadErrorStatus(err))
 		return
 	}
-	if mountAfter, ok := s.mountIdentity(uploadRoot); smb && (!ok || mountAfter != mountBefore) {
+	if mountAfter, ok := s.mountIdentity(uploadRoot); separateMount && (!ok || mountAfter != mountBefore) {
 		http.Error(w, "upload mount changed", http.StatusServiceUnavailable)
 		return
 	}

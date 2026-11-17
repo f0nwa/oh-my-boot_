@@ -57,7 +57,21 @@ runuser -u omb-images -- env OMB_IMAGES_DATABASE_URL='host=/var/run/postgresql d
   /usr/local/bin/omb-imagesctl add-path -name Local -kind local -root /var/lib/omb-images/iso
 ~~~
 
-Use `-kind mounted` for an already mounted filesystem, with an absolute path to a real mount point and no symlinks. Add managed SMB connections in **System → Storage**, supplying a direct path such as `//nas/share/iso` and credentials. SMB requires `cifs-utils`; Agent keeps separate credential files under `/etc/omb/smb`, mode `0600`.
+Use `-kind mounted` for an already mounted filesystem, with an absolute path to a real mount point and no symlinks.
+
+Administrators connect SMB and NFS network storages under **System → Storage** (via the **Connect storage ▾** menu button):
+- **SMB:** a direct path such as `//nas/share/iso` and credentials (username, password, domain). SMB requires the `cifs-utils` package; Agent stores credentials under `/etc/omb/smb/<key>` with mode `0600`.
+- **NFS:** server address (IPv4, IPv6, or DNS hostname) and absolute export path (e.g. `/volume1/iso` or `/srv/nfs/iso`). Supported versions are **NFSv4.1** (default, TCP port 2049) and **NFSv3** (RPC portmapper 111, nfs 2049, `nolock` option). NFS requires the system package `nfs-common` (`mount.nfs`). Agent saves connection parameters in `/etc/omb/nfs/<key>.json` with mode `0600`.
+
+**Access Modes and NFS Permission Auto-Detection:**
+NFS evaluates access permissions by Unix process UID/GID rather than mount options. During connection and subsequent availability checks (**Refresh** in the `☰` row menu), Agent mounts the export read-only at `/mnt/omb-nfs/<key>` and automatically performs a write probe at a temporary mount point `/mnt/omb-nfs-upload/<key>` as the `omb-images` system user:
+- If the NAS export permits writing and file creation for `omb-images`, the storage enters **read and write** mode (ISO upload and deletion are enabled).
+- If the export is read-only or `omb-images` lacks write permissions on the NAS, the storage remains in **read-only** mode (catalog scanning, free space display, and boot entry preparation work normally; ISO upload and deletion are disabled).
+- If NAS permissions change later, click **Refresh** in the storage's `☰` menu to re-detect the access mode without reconnecting.
+
+**NAS Export Configuration Requirements:**
+- For write access, the UID and GID of the local `omb-images` user on the OMB server must have write permissions in the exported directory on the NAS (for example, through NAS user mapping such as `all_squash` with `anonuid`/`anongid` pointing to the directory owner).
+- `root_squash` mode (default on most NAS devices): when `omb-agent` and `omb-winiso-prepare` (running as `root`) loop-mount ISOs, files on NFS are accessed as an unprivileged user (`nobody`). Therefore, export directories must grant traverse and read permissions (`o+rx`), and `.iso` files must be world-readable (`0644`). When uploading an ISO through the OMB web interface, OMB automatically sets mode `0644` on the uploaded file. With `no_root_squash` configured on the NAS, OMB server root retains direct access.
 
 Operators and administrators can start scans; observers can view the catalog. Background availability checks preserve previous records on failure. Interrupted scans are marked as failed after a restart and can be retried. See [Control storage recovery](control-installation.md#storage-availability-and-recovery) for managed mounts.
 
@@ -65,13 +79,16 @@ Operators and administrators can start scans; observers can view the catalog. Ba
 
 In the library, select writable storage, an existing folder and an ISO up to 32 GiB. The complete ISO goes to the selected storage; its size and SHA-256 are checked afterwards. Existing files are not overwritten, and cancellation removes the temporary file. Menu publishing is a separate action.
 
-SMB uses `/mnt/omb-smb/<key>` for reading and `/mnt/omb-smb-upload/<key>` for writing. The NAS account must permit writes. Local uploads use `/var/lib/omb-images/iso`; the `omb-images` group and service unit must permit writing there. Deleting an ISO from local or mounted storage also requires the `omb-images` user to have write permission in the corresponding directory. Free space refers to the selected storage filesystem.
+SMB and NFS use separate mount points: `/mnt/omb-smb/<key>` or `/mnt/omb-nfs/<key>` for reading and `/mnt/omb-smb-upload/<key>` or `/mnt/omb-nfs-upload/<key>` for writing. The NAS account or directory permissions must permit writes. Local uploads use `/var/lib/omb-images/iso`; the `omb-images` group and service unit must permit writing there. Deleting an ISO from local, mounted, or network (SMB/NFS) storage also requires the `omb-images` user to have write permission in the corresponding directory. Free space refers to the selected storage filesystem.
 
 ## Windows images, XML and drivers
 
 Under **Boot entries**, create an entry from a Windows x64 ISO. Preparation starts automatically after saving. Agent checks the source, mounts it read-only and prepares boot files under `/srv/omb/tftp/windows-profiles/<ID>/`. The full ISO stays on its storage. Clients read the installation media through the separate `ombisos` share using `omb-iso`; NAS credentials are not sent to WinPE.
 
-Preparation requires `omb-winiso-prepare`, the [profile unit](../../deploy/systemd/omb-winiso@.service), [templates](../../deploy/boot-assets/windows-profiles/) under `/usr/share/omb/windows-profiles`, [Samba configuration](../../deploy/samba/smb.conf) and `/etc/omb/omb-iso-password`. Mount and configuration directories are `/mnt/omb-iso/profiles` and `/etc/omb/winiso`. Install these through the [server bundle](offline-installation.md); installing Images alone does not supply them. Local source ISOs for Windows must be inside `/var/lib/omb-images` or on managed SMB storage.
+Windows Setup delivery flow when using network storage:
+`NAS (NFS export or SMB share) → OMB server (/mnt/omb-nfs/<key> or /mnt/omb-smb/<key>) → loop mount ISO (/mnt/omb-iso/profiles/<ID>) → local Samba ombisos share → WinPE client`. PXE and WinPE clients do not connect directly to the NAS and do not require client-side NFS support; the client runs standard SMB against the OMB server.
+
+Preparation requires `omb-winiso-prepare`, the [profile unit](../../deploy/systemd/omb-winiso@.service), [templates](../../deploy/boot-assets/windows-profiles/) under `/usr/share/omb/windows-profiles`, [Samba configuration](../../deploy/samba/smb.conf) and `/etc/omb/omb-iso-password`. Mount and configuration directories are `/mnt/omb-iso/profiles` and `/etc/omb/winiso`. Install these through the [server bundle](offline-installation.md); installing Images alone does not supply them. Local source ISOs for Windows must be inside `/var/lib/omb-images` or on managed SMB or NFS storage.
 
 Upload a checked Windows XML under **Library → Answer files**, and INF files with their dependencies under **Library → Drivers**. When creating or editing a boot entry, select the ISO, XML and INF files, wait for preparation, then publish the menu. The source ISO stays unchanged. See the [WinPE driver catalog](control-installation.md#winpe-driver-catalog).
 

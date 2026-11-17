@@ -76,6 +76,7 @@ done
 | `ca-certificates`, `curl` | `fetch-ipxe.sh` и проверки HTTP из руководств |
 | `openssl` | Самоподписанный сертификат админки |
 | `cifs-utils` | Монтирование SMB-хранилищ с ISO |
+| `nfs-common` | Монтирование NFS-хранилищ с ISO (`mount.nfs`) |
 | `samba` | Папка `ombisos`, с которой WinPE запускает Setup; `smbstatus` для журнала Agent |
 | `wimtools` | `wimlib-imagex` для WIM с драйверами |
 
@@ -86,7 +87,7 @@ mkdir -p "$KIT/debs"
 docker run --rm --platform linux/amd64 -v "$KIT/debs:/out" ubuntu:26.04 sh -ec '
   apt-get update
   apt-get install -y --download-only --no-install-recommends \
-    dnsmasq-base postgresql ca-certificates curl openssl cifs-utils samba wimtools
+    dnsmasq-base postgresql ca-certificates curl openssl cifs-utils nfs-common samba wimtools
   cp /var/cache/apt/archives/*.deb /out/
   apt-get install -y --no-install-recommends dpkg-dev
   cd /out && dpkg-scanpackages --multiversion . /dev/null | gzip -9c > Packages.gz'
@@ -151,7 +152,7 @@ sudo apt-get update \
   -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/omb-offline.list \
   -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
 sudo apt-get install -y --no-install-recommends \
-  dnsmasq-base postgresql ca-certificates curl openssl cifs-utils samba wimtools
+  dnsmasq-base postgresql ca-certificates curl openssl cifs-utils nfs-common samba wimtools
 ```
 
 `trusted=yes` отключает проверку подписи репозитория. Это допустимо, потому что целостность комплекта уже проверена по `SHA256SUMS`. После установки файл `/etc/apt/sources.list.d/omb-offline.list` можно удалить.

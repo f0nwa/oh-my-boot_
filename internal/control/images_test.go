@@ -49,6 +49,14 @@ func (f *fakeImagesAPI) CreateSMB(context.Context, images.ManagedStorageInput) (
 func (f *fakeImagesAPI) MarkSMBError(context.Context, int64) error        { return f.err }
 func (f *fakeImagesAPI) MarkSMBScanError(context.Context, int64) error    { return f.err }
 func (f *fakeImagesAPI) DeleteSMB(context.Context, int64) error           { return f.err }
+func (f *fakeImagesAPI) CreateNFS(context.Context, images.NFSStorageInput) (images.Storage, error) {
+	return images.Storage{}, f.err
+}
+func (f *fakeImagesAPI) UpdateNFSVersion(context.Context, int64, string) error { return f.err }
+func (f *fakeImagesAPI) SetNFSUploads(context.Context, int64, bool) error     { return f.err }
+func (f *fakeImagesAPI) MarkNFSError(context.Context, int64) error            { return f.err }
+func (f *fakeImagesAPI) MarkNFSScanError(context.Context, int64) error        { return f.err }
+func (f *fakeImagesAPI) DeleteNFS(context.Context, int64) error               { return f.err }
 func (f *fakeImagesAPI) Folders(context.Context, int64) ([]string, error) { return f.folders, f.err }
 func (f *fakeImagesAPI) DeleteImage(_ context.Context, id int64, path string) error {
 	if f.deleteErr != nil {

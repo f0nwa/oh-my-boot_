@@ -40,7 +40,7 @@ func main() {
 		fatal(err)
 	}
 	runtime := agent.WindowsISORuntime{
-		SourceRoot:  "/mnt/omb-smb",
+		SourceRoots: []string{"/mnt/omb-smb", "/mnt/omb-nfs"},
 		LocalRoot:   agent.LocalISORoot,
 		MountRoot:   "/mnt/omb-iso/profiles",
 		AssetRoot:   "/srv/omb/tftp/windows-profiles",

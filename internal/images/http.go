@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"omb/internal/nfsstorage"
 	"omb/internal/smbstorage"
 )
 
@@ -21,6 +22,10 @@ type APIRepository interface {
 	MarkScanning(context.Context, int64) error
 	CreateSMB(context.Context, ManagedStorageInput) (Storage, error)
 	DeleteSMB(context.Context, int64) error
+	CreateNFS(context.Context, NFSStorageInput) (Storage, error)
+	UpdateNFSConfig(context.Context, int64, string) error
+	SetUploadsEnabled(context.Context, int64, bool) error
+	DeleteNFS(context.Context, int64) error
 	RecordUpload(context.Context, Image) error
 	DeleteImage(context.Context, int64, string) error
 }
@@ -31,13 +36,14 @@ type Server struct {
 	active        map[int64]bool
 	uploads       map[int64]bool
 	uploadRoot    func(string) string
+	nfsUploadRoot func(string) string
 	mountIdentity func(string) (string, bool)
 	writable      func(string) bool
 	space         func(string) (total, free int64, ok bool)
 }
 
 func NewServer(repo APIRepository) *Server {
-	return &Server{repo: repo, active: map[int64]bool{}, uploads: map[int64]bool{}, uploadRoot: smbstorage.UploadRoot, mountIdentity: MountIdentity, writable: Writable, space: Space}
+	return &Server{repo: repo, active: map[int64]bool{}, uploads: map[int64]bool{}, uploadRoot: smbstorage.UploadRoot, nfsUploadRoot: nfsstorage.UploadRoot, mountIdentity: MountIdentity, writable: Writable, space: Space}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -104,6 +110,121 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		if err := s.repo.DeleteSMB(r.Context(), id); err != nil {
+			http.Error(w, "cannot delete storage", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /nfs-storages", func(w http.ResponseWriter, r *http.Request) {
+		var input NFSStorageInput
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(w, "invalid storage request", http.StatusBadRequest)
+			return
+		}
+		if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid storage request", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(input.Name) == "" || len(input.Name) > 120 || nfsstorage.Validate(input.Key, input.Server, input.ExportPath, input.Version) != nil {
+			http.Error(w, "invalid storage request", http.StatusBadRequest)
+			return
+		}
+		storage, err := s.repo.CreateNFS(r.Context(), input)
+		if err != nil {
+			http.Error(w, "cannot reserve storage", http.StatusConflict)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(storage)
+	})
+	mux.HandleFunc("POST /nfs-storages/{id}/version", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid storage ID", http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			Version string `json:"version"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(w, "invalid version request", http.StatusBadRequest)
+			return
+		}
+		if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid version request", http.StatusBadRequest)
+			return
+		}
+		if input.Version != "4.1" && input.Version != "3" {
+			http.Error(w, "invalid NFS version", http.StatusBadRequest)
+			return
+		}
+		if err := s.repo.UpdateNFSConfig(r.Context(), id, input.Version); err != nil {
+			http.Error(w, "cannot update NFS version", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /nfs-storages/{id}/uploads", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid storage ID", http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			UploadsEnabled bool `json:"uploads_enabled"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(w, "invalid uploads request", http.StatusBadRequest)
+			return
+		}
+		if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid uploads request", http.StatusBadRequest)
+			return
+		}
+		if err := s.repo.SetUploadsEnabled(r.Context(), id, input.UploadsEnabled); err != nil {
+			http.Error(w, "cannot update uploads setting", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /nfs-storages/{id}/error", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid storage ID", http.StatusBadRequest)
+			return
+		}
+		if err := s.repo.ScanError(r.Context(), id, "Не удалось подключить NFS"); err != nil {
+			http.Error(w, "cannot mark storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /nfs-storages/{id}/scan-error", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid storage ID", http.StatusBadRequest)
+			return
+		}
+		if err := s.repo.ScanError(r.Context(), id, "Не удалось запустить сканирование"); err != nil {
+			http.Error(w, "cannot mark scan failure", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("DELETE /nfs-storages/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid storage ID", http.StatusBadRequest)
+			return
+		}
+		if err := s.repo.DeleteNFS(r.Context(), id); err != nil {
 			http.Error(w, "cannot delete storage", http.StatusServiceUnavailable)
 			return
 		}

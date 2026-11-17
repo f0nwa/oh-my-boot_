@@ -15,6 +15,8 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 	defer s.windowsMu.Unlock()
 	s.smbMu.Lock()
 	defer s.smbMu.Unlock()
+	s.nfsMu.Lock()
+	defer s.nfsMu.Unlock()
 	if s.Images == nil {
 		http.Error(w, "Сервис образов недоступен", http.StatusServiceUnavailable)
 		return
@@ -31,12 +33,15 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var storageFound, imageFound bool
-	var storageKind, storageKey, server, share, subpath string
+	var storageKind, storageKey, server, share, subpath, exportPath, version string
+	var storageUploads bool
 	for _, storage := range catalog.Storages {
 		if storage.ID == storageID {
 			storageFound = true
 			storageKind, storageKey = storage.Kind, storage.Key
 			server, share, subpath = storage.Server, storage.Share, storage.Subpath
+			exportPath, version = storage.ExportPath, storage.NFSVersion
+			storageUploads = storage.Uploads
 			if storage.State != "ready" {
 				http.Error(w, "Хранилище недоступно", http.StatusConflict)
 				return
@@ -50,8 +55,12 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	if !storageFound || !imageFound || (storageKind != "local" && storageKind != "mounted" && storageKind != "smb") {
+	if !storageFound || !imageFound || (storageKind != "local" && storageKind != "mounted" && storageKind != "smb" && storageKind != "nfs") {
 		http.Error(w, "ISO не найден", http.StatusNotFound)
+		return
+	}
+	if storageKind == "nfs" && !storageUploads {
+		http.Error(w, "Хранилище доступно только для чтения", http.StatusForbidden)
 		return
 	}
 	profiles, err := s.Store.WindowsProfiles(r.Context())
@@ -119,6 +128,17 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		if err := s.SMB.EnableUpload(r.Context(), storageKey, server, share, subpath); err != nil {
 			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s mount", storageID, imagePath))
 			http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права SMB.", http.StatusServiceUnavailable)
+			return
+		}
+	}
+	if storageKind == "nfs" {
+		if s.NFS == nil {
+			http.Error(w, "Служба хранилищ недоступна", http.StatusServiceUnavailable)
+			return
+		}
+		if err := s.NFS.EnableNFSUpload(r.Context(), storageKey, server, exportPath, version); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s mount", storageID, imagePath))
+			http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права NFS.", http.StatusServiceUnavailable)
 			return
 		}
 	}

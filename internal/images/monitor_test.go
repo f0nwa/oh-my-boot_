@@ -146,4 +146,7 @@ func TestProbeStorageReadsLocalDirectories(t *testing.T) {
 	if err := ProbeStorage(Storage{Kind: "smb", Root: root}); err == nil {
 		t.Fatal("unmounted SMB storage accepted")
 	}
+	if err := ProbeStorage(Storage{Kind: "nfs", Root: root}); err == nil {
+		t.Fatal("unmounted NFS storage accepted")
+	}
 }

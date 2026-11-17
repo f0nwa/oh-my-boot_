@@ -82,6 +82,12 @@ type ImagesAPI interface {
 	MarkSMBError(context.Context, int64) error
 	MarkSMBScanError(context.Context, int64) error
 	DeleteSMB(context.Context, int64) error
+	CreateNFS(context.Context, images.NFSStorageInput) (images.Storage, error)
+	UpdateNFSVersion(context.Context, int64, string) error
+	SetNFSUploads(context.Context, int64, bool) error
+	MarkNFSError(context.Context, int64) error
+	MarkNFSScanError(context.Context, int64) error
+	DeleteNFS(context.Context, int64) error
 	DeleteImage(context.Context, int64, string) error
 }
 
@@ -89,6 +95,13 @@ type SMBMountAPI interface {
 	Mount(context.Context, string, string, string, string, string, string, string) error
 	EnableUpload(context.Context, string, string, string, string) error
 	Remove(context.Context, string) error
+}
+
+type NFSMountAPI interface {
+	MountNFS(ctx context.Context, key, server, exportPath, version string) (bool, error)
+	EnableNFSUpload(ctx context.Context, key, server, exportPath, version string) error
+	CheckNFSUpload(ctx context.Context, key string) (bool, error)
+	RemoveNFS(ctx context.Context, key string) error
 }
 
 type WindowsISOAPI interface {
@@ -149,6 +162,7 @@ type Server struct {
 	DiskUsage         DiskUsageAPI
 	Images            ImagesAPI
 	SMB               SMBMountAPI
+	NFS               NFSMountAPI
 	WindowsISO        WindowsISOAPI
 	UbuntuISO         UbuntuISOAPI
 	UbuntuReadiness   UbuntuReadiness
@@ -165,6 +179,7 @@ type Server struct {
 	menuMu            sync.Mutex
 	draftMu           sync.Mutex
 	smbMu             sync.Mutex
+	nfsMu             sync.Mutex
 	bookCache         machineBookCache
 	machineImports    *machineImportStash
 	windowsMu         sync.Mutex
@@ -322,6 +337,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/storage-recovery", s.protect("smb", withPageErrors(s.storagesPage, s.storageRecoverySettings)))
 	mux.HandleFunc("POST /images/storage-recovery/run", s.protect("smb", withPageErrors(s.storagesPage, s.storageRecoveryRun)))
 	mux.HandleFunc("POST /images/smb/{id}/remove", s.protect("smb", withPageErrors(s.storagesPage, s.imagesSMBRemove)))
+	mux.HandleFunc("POST /images/nfs", s.protect("nfs", withPageErrors(s.storagesPage, s.imagesNFSCreate)))
+	mux.HandleFunc("POST /images/nfs/{id}/retry", s.protect("nfs", withPageErrors(s.storagesPage, s.imagesNFSRetry)))
+	mux.HandleFunc("POST /images/nfs/{id}/remove", s.protect("nfs", withPageErrors(s.storagesPage, s.imagesNFSRemove)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
@@ -520,10 +538,24 @@ func (s *Server) storagesPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
 	s.smbMu.Lock()
 	defer s.smbMu.Unlock()
+	s.nfsMu.Lock()
+	defer s.nfsMu.Unlock()
 	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
 	if err != nil || id <= 0 || s.Images == nil {
 		http.Error(w, "Неверное хранилище", http.StatusBadRequest)
 		return
+	}
+	if s.NFS != nil {
+		if catalog, err := s.Images.Catalog(r.Context()); err == nil {
+			for _, st := range catalog.Storages {
+				if st.ID == id && st.Kind == "nfs" {
+					if writable, err := s.NFS.CheckNFSUpload(r.Context(), st.Key); err == nil {
+						_ = s.Images.SetNFSUploads(r.Context(), st.ID, writable)
+					}
+					break
+				}
+			}
+		}
 	}
 	err = s.Images.Scan(r.Context(), id)
 	result := "accepted"

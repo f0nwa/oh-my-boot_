@@ -23,7 +23,14 @@ func main() {
 	state := flag.String("state-path", "/var/lib/omb-agent/network.json", "last successful network config")
 	recoveryConfig := flag.String("storage-recovery-config", "/etc/omb/storage-recovery.json", "storage recovery settings")
 	hosts := flag.String("hosts-path", "/var/lib/omb-dhcp/hosts", "managed dnsmasq DHCP hosts")
+	probeWrite := flag.String("probe-write", "", "probe directory writability and exit")
 	flag.Parse()
+	if *probeWrite != "" {
+		if err := agent.ProbeWriteDir(*probeWrite); err != nil {
+			log.Fatalf("probe write failed: %v", err)
+		}
+		os.Exit(0)
+	}
 	applier, err := agent.NewApplier(*config, *state, *hosts, agent.SystemRunner{})
 	if err != nil {
 		log.Fatal(err)
@@ -41,8 +48,17 @@ func main() {
 		ImagesGID:      imagesUser.Gid,
 		Systemctl:      agent.SMBCommandSystemctl{},
 	}
+	nfs := &agent.NFSManager{
+		ConfigDir:  "/etc/omb/nfs",
+		UnitDir:    "/etc/systemd/system",
+		MountRoot:  "/mnt/omb-nfs",
+		UploadRoot: "/mnt/omb-nfs-upload",
+		ImagesUID:  imagesUser.Uid,
+		ImagesGID:  imagesUser.Gid,
+		Systemctl:  agent.SMBCommandSystemctl{},
+	}
 	windows := &agent.WindowsISOManager{
-		SourceRoot:  "/mnt/omb-smb",
+		SourceRoots: []string{"/mnt/omb-smb", "/mnt/omb-nfs"},
 		LocalRoot:   agent.LocalISORoot,
 		ConfigRoot:  "/etc/omb/winiso",
 		MountRoot:   "/mnt/omb-iso/profiles",
@@ -58,13 +74,13 @@ func main() {
 		ProfileRoot:         windows.AssetRoot,
 		DriverConfigRoot:    driverManager.ConfigRoot,
 	}
-	ubuntu := &agent.UbuntuISOManager{SourceRoot: "/mnt/omb-smb", LocalRoot: agent.LocalISORoot, AssetRoot: "/srv/omb/tftp", ScriptPath: "/usr/local/libexec/omb-prepare-ubuntu-source", RegistryRoot: boot.DefaultUbuntuRegistryRoot, LegacyConfigPath: "/etc/omb/boot.env", Runner: agent.ExecDriverCommandRunner{}}
+	ubuntu := &agent.UbuntuISOManager{SourceRoots: []string{"/mnt/omb-smb", "/mnt/omb-nfs"}, LocalRoot: agent.LocalISORoot, AssetRoot: "/srv/omb/tftp", ScriptPath: "/usr/local/libexec/omb-prepare-ubuntu-source", RegistryRoot: boot.DefaultUbuntuRegistryRoot, LegacyConfigPath: "/etc/omb/boot.env", Runner: agent.ExecDriverCommandRunner{}}
 	listener, err := agent.ListenUnix(*socket)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer listener.Close()
-	recovery := &agent.StorageRecovery{SMB: smb, Windows: windows, ConfigPath: *recoveryConfig}
+	recovery := &agent.StorageRecovery{SMB: smb, NFS: nfs, Windows: windows, ConfigPath: *recoveryConfig}
 	smbSessions := agent.NewSMBWatcher("/var/lib/omb-agent/smb-sessions.json")
 	usbBuilder := &ueficausb.Builder{MediaRoot: "/mnt/omb-iso/profiles", CacheRoot: "/var/lib/omb-agent/uefica-usb", Runner: agent.ExecDriverCommandRunner{}, FreeBytes: agent.FreeBytes}
 	diskUsage := &agent.DiskUsageCollector{
@@ -78,7 +94,7 @@ func main() {
 			UEFICAUSB:            usbBuilder.CacheRoot,
 		},
 	}
-	handler := agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder)
+	handler := agent.HandlerWithNFS(agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder), nfs)
 	handler = agent.HandlerWithDiskUsage(agent.HandlerWithUbuntuISO(handler, ubuntu), diskUsage)
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

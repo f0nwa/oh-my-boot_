@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"omb/internal/drivers"
+	"omb/internal/nfsstorage"
 	"omb/internal/smbstorage"
 
 	"omb/internal/network"
@@ -23,7 +24,7 @@ func HandlerWithSMB(applier *Applier, manager *SMBManager) http.Handler {
 }
 
 func HandlerWithManagers(applier *Applier, manager *SMBManager, windows *WindowsISOManager) http.Handler {
-	return HandlerWithUbuntuISO(HandlerWithDriverManager(applier, manager, windows, nil), nil)
+	return HandlerWithNFS(HandlerWithUbuntuISO(HandlerWithDriverManager(applier, manager, windows, nil), nil), nil)
 }
 
 func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *WindowsISOManager, driverManager *DriverManager) http.Handler {
@@ -302,7 +303,7 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		if !decodeSMBRequest(w, r, &req) {
 			return
 		}
-		if _, err := resolveWindowsISOSource(windows.SourceRoot, req, windows.LocalRoot); err != nil {
+		if _, err := resolveWindowsISOSourceRoots(windows.allowedRoots(), req, windows.LocalRoot); err != nil {
 			http.Error(w, "invalid Windows ISO source", http.StatusBadRequest)
 			return
 		}
@@ -439,4 +440,97 @@ func decodeAgentRequest(w http.ResponseWriter, r *http.Request, out any, maxByte
 		return false
 	}
 	return true
+}
+
+// HandlerWithNFS exposes NFS storage operations over the agent socket.
+func HandlerWithNFS(inner http.Handler, nfs *NFSManager) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /nfs/mount", func(w http.ResponseWriter, r *http.Request) {
+		if nfs == nil {
+			http.Error(w, "NFS unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req NFSMountRequest
+		if !decodeAgentRequest(w, r, &req, 8<<10) {
+			return
+		}
+		if nfsstorage.Validate(req.Key, req.Server, req.ExportPath, req.Version) != nil {
+			http.Error(w, "invalid NFS request", http.StatusBadRequest)
+			return
+		}
+		result, err := nfs.Mount(r.Context(), req)
+		if err != nil {
+			http.Error(w, "NFS mount failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
+	})
+	mux.HandleFunc("POST /nfs/enable-upload", func(w http.ResponseWriter, r *http.Request) {
+		if nfs == nil {
+			http.Error(w, "NFS unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req NFSMountRequest
+		if !decodeAgentRequest(w, r, &req, 8<<10) {
+			return
+		}
+		if nfsstorage.Validate(req.Key, req.Server, req.ExportPath, req.Version) != nil {
+			http.Error(w, "invalid NFS request", http.StatusBadRequest)
+			return
+		}
+		if err := nfs.EnableUpload(r.Context(), req); err != nil {
+			http.Error(w, "NFS upload mount failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /nfs/check-upload", func(w http.ResponseWriter, r *http.Request) {
+		if nfs == nil {
+			http.Error(w, "NFS unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			Key string `json:"key"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4<<10) {
+			return
+		}
+		if nfsstorage.Validate(req.Key, "127.0.0.1", "/placeholder", "4.1") != nil {
+			http.Error(w, "invalid NFS request", http.StatusBadRequest)
+			return
+		}
+		writable, err := nfs.CheckUpload(r.Context(), req.Key)
+		if err != nil {
+			http.Error(w, "NFS check upload failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(struct {
+			Writable bool `json:"writable"`
+		}{Writable: writable})
+	})
+	mux.HandleFunc("POST /nfs/remove", func(w http.ResponseWriter, r *http.Request) {
+		if nfs == nil {
+			http.Error(w, "NFS unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			Key string `json:"key"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4<<10) {
+			return
+		}
+		if nfsstorage.Validate(req.Key, "127.0.0.1", "/placeholder", "4.1") != nil {
+			http.Error(w, "invalid NFS request", http.StatusBadRequest)
+			return
+		}
+		if err := nfs.Remove(r.Context(), req.Key); err != nil {
+			http.Error(w, "NFS cleanup failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.Handle("/", inner)
+	return mux
 }

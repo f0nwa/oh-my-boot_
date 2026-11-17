@@ -52,7 +52,7 @@ func SelectWindowsISO(catalog images.Catalog, storageID int64, imagePath, title,
 			break
 		}
 	}
-	if storage == nil || (storage.Kind != "smb" && !(storage.Kind == "local" && localISOStorage(storage.Root))) || storage.State != "ready" || !filepath.IsAbs(storage.Root) {
+	if storage == nil || (storage.Kind != "smb" && storage.Kind != "nfs" && !(storage.Kind == "local" && localISOStorage(storage.Root))) || storage.State != "ready" || !filepath.IsAbs(storage.Root) {
 		return WindowsProfileSource{}, fmt.Errorf("ISO storage is unavailable")
 	}
 	for _, image := range catalog.Images {

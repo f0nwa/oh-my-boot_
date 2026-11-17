@@ -15,11 +15,11 @@ This guide installs the boot foundation on one Ubuntu Server x86_64 host without
 
 ## Build and install
 
-Install PostgreSQL and the `dnsmasq` binary without enabling the distribution's default dnsmasq service:
+Install PostgreSQL, the `dnsmasq` binary, and storage mounting packages (`cifs-utils` for SMB, `nfs-common` for NFS) without enabling the distribution's default dnsmasq service:
 
 ```sh
 sudo apt update
-sudo apt install -y dnsmasq-base postgresql ca-certificates curl
+sudo apt install -y dnsmasq-base postgresql ca-certificates curl cifs-utils nfs-common
 ```
 
 Build with Go 1.26 or newer from this repository. The three output files are Linux x86_64 executables:

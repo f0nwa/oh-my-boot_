@@ -519,3 +519,97 @@ func TestWindowsISOFallsBackWhenWIMInfoFails(t *testing.T) {
 		t.Fatalf("Check should fall back to WIMInfo.Known=false: res=%+v err=%v", checked, err)
 	}
 }
+
+func TestResolveWindowsISOSourceAcceptsNFSRoots(t *testing.T) {
+	smbRoot, nfsRoot, localRoot, outside := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	storage := filepath.Join(nfsRoot, "nfskey1")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	iso := filepath.Join(storage, "win10.iso")
+	if err := os.WriteFile(iso, []byte("ISO"), 0444); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := WindowsISORequest{ID: 18, StorageRoot: storage, RelativePath: "win10.iso", Size: info.Size(), Modified: info.ModTime()}
+
+	// Accepted when nfsRoot is in SourceRoots
+	got, err := resolveWindowsISOSourceRoots([]string{smbRoot, nfsRoot}, req, localRoot)
+	if err != nil {
+		t.Fatalf("NFS storage rejected: %v", err)
+	}
+	expected, _ := filepath.EvalSymlinks(iso)
+	if got != expected {
+		t.Fatalf("got %q, want %q", got, expected)
+	}
+
+	// Rejected if nested deeper than 1 level
+	deepStorage := filepath.Join(nfsRoot, "nfskey1", "nested")
+	if err := os.MkdirAll(deepStorage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	deepISO := filepath.Join(deepStorage, "win10.iso")
+	if err := os.WriteFile(deepISO, []byte("ISO"), 0444); err != nil {
+		t.Fatal(err)
+	}
+	deepInfo, _ := os.Stat(deepISO)
+	deepReq := WindowsISORequest{ID: 19, StorageRoot: deepStorage, RelativePath: "win10.iso", Size: deepInfo.Size(), Modified: deepInfo.ModTime()}
+	if _, err := resolveWindowsISOSourceRoots([]string{smbRoot, nfsRoot}, deepReq, localRoot); err == nil {
+		t.Fatal("nested storage root was accepted")
+	}
+
+	// Rejected if storage is outside both roots and not local
+	outStorage := filepath.Join(outside, "key")
+	if err := os.MkdirAll(outStorage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	outISO := filepath.Join(outStorage, "win10.iso")
+	if err := os.WriteFile(outISO, []byte("ISO"), 0444); err != nil {
+		t.Fatal(err)
+	}
+	outInfo, _ := os.Stat(outISO)
+	outReq := WindowsISORequest{ID: 20, StorageRoot: outStorage, RelativePath: "win10.iso", Size: outInfo.Size(), Modified: outInfo.ModTime()}
+	if _, err := resolveWindowsISOSourceRoots([]string{smbRoot, nfsRoot}, outReq, localRoot); err == nil {
+		t.Fatal("outside storage root was accepted")
+	}
+}
+
+func TestWindowsISORuntimeAndManagerAcceptMultipleSourceRoots(t *testing.T) {
+	smbRoot, nfsRoot := t.TempDir(), t.TempDir()
+	storage := filepath.Join(nfsRoot, "nfskey2")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	iso := filepath.Join(storage, "win10.iso")
+	if err := os.WriteFile(iso, []byte("ISO"), 0444); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := WindowsISORequest{ID: 17, StorageRoot: storage, RelativePath: "win10.iso", Size: info.Size(), Modified: info.ModTime()}
+
+	mountRoot, configRoot, assetRoot := t.TempDir(), t.TempDir(), t.TempDir()
+	systemctl := &fakeWindowsISOSystemctl{mountRoot: mountRoot, assetRoot: assetRoot}
+	manager := WindowsISOManager{
+		SourceRoots: []string{smbRoot, nfsRoot},
+		ConfigRoot:  configRoot,
+		MountRoot:   mountRoot,
+		AssetRoot:   assetRoot,
+		Systemctl:   systemctl,
+		Mounter:     &fakeWindowsISOMounter{mounted: true},
+		WIMCommands: fakeWIMInfoRunner{},
+	}
+	prepared, err := manager.Prepare(context.Background(), req)
+	if err != nil || prepared.InstallFile != "install.wim" {
+		t.Fatalf("Prepare failed with SourceRoots: %v", err)
+	}
+	checked, err := manager.Check(context.Background(), req)
+	if err != nil || checked.InstallFile != "install.wim" {
+		t.Fatalf("Check failed with SourceRoots: %v", err)
+	}
+}

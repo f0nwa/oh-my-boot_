@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"omb/internal/images"
+	"omb/internal/nfsstorage"
 	"omb/internal/smbstorage"
 )
 
@@ -35,6 +36,9 @@ func (s *Server) uploadStorage(ctx context.Context, idText string) (images.Stora
 	for _, storage := range catalog.Storages {
 		if storage.ID == id && storage.Uploads && storage.State == "ready" {
 			if storage.Kind == "smb" && smbstorage.Validate(storage.Key, storage.Server, storage.Share, storage.Subpath) != nil {
+				return images.Storage{}, false
+			}
+			if storage.Kind == "nfs" && nfsstorage.Validate(storage.Key, storage.Server, storage.ExportPath, storage.NFSVersion) != nil {
 				return images.Storage{}, false
 			}
 			return storage, true
@@ -65,7 +69,7 @@ func (s *Server) imagesUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	storage, ok := s.uploadStorage(r.Context(), r.PathValue("id"))
-	if !ok || (storage.Kind == "smb" && s.SMB == nil) {
+	if !ok || (storage.Kind == "smb" && s.SMB == nil) || (storage.Kind == "nfs" && s.NFS == nil) {
 		http.Error(w, "Хранилище недоступно", http.StatusNotFound)
 		return
 	}
@@ -78,12 +82,19 @@ func (s *Server) imagesUpload(w http.ResponseWriter, r *http.Request) {
 	deadline := time.Now().Add(2 * time.Hour)
 	_ = controller.SetReadDeadline(deadline)
 	_ = controller.SetWriteDeadline(deadline)
-	// An SMB storage is written through a separate read-write mount that the
+	// An SMB or NFS storage is written through a separate read-write mount that the
 	// Agent connects on demand; a local storage is written directly.
 	if storage.Kind == "smb" {
 		if err := s.SMB.EnableUpload(r.Context(), storage.Key, storage.Server, storage.Share, storage.Subpath); err != nil {
 			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.upload", "mount-error", strconv.FormatInt(storage.ID, 10))
 			http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права SMB.", http.StatusServiceUnavailable)
+			return
+		}
+	}
+	if storage.Kind == "nfs" {
+		if err := s.NFS.EnableNFSUpload(r.Context(), storage.Key, storage.Server, storage.ExportPath, storage.NFSVersion); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.upload", "mount-error", strconv.FormatInt(storage.ID, 10))
+			http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права NFS.", http.StatusServiceUnavailable)
 			return
 		}
 	}

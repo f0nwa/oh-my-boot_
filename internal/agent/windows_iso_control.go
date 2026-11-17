@@ -16,6 +16,7 @@ import (
 type WindowsISOManager struct {
 	mu          sync.Mutex
 	SourceRoot  string
+	SourceRoots []string
 	LocalRoot   string
 	ConfigRoot  string
 	MountRoot   string
@@ -26,10 +27,20 @@ type WindowsISOManager struct {
 	WIMCommands DriverCommandRunner
 }
 
+func (m *WindowsISOManager) allowedRoots() []string {
+	if len(m.SourceRoots) > 0 {
+		return m.SourceRoots
+	}
+	if m.SourceRoot != "" {
+		return []string{m.SourceRoot}
+	}
+	return nil
+}
+
 func (m *WindowsISOManager) Check(ctx context.Context, req WindowsISORequest) (WindowsISOResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, err := resolveWindowsISOSource(m.SourceRoot, req, m.LocalRoot); err != nil {
+	if _, err := resolveWindowsISOSourceRoots(m.allowedRoots(), req, m.LocalRoot); err != nil {
 		return WindowsISOResult{}, err
 	}
 	id := strconv.FormatInt(req.ID, 10)
@@ -58,7 +69,7 @@ func (m *WindowsISOManager) Check(ctx context.Context, req WindowsISORequest) (W
 func (m *WindowsISOManager) Prepare(ctx context.Context, req WindowsISORequest) (WindowsISOResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, err := resolveWindowsISOSource(m.SourceRoot, req, m.LocalRoot); err != nil {
+	if _, err := resolveWindowsISOSourceRoots(m.allowedRoots(), req, m.LocalRoot); err != nil {
 		return WindowsISOResult{}, err
 	}
 	if m.Systemctl == nil {

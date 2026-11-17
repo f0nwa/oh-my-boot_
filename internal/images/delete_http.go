@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 
+	"omb/internal/nfsstorage"
 	"omb/internal/smbstorage"
 )
 
@@ -48,6 +49,16 @@ func (s *Server) deleteISO(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		root = s.uploadRoot(storage.Key)
+	case "nfs":
+		if nfsstorage.Validate(storage.Key, storage.Server, storage.ExportPath, storage.NFSVersion) != nil {
+			http.Error(w, "storage not found", http.StatusNotFound)
+			return
+		}
+		if !storage.UploadsEnabled {
+			http.Error(w, "storage does not allow deletions", http.StatusForbidden)
+			return
+		}
+		root = s.nfsUploadRoot(storage.Key)
 	default:
 		http.Error(w, "storage does not support deletion", http.StatusNotFound)
 		return

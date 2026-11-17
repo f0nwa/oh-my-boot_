@@ -144,6 +144,44 @@ func TestSMBScanPreservesCatalogWhenUnmounted(t *testing.T) {
 	}
 }
 
+func TestNFSScanPreservesCatalogWhenUnmounted(t *testing.T) {
+	repo := &memoryRepository{
+		storages: map[int64]Storage{1: {ID: 1, Name: "NFS", Root: realTempDir(t), Kind: "nfs"}},
+		images:   map[int64]map[string]Image{1: {"old.iso": {Path: "old.iso", Present: true}}},
+		state:    map[int64]string{},
+	}
+	scanCalled := false
+	err := scanStorageWith(context.Background(), repo, 1, func(string) (string, bool) { return "", false }, func(string) (ScanResult, error) {
+		scanCalled = true
+		return ScanResult{}, nil
+	})
+	if err == nil || scanCalled || !repo.images[1]["old.iso"].Present || repo.state[1] != "unavailable" {
+		t.Fatalf("unmounted NFS changed catalog: err=%v scan=%v images=%+v state=%s", err, scanCalled, repo.images, repo.state[1])
+	}
+}
+
+func TestNFSScanPreservesCatalogWhenMountChanges(t *testing.T) {
+	repo := &memoryRepository{
+		storages: map[int64]Storage{1: {ID: 1, Name: "NFS", Root: realTempDir(t), Kind: "nfs"}},
+		images:   map[int64]map[string]Image{1: {"old.iso": {Path: "old.iso", Present: true}}},
+		state:    map[int64]string{},
+	}
+	checks := 0
+	mount := func(string) (string, bool) {
+		checks++
+		if checks == 1 {
+			return "mount-1", true
+		}
+		return "mount-2", true
+	}
+	if err := scanStorageWith(context.Background(), repo, 1, mount, func(string) (ScanResult, error) { return ScanResult{}, nil }); err == nil {
+		t.Fatal("expected changed mount to fail")
+	}
+	if checks != 2 || !repo.images[1]["old.iso"].Present || repo.state[1] != "unavailable" {
+		t.Fatalf("catalog changed on mount replacement: checks=%d images=%+v state=%s", checks, repo.images, repo.state[1])
+	}
+}
+
 func TestScanFailureUsesFreshContextToStoreError(t *testing.T) {
 	repo := &contextAwareRepository{memoryRepository: memoryRepository{
 		storages: map[int64]Storage{1: {ID: 1, Root: realTempDir(t), Kind: "local"}},

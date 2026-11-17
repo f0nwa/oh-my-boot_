@@ -236,3 +236,105 @@ func TestProbeDirReadsAndFailsOnMissing(t *testing.T) {
 		t.Fatal("missing dir passed")
 	}
 }
+
+func nfsRecoveryFixture(t *testing.T, ctl *recoverySystemctl) (*StorageRecovery, string, string, string) {
+	t.Helper()
+	base := t.TempDir()
+	configs, units, winiso := filepath.Join(base, "nfs"), filepath.Join(base, "units"), filepath.Join(base, "winiso")
+	for _, dir := range []string{configs, units, winiso} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	key := strings.Repeat("b", 32)
+	mountRoot, uploadRoot := "/mnt/omb-nfs", "/mnt/omb-nfs-upload"
+	readUnit, uploadUnit := systemdMountUnitName(filepath.Join(mountRoot, key)), systemdMountUnitName(filepath.Join(uploadRoot, key))
+	for path, content := range map[string]string{
+		filepath.Join(configs, key+".json"): `{"key":"` + key + `","server":"10.0.0.1","export_path":"/exports/iso","version":"4.1"}`,
+		filepath.Join(units, readUnit):     "[Mount]\n",
+		filepath.Join(units, uploadUnit):   "[Mount]\n",
+		filepath.Join(winiso, "2.json"):    "{}",
+		filepath.Join(winiso, "4.json"):    "{}",
+		filepath.Join(winiso, "notes.txt"): "ignored",
+	} {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nfs := &NFSManager{
+		ConfigDir:  configs,
+		UnitDir:    units,
+		MountRoot:  mountRoot,
+		UploadRoot: uploadRoot,
+		ImagesUID:  "1001",
+		ImagesGID:  "1001",
+		Systemctl:  ctl,
+		Probe:      func(string) error { return nil },
+	}
+	windows := &WindowsISOManager{ConfigRoot: winiso, Systemctl: ctl}
+	return &StorageRecovery{NFS: nfs, Windows: windows, ConfigPath: filepath.Join(base, "storage-recovery.json")}, readUnit, uploadUnit, base
+}
+
+func TestRecoveryRestartsFailedNFSMountsThenProfiles(t *testing.T) {
+	ctl := &recoverySystemctl{active: map[string]bool{"omb-winiso@4.service": true}}
+	recovery, readUnit, uploadUnit, _ := nfsRecoveryFixture(t, ctl)
+	status := recovery.RunOnce(context.Background())
+	want := []string{readUnit, uploadUnit, "omb-winiso@2.service"}
+	if got := ctl.restarts(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("restarts = %v, want %v", got, want)
+	}
+	if status.LastError != "" || len(status.Actions) != 3 || status.LastRun.IsZero() {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestRecoveryRemountsAnActiveButUnreadableNFSShare(t *testing.T) {
+	key := strings.Repeat("b", 32)
+	readTarget := filepath.Join("/mnt/omb-nfs", key)
+	ctl := &recoverySystemctl{active: map[string]bool{}}
+	recovery, readUnit, uploadUnit, base := nfsRecoveryFixture(t, ctl)
+	for _, unit := range []string{readUnit, uploadUnit, "omb-winiso@2.service", "omb-winiso@4.service"} {
+		ctl.active[unit] = true
+	}
+	winiso := filepath.Join(base, "winiso")
+	if err := os.WriteFile(filepath.Join(winiso, "2.json"), []byte(`{"id":2,"storage_root":"`+readTarget+`","relative_path":"win.iso"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stale := true
+	recovery.NFS.Probe = func(path string) error {
+		if stale && path == readTarget {
+			return errors.New("stale file handle")
+		}
+		return nil
+	}
+	ctl.onStop = func(unit string) { ctl.active[unit] = false }
+	status := recovery.RunOnce(context.Background())
+	var order []string
+	for _, call := range ctl.calls {
+		if strings.HasPrefix(call, "stop ") || strings.HasPrefix(call, "restart ") {
+			order = append(order, call)
+		}
+	}
+	want := []string{"stop omb-winiso@2.service", "restart " + readUnit, "restart omb-winiso@2.service"}
+	if strings.Join(order, ",") != strings.Join(want, ",") {
+		t.Fatalf("calls = %v, want %v", order, want)
+	}
+	if status.LastError != "" || !strings.Contains(strings.Join(status.Actions, "\n"), "stale file handle") {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestRecoverySkipsProfilesWhileNFSIsDown(t *testing.T) {
+	ctl := &recoverySystemctl{active: map[string]bool{}, failStart: map[string]bool{}}
+	recovery, readUnit, _, _ := nfsRecoveryFixture(t, ctl)
+	ctl.failStart[readUnit] = true
+	status := recovery.RunOnce(context.Background())
+	for _, unit := range ctl.restarts() {
+		if strings.HasPrefix(unit, "omb-winiso@") {
+			t.Fatalf("profile restarted while NFS is down: %v", ctl.restarts())
+		}
+	}
+	if !strings.Contains(status.LastError, readUnit) {
+		t.Fatalf("error does not name the failed mount: %+v", status)
+	}
+}

@@ -9,6 +9,7 @@ import (
 
 	"omb/internal/agent"
 	"omb/internal/boot"
+	"omb/internal/nfsstorage"
 )
 
 // trailStep is one of the boot steps shown for a machine on the
@@ -217,6 +218,8 @@ func (s *Server) nowPage(w http.ResponseWriter, r *http.Request) {
 		value := storage.Root
 		if storage.Kind == "smb" {
 			value = "//" + storage.Server + "/" + storage.Share
+		} else if storage.Kind == "nfs" {
+			value = nfsstorage.Source(storage.Server, storage.ExportPath)
 		}
 		view.Services = append(view.Services, nowService{Name: storage.Name, Value: value, State: state})
 	}

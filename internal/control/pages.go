@@ -147,13 +147,36 @@ type pageData struct {
 }
 
 func storageKindLabel(kind string) string {
-	if kind == "smb" {
-		return "SMB хранилище"
-	}
-	if kind == "mounted" {
+	switch kind {
+	case "smb":
+		return "SMB"
+	case "nfs":
+		return "NFS"
+	case "mounted":
 		return "Смонтированный каталог"
+	default:
+		return "Локальный каталог"
 	}
-	return "Локальный каталог"
+}
+
+func storageKindDisplay(kind, nfsVersion string) string {
+	switch kind {
+	case "nfs":
+		switch nfsVersion {
+		case "4.1":
+			return "NFSv4.1"
+		case "3":
+			return "NFSv3"
+		default:
+			return "NFS"
+		}
+	case "smb":
+		return "SMB"
+	case "mounted":
+		return "Смонтированный каталог"
+	default:
+		return "Локальный каталог"
+	}
 }
 
 func storageStateLabel(state string) string {
@@ -178,8 +201,9 @@ var pagesByLanguage = map[string]*template.Template{langRU: parsePages(langRU), 
 
 func parsePages(lang string) *template.Template {
 	return template.Must(template.New("pages").Funcs(template.FuncMap{
-		"storageKind":     storageKindLabel,
-		"storageState":    storageStateLabel,
+		"storageKind":        storageKindLabel,
+		"storageKindDisplay": storageKindDisplay,
+		"storageState":       storageStateLabel,
 		"roleLabel":       roleLabel,
 		"roleDescription": roleDescription,
 		"t":               func(text string) string { return translate(lang, text) },

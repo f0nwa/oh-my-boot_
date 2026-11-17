@@ -76,6 +76,7 @@ Which services need which packages:
 | `ca-certificates`, `curl` | `fetch-ipxe.sh` and the HTTP checks in the guides |
 | `openssl` | The admin interface's self-signed certificate |
 | `cifs-utils` | Mounting SMB storage with ISOs |
+| `nfs-common` | Mounting NFS storage with ISOs (`mount.nfs`) |
 | `samba` | The `ombisos` share WinPE starts Setup from; `smbstatus` for the Agent log |
 | `wimtools` | `wimlib-imagex` for driver WIMs |
 
@@ -86,7 +87,7 @@ mkdir -p "$KIT/debs"
 docker run --rm --platform linux/amd64 -v "$KIT/debs:/out" ubuntu:26.04 sh -ec '
   apt-get update
   apt-get install -y --download-only --no-install-recommends \
-    dnsmasq-base postgresql ca-certificates curl openssl cifs-utils samba wimtools
+    dnsmasq-base postgresql ca-certificates curl openssl cifs-utils nfs-common samba wimtools
   cp /var/cache/apt/archives/*.deb /out/
   apt-get install -y --no-install-recommends dpkg-dev
   cd /out && dpkg-scanpackages --multiversion . /dev/null | gzip -9c > Packages.gz'
@@ -151,7 +152,7 @@ sudo apt-get update \
   -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/omb-offline.list \
   -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
 sudo apt-get install -y --no-install-recommends \
-  dnsmasq-base postgresql ca-certificates curl openssl cifs-utils samba wimtools
+  dnsmasq-base postgresql ca-certificates curl openssl cifs-utils nfs-common samba wimtools
 ```
 
 `trusted=yes` turns off the repository signature check. That is acceptable because the kit's integrity has already been checked against `SHA256SUMS`. After installation you can delete `/etc/apt/sources.list.d/omb-offline.list`.

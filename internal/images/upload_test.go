@@ -78,3 +78,18 @@ func TestListFoldersSkipsSymlinksAndIncludesEmptyFolders(t *testing.T) {
 		t.Fatalf("folders=%q", folders)
 	}
 }
+
+func TestReceiveISOSetsReadableMode(t *testing.T) {
+	root := realTempDir(t)
+	got, err := ReceiveISO(context.Background(), root, "", "readable.iso", strings.NewReader("iso-content"), int64(len("iso-content")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(root, got.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0644 {
+		t.Fatalf("expected perm 0644, got %#o", perm)
+	}
+}

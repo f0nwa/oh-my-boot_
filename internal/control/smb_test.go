@@ -183,8 +183,18 @@ func TestSMBFormIsAdminOnly(t *testing.T) {
 		if res.Code != http.StatusOK || hasForm != (role == "admin") {
 			t.Fatalf("role=%s status=%d hasForm=%v", role, res.Code, hasForm)
 		}
-		if role == "admin" && (!strings.Contains(res.Body.String(), `name="path"`) || strings.Contains(res.Body.String(), `name="server"`) || strings.Contains(res.Body.String(), `name="share"`) || strings.Contains(res.Body.String(), `name="subpath"`)) {
-			t.Fatal("SMB form must use one direct path field")
+		if role == "admin" {
+			smbFormStart := strings.Index(res.Body.String(), `id="smb-create-dialog"`)
+			if smbFormStart < 0 {
+				t.Fatal("missing smb-create-dialog")
+			}
+			smbForm := res.Body.String()[smbFormStart:]
+			if end := strings.Index(smbForm, "</dialog>"); end > 0 {
+				smbForm = smbForm[:end]
+			}
+			if !strings.Contains(smbForm, `name="path"`) || strings.Contains(smbForm, `name="server"`) || strings.Contains(smbForm, `name="share"`) || strings.Contains(smbForm, `name="subpath"`) {
+				t.Fatal("SMB form must use one direct path field")
+			}
 		}
 	}
 }

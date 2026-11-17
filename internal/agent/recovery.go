@@ -48,6 +48,7 @@ func defaultRecoveryConfig() RecoveryConfig {
 // server has already booted.
 type StorageRecovery struct {
 	SMB        *SMBManager
+	NFS        *NFSManager
 	Windows    *WindowsISOManager
 	ConfigPath string
 
@@ -130,6 +131,31 @@ func (r *StorageRecovery) RunOnce(ctx context.Context) RecoveryStatus {
 			}
 		}
 		done, err := r.SMB.RecoverMounts(ctx)
+		actions = append(actions, done...)
+		if err != nil {
+			problems = append(problems, err)
+		}
+	}
+	if r.NFS != nil {
+		if stale := r.NFS.StaleMounts(); len(stale) > 0 {
+			if r.Windows != nil {
+				var roots []string
+				for _, mount := range stale {
+					roots = append(roots, mount.Target)
+				}
+				done, err := r.Windows.StopProfilesOn(ctx, roots)
+				actions = append(actions, done...)
+				if err != nil {
+					problems = append(problems, err)
+				}
+			}
+			done, err := r.NFS.RemountStale(ctx, stale)
+			actions = append(actions, done...)
+			if err != nil {
+				problems = append(problems, err)
+			}
+		}
+		done, err := r.NFS.RecoverMounts(ctx)
 		actions = append(actions, done...)
 		if err != nil {
 			problems = append(problems, err)

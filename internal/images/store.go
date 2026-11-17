@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"omb/internal/nfsstorage"
 	"omb/internal/smbstorage"
 )
 
@@ -25,6 +26,14 @@ type ManagedStorageInput struct {
 	Subpath string `json:"subpath"`
 }
 
+type NFSStorageInput struct {
+	Name       string `json:"name"`
+	Key        string `json:"key"`
+	Server     string `json:"server"`
+	ExportPath string `json:"export_path"`
+	Version    string `json:"version"`
+}
+
 func (s Store) CreateSMB(ctx context.Context, input ManagedStorageInput) (Storage, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Name == "" || len(input.Name) > 120 {
@@ -37,14 +46,68 @@ func (s Store) CreateSMB(ctx context.Context, input ManagedStorageInput) (Storag
 	err := s.Pool.QueryRow(ctx,
 		`INSERT INTO storages (name,kind,root,storage_key,server,share,subpath,state,last_error)
 		 VALUES ($1,'smb',$2,$3,$4,$5,$6,'unavailable','Ожидает подключения')
-		 RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes`,
+		 RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,export_path,nfs_version,uploads_enabled,state,last_error,last_scan_at,other_bytes`,
 		input.Name, smbstorage.Root(input.Key), input.Key, input.Server, input.Share, input.Subpath,
-	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
+	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.ExportPath, &storage.NFSVersion, &storage.UploadsEnabled, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
 	return storage, err
 }
 
 func (s Store) DeleteSMB(ctx context.Context, id int64) error {
 	command, err := s.Pool.Exec(ctx, "DELETE FROM storages WHERE id=$1 AND kind='smb'", id)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s Store) CreateNFS(ctx context.Context, input NFSStorageInput) (Storage, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	if input.Name == "" || len(input.Name) > 120 {
+		return Storage{}, fmt.Errorf("invalid storage name")
+	}
+	if err := nfsstorage.Validate(input.Key, input.Server, input.ExportPath, input.Version); err != nil {
+		return Storage{}, err
+	}
+	var storage Storage
+	err := s.Pool.QueryRow(ctx,
+		`INSERT INTO storages (name,kind,root,storage_key,server,export_path,nfs_version,uploads_enabled,state,last_error)
+		 VALUES ($1,'nfs',$2,$3,$4,$5,$6,FALSE,'unavailable','Ожидает подключения')
+		 RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,export_path,nfs_version,uploads_enabled,state,last_error,last_scan_at,other_bytes`,
+		input.Name, nfsstorage.Root(input.Key), input.Key, input.Server, input.ExportPath, input.Version,
+	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.ExportPath, &storage.NFSVersion, &storage.UploadsEnabled, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
+	return storage, err
+}
+
+func (s Store) UpdateNFSConfig(ctx context.Context, id int64, version string) error {
+	if version != "4.1" && version != "3" {
+		return fmt.Errorf("invalid NFS version: %q", version)
+	}
+	command, err := s.Pool.Exec(ctx, "UPDATE storages SET nfs_version=$2 WHERE id=$1 AND kind='nfs'", id, version)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s Store) SetUploadsEnabled(ctx context.Context, id int64, enabled bool) error {
+	command, err := s.Pool.Exec(ctx, "UPDATE storages SET uploads_enabled=$2 WHERE id=$1 AND kind='nfs'", id, enabled)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s Store) DeleteNFS(ctx context.Context, id int64) error {
+	command, err := s.Pool.Exec(ctx, "DELETE FROM storages WHERE id=$1 AND kind='nfs'", id)
 	if err != nil {
 		return err
 	}
@@ -69,28 +132,28 @@ func (s Store) AddStorage(ctx context.Context, name, kind, root string) (Storage
 	}
 	var storage Storage
 	err = s.Pool.QueryRow(ctx,
-		"INSERT INTO storages (name,kind,root) VALUES ($1,$2,$3) RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes",
+		"INSERT INTO storages (name,kind,root) VALUES ($1,$2,$3) RETURNING id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,export_path,nfs_version,uploads_enabled,state,last_error,last_scan_at,other_bytes",
 		name, kind, root,
-	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
+	).Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.ExportPath, &storage.NFSVersion, &storage.UploadsEnabled, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
 	return storage, err
 }
 
 func (s Store) Storage(ctx context.Context, id int64) (Storage, error) {
 	var storage Storage
-	err := s.Pool.QueryRow(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes FROM storages WHERE id=$1", id).
-		Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
+	err := s.Pool.QueryRow(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,export_path,nfs_version,uploads_enabled,state,last_error,last_scan_at,other_bytes FROM storages WHERE id=$1", id).
+		Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.ExportPath, &storage.NFSVersion, &storage.UploadsEnabled, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes)
 	return storage, err
 }
 
 func (s Store) Catalog(ctx context.Context) (Catalog, error) {
 	result := Catalog{Storages: []Storage{}, Images: []Image{}}
-	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes FROM storages ORDER BY name")
+	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,export_path,nfs_version,uploads_enabled,state,last_error,last_scan_at,other_bytes FROM storages ORDER BY name")
 	if err != nil {
 		return result, err
 	}
 	for rows.Next() {
 		var storage Storage
-		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes); err != nil {
+		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.ExportPath, &storage.NFSVersion, &storage.UploadsEnabled, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes); err != nil {
 			rows.Close()
 			return result, err
 		}
@@ -192,7 +255,7 @@ func (s Store) ScanError(ctx context.Context, id int64, message string) error {
 
 // Storages lists storages without their image catalog.
 func (s Store) Storages(ctx context.Context) ([]Storage, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,state,last_error,last_scan_at,other_bytes FROM storages ORDER BY id")
+	rows, err := s.Pool.Query(ctx, "SELECT id,name,kind,root,COALESCE(storage_key,''),server,share,subpath,export_path,nfs_version,uploads_enabled,state,last_error,last_scan_at,other_bytes FROM storages ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +263,7 @@ func (s Store) Storages(ctx context.Context) ([]Storage, error) {
 	result := []Storage{}
 	for rows.Next() {
 		var storage Storage
-		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes); err != nil {
+		if err := rows.Scan(&storage.ID, &storage.Name, &storage.Kind, &storage.Root, &storage.Key, &storage.Server, &storage.Share, &storage.Subpath, &storage.ExportPath, &storage.NFSVersion, &storage.UploadsEnabled, &storage.State, &storage.Error, &storage.LastScanAt, &storage.OtherBytes); err != nil {
 			return nil, err
 		}
 		result = append(result, storage)

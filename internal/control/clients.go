@@ -299,6 +299,44 @@ func (c *ImagesClient) DeleteSMB(ctx context.Context, id int64) error {
 	return localCall(ctx, c.http, "DELETE", "/smb-storages/"+strconv.FormatInt(id, 10), nil, nil)
 }
 
+func (c *ImagesClient) CreateNFS(ctx context.Context, input images.NFSStorageInput) (images.Storage, error) {
+	var storage images.Storage
+	body, err := json.Marshal(input)
+	if err != nil {
+		return storage, err
+	}
+	err = localCall(ctx, c.http, "POST", "/nfs-storages", body, &storage)
+	return storage, err
+}
+
+func (c *ImagesClient) UpdateNFSVersion(ctx context.Context, id int64, version string) error {
+	body, err := json.Marshal(map[string]string{"version": version})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/nfs-storages/"+strconv.FormatInt(id, 10)+"/version", body, nil)
+}
+
+func (c *ImagesClient) SetNFSUploads(ctx context.Context, id int64, enabled bool) error {
+	body, err := json.Marshal(map[string]bool{"uploads_enabled": enabled})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/nfs-storages/"+strconv.FormatInt(id, 10)+"/uploads", body, nil)
+}
+
+func (c *ImagesClient) MarkNFSError(ctx context.Context, id int64) error {
+	return localCall(ctx, c.http, "POST", "/nfs-storages/"+strconv.FormatInt(id, 10)+"/error", nil, nil)
+}
+
+func (c *ImagesClient) MarkNFSScanError(ctx context.Context, id int64) error {
+	return localCall(ctx, c.http, "POST", "/nfs-storages/"+strconv.FormatInt(id, 10)+"/scan-error", nil, nil)
+}
+
+func (c *ImagesClient) DeleteNFS(ctx context.Context, id int64) error {
+	return localCall(ctx, c.http, "DELETE", "/nfs-storages/"+strconv.FormatInt(id, 10), nil, nil)
+}
+
 func (c *ImagesClient) DeleteImage(ctx context.Context, id int64, path string) error {
 	body, err := json.Marshal(map[string]string{"path": path})
 	if err != nil {
@@ -329,6 +367,60 @@ func (c *AgentClient) Remove(ctx context.Context, key string) error {
 		return err
 	}
 	return localCall(ctx, c.http, "POST", "/smb/remove", body, nil)
+}
+
+func (c *AgentClient) MountNFS(ctx context.Context, key, server, exportPath, version string) (bool, error) {
+	body, err := json.Marshal(map[string]string{
+		"key":         key,
+		"server":      server,
+		"export_path": exportPath,
+		"version":     version,
+	})
+	if err != nil {
+		return false, err
+	}
+	var res struct {
+		Writable bool `json:"writable"`
+	}
+	err = localCall(ctx, c.http, "POST", "/nfs/mount", body, &res)
+	return res.Writable, err
+}
+
+func (c *AgentClient) EnableNFSUpload(ctx context.Context, key, server, exportPath, version string) error {
+	body, err := json.Marshal(map[string]string{
+		"key":         key,
+		"server":      server,
+		"export_path": exportPath,
+		"version":     version,
+	})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/nfs/enable-upload", body, nil)
+}
+
+func (c *AgentClient) CheckNFSUpload(ctx context.Context, key string) (bool, error) {
+	body, err := json.Marshal(map[string]string{
+		"key": key,
+	})
+	if err != nil {
+		return false, err
+	}
+	var res struct {
+		Writable bool `json:"writable"`
+	}
+	err = localCall(ctx, c.http, "POST", "/nfs/check-upload", body, &res)
+	return res.Writable, err
+}
+
+func (c *AgentClient) RemoveNFS(ctx context.Context, key string) error {
+	body, err := json.Marshal(map[string]string{
+		"key": key,
+	})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/nfs/remove", body, nil)
 }
 
 func localCall(ctx context.Context, client *http.Client, method, path string, body []byte, out any) error {

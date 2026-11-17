@@ -34,7 +34,17 @@ func (r *httpRepository) MarkScanning(_ context.Context, id int64) error {
 func (r *httpRepository) CreateSMB(_ context.Context, _ ManagedStorageInput) (Storage, error) {
 	return Storage{}, nil
 }
-func (r *httpRepository) DeleteSMB(_ context.Context, _ int64) error    { return nil }
+func (r *httpRepository) DeleteSMB(_ context.Context, _ int64) error { return nil }
+func (r *httpRepository) CreateNFS(_ context.Context, _ NFSStorageInput) (Storage, error) {
+	return Storage{}, nil
+}
+func (r *httpRepository) UpdateNFSConfig(_ context.Context, _ int64, _ string) error {
+	return nil
+}
+func (r *httpRepository) SetUploadsEnabled(_ context.Context, _ int64, _ bool) error {
+	return nil
+}
+func (r *httpRepository) DeleteNFS(_ context.Context, _ int64) error    { return nil }
 func (r *httpRepository) RecordUpload(_ context.Context, _ Image) error { return nil }
 func (r *httpRepository) SaveScan(ctx context.Context, id int64, found []Image, otherBytes int64) error {
 	err := r.memoryRepository.SaveScan(ctx, id, found, otherBytes)

@@ -16,7 +16,7 @@ Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an i
 ## What works
 
 - **Boot menu** for BIOS and UEFI clients, with folders, a draft that clients do not see until it is published, version history and rollback.
-- **Images:** an ISO catalog across local folders and SMB shares, browser uploads, automatic Windows x64 media preparation when saving a boot entry. Source ISOs stay on their storage; Windows clients receive WinPE startup files over HTTP and installation media over a read-only SMB share.
+- **Images:** an ISO catalog across local folders, SMB shares, and NFS exports (NFSv4.1/NFSv3), browser uploads, automatic Windows x64 media preparation when saving a boot entry. Source ISOs stay on their storage; Windows clients receive WinPE startup files over HTTP and installation media over a read-only SMB share.
 - **Windows installs:** several independent `autounattend.xml` scenarios per ISO next to the manual installer, an answer file editor in the admin page, and WinPE driver packages imported from a folder or ZIP and built into separate menu entries.
 - **Ubuntu Autoinstall:** immutable generated files with interactive storage, a warning for installer-selected disk erasure, or exact-serial disk erasure, selected per installation; see the [operations guide](docs/en/control-installation.md#ubuntu-autoinstall).
 - **Boot entries** for Windows, Ubuntu Desktop and Strelec x64: choose a source image, title and menu folder, with WinPE drivers for Windows and Strelec, and answer files for installers. Preparation runs automatically; edit and retry from the same entry. Published menu versions retain their own component snapshots. Strelec uses its native PXE environment and applications from the read-only ISO share.
@@ -71,3 +71,19 @@ The source code, installation files and existing test stand use OMB technical na
 ## License
 
 The code is released under the [MIT License](LICENSE). The Oh My Boot mark and its files are described in [docs/brand](docs/brand/README.md).
+
+## Набор для работы с агентами (для человека)
+
+Контекст проекта хранится в Markdown-файлах в корне, а не в памяти чатов, поэтому работу можно продолжать в любом агенте. Инструкция для агентов — [AGENTS.md](AGENTS.md), список агентов и фраза старта — [_platforms/агенты.md](_platforms/агенты.md).
+
+| Файл | Что внутри |
+| --- | --- |
+| [AGENTS.md](AGENTS.md) | Как работать: порядок сессии, правила, структура, нейминг, правила разработки |
+| [MEMORY.md](MEMORY.md) | Что помнить: владелец, цели, решения, прогресс |
+| [INDEX.md](INDEX.md) | Что где лежит и что актуально |
+| [JOURNAL.md](JOURNAL.md) | Журнал сессий, только дописывается |
+| [TODO.md](TODO.md) | Очередь задач |
+| [_platforms/](_platforms/агенты.md) | Агенты и универсальный промт |
+| [_templates/](_templates/фича/README.md) | Шаблон новой единицы работы |
+
+Переходники на AGENTS.md: `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, `.clinerules`, `.github/copilot-instructions.md`.

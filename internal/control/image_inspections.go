@@ -87,7 +87,7 @@ func matchingImageInspections(catalog images.Catalog, records map[string]ImageIn
 	current := make(map[string]ImageInspection)
 	for _, image := range catalog.Images {
 		storage, ok := storages[image.StorageID]
-		if !ok || !image.Present || storage.State != "ready" || !(storage.Kind == "smb" || storage.Kind == "local" && localISOStorage(storage.Root)) {
+		if !ok || !image.Present || storage.State != "ready" || !(storage.Kind == "smb" || storage.Kind == "nfs" || storage.Kind == "local" && localISOStorage(storage.Root)) {
 			continue
 		}
 		key := imageAuthorKey(image.StorageID, image.Path)

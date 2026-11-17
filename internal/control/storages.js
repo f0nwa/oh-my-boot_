@@ -2,8 +2,10 @@
   'use strict';
 
   var smbDialog = document.getElementById('smb-create-dialog');
+  var nfsDialog = document.getElementById('nfs-create-dialog');
   var retryDialog = document.getElementById('smb-retry-dialog');
-  var deleteDialog = document.getElementById('smb-delete-dialog');
+  var nfsRetryDialog = document.getElementById('nfs-retry-dialog');
+  var deleteDialog = document.getElementById('storage-delete-dialog') || document.getElementById('smb-delete-dialog');
   var recoveryDialog = document.getElementById('storage-recovery-dialog');
   var recoveryForm = document.getElementById('storage-recovery-settings');
   var recoverySave = recoveryDialog && recoveryDialog.querySelector('[data-storage-recovery-save]');
@@ -31,6 +33,14 @@
     updateRecoverySave();
   }
 
+  function hideClosestPopover(element) {
+    if (!element) return;
+    var popover = element.closest('[popover]');
+    if (popover && typeof popover.hidePopover === 'function') {
+      popover.hidePopover();
+    }
+  }
+
   document.addEventListener('click', function (event) {
     var recoveryBtn = event.target.closest('[data-storage-recovery-open]');
     if (recoveryBtn && recoveryDialog && typeof recoveryDialog.showModal === 'function') {
@@ -46,6 +56,7 @@
     var addBtn = event.target.closest('[data-smb-add]');
     if (addBtn && smbDialog && typeof smbDialog.showModal === 'function') {
       event.preventDefault();
+      hideClosestPopover(addBtn);
       var form = smbDialog.querySelector('form');
       if (form) {
         form.reset();
@@ -58,9 +69,26 @@
       return;
     }
 
+    var nfsAddBtn = event.target.closest('[data-nfs-add]');
+    if (nfsAddBtn && nfsDialog && typeof nfsDialog.showModal === 'function') {
+      event.preventDefault();
+      hideClosestPopover(nfsAddBtn);
+      var nfsForm = nfsDialog.querySelector('form');
+      if (nfsForm) {
+        nfsForm.reset();
+      }
+      nfsDialog.showModal();
+      var serverInput = nfsDialog.querySelector('input[name="server"]');
+      if (serverInput) {
+        serverInput.focus();
+      }
+      return;
+    }
+
     var retryBtn = event.target.closest('[data-smb-retry-id]');
     if (retryBtn && retryDialog && typeof retryDialog.showModal === 'function') {
       event.preventDefault();
+      hideClosestPopover(retryBtn);
       var id = retryBtn.getAttribute('data-smb-retry-id') || '';
       var name = retryBtn.getAttribute('data-smb-retry-name') || '';
       var path = retryBtn.getAttribute('data-smb-retry-path') || '';
@@ -86,28 +114,59 @@
       return;
     }
 
-    var deleteBtn = event.target.closest('[data-smb-delete-id]');
+    var nfsRetryBtn = event.target.closest('[data-nfs-retry-id]');
+    if (nfsRetryBtn && nfsRetryDialog && typeof nfsRetryDialog.showModal === 'function') {
+      event.preventDefault();
+      hideClosestPopover(nfsRetryBtn);
+      var nfsRetryID = nfsRetryBtn.getAttribute('data-nfs-retry-id') || '';
+      var nfsRetryName = nfsRetryBtn.getAttribute('data-nfs-retry-name') || '';
+      var nfsRetryVersion = nfsRetryBtn.getAttribute('data-nfs-retry-version') || '4.1';
+      var nfsRetryLocation = nfsRetryBtn.getAttribute('data-nfs-retry-location') || '';
+
+      var nfsRetryForm = nfsRetryDialog.querySelector('form');
+      if (nfsRetryForm) {
+        nfsRetryForm.reset();
+        nfsRetryForm.action = '/images/nfs/' + encodeURIComponent(nfsRetryID) + '/retry';
+      }
+      var nfsNameEl = document.getElementById('nfs-retry-name');
+      if (nfsNameEl) {
+        nfsNameEl.textContent = nfsRetryName;
+      }
+      var nfsPathEl = document.getElementById('nfs-retry-path');
+      if (nfsPathEl) {
+        nfsPathEl.textContent = nfsRetryLocation;
+      }
+      var nfsVersionEl = document.getElementById('nfs-retry-version');
+      if (nfsVersionEl) {
+        nfsVersionEl.value = nfsRetryVersion;
+      }
+      nfsRetryDialog.showModal();
+      if (nfsVersionEl) {
+        nfsVersionEl.focus();
+      }
+      return;
+    }
+
+    var deleteBtn = event.target.closest('[data-storage-delete-id], [data-smb-delete-id]');
     if (deleteBtn && deleteDialog && typeof deleteDialog.showModal === 'function') {
       event.preventDefault();
-      var deleteId = deleteBtn.getAttribute('data-smb-delete-id') || '';
-      var deleteName = deleteBtn.getAttribute('data-smb-delete-name') || '';
-      var deletePath = deleteBtn.getAttribute('data-smb-delete-path') || '';
-
-      var popover = deleteBtn.closest('[popover]');
-      if (popover && typeof popover.hidePopover === 'function') {
-        popover.hidePopover();
-      }
+      hideClosestPopover(deleteBtn);
+      var deleteId = deleteBtn.getAttribute('data-storage-delete-id') || deleteBtn.getAttribute('data-smb-delete-id') || '';
+      var deleteName = deleteBtn.getAttribute('data-storage-delete-name') || deleteBtn.getAttribute('data-smb-delete-name') || '';
+      var deletePath = deleteBtn.getAttribute('data-storage-delete-path') || deleteBtn.getAttribute('data-smb-delete-path') || '';
+      var deleteKind = deleteBtn.getAttribute('data-storage-delete-kind') || (deleteBtn.hasAttribute('data-nfs-retry-id') ? 'nfs' : 'smb');
 
       var deleteForm = deleteDialog.querySelector('form');
       if (deleteForm) {
         deleteForm.reset();
-        deleteForm.action = '/images/smb/' + encodeURIComponent(deleteId) + '/remove';
+        var prefix = deleteKind === 'nfs' ? '/images/nfs/' : '/images/smb/';
+        deleteForm.action = prefix + encodeURIComponent(deleteId) + '/remove';
       }
-      var deleteNameEl = document.getElementById('smb-delete-name');
+      var deleteNameEl = document.getElementById('storage-delete-name') || document.getElementById('smb-delete-name');
       if (deleteNameEl) {
         deleteNameEl.textContent = deleteName;
       }
-      var deletePathEl = document.getElementById('smb-delete-path');
+      var deletePathEl = document.getElementById('storage-delete-path') || document.getElementById('smb-delete-path');
       if (deletePathEl) {
         deletePathEl.textContent = deletePath;
       }

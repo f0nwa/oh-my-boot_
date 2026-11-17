@@ -64,7 +64,7 @@
 <fieldset class="step ed-section" data-ai-panel="network"{{if ne .Section "network"}} hidden{{end}}><legend>{{t "Сеть и SSH"}}</legend>
 <label for="ai-network_mode">{{t "Сеть установленной системы"}}</label><select id="ai-network_mode" name="network_mode"><option value=""{{if eq .Form.Network.Mode ""}} selected{{end}}>{{t "DHCP"}}</option><option value="static"{{if eq .Form.Network.Mode "static"}} selected{{end}}>{{t "Статический IPv4"}}</option></select>
 <label for="ai-network_mac">{{t "MAC-адрес интерфейса"}}</label><input id="ai-network_mac" type="text" name="network_mac" value="{{.Form.Network.MAC}}" placeholder="52:54:00:12:34:56">
-<label for="ai-network_address">{{t "IPv4-адрес с префиксом"}}</label><input id="ai-network_address" type="text" name="network_address" value="{{.Form.Network.Address}}" placeholder="192.168.1.20/24">
+<label for="ai-network_address">{{t "IPv4-адрес с префиксом"}}</label><input id="ai-network_address" type="text" name="network_address" value="{{.Form.Network.Address}}" placeholder="192.0.2.20/24">
 <label for="ai-network_gateway">{{t "Шлюз IPv4"}}</label><input id="ai-network_gateway" type="text" name="network_gateway" value="{{.Form.Network.Gateway}}">
 <label for="ai-network_dns">{{t "DNS — по одному адресу в строке"}}</label><textarea id="ai-network_dns" class="mono" name="network_dns" rows="3">{{.DNSText}}</textarea>
 <p class="hint">{{t "Начальная PXE-загрузка использует DHCP. Эти настройки применяет установщик."}}</p>

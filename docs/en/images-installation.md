@@ -60,8 +60,8 @@ runuser -u omb-images -- env OMB_IMAGES_DATABASE_URL='host=/var/run/postgresql d
 Use `-kind mounted` for an already mounted filesystem, with an absolute path to a real mount point and no symlinks.
 
 Administrators connect SMB and NFS network storages under **System → Storage** (via the **Connect storage ▾** menu button):
-- **SMB:** a direct path such as `//nas/share/iso` and credentials (username, password, domain). SMB requires the `cifs-utils` package; Agent stores credentials under `/etc/omb/smb/<key>` with mode `0600`.
-- **NFS:** server address (IPv4, IPv6, or DNS hostname) and absolute export path (e.g. `/volume1/iso` or `/srv/nfs/iso`). Supported versions are **NFSv4.1** (default, TCP port 2049) and **NFSv3** (RPC portmapper 111, nfs 2049, `nolock` option). NFS requires the system package `nfs-common` (`mount.nfs`). Agent saves connection parameters in `/etc/omb/nfs/<key>.json` with mode `0600`.
+- **SMB:** a direct path such as `//nas.example.com/share/iso` and credentials (username, password, domain). SMB requires the `cifs-utils` package; Agent stores credentials under `/etc/omb/smb/<key>` with mode `0600`.
+- **NFS:** server address (for example, `nas.example.com` or IPv4/IPv6) and absolute export path (e.g. `/volume1/iso` or `/export/iso`). Supported versions are **NFSv4.1** (default, TCP port 2049) and **NFSv3** (RPC portmapper 111, nfs 2049, `nolock` option). NFS requires the system package `nfs-common` (`mount.nfs`). Agent saves connection parameters in `/etc/omb/nfs/<key>.json` with mode `0600`.
 
 **Access Modes and NFS Permission Auto-Detection:**
 NFS evaluates access permissions by Unix process UID/GID rather than mount options. During connection and subsequent availability checks (**Refresh** in the `☰` row menu), Agent mounts the export read-only at `/mnt/omb-nfs/<key>` and automatically performs a write probe at a temporary mount point `/mnt/omb-nfs-upload/<key>` as the `omb-images` system user:

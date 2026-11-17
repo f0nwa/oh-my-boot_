@@ -59,10 +59,13 @@ func TestUbuntuEditorRegionalFieldsOfferCommonChoices(t *testing.T) {
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/ubuntu-autoinstall/new", nil))
 	body := res.Body.String()
-	for _, want := range []string{`list="ai-locale-options"`, `<option value="ru_RU.UTF-8">`, `list="ai-timezone-options"`, `<option value="Europe/Moscow">`} {
+	for _, want := range []string{`list="ai-locale-options"`, `<option value="ru_RU.UTF-8">`, `list="ai-timezone-options"`, `<option value="Europe/Moscow">`, `placeholder="192.0.2.20/24"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("regional choice %q missing: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `placeholder="192.168.`) {
+		t.Fatalf("autoinstall editor contains local IP placeholder: %s", body)
 	}
 }
 

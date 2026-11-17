@@ -68,9 +68,19 @@ func TestStoragesPageConnectStorageMenuAndModals(t *testing.T) {
 			`id="storage-rename-name"`,
 			`data-storage-rename-save`,
 			`disabled`,
+			`placeholder="//nas.example.com/share/iso"`,
+			`placeholder="nas.example.com"`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("/storages (%s) missing %q", lang, want)
+			}
+		}
+		for _, forbid := range []string{
+			`placeholder="//192.168.`,
+			`placeholder="192.168.`,
+		} {
+			if strings.Contains(body, forbid) {
+				t.Fatalf("/storages (%s) contains local IP placeholder %q", lang, forbid)
 			}
 		}
 		if lang == langRU {

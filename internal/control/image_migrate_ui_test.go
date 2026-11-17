@@ -105,9 +105,53 @@ func TestImageMigrateUI(t *testing.T) {
 		t.Fatalf("expected 'недостаточно места' note for full storage")
 	}
 
-	// Check active migration indicator for ubuntu.iso
-	if !strings.Contains(bodyAdmin, "badge-migrating") || !strings.Contains(bodyAdmin, "45%") {
-		t.Fatalf("expected active migration badge with 45%%")
+	// Check active migration indicator for ubuntu.iso is in "Загрузки и состояние" column, not in ISO file cell
+	migRowIdx := strings.Index(bodyAdmin, `data-path="ubuntu.iso"`)
+	if migRowIdx < 0 {
+		t.Fatalf("expected ubuntu.iso row")
+	}
+	migRowEnd := strings.Index(bodyAdmin[migRowIdx:], "</tr>")
+	if migRowEnd < 0 {
+		t.Fatalf("expected closing </tr> for ubuntu.iso row")
+	}
+	migRowHTML := bodyAdmin[migRowIdx : migRowIdx+migRowEnd]
+	pathCellEnd := strings.Index(migRowHTML, "</td>")
+	if pathCellEnd < 0 {
+		t.Fatalf("expected closing </td> for path-cell")
+	}
+	pathCellHTML := migRowHTML[:pathCellEnd]
+	if strings.Contains(pathCellHTML, "image-migrating-status") || strings.Contains(pathCellHTML, "progress-bar-micro") {
+		t.Fatalf("path-cell must not contain migration progress indicator: %s", pathCellHTML)
+	}
+	statusCellIdx := strings.Index(migRowHTML, `class="image-status-cell"`)
+	if statusCellIdx < 0 {
+		t.Fatalf("expected image-status-cell in migrating row")
+	}
+	statusCellHTML := migRowHTML[statusCellIdx:]
+	for _, want := range []string{
+		`class="status image-library-status" hidden`,
+		`class="image-migrating-status"`,
+		`class="status status-migrating"`,
+		`class="dot dot-migrating"`,
+		"Перемещается…",
+		"45%",
+		`class="progress-bar-micro"`,
+		`width: 45%`,
+	} {
+		if !strings.Contains(statusCellHTML, want) {
+			t.Fatalf("expected %q inside image-status-cell, got: %s", want, statusCellHTML)
+		}
+	}
+
+	// Check switching state label on rebinding
+	mockImg.migrations["mig_active"].State = "rebinding"
+	mockImg.migrations["mig_active"].Percent = 100
+	recRebind := httptest.NewRecorder()
+	reqRebind := httptest.NewRequest(http.MethodGet, "/images", nil)
+	reqRebind.AddCookie(&http.Cookie{Name: "omb_session", Value: adminToken})
+	s.Handler().ServeHTTP(recRebind, reqRebind)
+	if recRebind.Code != http.StatusOK || !strings.Contains(recRebind.Body.String(), "Переключение…") {
+		t.Fatalf("expected 'Переключение…' during rebinding")
 	}
 
 	// 2. Observer views /images

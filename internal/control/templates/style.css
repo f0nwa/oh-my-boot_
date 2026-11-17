@@ -701,13 +701,17 @@ td .mono.muted{color:var(--muted)}
 .migrate-target-field label{display:block;margin-bottom:6px;font-size:13px;font-weight:500}
 .migrate-target-field select{width:100%;box-sizing:border-box}
 
-.badge-migrating{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:var(--draft-bg);color:var(--accent-ink);border:1px solid var(--draft-line);vertical-align:middle}
-.dot-migrating{width:7px;height:7px;border-radius:50%;background:var(--accent-ink);display:inline-block;animation:pulse-migrating 1.6s ease-in-out infinite}
-@keyframes pulse-migrating{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.85)}}
-
-.progress-bar-micro{width:100%;max-width:140px;height:4px;border-radius:2px;background:var(--line);overflow:hidden;margin-top:4px}
-.progress-bar-micro .progress-bar-fill{height:100%;background:var(--accent-ink);transition:width .3s ease}
-tr.is-migrating td{opacity:.9}
+.image-migrating-status{margin-bottom:2px}
+.status-migrating{color:var(--accent-ink);font-weight:500;white-space:nowrap}
+.migrating-pct{margin-left:6px;font-variant-numeric:tabular-nums}
+.dot-migrating{background:var(--accent-ink);animation:pulse-migrating 1.5s ease-in-out infinite}
+@keyframes pulse-migrating{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+.progress-bar-micro{position:relative;width:100%;max-width:170px;height:4px;border-radius:2px;background:var(--line-strong);overflow:hidden;margin-top:5px}
+.progress-bar-micro .progress-bar-fill{position:relative;height:100%;background:var(--accent-ink);border-radius:2px;transition:width .35s ease;overflow:hidden}
+.progress-bar-micro .progress-bar-fill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.38) 50%,transparent 100%);transform:translateX(-100%);animation:progress-shimmer 1.6s ease-in-out infinite}
+@keyframes progress-shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){.dot-migrating,.progress-bar-micro .progress-bar-fill::after{animation:none}}
+tr.is-migrating td{background:var(--draft-bg)}
 .storage-delete-warning{margin:14px 0 16px;padding:12px 14px;border:1px solid var(--bad-line);border-radius:8px;background:var(--bad-bg);color:var(--text);font-size:13px;line-height:1.45}
 .storage-delete-warning-title{margin:0 0 4px;font-weight:600;color:var(--bad)}
 .storage-delete-warning p{margin:0 0 6px}

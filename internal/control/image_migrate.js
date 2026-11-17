@@ -1,13 +1,45 @@
 (() => {
   const english = {
     "Образ перемещается в другое хранилище": "Image is being moved to another storage",
-    "Перемещается...": "Moving…",
+    "Перемещается…": "Moving…",
+    "Переключение…": "Switching…",
     "Не удалось запустить перемещение образа": "Could not start moving image",
     "Ошибка сети при запуске перемещения": "Network error while starting migration"
   };
   const tr = (text) => {
     return document.documentElement.lang === 'en' ? (english[text] || text) : text;
   };
+
+  function findRow(storageID, path) {
+    const cell = Array.from(document.querySelectorAll('.path-cell')).find(c =>
+      c.dataset.storageId === String(storageID) && c.dataset.path === path
+    );
+    return cell ? cell.closest('tr') : null;
+  }
+
+  function setRowMigrating(row, percent, state) {
+    if (!row) return;
+    row.classList.add('is-migrating');
+    const libStatus = row.querySelector('.image-library-status');
+    if (libStatus) libStatus.hidden = true;
+    const migStatus = row.querySelector('.image-migrating-status');
+    if (migStatus) migStatus.hidden = false;
+    const labelEl = row.querySelector('.migrating-label');
+    if (labelEl) {
+      const isSwitching = state === 'ready_to_rebind' || state === 'rebinding';
+      labelEl.textContent = tr(isSwitching ? 'Переключение…' : 'Перемещается…');
+    }
+    const pct = Number(percent) || 0;
+    const pctEl = row.querySelector('.migrating-pct');
+    if (pctEl) pctEl.textContent = `${pct}%`;
+    const bar = row.querySelector('.progress-bar-fill');
+    if (bar) bar.style.width = `${pct}%`;
+    const menuBtn = row.querySelector('.row-menu-btn');
+    if (menuBtn) {
+      menuBtn.disabled = true;
+      menuBtn.title = tr('Образ перемещается в другое хранилище');
+    }
+  }
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest('[data-image-migrate-open]');
@@ -73,22 +105,13 @@
 
       if (dialog) dialog.close();
 
-      const cell = Array.from(document.querySelectorAll('.path-cell')).find(c =>
-        c.dataset.storageId === String(sourceStorageID) && c.dataset.path === path
-      );
-      const row = cell ? cell.closest('tr') : null;
-      if (row) {
-        row.classList.add('is-migrating');
-        const badge = row.querySelector('.badge-migrating');
-        if (badge) badge.hidden = false;
-        const progress = row.querySelector('.progress-bar-micro');
-        if (progress) progress.hidden = false;
-        const menuBtn = row.querySelector('.row-menu-btn');
-        if (menuBtn) {
-          menuBtn.disabled = true;
-          menuBtn.title = tr('Образ перемещается в другое хранилище');
-        }
-      }
+      let initialJob = null;
+      try {
+        initialJob = await resp.json();
+      } catch (_) {}
+
+      const row = findRow(sourceStorageID, path);
+      setRowMigrating(row, initialJob?.percent || 0, initialJob?.state || 'copying');
 
       startPolling();
     } catch (err) {
@@ -117,23 +140,12 @@
 
       let activeCount = 0;
       jobs.forEach(job => {
-        const cell = Array.from(document.querySelectorAll('.path-cell')).find(c =>
-          c.dataset.storageId === String(job.source_storage_id) && c.dataset.path === job.path
-        );
-        const row = cell ? cell.closest('tr') : null;
+        const row = findRow(job.source_storage_id, job.path);
         if (!row) return;
 
         if (job.state === 'copying' || job.state === 'ready_to_rebind' || job.state === 'rebinding') {
           activeCount++;
-          row.classList.add('is-migrating');
-          const badge = row.querySelector('.badge-migrating');
-          if (badge) badge.hidden = false;
-          const pctEl = row.querySelector('.migrating-pct');
-          if (pctEl) pctEl.textContent = `${job.percent || 0}%`;
-          const bar = row.querySelector('.progress-bar-fill');
-          if (bar) bar.style.width = `${job.percent || 0}%`;
-          const menuBtn = row.querySelector('.row-menu-btn');
-          if (menuBtn) menuBtn.disabled = true;
+          setRowMigrating(row, job.percent, job.state);
         } else if (job.state === 'completed') {
           window.location.reload();
         } else if (job.state === 'failed' || job.state === 'canceled') {

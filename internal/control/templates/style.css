@@ -499,7 +499,8 @@ button[disabled]{opacity:.45;cursor:default}
 .machine-table td>span.mono{color:var(--text)}
 a.machine-name-accent{color:var(--accent-ink);font-weight:500;text-decoration:none}
 a.machine-name-accent:hover{text-decoration:underline}
-.boots-count{color:var(--accent-ink);font-weight:600}
+.boots-count,td .boots-count{color:var(--accent-ink);font-weight:600}
+td .mono.muted{color:var(--muted)}
 .machine-table td.rule-prefix{color:var(--accent-ink);font-weight:500}
 .machine-table td.rule-title{font-weight:500}
 .machine-table a.rule-count{color:var(--accent-ink);font-weight:600;text-decoration:none}

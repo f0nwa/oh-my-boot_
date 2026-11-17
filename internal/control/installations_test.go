@@ -1,8 +1,12 @@
 package control
 
 import (
+	"encoding/json"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -247,5 +251,48 @@ func TestInstallationUsageIgnoresInvalidChoiceEvents(t *testing.T) {
 		if use := installationUsage([]boot.Event{event}, nil); len(use) != 0 {
 			t.Errorf("event=%+v use=%+v", event, use)
 		}
+	}
+}
+
+func TestInstallationsPageShowsChosenCount(t *testing.T) {
+	s, store := newInstallServer(t)
+	dir, err := os.MkdirTemp("", "boot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	path := filepath.Join(dir, "b.sock")
+	l, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []boot.Event{
+		{At: time.Now().Add(-10 * time.Minute), Kind: "choice", Path: "/boot/choice?id=100", RemoteAddr: "10.30.0.19:1"},
+		{At: time.Now().Add(-5 * time.Minute), Kind: "choice", Path: "/boot/choice?id=100", RemoteAddr: "10.30.0.20:1"},
+	}
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/events" {
+			_ = json.NewEncoder(w).Encode(events)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})}
+	go func() { _ = server.Serve(l) }()
+	t.Cleanup(func() { _ = server.Close() })
+	s.Boot = NewBootClient(path)
+
+	store.installations = []Installation{
+		{ID: 100, BootProfileID: 52, Title: "Ubuntu Lab", Folder: "Linux"},
+		{ID: 101, BootProfileID: 52, Title: "Ubuntu Rescue", Folder: "Recovery"},
+	}
+	body := libraryGet(t, s, "/installations")
+
+	// ID 100 has 2 choices -> should have mono boots-count with "2"
+	if !strings.Contains(body, `<span class="mono boots-count" title="выборов: 2 · `) || !strings.Contains(body, `>2</span>`) {
+		t.Fatalf("expected boots-count 2 for install_100, got body:\n%s", body)
+	}
+	// ID 101 has 0 choices -> should have mono muted with "0" and title="не выбирали"
+	if !strings.Contains(body, `<span class="mono muted" title="не выбирали">0</span>`) {
+		t.Fatalf("expected mono muted 0 for install_101, got body:\n%s", body)
 	}
 }

@@ -69,9 +69,25 @@ NFS evaluates access permissions by Unix process UID/GID rather than mount optio
 - If the export is read-only or `omb-images` lacks write permissions on the NAS, the storage remains in **read-only** mode (catalog scanning, free space display, and boot entry preparation work normally; ISO upload and deletion are disabled).
 - If NAS permissions change later, click **Refresh** in the storage's `☰` menu to re-detect the access mode without reconnecting.
 
-**NAS Export Configuration Requirements:**
-- For write access, the UID and GID of the local `omb-images` user on the OMB server must have write permissions in the exported directory on the NAS (for example, through NAS user mapping such as `all_squash` with `anonuid`/`anongid` pointing to the directory owner).
-- `root_squash` mode (default on most NAS devices): when `omb-agent` and `omb-winiso-prepare` (running as `root`) loop-mount ISOs, files on NFS are accessed as an unprivileged user (`nobody`). Therefore, export directories must grant traverse and read permissions (`o+rx`), and `.iso` files must be world-readable (`0644`). When uploading an ISO through the OMB web interface, OMB automatically sets mode `0644` on the uploaded file. With `no_root_squash` configured on the NAS, OMB server root retains direct access.
+**NAS Export Configuration Requirements and Recommendations:**
+
+Because the `omb-images` catalog service runs under a local system UID/GID on the OMB server (which typically does not exist on an external NAS), choosing `No mapping` for Squash on ACL-enabled NAS systems (such as Synology DSM) causes `permission denied` errors during scans. Configure Squash according to the intended operating mode:
+
+1. **Test and Read-Only Production Mode (ISOs are placed on the NAS externally; OMB only reads and serves them over PXE):**
+   - **NAS export privilege:** `Read only` (`ro`).
+   - **Squash / user mapping:**
+     - On Synology DSM: `Map all users to admin` (if folder access is restricted by ACLs; the NFS rule itself remains `Read only`, so the client cannot modify any files) or `Map all users to guest` (if `guest` has read permissions on that folder).
+     - On a Linux NFS server: `ro,all_squash` with `anonuid`/`anongid` of a user that can read the directory (`o+rx` on directories and `0644` on `.iso` files).
+   - **Recommended on Synology DSM:** enable asynchronous mode and allow connections from non-privileged ports (above 1024).
+
+2. **Read-Write Production Mode (full management: ISO upload and deletion from the OMB web interface):**
+   - In production, dedicate a **separate shared folder / export** exclusively for OMB images (isolated from unrelated user files).
+   - **NAS export privilege:** `Read/Write` (`rw`).
+   - **Squash / user mapping:**
+     - On Synology DSM: `Map all users to admin` (or map to a dedicated NAS service account that has write permissions only on this shared folder).
+     - On a Linux NFS server: `rw,all_squash` with `anonuid`/`anongid` of the directory owner, or grant directory write permissions directly to the local `omb-images` UID/GID (check with `id omb-images`).
+   - **Security and file modes:** in `root_squash` mode (default on most NAS devices), when `omb-agent` and `omb-winiso-prepare` (running as `root`) loop-mount ISOs, files on NFS are accessed as `nobody`; therefore, export directories must grant `o+rx` and `.iso` files must be `0644` (OMB sets `0644` automatically on uploaded ISOs). With `no_root_squash`, the OMB server root retains direct access.
+   - After changing NAS permissions, click **Refresh** in the storage's `☰` menu so OMB re-runs the write probe and updates the access mode.
 
 Operators and administrators can start scans; observers can view the catalog. Background availability checks preserve previous records on failure. Interrupted scans are marked as failed after a restart and can be retried. See [Control storage recovery](control-installation.md#storage-availability-and-recovery) for managed mounts.
 

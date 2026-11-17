@@ -243,7 +243,7 @@ func TestAnswersPageUnboundTargetsAndPerImageChecks(t *testing.T) {
 
 	body := renderPage("answers", data)
 	for _, want := range []string{
-		`>Рассчитан на</th>`,
+		`>Рассчитан на</a></th>`,
 		`>Проверки по образам</th>`,
 		`amd64`,
 		`Win 11`,

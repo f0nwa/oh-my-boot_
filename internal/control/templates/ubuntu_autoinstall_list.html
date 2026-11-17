@@ -1,6 +1,6 @@
 {{define "ubuntu_autoinstall_files"}}
 <section class="autoinstall-section" id="ubuntu-autoinstall"><h2>Ubuntu</h2>
-{{if .UbuntuAutoinstalls}}<div class="table-wrap"><table class="answers-table">{{template "answer_table_head"}}<tbody>
+{{if .UbuntuAutoinstalls}}<div class="table-wrap"><table class="answers-table">{{template "answer_table_head" $}}<tbody>
 {{range .UbuntuAutoinstalls}}<tr>
 <td><span class="answer-name">{{.Title}}</span></td>
 <td class="answer-target-cell"><div class="chips"><span class="chip">Ubuntu Desktop</span></div></td>

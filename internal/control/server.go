@@ -535,7 +535,16 @@ func (s *Server) answersPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) storagesPage(w http.ResponseWriter, r *http.Request) {
 	data := s.storageLibraryData(r)
+	data.Sort = r.URL.Query().Get("sort")
+	data.Dir = r.URL.Query().Get("dir")
+	if data.Sort == "" {
+		data.Sort = "size"
+		data.Dir = "desc"
+	}
 	s.loadStorageSpace(r.Context(), &data, data.catalogCache)
+	if data.StorageSpace != nil && len(data.StorageSpace.Artifacts) > 0 {
+		sortServerArtifacts(data.StorageSpace.Artifacts, data.Sort, data.Dir)
+	}
 	render(w, "storages", data)
 }
 

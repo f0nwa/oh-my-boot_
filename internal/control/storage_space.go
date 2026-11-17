@@ -554,3 +554,43 @@ func (s *Server) loadStorageSpace(ctx context.Context, data *pageData, catalog *
 func joinStrings(items []string, sep string) string {
 	return strings.Join(items, sep)
 }
+
+func sortServerArtifacts(rows []serverArtifactRow, sortBy, dir string) {
+	desc := dir == "desc"
+	titleOf := func(r serverArtifactRow) string {
+		if r.TitleSuffix != "" {
+			return r.Title + " " + r.TitleSuffix
+		}
+		return r.Title
+	}
+	switch sortBy {
+	case "artifact":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(titleOf(rows[i]), titleOf(rows[j]), desc); c != 0 {
+				return c < 0
+			}
+			return rows[i].Bytes > rows[j].Bytes
+		})
+	case "storage":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].StorageName, rows[j].StorageName, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(titleOf(rows[i]), titleOf(rows[j]), false) < 0
+		})
+	case "downloads":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareInts(len(rows[i].Links), len(rows[j].Links), desc); c != 0 {
+				return c < 0
+			}
+			return rows[i].Bytes > rows[j].Bytes
+		})
+	case "size":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareInt64s(rows[i].Bytes, rows[j].Bytes, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(titleOf(rows[i]), titleOf(rows[j]), false) < 0
+		})
+	}
+}

@@ -126,12 +126,12 @@ func TestImagesTableLayoutAndNoDetailsOrUTC(t *testing.T) {
 	page := libraryGet(t, s, "/images")
 
 	for _, want := range []string{
-		"<th>Файл ISO</th>",
-		"<th>Образ</th>",
-		"<th>Размер</th>",
-		"<th>Хранилище</th>",
-		"<th>Добавлен</th>",
-		"<th>Загрузки и состояние</th>",
+		">Файл ISO</a></th>",
+		">Образ</a></th>",
+		">Размер</a></th>",
+		">Хранилище</a></th>",
+		">Добавлен</a></th>",
+		">Загрузки и состояние</a></th>",
 		`<th class="iso-actions">Действия</th>`,
 		"Windows 11 Pro",
 		"NAS-Share",
@@ -270,12 +270,12 @@ func TestImagesTableEnglishTranslation(t *testing.T) {
 	s, _ := setupImagesTableServer(t, "admin", langEN)
 	page := libraryGet(t, s, "/images")
 	for _, want := range []string{
-		"<th>ISO file</th>",
-		"<th>Image</th>",
-		"<th>Size</th>",
-		"<th>Storage</th>",
-		"<th>Added</th>",
-		"<th>Boot entries &amp; status</th>",
+		">ISO file</a></th>",
+		">Image</a></th>",
+		">Size</a></th>",
+		">Storage</a></th>",
+		">Added</a></th>",
+		">Boot entries &amp; status</a></th>",
 		"on server:",
 		"Ubuntu source",
 		"In boot entries",

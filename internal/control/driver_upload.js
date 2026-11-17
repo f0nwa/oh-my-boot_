@@ -123,4 +123,16 @@
       request.send(data);
     });
   });
+
+  const searchInput = document.getElementById('driver-q');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.trim().toLowerCase();
+      const rows = document.querySelectorAll('.driver-config-table tr[id^="driver-config-"]');
+      rows.forEach(row => {
+        const text = (row.textContent || '').toLowerCase();
+        row.style.display = (!q || text.includes(q)) ? '' : 'none';
+      });
+    });
+  }
 })();

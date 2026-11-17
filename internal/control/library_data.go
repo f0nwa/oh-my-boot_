@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
 
 	"omb/internal/agent"
 	"omb/internal/images"
@@ -88,6 +90,8 @@ func (s *Server) answersLibraryData(r *http.Request) pageData {
 	s.loadAnswerChecks(r.Context(), &data)
 
 	data.Query = strings.TrimSpace(r.URL.Query().Get("q"))
+	data.Sort = r.URL.Query().Get("sort")
+	data.Dir = r.URL.Query().Get("dir")
 	if data.Query != "" {
 		q := strings.ToLower(data.Query)
 		filteredWin := []WindowsAnswerVariant{}
@@ -111,14 +115,129 @@ func (s *Server) answersLibraryData(r *http.Request) pageData {
 		}
 		data.UbuntuAutoinstalls = filteredUbuntu
 	}
+	if data.Sort != "" {
+		sortWindowsAnswers(data.WindowsAnswerVariants, data.AnswerFileUsage, data.Sort, data.Dir)
+		sortUbuntuAutoinstalls(data.UbuntuAutoinstalls, data.AnswerFileUsage, data.Sort, data.Dir)
+	}
 
 	return data
+}
+
+func sortWindowsAnswers(rows []WindowsAnswerVariant, usage answerFileUsage, sortBy, dir string) {
+	desc := dir == "desc"
+	switch sortBy {
+	case "title":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].Title, rows[j].Title, desc); c != 0 {
+				return c < 0
+			}
+			return rows[i].ID < rows[j].ID
+		})
+	case "target":
+		sort.SliceStable(rows, func(i, j int) bool {
+			tI := strings.Join(rows[i].Target.Chips(), " ")
+			tJ := strings.Join(rows[j].Target.Chips(), " ")
+			if c := compareStrings(tI, tJ, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "author":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].Author, rows[j].Author, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "created":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareTimes(rows[i].CreatedAt, rows[j].CreatedAt, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "uses":
+		sort.SliceStable(rows, func(i, j int) bool {
+			uI := len(usage.Windows[rows[i].ID].Downloads)
+			uJ := len(usage.Windows[rows[j].ID].Downloads)
+			if c := compareInts(uI, uJ, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "state":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].State, rows[j].State, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "sha":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].SHA256, rows[j].SHA256, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	}
+}
+
+func sortUbuntuAutoinstalls(rows []UbuntuAutoinstallSummary, usage answerFileUsage, sortBy, dir string) {
+	desc := dir == "desc"
+	switch sortBy {
+	case "title":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].Title, rows[j].Title, desc); c != 0 {
+				return c < 0
+			}
+			return rows[i].ID < rows[j].ID
+		})
+	case "author":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].Author, rows[j].Author, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "created":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareTimes(rows[i].CreatedAt, rows[j].CreatedAt, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "uses":
+		sort.SliceStable(rows, func(i, j int) bool {
+			uI := len(usage.Ubuntu[rows[i].ID].Downloads)
+			uJ := len(usage.Ubuntu[rows[j].ID].Downloads)
+			if c := compareInts(uI, uJ, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "state":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].State, rows[j].State, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "sha":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].SHA256, rows[j].SHA256, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	}
 }
 
 func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	data := s.profileLibraryData(r)
 	data.Query = strings.TrimSpace(r.URL.Query().Get("q"))
 	data.Tab = r.URL.Query().Get("show")
+	data.Sort = r.URL.Query().Get("sort")
+	data.Dir = r.URL.Query().Get("dir")
 	data.ImageCounts = map[string]int{}
 	catalog := s.loadLibraryCatalog(r.Context(), &data)
 	if catalog == nil {
@@ -225,7 +344,71 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 			data.ISOImages = append(data.ISOImages, row)
 		}
 	}
+	if data.Sort != "" {
+		sortImages(data.ISOImages, data.Sort, data.Dir)
+	}
 	return data
+}
+
+func sortImages(rows []imageRow, sortBy, dir string) {
+	desc := dir == "desc"
+	nameOf := func(r imageRow) string {
+		if r.DisplayName != "" {
+			return r.DisplayName
+		}
+		return r.Image.Path
+	}
+	switch sortBy {
+	case "name":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(nameOf(rows[i]), nameOf(rows[j]), desc); c != 0 {
+				return c < 0
+			}
+			return rows[i].Image.Path < rows[j].Image.Path
+		})
+	case "kind":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].Kind, rows[j].Kind, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(nameOf(rows[i]), nameOf(rows[j]), false) < 0
+		})
+	case "size":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareInt64s(rows[i].Image.Size, rows[j].Image.Size, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(nameOf(rows[i]), nameOf(rows[j]), false) < 0
+		})
+	case "storage":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].StorageName, rows[j].StorageName, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(nameOf(rows[i]), nameOf(rows[j]), false) < 0
+		})
+	case "added":
+		sort.SliceStable(rows, func(i, j int) bool {
+			var tI, tJ time.Time
+			if rows[i].AddedAt != nil {
+				tI = *rows[i].AddedAt
+			}
+			if rows[j].AddedAt != nil {
+				tJ = *rows[j].AddedAt
+			}
+			if c := compareTimes(tI, tJ, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(nameOf(rows[i]), nameOf(rows[j]), false) < 0
+		})
+	case "downloads":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareInts(len(rows[i].Downloads), len(rows[j].Downloads), desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(nameOf(rows[i]), nameOf(rows[j]), false) < 0
+		})
+	}
 }
 
 func imageMatchesQuery(row imageRow, query string) bool {

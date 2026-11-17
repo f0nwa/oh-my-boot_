@@ -196,3 +196,44 @@ func TestDriverImportReportsExistingPackage(t *testing.T) {
 		t.Fatalf("messages=%q packages=%d", messages, len(store.packages))
 	}
 }
+
+func TestFilterAndSortDriverConfigs(t *testing.T) {
+	configs := []DriverConfig{
+		{ID: 1, Title: "Dell Precision 3581", Author: "vlad", SizeBytes: 500000000},
+		{ID: 2, Title: "Lenovo ThinkPad P16", Author: "admin", SizeBytes: 400000000},
+		{ID: 3, Title: "HP EliteBook 840", Author: "alex", SizeBytes: 600000000},
+	}
+	usage := driverUsage{
+		Configs: map[int64][]driverUse{
+			1: {{ID: 10, Title: "Install 1"}},
+			2: {{ID: 11, Title: "Install 2"}, {ID: 12, Title: "Install 3"}},
+		},
+	}
+
+	// Filter by title
+	f1 := filterDriverConfigs(configs, usage, "dell")
+	if len(f1) != 1 || f1[0].ID != 1 {
+		t.Fatalf("unexpected filter by dell: %+v", f1)
+	}
+
+	// Sort config asc
+	s1 := append([]DriverConfig(nil), configs...)
+	sortDriverConfigs(s1, usage, "config", "asc")
+	if s1[0].Title != "Dell Precision 3581" || s1[1].Title != "HP EliteBook 840" || s1[2].Title != "Lenovo ThinkPad P16" {
+		t.Fatalf("unexpected sort config asc: %+v", s1)
+	}
+
+	// Sort size desc
+	s2 := append([]DriverConfig(nil), configs...)
+	sortDriverConfigs(s2, usage, "size", "desc")
+	if s2[0].SizeBytes != 600000000 || s2[1].SizeBytes != 500000000 || s2[2].SizeBytes != 400000000 {
+		t.Fatalf("unexpected sort size desc: %+v", s2)
+	}
+
+	// Sort uses desc
+	s3 := append([]DriverConfig(nil), configs...)
+	sortDriverConfigs(s3, usage, "uses", "desc")
+	if s3[0].ID != 2 || s3[1].ID != 1 || s3[2].ID != 3 {
+		t.Fatalf("unexpected sort uses desc: %+v", s3)
+	}
+}

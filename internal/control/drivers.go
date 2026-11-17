@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 
 	"omb/internal/agent"
@@ -71,7 +73,100 @@ func (s *Server) driversPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	render(w, "drivers", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), DriverPackages: packages, WindowsProfiles: profiles, DriverConfigs: configs, DriverUsage: usage})
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	sortBy := r.URL.Query().Get("sort")
+	dir := r.URL.Query().Get("dir")
+	if query != "" {
+		configs = filterDriverConfigs(configs, usage, query)
+	}
+	if sortBy != "" {
+		sortDriverConfigs(configs, usage, sortBy, dir)
+	}
+	render(w, "drivers", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), DriverPackages: packages, WindowsProfiles: profiles, DriverConfigs: configs, DriverUsage: usage, Query: query, Sort: sortBy, Dir: dir})
+}
+
+func filterDriverConfigs(configs []DriverConfig, usage driverUsage, query string) []DriverConfig {
+	q := strings.ToLower(query)
+	var filtered []DriverConfig
+	for _, cfg := range configs {
+		var parts []string
+		parts = append(parts, cfg.Title)
+		parts = append(parts, fmt.Sprintf("№ %d", cfg.ID))
+		parts = append(parts, strconv.FormatInt(cfg.ID, 10))
+		parts = append(parts, cfg.Author)
+		parts = append(parts, cfg.State)
+		parts = append(parts, cfg.Error)
+		parts = append(parts, usage.Profiles[cfg.ProfileID])
+		parts = append(parts, usage.ProfilePaths[cfg.ProfileID])
+		parts = append(parts, usage.Answers[cfg.AnswerID])
+		if cfg.Build.WIMSHA256 != "" {
+			parts = append(parts, cfg.Build.WIMSHA256)
+		}
+		for _, inf := range cfg.PackageINFs {
+			parts = append(parts, inf.INFPath, inf.PackageSHA256)
+		}
+		for _, use := range usage.Configs[cfg.ID] {
+			parts = append(parts, use.Title, fmt.Sprintf("№ %d", use.ID))
+		}
+		haystack := strings.ToLower(strings.Join(parts, " "))
+		if strings.Contains(haystack, q) || searchMatchSHA(q, cfg.Build.WIMSHA256) {
+			filtered = append(filtered, cfg)
+			continue
+		}
+		match := false
+		for _, inf := range cfg.PackageINFs {
+			if searchMatchSHA(q, inf.PackageSHA256) {
+				match = true
+				break
+			}
+		}
+		if match {
+			filtered = append(filtered, cfg)
+		}
+	}
+	return filtered
+}
+
+func sortDriverConfigs(configs []DriverConfig, usage driverUsage, sortBy, dir string) {
+	desc := dir == "desc"
+	titleOf := func(c DriverConfig) string {
+		if c.Title != "" {
+			return c.Title
+		}
+		return fmt.Sprintf("№ %d", c.ID)
+	}
+	switch sortBy {
+	case "config":
+		sort.SliceStable(configs, func(i, j int) bool {
+			if c := compareStrings(titleOf(configs[i]), titleOf(configs[j]), desc); c != 0 {
+				return c < 0
+			}
+			return configs[i].ID < configs[j].ID
+		})
+	case "author":
+		sort.SliceStable(configs, func(i, j int) bool {
+			if c := compareStrings(configs[i].Author, configs[j].Author, desc); c != 0 {
+				return c < 0
+			}
+			return compareTimes(configs[i].CreatedAt, configs[j].CreatedAt, desc) < 0
+		})
+	case "size":
+		sort.SliceStable(configs, func(i, j int) bool {
+			if c := compareInt64s(configs[i].SizeBytes, configs[j].SizeBytes, desc); c != 0 {
+				return c < 0
+			}
+			return configs[i].ID < configs[j].ID
+		})
+	case "uses":
+		sort.SliceStable(configs, func(i, j int) bool {
+			uI := len(usage.Configs[configs[i].ID])
+			uJ := len(usage.Configs[configs[j].ID])
+			if c := compareInts(uI, uJ, desc); c != 0 {
+				return c < 0
+			}
+			return configs[i].ID < configs[j].ID
+		})
+	}
 }
 
 func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {

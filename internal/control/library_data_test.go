@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"omb/internal/agent"
 	"omb/internal/images"
@@ -168,5 +169,78 @@ func TestLibraryPagesSkipUnrelatedAnswerAndMetadataFailures(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSortImages(t *testing.T) {
+	t1 := time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+	rows := []imageRow{
+		{
+			DisplayName: "Win11 Pro",
+			Image:       images.Image{Path: "win11.iso", Size: 6000000000},
+			Kind:        "Windows 11",
+			StorageName: "NAS",
+			AddedAt:     &t1,
+			Downloads:   []imageDownload{{Title: "D1"}, {Title: "D2"}},
+		},
+		{
+			DisplayName: "Ubuntu 24.04",
+			Image:       images.Image{Path: "ubuntu.iso", Size: 5000000000},
+			Kind:        "Ubuntu",
+			StorageName: "Local",
+			AddedAt:     &t2,
+			Downloads:   []imageDownload{{Title: "D3"}},
+		},
+	}
+
+	// name asc
+	r1 := append([]imageRow(nil), rows...)
+	sortImages(r1, "name", "asc")
+	if r1[0].DisplayName != "Ubuntu 24.04" || r1[1].DisplayName != "Win11 Pro" {
+		t.Fatalf("unexpected name asc: %+v", r1)
+	}
+
+	// size desc
+	r2 := append([]imageRow(nil), rows...)
+	sortImages(r2, "size", "desc")
+	if r2[0].Image.Size != 6000000000 || r2[1].Image.Size != 5000000000 {
+		t.Fatalf("unexpected size desc: %+v", r2)
+	}
+
+	// downloads desc
+	r3 := append([]imageRow(nil), rows...)
+	sortImages(r3, "downloads", "desc")
+	if len(r3[0].Downloads) != 2 || len(r3[1].Downloads) != 1 {
+		t.Fatalf("unexpected downloads desc: %+v", r3)
+	}
+}
+
+func TestSortAnswers(t *testing.T) {
+	t1 := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+	win := []WindowsAnswerVariant{
+		{ID: 1, Title: "Win 11 Lab", Author: "vlad", CreatedAt: t1},
+		{ID: 2, Title: "Auto Setup", Author: "admin", CreatedAt: t2},
+	}
+	usage := answerFileUsage{
+		Windows: map[int64]answerFileUses{
+			1: {Downloads: []answerFileDownload{{Title: "D1"}, {Title: "D2"}}},
+			2: {Downloads: []answerFileDownload{{Title: "D3"}}},
+		},
+	}
+
+	// title asc
+	w1 := append([]WindowsAnswerVariant(nil), win...)
+	sortWindowsAnswers(w1, usage, "title", "asc")
+	if w1[0].Title != "Auto Setup" || w1[1].Title != "Win 11 Lab" {
+		t.Fatalf("unexpected title asc: %+v", w1)
+	}
+
+	// uses desc
+	w2 := append([]WindowsAnswerVariant(nil), win...)
+	sortWindowsAnswers(w2, usage, "uses", "desc")
+	if len(usage.Windows[w2[0].ID].Downloads) != 2 || len(usage.Windows[w2[1].ID].Downloads) != 1 {
+		t.Fatalf("unexpected uses desc: %+v", w2)
 	}
 }

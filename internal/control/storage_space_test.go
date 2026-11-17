@@ -176,3 +176,39 @@ func TestBuildStorageSpaceDegradesWhenAgentUnavailable(t *testing.T) {
 		t.Fatalf("unexpected degradation view: %+v", view)
 	}
 }
+
+func TestSortServerArtifacts(t *testing.T) {
+	rows := []serverArtifactRow{
+		{Title: "Win11", StorageName: "NAS", Bytes: 600, Links: []artifactLink{{}, {}}},
+		{Title: "Ubuntu", StorageName: "Local", Bytes: 200, Links: []artifactLink{{}}},
+		{Title: "Astra", StorageName: "NFS", Bytes: 800},
+	}
+
+	// artifact asc
+	r1 := append([]serverArtifactRow(nil), rows...)
+	sortServerArtifacts(r1, "artifact", "asc")
+	if r1[0].Title != "Astra" || r1[1].Title != "Ubuntu" || r1[2].Title != "Win11" {
+		t.Fatalf("unexpected artifact asc sort: %+v", r1)
+	}
+
+	// artifact desc
+	r2 := append([]serverArtifactRow(nil), rows...)
+	sortServerArtifacts(r2, "artifact", "desc")
+	if r2[0].Title != "Win11" || r2[1].Title != "Ubuntu" || r2[2].Title != "Astra" {
+		t.Fatalf("unexpected artifact desc sort: %+v", r2)
+	}
+
+	// size asc
+	r3 := append([]serverArtifactRow(nil), rows...)
+	sortServerArtifacts(r3, "size", "asc")
+	if r3[0].Bytes != 200 || r3[1].Bytes != 600 || r3[2].Bytes != 800 {
+		t.Fatalf("unexpected size asc sort: %+v", r3)
+	}
+
+	// downloads desc
+	r4 := append([]serverArtifactRow(nil), rows...)
+	sortServerArtifacts(r4, "downloads", "desc")
+	if len(r4[0].Links) != 2 || len(r4[1].Links) != 1 || len(r4[2].Links) != 0 {
+		t.Fatalf("unexpected downloads desc sort: %+v", r4)
+	}
+}

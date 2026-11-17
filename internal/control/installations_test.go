@@ -296,3 +296,50 @@ func TestInstallationsPageShowsChosenCount(t *testing.T) {
 		t.Fatalf("expected mono muted 0 for install_101, got body:\n%s", body)
 	}
 }
+
+func TestSortInstallations(t *testing.T) {
+	rows := []installationRow{
+		{ID: 1, Title: "Windows 11", Folder: "Windows", Status: "in_menu", Used: 5},
+		{ID: 2, Title: "Astra Linux", Folder: "Linux", Status: "not_in_menu", Used: 0},
+		{ID: 3, Title: "Ubuntu 24.04", Folder: "Linux", Status: "pending_add", Used: 12},
+	}
+
+	// Sort by title asc
+	r1 := append([]installationRow(nil), rows...)
+	sortInstallations(r1, "title", "asc")
+	if r1[0].Title != "Astra Linux" || r1[1].Title != "Ubuntu 24.04" || r1[2].Title != "Windows 11" {
+		t.Fatalf("unexpected title asc sort: %+v", r1)
+	}
+
+	// Sort by title desc
+	r2 := append([]installationRow(nil), rows...)
+	sortInstallations(r2, "title", "desc")
+	if r2[0].Title != "Windows 11" || r2[1].Title != "Ubuntu 24.04" || r2[2].Title != "Astra Linux" {
+		t.Fatalf("unexpected title desc sort: %+v", r2)
+	}
+
+	// Sort by used desc
+	r3 := append([]installationRow(nil), rows...)
+	sortInstallations(r3, "used", "desc")
+	if r3[0].Used != 12 || r3[1].Used != 5 || r3[2].Used != 0 {
+		t.Fatalf("unexpected used desc sort: %+v", r3)
+	}
+
+	// Sort by used asc
+	r4 := append([]installationRow(nil), rows...)
+	sortInstallations(r4, "used", "asc")
+	if r4[0].Used != 0 || r4[1].Used != 5 || r4[2].Used != 12 {
+		t.Fatalf("unexpected used asc sort: %+v", r4)
+	}
+
+	// Test HTML rendering with sort
+	body := renderPage("installations", pageData{
+		Installations: rows,
+		Sort:          "used",
+		Dir:           "desc",
+		Info:          requestContext{Path: "/installations"},
+	})
+	if !strings.Contains(body, `aria-sort="descending"`) || !strings.Contains(body, `class="sorted"`) {
+		t.Fatalf("expected sorted table header, got:\n%s", body)
+	}
+}

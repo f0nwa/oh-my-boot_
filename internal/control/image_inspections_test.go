@@ -68,7 +68,7 @@ func TestLibraryDoesNotInferTypeFromFilename(t *testing.T) {
 	s, store, _ := downloadsServer(t)
 	setTestInspection(s, store, "ubuntu-arm64-strelec.iso", "windows")
 	page := libraryGet(t, s, "/images")
-	if strings.Contains(page, "Тип по имени файла") || !strings.Contains(page, "<th>Образ</th>") || !strings.Contains(page, "<td>Windows<br>") {
+	if strings.Contains(page, "Тип по имени файла") || !strings.Contains(page, ">Образ</a></th>") || !strings.Contains(page, "<td>Windows<br>") {
 		t.Fatal("library still guesses the type from a name")
 	}
 }

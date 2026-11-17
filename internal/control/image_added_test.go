@@ -30,7 +30,7 @@ func TestImageAddedColumnUsesUploadOrDiscoveryDate(t *testing.T) {
 	first := api.catalog.Images[0]
 	s.Store = &imageAddedStore{downloadsStore: store, uploads: map[string]time.Time{imageAuthorKey(first.StorageID, first.Path): uploaded}}
 	page := libraryGet(t, s, "/images")
-	if !strings.Contains(page, ">Добавлен</th>") || !strings.Contains(page, `datetime="`+uploaded.Format(time.RFC3339)+`"`) || !strings.Contains(page, `datetime="`+discovered.Format(time.RFC3339)+`"`) || !strings.Contains(page, "Загружен") || !strings.Contains(page, "Обнаружен") {
+	if !strings.Contains(page, ">Добавлен</a></th>") || !strings.Contains(page, `datetime="`+uploaded.Format(time.RFC3339)+`"`) || !strings.Contains(page, `datetime="`+discovered.Format(time.RFC3339)+`"`) || !strings.Contains(page, "Загружен") || !strings.Contains(page, "Обнаружен") {
 		t.Fatal("missing addition dates or their source")
 	}
 }

@@ -116,6 +116,8 @@ type pageData struct {
 	Form                  url.Values
 	Query                 string
 	Tab                   string
+	Sort                  string
+	Dir                   string
 	MACFilter             string
 	Machines              []machineRow
 	Sessions              []bootSession
@@ -461,4 +463,20 @@ func isoArch(name string) string {
 		return "arm64"
 	}
 	return "x64"
+}
+
+// SortCol creates a TableColumn for a sortable table header.
+func (p pageData) SortCol(targetCol, label, defaultDir string) TableColumn {
+	params := url.Values{}
+	if p.Query != "" {
+		params.Set("q", p.Query)
+	}
+	if p.Tab != "" {
+		params.Set("show", p.Tab)
+	}
+	baseURL := p.Info.Path
+	if baseURL == "" {
+		baseURL = "/"
+	}
+	return MakeSortCol(baseURL, p.Sort, p.Dir, targetCol, label, defaultDir, params)
 }

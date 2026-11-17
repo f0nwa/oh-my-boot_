@@ -149,7 +149,7 @@ func TestDriversPageShowsAuthorCardAndProperties(t *testing.T) {
 
 	body := libraryGet(t, s, "/drivers")
 	for _, want := range []string{
-		`<th>Автор</th>`,
+		`>Автор</a></th>`,
 		`data-driver-config-open="1"`,
 		`id="driver-config-dialog-1"`,
 		`action="/drivers/configs/1/title"`,
@@ -208,7 +208,7 @@ func TestDriversPageShowsConfigSizesAndSharedWIM(t *testing.T) {
 	s := &Server{Store: store, DiskUsage: disk}
 	body := libraryGet(t, s, "/drivers")
 	for _, want := range []string{
-		`<th>Размер</th>`,
+		`>Размер</a></th>`,
 		`Размер на сервере`,
 		`572,0 МБ`,
 		`599,0 МБ`,
@@ -223,7 +223,7 @@ func TestDriversPageShowsConfigSizesAndSharedWIM(t *testing.T) {
 	// English locale translates size labels and omits Russian text.
 	store.user.Language = langEN
 	enBody := libraryGet(t, s, "/drivers")
-	for _, want := range []string{`<th>Size</th>`, `Size on server`, `shared boot.wim`, `572.0 MB`, `599.0 MB`} {
+	for _, want := range []string{`>Size</a></th>`, `Size on server`, `shared boot.wim`, `572.0 MB`, `599.0 MB`} {
 		if !strings.Contains(enBody, want) {
 			t.Fatalf("EN drivers page missing %q", want)
 		}
@@ -233,7 +233,7 @@ func TestDriversPageShowsConfigSizesAndSharedWIM(t *testing.T) {
 	store.user.Language = langRU
 	s.DiskUsage = fakeDiskUsageAPI{err: errors.New("agent unavailable")}
 	fallbackBody := libraryGet(t, s, "/drivers")
-	if !strings.Contains(fallbackBody, `<th>Размер</th>`) || strings.Contains(fallbackBody, `572,0 МБ`) {
+	if !strings.Contains(fallbackBody, `>Размер</a></th>`) || strings.Contains(fallbackBody, `572,0 МБ`) {
 		t.Fatalf("expected graceful fallback when DiskUsage fails")
 	}
 }

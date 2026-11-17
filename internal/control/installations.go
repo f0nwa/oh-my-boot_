@@ -10,6 +10,7 @@ import (
 	"omb/internal/images"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -414,6 +415,8 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Query = strings.TrimSpace(r.URL.Query().Get("q"))
 	data.Tab = r.URL.Query().Get("show")
+	data.Sort = r.URL.Query().Get("sort")
+	data.Dir = r.URL.Query().Get("dir")
 	var use map[string]installationUse
 	if s.Boot != nil {
 		if events, err := s.Boot.Events(r.Context(), 1000); err == nil {
@@ -442,8 +445,45 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 			data.Installations = append(data.Installations, row)
 		}
 	}
+	if data.Sort != "" {
+		sortInstallations(data.Installations, data.Sort, data.Dir)
+	}
 	data.Changes = diffMenuDraft(active, draft)
 	render(w, "installations", data)
+}
+
+func sortInstallations(rows []installationRow, sortBy, dir string) {
+	desc := dir == "desc"
+	switch sortBy {
+	case "title":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].Title, rows[j].Title, desc); c != 0 {
+				return c < 0
+			}
+			return rows[i].ID < rows[j].ID
+		})
+	case "folder":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].Folder, rows[j].Folder, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "status":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareStrings(rows[i].Status, rows[j].Status, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	case "used":
+		sort.SliceStable(rows, func(i, j int) bool {
+			if c := compareInts(rows[i].Used, rows[j].Used, desc); c != 0 {
+				return c < 0
+			}
+			return compareStrings(rows[i].Title, rows[j].Title, false) < 0
+		})
+	}
 }
 
 // installationAdd puts an installation at the end of the menu draft.

@@ -11,16 +11,10 @@
 </div>
 
 <div class="toolbar">
-<div class="toolbar-left">
 <form class="search user-search" onsubmit="return false;">
 <label for="user-search" class="sr-only">{{t "Поиск"}}</label>
 <input id="user-search" type="search" placeholder="{{t "Поиск по имени, ID или роли"}}" autocomplete="off">
 </form>
-<span class="policy-summary-pill">
-<span class="dot {{if gt .PasswordPolicy.MaxAgeDays 0}}dot-ok{{else}}dot-muted{{end}}"></span>
-<span>{{passwordPolicySummary .PasswordPolicy}}</span>
-</span>
-</div>
 <span id="user-count" class="muted user-counts" data-label-total="{{t "Всего"}}" data-label-active="{{t "активных"}}">{{t "Всего:"}} {{len .Users}}</span>
 </div>
 

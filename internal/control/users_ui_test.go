@@ -99,6 +99,9 @@ func TestUsersPageToolbarAndTable(t *testing.T) {
 			t.Errorf("users page missing required markup element: %s", sel)
 		}
 	}
+	if strings.Contains(body, "policy-summary-pill") {
+		t.Errorf("users toolbar must not show policy-summary-pill")
+	}
 }
 
 func TestUsersPageModals(t *testing.T) {

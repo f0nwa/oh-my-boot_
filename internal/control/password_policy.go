@@ -169,16 +169,6 @@ func formatPasswordRuleLabel(lang string, u User, pol PasswordPolicy) string {
 	}
 }
 
-func formatPasswordPolicySummary(lang string, pol PasswordPolicy) string {
-	if pol.MaxAgeDays <= 0 {
-		return translate(lang, "Общая политика: бессрочно")
-	}
-	if pol.WarnDays <= 0 {
-		return fmt.Sprintf(translate(lang, "Общая политика: %d дн."), pol.MaxAgeDays)
-	}
-	return fmt.Sprintf(translate(lang, "Общая политика: %d дн. · предупреждение за %d дн."), pol.MaxAgeDays, pol.WarnDays)
-}
-
 func formatPasswordWarnMessage(lang string, st PasswordState) string {
 	if !st.ExpiringSoon {
 		return ""

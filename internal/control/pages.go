@@ -277,10 +277,9 @@ func parsePages(lang string) *template.Template {
 			}
 			return EvaluatePasswordState(u, pol, now)
 		},
-		"passwordStatusLabel":   func(st PasswordState) string { return formatPasswordStatusLabel(lang, st) },
-		"passwordRuleLabel":     func(u User, pol PasswordPolicy) string { return formatPasswordRuleLabel(lang, u, pol) },
-		"passwordPolicySummary": func(pol PasswordPolicy) string { return formatPasswordPolicySummary(lang, pol) },
-		"passwordWarnMessage":   func(st PasswordState) string { return formatPasswordWarnMessage(lang, st) },
+		"passwordStatusLabel": func(st PasswordState) string { return formatPasswordStatusLabel(lang, st) },
+		"passwordRuleLabel":   func(u User, pol PasswordPolicy) string { return formatPasswordRuleLabel(lang, u, pol) },
+		"passwordWarnMessage": func(st PasswordState) string { return formatPasswordWarnMessage(lang, st) },
 		"formatLocalDate": func(t time.Time) string {
 			if t.IsZero() {
 				return "—"

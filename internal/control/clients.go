@@ -251,7 +251,18 @@ func (c *AgentClient) WindowsAnswerXML(ctx context.Context, req agent.WindowsAns
 	return xml, nil
 }
 
-func NewImagesClient(path string) *ImagesClient { return &ImagesClient{http: socketHTTP(path)} }
+// NewImagesClient returns an Images API client whose request timeout exceeds
+// images.spaceTimeout (3s) so slow SMB/NFS statfs calls degrade gracefully
+// instead of aborting catalog reads.
+func NewImagesClient(path string) *ImagesClient {
+	client := socketHTTP(path)
+	client.Timeout = 15 * time.Second
+	return &ImagesClient{http: client}
+}
+
+func (c *ImagesClient) longClient() *http.Client {
+	return &http.Client{Transport: c.http.Transport, Timeout: 30 * time.Second}
+}
 
 func (c *ImagesClient) Catalog(ctx context.Context) (images.Catalog, error) {
 	var v images.Catalog
@@ -261,8 +272,7 @@ func (c *ImagesClient) Catalog(ctx context.Context) (images.Catalog, error) {
 
 func (c *ImagesClient) Folders(ctx context.Context, id int64) ([]string, error) {
 	var folders []string
-	client := &http.Client{Transport: c.http.Transport, Timeout: 30 * time.Second}
-	err := localCall(ctx, client, "GET", "/storages/"+strconv.FormatInt(id, 10)+"/folders", nil, &folders)
+	err := localCall(ctx, c.longClient(), "GET", "/storages/"+strconv.FormatInt(id, 10)+"/folders", nil, &folders)
 	return folders, err
 }
 
@@ -374,7 +384,7 @@ func (c *ImagesClient) DeleteImage(ctx context.Context, id int64, path string) e
 	if err != nil {
 		return err
 	}
-	return localCall(ctx, c.http, "DELETE", "/storages/"+strconv.FormatInt(id, 10)+"/images", body, nil)
+	return localCall(ctx, c.longClient(), "DELETE", "/storages/"+strconv.FormatInt(id, 10)+"/images", body, nil)
 }
 
 func (c *ImagesClient) CatalogSettings(ctx context.Context) (images.CatalogSettings, error) {
@@ -403,7 +413,7 @@ func (c *ImagesClient) StartMigration(ctx context.Context, srcID int64, path str
 		return nil, err
 	}
 	var job images.MigrationJob
-	if err := localCall(ctx, c.http, http.MethodPost, "/images/migrate", body, &job); err != nil {
+	if err := localCall(ctx, c.longClient(), http.MethodPost, "/images/migrate", body, &job); err != nil {
 		return nil, err
 	}
 	return &job, nil
@@ -430,7 +440,7 @@ func (c *ImagesClient) CancelMigration(ctx context.Context, id string) error {
 }
 
 func (c *ImagesClient) CommitDeleteSource(ctx context.Context, id string) error {
-	return localCall(ctx, c.http, http.MethodPost, "/images/migrations/"+url.PathEscape(id)+"/commit-delete-source", nil, nil)
+	return localCall(ctx, c.longClient(), http.MethodPost, "/images/migrations/"+url.PathEscape(id)+"/commit-delete-source", nil, nil)
 }
 
 func (c *AgentClient) Mount(ctx context.Context, key, server, share, subpath, username, password, domain string) error {

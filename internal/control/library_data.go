@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -31,11 +32,13 @@ func (s *Server) profileLibraryData(r *http.Request) pageData {
 
 func (s *Server) loadLibraryCatalog(ctx context.Context, data *pageData) *images.Catalog {
 	if s.Images != nil {
-		if catalog, err := s.Images.Catalog(ctx); err == nil {
+		catalog, err := s.Images.Catalog(ctx)
+		if err == nil {
 			data.Storages = catalog.Storages
 			data.catalogCache = &catalog
 			return &catalog
 		}
+		log.Printf("load library catalog: %v", err)
 	}
 	data.ImageError = "Сервис образов недоступен"
 	return nil

@@ -1169,6 +1169,7 @@ var englishMessages = map[string]string{
 	"не удалось записать audit_events: %w": "could not record audit_events: %w",
 	"не удалось обновить статус image_migrations: %w": "could not update image_migrations status: %w",
 	"не удалось зафиксировать транзакцию перепривязки: %w": "could not commit rebind transaction: %w",
+	"не удалось удалить исходный образ после перепривязки: %w": "could not remove source image after rebind: %w",
 	"чтение и запись":     "read and write",
 	"сетевая папка":       "network share",
 	"на этом сервере":     "on this server",

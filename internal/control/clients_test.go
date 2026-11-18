@@ -143,3 +143,53 @@ func TestBootClientEventsPaged(t *testing.T) {
 		t.Fatalf("unexpected request URI: %s", gotPath)
 	}
 }
+
+func TestImagesClientSurvivesSlowStorageSpaceAndCommit(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "omb-img-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "images.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate statfs / SMB flush taking 2.2s (within omb-images 3s spaceTimeout).
+		time.Sleep(2200 * time.Millisecond)
+		switch r.URL.Path {
+		case "/catalog":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"storages":[{"id":1,"name":"Local","kind":"local","root":"/iso","state":"ready"}],"images":[]}`))
+		case "/images/migrations/mig_1/commit-delete-source":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	})}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewImagesClient(socket)
+	t.Run("group", func(t *testing.T) {
+		t.Run("catalog", func(t *testing.T) {
+			t.Parallel()
+			catalog, err := client.Catalog(context.Background())
+			if err != nil {
+				t.Fatalf("Catalog failed on slow storage statfs: %v", err)
+			}
+			if len(catalog.Storages) != 1 || catalog.Storages[0].ID != 1 {
+				t.Fatalf("unexpected catalog: %+v", catalog)
+			}
+		})
+		t.Run("commit-delete-source", func(t *testing.T) {
+			t.Parallel()
+			if err := client.CommitDeleteSource(context.Background(), "mig_1"); err != nil {
+				t.Fatalf("CommitDeleteSource failed on slow unlink: %v", err)
+			}
+		})
+	})
+}

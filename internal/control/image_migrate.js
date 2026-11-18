@@ -17,8 +17,9 @@
     return cell ? cell.closest('tr') : null;
   }
 
-  function setRowMigrating(row, percent, state) {
+  function setRowMigrating(row, percent, state, migrationID) {
     if (!row) return;
+    if (migrationID) row.dataset.migrationId = String(migrationID);
     row.classList.add('is-migrating');
     const libStatus = row.querySelector('.image-library-status');
     if (libStatus) libStatus.hidden = true;
@@ -111,7 +112,7 @@
       } catch (_) {}
 
       const row = findRow(sourceStorageID, path);
-      setRowMigrating(row, initialJob?.percent || 0, initialJob?.state || 'copying');
+      setRowMigrating(row, initialJob?.percent || 0, initialJob?.state || 'copying', initialJob?.id);
 
       startPolling();
     } catch (err) {
@@ -121,14 +122,34 @@
   });
 
   let pollTimer = null;
+  let isPolling = false;
+  let reloading = false;
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function scheduleNextPoll() {
+    if (reloading || pollTimer) return;
+    pollTimer = setTimeout(() => {
+      pollTimer = null;
+      poll();
+    }, 1500);
+  }
 
   function startPolling() {
-    if (pollTimer) return;
-    poll();
-    pollTimer = setInterval(poll, 1500);
+    if (reloading) return;
+    stopPolling();
+    if (!isPolling) poll();
   }
 
   async function poll() {
+    if (reloading || isPolling) return;
+    isPolling = true;
+    let activeCount = 0;
     try {
       const resp = await fetch('/api/images/migrations', {
         credentials: 'same-origin',
@@ -138,28 +159,36 @@
       const jobs = await resp.json();
       if (!Array.isArray(jobs)) return;
 
-      let activeCount = 0;
-      jobs.forEach(job => {
+      for (const job of jobs) {
         const row = findRow(job.source_storage_id, job.path);
-        if (!row) return;
+        if (!row) continue;
 
         if (job.state === 'copying' || job.state === 'ready_to_rebind' || job.state === 'rebinding') {
           activeCount++;
-          setRowMigrating(row, job.percent, job.state);
-        } else if (job.state === 'completed') {
-          window.location.reload();
-        } else if (job.state === 'failed' || job.state === 'canceled') {
-          if (job.error) alert(job.error);
-          window.location.reload();
+          setRowMigrating(row, job.percent, job.state, job.id);
+        } else if (row.dataset.migrationId && row.dataset.migrationId === String(job.id)) {
+          if (job.state === 'completed') {
+            reloading = true;
+            stopPolling();
+            window.location.reload();
+            return;
+          }
+          if (job.state === 'failed' || job.state === 'canceled') {
+            reloading = true;
+            stopPolling();
+            if (job.error) alert(job.error);
+            window.location.reload();
+            return;
+          }
         }
-      });
-
-      if (activeCount === 0 && document.querySelectorAll('.is-migrating').length === 0) {
-        clearInterval(pollTimer);
-        pollTimer = null;
       }
     } catch (e) {
       // Ignore transient network errors during poll
+    } finally {
+      isPolling = false;
+      if (!reloading && (activeCount > 0 || document.querySelectorAll('.is-migrating').length > 0)) {
+        scheduleNextPoll();
+      }
     }
   }
 

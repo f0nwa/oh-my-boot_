@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -393,5 +394,161 @@ func TestImageMigrationHTTP(t *testing.T) {
 	s.Handler().ServeHTTP(recCancel, reqCancel)
 	if recCancel.Code != http.StatusNoContent {
 		t.Fatalf("cancel expected 204 No Content, got %d", recCancel.Code)
+	}
+}
+
+type concurrentRebindMockImages struct {
+	migrationMockImages
+	commitErr error
+}
+
+func (m *concurrentRebindMockImages) CommitDeleteSource(ctx context.Context, id string) error {
+	if m.commitErr != nil {
+		return m.commitErr
+	}
+	return m.migrationMockImages.CommitDeleteSource(ctx, id)
+}
+
+type blockingRebindAgent struct {
+	migrationMockAgent
+	mu          sync.Mutex
+	calls       int
+	startedCh   chan struct{}
+	releaseCh   chan struct{}
+	startedOnce sync.Once
+}
+
+func (a *blockingRebindAgent) RebindWindowsISO(ctx context.Context, req agent.WindowsISORequest) (agent.WindowsISOResult, error) {
+	a.mu.Lock()
+	a.calls++
+	a.mu.Unlock()
+	a.startedOnce.Do(func() { close(a.startedCh) })
+	<-a.releaseCh
+	return a.migrationMockAgent.RebindWindowsISO(ctx, req)
+}
+
+func TestImageMigrationCoordinatorSerializesConcurrentRebindAndRetriesCommit(t *testing.T) {
+	store := installationTestStore(t)
+	ctx := context.Background()
+
+	if err := store.CreateUser(ctx, "admin2", "AdminPass123!", "admin"); err != nil {
+		t.Fatal(err)
+	}
+	users, err := store.Users(ctx)
+	if err != nil || len(users) == 0 {
+		t.Fatalf("users: %v", err)
+	}
+	user := users[0]
+	_, adminToken, err := store.Login(ctx, "admin2", "AdminPass123!")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{
+		StorageID:   1,
+		Path:        "win.iso",
+		StorageRoot: "/srv/omb/iso",
+		Size:        4 << 30,
+		Modified:    time.Now().Truncate(time.Microsecond),
+		Title:       "Win 11",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Audit(ctx, user.ID, "iso.upload", "ok", "1 win.iso sha"); err != nil {
+		t.Fatal(err)
+	}
+
+	mockImg := &concurrentRebindMockImages{
+		migrationMockImages: migrationMockImages{
+			fakeImagesAPI: fakeImagesAPI{
+				catalog: images.Catalog{
+					Storages: []images.Storage{
+						{ID: 1, Name: "Local", Kind: "local", Root: "/srv/omb/iso", State: "ready", Uploads: true},
+						{ID: 2, Name: "NAS", Kind: "nfs", Root: "/mnt/omb-nfs/nas", State: "ready", Uploads: true, Free: 100 << 30},
+					},
+					Images: []images.Image{
+						{StorageID: 1, Path: "win.iso", Size: 4 << 30, Present: true},
+					},
+				},
+			},
+		},
+		commitErr: errors.New("temporary unlink timeout"),
+	}
+	blockingAgent := &blockingRebindAgent{
+		startedCh: make(chan struct{}),
+		releaseCh: make(chan struct{}),
+	}
+
+	s := &Server{
+		Store:      store,
+		Images:     mockImg,
+		WindowsISO: blockingAgent,
+		UbuntuISO:  blockingAgent,
+	}
+
+	// Warm resourceAuthors cache before migration so cache invalidation is exercised.
+	beforeAuthors := s.resourceAuthors(ctx)
+	if beforeAuthors.Images[imageAuthorKey(1, "win.iso")] != user.Username {
+		t.Fatalf("expected cached upload author for 1:win.iso, got %+v", beforeAuthors.Images)
+	}
+
+	coord := s.migrationCoordinator()
+	job, err := coord.StartMigration(ctx, user, 1, "win.iso", 2)
+	if err != nil {
+		t.Fatalf("StartMigration: %v", err)
+	}
+	job.State = "ready_to_rebind"
+
+	// Fire two concurrent GET /api/images/migrations polls while RebindWindowsISO blocks.
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		req := httptest.NewRequest(http.MethodGet, "/api/images/migrations", nil)
+		req.AddCookie(&http.Cookie{Name: "omb_session", Value: adminToken})
+		s.Handler().ServeHTTP(httptest.NewRecorder(), req)
+	}()
+	<-blockingAgent.startedCh
+	go func() {
+		defer wg.Done()
+		req := httptest.NewRequest(http.MethodGet, "/api/images/migrations", nil)
+		req.AddCookie(&http.Cookie{Name: "omb_session", Value: adminToken})
+		s.Handler().ServeHTTP(httptest.NewRecorder(), req)
+	}()
+	time.Sleep(50 * time.Millisecond)
+	close(blockingAgent.releaseCh)
+	wg.Wait()
+
+	blockingAgent.mu.Lock()
+	rebindCalls := blockingAgent.calls
+	blockingAgent.mu.Unlock()
+	if rebindCalls != 1 {
+		t.Fatalf("expected RebindWindowsISO to run once across concurrent polls, got %d", rebindCalls)
+	}
+
+	// CommitDeleteSource failed on the first poll, so job is still ready_to_rebind; clear error and poll again.
+	mockImg.commitErr = nil
+	reqRetry := httptest.NewRequest(http.MethodGet, "/api/images/migrations", nil)
+	reqRetry.AddCookie(&http.Cookie{Name: "omb_session", Value: adminToken})
+	recRetry := httptest.NewRecorder()
+	s.Handler().ServeHTTP(recRetry, reqRetry)
+	if recRetry.Code != http.StatusOK {
+		t.Fatalf("retry poll status=%d", recRetry.Code)
+	}
+	if len(mockImg.committed) != 1 || mockImg.committed[0] != job.ID {
+		t.Fatalf("expected CommitDeleteSource retry to succeed after partial commit, got %+v", mockImg.committed)
+	}
+
+	var successAuditCount int
+	if err := store.Pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE action='iso.migrate_success'`).Scan(&successAuditCount); err != nil {
+		t.Fatal(err)
+	}
+	if successAuditCount != 1 {
+		t.Fatalf("expected iso.migrate_success audit row without FK failure, got %d", successAuditCount)
+	}
+
+	afterAuthors := s.resourceAuthors(ctx)
+	if afterAuthors.Images[imageAuthorKey(2, "win.iso")] != user.Username {
+		t.Fatalf("expected invalidated ResourceAuthors cache to show author on target storage, got %+v", afterAuthors.Images)
 	}
 }

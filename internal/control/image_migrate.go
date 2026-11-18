@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,7 +25,18 @@ type smbSessionsProvider interface {
 	SMBSessions(context.Context) (agent.SMBSessions, error)
 }
 
+func isNilProvider(provider any) bool {
+	if provider == nil {
+		return true
+	}
+	v := reflect.ValueOf(provider)
+	return v.Kind() == reflect.Ptr && v.IsNil()
+}
+
 func getActiveSMBSessions(ctx context.Context, provider any) ([]agent.SMBSession, error) {
+	if isNilProvider(provider) {
+		return nil, nil
+	}
 	if p, ok := provider.(interface {
 		SMBSessions(context.Context) (agent.SMBSessions, error)
 	}); ok && p != nil {
@@ -44,7 +57,8 @@ type MigrationCoordinator struct {
 	windowsISO WindowsISOAPI
 	ubuntuISO  UbuntuISOAPI
 	agent      any
-	mu         sync.Mutex
+	mu         *sync.Mutex
+	onRebind   func()
 }
 
 func NewMigrationCoordinator(store Store, img ImagesAPI, winISO WindowsISOAPI, ubuISO UbuntuISOAPI, agent any) *MigrationCoordinator {
@@ -54,6 +68,7 @@ func NewMigrationCoordinator(store Store, img ImagesAPI, winISO WindowsISOAPI, u
 		windowsISO: winISO,
 		ubuntuISO:  ubuISO,
 		agent:      agent,
+		mu:         &sync.Mutex{},
 	}
 }
 
@@ -181,8 +196,10 @@ func (c *MigrationCoordinator) StartMigration(ctx context.Context, user User, so
 }
 
 func (c *MigrationCoordinator) ProcessCompletedMigration(ctx context.Context, jobID string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c.mu != nil {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+	}
 
 	job, err := c.images.GetMigration(ctx, jobID)
 	if err != nil {
@@ -196,6 +213,9 @@ func (c *MigrationCoordinator) ProcessCompletedMigration(ctx context.Context, jo
 	var currentState string
 	err = c.store.Pool.QueryRow(ctx, `SELECT state FROM image_migrations WHERE id=$1`, jobID).Scan(&currentState)
 	if err == nil && currentState == "completed" {
+		if job.State == "ready_to_rebind" {
+			return c.finishDeleteSource(ctx, job)
+		}
 		return nil
 	}
 
@@ -331,17 +351,32 @@ func (c *MigrationCoordinator) ProcessCompletedMigration(ctx context.Context, jo
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("не удалось зафиксировать транзакцию перепривязки: %w", err)
 	}
+	if c.onRebind != nil {
+		c.onRebind()
+	}
 
 	// 4. Commit delete source on images engine
-	_ = c.images.CommitDeleteSource(ctx, jobID)
-	_ = c.store.Audit(ctx, 0, "iso.migrate_success", "ok", fmt.Sprintf("%s (%d %s -> %d)", jobID, job.SourceStorageID, job.Path, job.TargetStorageID))
+	return c.finishDeleteSource(ctx, job)
+}
 
+func (c *MigrationCoordinator) finishDeleteSource(ctx context.Context, job *images.MigrationJob) error {
+	if err := c.images.CommitDeleteSource(ctx, job.ID); err != nil {
+		return fmt.Errorf("не удалось удалить исходный образ после перепривязки: %w", err)
+	}
+	if c.store.Pool != nil {
+		_ = c.store.AuditSystem(ctx, "iso.migrate_success", "ok", fmt.Sprintf("%s (%d %s -> %d)", job.ID, job.SourceStorageID, job.Path, job.TargetStorageID))
+	}
+	if c.onRebind != nil {
+		c.onRebind()
+	}
 	return nil
 }
 
 func (c *MigrationCoordinator) CancelMigration(ctx context.Context, user User, jobID string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c.mu != nil {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+	}
 
 	if err := c.images.CancelMigration(ctx, jobID); err != nil {
 		return err
@@ -359,7 +394,9 @@ func (c *MigrationCoordinator) ActiveMigrations(ctx context.Context) ([]*images.
 
 	for _, job := range list {
 		if job.State == "ready_to_rebind" {
-			_ = c.ProcessCompletedMigration(ctx, job.ID)
+			if err := c.ProcessCompletedMigration(ctx, job.ID); err != nil {
+				log.Printf("image migration %s completion failed: %v", job.ID, err)
+			}
 		}
 	}
 
@@ -375,7 +412,19 @@ func (s *Server) migrationCoordinator() *MigrationCoordinator {
 	if st, ok := s.Store.(Store); ok {
 		store = st
 	}
-	return NewMigrationCoordinator(store, s.Images, s.WindowsISO, s.UbuntuISO, s.Agent)
+	var agentAPI any
+	if s.Agent != nil {
+		agentAPI = s.Agent
+	}
+	return &MigrationCoordinator{
+		store:      store,
+		images:     s.Images,
+		windowsISO: s.WindowsISO,
+		ubuntuISO:  s.UbuntuISO,
+		agent:      agentAPI,
+		mu:         &s.migrationMu,
+		onRebind:   s.InvalidateResourceAuthorsCache,
+	}
 }
 
 func (s *Server) imageMigrate(w http.ResponseWriter, r *http.Request) {

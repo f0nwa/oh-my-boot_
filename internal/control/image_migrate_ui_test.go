@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"omb/internal/images"
 )
@@ -142,6 +144,9 @@ func TestImageMigrateUI(t *testing.T) {
 			t.Fatalf("expected %q inside image-status-cell, got: %s", want, statusCellHTML)
 		}
 	}
+	if !strings.Contains(bodyAdmin, `data-migration-id="mig_active"`) {
+		t.Fatalf("expected active migration row to carry data-migration-id=\"mig_active\"")
+	}
 
 	// Check switching state label on rebinding
 	mockImg.migrations["mig_active"].State = "rebinding"
@@ -179,5 +184,156 @@ func TestImageMigrateUI(t *testing.T) {
 	}
 	if !strings.Contains(recJS.Body.String(), "data-image-migrate-open") {
 		t.Fatalf("script does not contain expected code")
+	}
+}
+
+func TestImageMigrateScriptIgnoresStaleCompletedJobs(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	jsTest := `
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+
+const code = fs.readFileSync('image_migrate.js', 'utf8');
+
+function makeClassList(initial = []) {
+  const set = new Set(initial);
+  return {
+    add: (c) => set.add(c),
+    remove: (c) => set.delete(c),
+    contains: (c) => set.has(c),
+  };
+}
+
+function createHarness(initialMigrationId) {
+  let reloadCount = 0;
+  let fetchCalls = 0;
+  let queuedJobs = [];
+  const listeners = {};
+  const labelEl = { textContent: '' };
+  const pctEl = { textContent: '0%' };
+  const barEl = { style: { width: '0%' } };
+  const libStatusEl = { hidden: false };
+  const migStatusEl = { hidden: true };
+  const menuBtnEl = { disabled: false, title: '' };
+  const rowEl = {
+    classList: makeClassList(initialMigrationId ? ['is-migrating'] : []),
+    dataset: initialMigrationId ? { migrationId: initialMigrationId } : {},
+    querySelector: (sel) => {
+      switch (sel) {
+        case '.image-library-status': return libStatusEl;
+        case '.image-migrating-status': return migStatusEl;
+        case '.migrating-label': return labelEl;
+        case '.migrating-pct': return pctEl;
+        case '.progress-bar-fill': return barEl;
+        case '.row-menu-btn': return menuBtnEl;
+        default: return null;
+      }
+    },
+  };
+  const cellEl = {
+    dataset: { storageId: '6', path: 'win8.iso' },
+    closest: (sel) => (sel === 'tr' ? rowEl : null),
+  };
+  const document = {
+    documentElement: { lang: 'ru' },
+    querySelectorAll: (sel) => {
+      if (sel === '.path-cell') return [cellEl];
+      if (sel === '.is-migrating') return rowEl.classList.contains('is-migrating') ? [rowEl] : [];
+      return [];
+    },
+    querySelector: (sel) => {
+      if (sel === '.is-migrating' && rowEl.classList.contains('is-migrating')) return rowEl;
+      return null;
+    },
+    addEventListener: (type, fn) => { listeners[type] = fn; },
+    getElementById: () => null,
+  };
+  let scheduledTimers = [];
+  let nextTimerId = 1;
+  const ctx = {
+    document,
+    window: {
+      location: {
+        reload: () => { reloadCount++; },
+      },
+    },
+    alert: () => {},
+    FormData: class { constructor() {} },
+    URLSearchParams: class { constructor() {} },
+    setInterval: (fn, ms) => {
+      const id = nextTimerId++;
+      scheduledTimers.push({ id, fn, ms, interval: true, cleared: false });
+      return id;
+    },
+    clearInterval: (id) => {
+      const t = scheduledTimers.find(x => x.id === id);
+      if (t) t.cleared = true;
+    },
+    setTimeout: (fn, ms) => {
+      const id = nextTimerId++;
+      scheduledTimers.push({ id, fn, ms, interval: false, cleared: false });
+      return id;
+    },
+    clearTimeout: (id) => {
+      const t = scheduledTimers.find(x => x.id === id);
+      if (t) t.cleared = true;
+    },
+    fetch: async () => {
+      fetchCalls++;
+      return { ok: true, json: async () => queuedJobs };
+    },
+  };
+  vm.runInNewContext(code, ctx);
+  return {
+    rowEl, labelEl, pctEl, barEl,
+    get reloadCount() { return reloadCount; },
+    get fetchCalls() { return fetchCalls; },
+    setJobs(j) { queuedJobs = j; },
+    async tick() {
+      const active = scheduledTimers.filter(t => !t.cleared);
+      for (const t of active) {
+        if (!t.interval) t.cleared = true;
+        await t.fn();
+      }
+    },
+    async flush() {
+      await new Promise(r => setImmediate(r));
+      await new Promise(r => setImmediate(r));
+    },
+  };
+}
+
+(async () => {
+  const h = createHarness('mig_new');
+  // Poll 1: stale completed job mig_old (same storage 6 -> 20) + active mig_new
+  h.setJobs([
+    { id: 'mig_old', source_storage_id: 6, path: 'win8.iso', target_storage_id: 20, state: 'completed', percent: 100 },
+    { id: 'mig_new', source_storage_id: 6, path: 'win8.iso', target_storage_id: 20, state: 'copying', percent: 35 },
+  ]);
+  await h.flush();
+  assert.equal(h.reloadCount, 0, 'stale completed job must NOT trigger reload while mig_new is active');
+  assert.equal(h.pctEl.textContent, '35%');
+
+  // Poll 2: mig_new finishes
+  h.setJobs([
+    { id: 'mig_old', source_storage_id: 6, path: 'win8.iso', target_storage_id: 20, state: 'completed', percent: 100 },
+    { id: 'mig_new', source_storage_id: 6, path: 'win8.iso', target_storage_id: 20, state: 'completed', percent: 100 },
+  ]);
+  await h.tick();
+  await h.flush();
+  assert.equal(h.reloadCount, 1, 'completing mig_new must trigger exactly 1 reload');
+  console.log('IMAGE_MIGRATE_JS_PASS');
+})().catch((err) => { console.error(err); process.exit(1); });
+`
+	cmd := exec.CommandContext(ctx, "node", "-e", jsTest)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("node image_migrate.js test failed: %v\n%s", err, string(out))
+	}
+	if !strings.Contains(string(out), "IMAGE_MIGRATE_JS_PASS") {
+		t.Fatalf("missing pass marker: %s", string(out))
 	}
 }

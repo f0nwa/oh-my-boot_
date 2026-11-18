@@ -190,6 +190,7 @@ type Server struct {
 	draftMu           sync.Mutex
 	smbMu             sync.Mutex
 	nfsMu             sync.Mutex
+	migrationMu       sync.Mutex
 	bookCache         machineBookCache
 	machineImports    *machineImportStash
 	windowsMu         sync.Mutex

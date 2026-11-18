@@ -7,9 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -284,6 +287,12 @@ func (e *MigrationEngine) ListMigrations() []*MigrationJob {
 		clone := *j
 		list = append(list, &clone)
 	}
+	sort.Slice(list, func(i, j int) bool {
+		if !list[i].StartedAt.Equal(list[j].StartedAt) {
+			return list[i].StartedAt.Before(list[j].StartedAt)
+		}
+		return list[i].ID < list[j].ID
+	})
 	return list
 }
 
@@ -320,8 +329,8 @@ func (e *MigrationEngine) CommitDeleteSource(ctx context.Context, id string) err
 	}
 	e.mu.Unlock()
 
-	// 1. Delete record from catalog
-	if err := e.repo.DeleteImage(ctx, job.SourceStorageID, job.Path); err != nil {
+	// 1. Delete record from catalog (ignore if a previous commit attempt already removed it)
+	if err := e.repo.DeleteImage(ctx, job.SourceStorageID, job.Path); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("failed to delete source image from catalog: %w", err)
 	}
 

@@ -63,39 +63,101 @@
     if (createCustomInput) createCustomInput.required = isCustom;
   }
 
-  function syncPolicyDialog() {
-    if (!policyDialog) return;
-    var maxInput = policyDialog.querySelector('input[name="max_age_days"]');
-    var warnInput = policyDialog.querySelector('input[name="warn_days"]');
-    var warnWrap = policyDialog.querySelector('[data-policy-warn-wrap]');
-    var days = maxInput ? Number(maxInput.value || 0) : 0;
-    policyDialog.querySelectorAll('[data-policy-preset]').forEach(function (btn) {
-      btn.classList.toggle('is-on', Number(btn.getAttribute('data-policy-preset')) === days);
-    });
-    var disabled = days === 0;
-    if (warnInput) warnInput.disabled = disabled;
-    if (warnWrap && warnWrap.style) warnWrap.style.opacity = disabled ? '0.45' : '1';
+  function parseStrictInt(str) {
+    var s = String(str == null ? '' : str).trim();
+    if (!/^\d+$/.test(s)) return NaN;
+    return parseInt(s, 10);
   }
 
+  var policyForm = policyDialog ? policyDialog.querySelector('form') : null;
+  var policySubmitBtn = policyDialog ? policyDialog.querySelector('button.btn-primary') : null;
+  var policyMaxInput = policyDialog ? policyDialog.querySelector('input[name="max_age_days"]') : null;
+  var policyWarnInput = policyDialog ? policyDialog.querySelector('input[name="warn_days"]') : null;
+  var policyWarnWrap = policyDialog ? policyDialog.querySelector('[data-policy-warn-wrap]') : null;
+  var policyInitial = {
+    max: policyForm && policyForm.getAttribute('data-initial-max') !== null
+      ? parseStrictInt(policyForm.getAttribute('data-initial-max'))
+      : (policyMaxInput ? parseStrictInt(policyMaxInput.value) : 0),
+    warn: policyForm && policyForm.getAttribute('data-initial-warn') !== null
+      ? parseStrictInt(policyForm.getAttribute('data-initial-warn'))
+      : (policyWarnInput ? parseStrictInt(policyWarnInput.value) : 7)
+  };
+
+  function syncPolicyDialog() {
+    if (!policyDialog) return;
+    var maxVal = policyMaxInput ? parseStrictInt(policyMaxInput.value) : NaN;
+    var warnVal = policyWarnInput ? parseStrictInt(policyWarnInput.value) : NaN;
+    var validMax = !isNaN(maxVal) && maxVal >= 0 && maxVal <= 3650;
+    var disabled = validMax && maxVal === 0;
+    policyDialog.querySelectorAll('[data-policy-preset]').forEach(function (btn) {
+      btn.classList.toggle('is-on', validMax && Number(btn.getAttribute('data-policy-preset')) === maxVal);
+    });
+    if (policyWarnInput) {
+      policyWarnInput.readOnly = disabled;
+      policyWarnInput.disabled = false;
+    }
+    if (policyWarnWrap && policyWarnWrap.style) policyWarnWrap.style.opacity = disabled ? '0.45' : '1';
+    if (policySubmitBtn) {
+      var validWarn = disabled || (!isNaN(warnVal) && warnVal >= 0 && warnVal <= 90);
+      var dirty = validMax && validWarn && (maxVal !== policyInitial.max || (!disabled && warnVal !== policyInitial.warn));
+      policySubmitBtn.disabled = !dirty;
+    }
+  }
+
+  if (policyForm) {
+    policyForm.addEventListener('input', syncPolicyDialog);
+    policyForm.addEventListener('change', syncPolicyDialog);
+  } else if (policyMaxInput) {
+    policyMaxInput.addEventListener('input', syncPolicyDialog);
+  }
   if (policyDialog) {
-    var polMaxInput = policyDialog.querySelector('input[name="max_age_days"]');
-    if (polMaxInput) polMaxInput.addEventListener('input', syncPolicyDialog);
     syncPolicyDialog();
+  }
+
+  var expiryForm = expiryDialog ? expiryDialog.querySelector('form') : null;
+  var expirySubmitBtn = expiryDialog ? expiryDialog.querySelector('button.btn-primary') : null;
+  var expiryInitial = { mode: 'policy', days: 30, mustChange: false, self: false };
+
+  function currentExpiryValues() {
+    var mode = 'policy';
+    if (expiryDialog) {
+      expiryDialog.querySelectorAll('input[name="password_policy_mode"]').forEach(function (radio) {
+        if (radio.checked) mode = radio.value;
+      });
+    }
+    var daysInput = expiryDialog ? expiryDialog.querySelector('input[name="password_max_age_days"]') : null;
+    var mustCheck = expiryDialog ? expiryDialog.querySelector('input[name="must_change_password"]') : null;
+    return {
+      mode: mode,
+      days: daysInput ? parseStrictInt(daysInput.value) : NaN,
+      mustChange: !!(mustCheck && mustCheck.checked)
+    };
   }
 
   function syncExpiryDialog() {
     if (!expiryDialog) return;
-    var selected = 'policy';
+    var vals = currentExpiryValues();
     expiryDialog.querySelectorAll('input[name="password_policy_mode"]').forEach(function (radio) {
-      if (radio.checked) selected = radio.value;
       var card = radio.closest ? radio.closest('.radio-card') : null;
       if (card) card.classList.toggle('is-selected', radio.checked);
     });
     var customWrap = expiryDialog.querySelector('[data-expiry-custom-wrap]');
     var daysInput = expiryDialog.querySelector('input[name="password_max_age_days"]');
-    var isCustom = selected === 'custom';
+    var isCustom = vals.mode === 'custom';
     if (customWrap) customWrap.hidden = !isCustom;
     if (daysInput) daysInput.required = isCustom;
+    if (expirySubmitBtn) {
+      var validDays = !isCustom || (!isNaN(vals.days) && vals.days >= 1 && vals.days <= 3650);
+      var dirty = vals.mode !== expiryInitial.mode ||
+        (isCustom && vals.days !== expiryInitial.days) ||
+        (!expiryInitial.self && vals.mustChange !== expiryInitial.mustChange);
+      expirySubmitBtn.disabled = !(validDays && dirty);
+    }
+  }
+
+  if (expiryForm) {
+    expiryForm.addEventListener('input', syncExpiryDialog);
+    expiryForm.addEventListener('change', syncExpiryDialog);
   }
 
   function filterUsers() {
@@ -206,6 +268,20 @@
       }
       return;
     }
+    if (form === policyForm) {
+      syncPolicyDialog();
+      if (policySubmitBtn && policySubmitBtn.disabled) {
+        event.preventDefault();
+      }
+      return;
+    }
+    if (form === expiryForm) {
+      syncExpiryDialog();
+      if (expirySubmitBtn && expirySubmitBtn.disabled) {
+        event.preventDefault();
+      }
+      return;
+    }
     if (!form.id) return;
     var match = form.id.match(/^user-change-(\d+)$/);
     if (match) {
@@ -309,6 +385,8 @@
     var polOpenBtn = event.target.closest('[data-password-policy-open]');
     if (polOpenBtn && policyDialog && typeof policyDialog.showModal === 'function') {
       event.preventDefault();
+      if (policyMaxInput) policyMaxInput.value = String(isNaN(policyInitial.max) ? 0 : policyInitial.max);
+      if (policyWarnInput) policyWarnInput.value = String(isNaN(policyInitial.warn) ? 7 : policyInitial.warn);
       syncPolicyDialog();
       policyDialog.showModal();
       return;
@@ -318,8 +396,7 @@
     var presetBtn = event.target.closest('[data-policy-preset]');
     if (presetBtn && policyDialog) {
       event.preventDefault();
-      var polInput = policyDialog.querySelector('input[name="max_age_days"]');
-      if (polInput) polInput.value = presetBtn.getAttribute('data-policy-preset') || '0';
+      if (policyMaxInput) policyMaxInput.value = presetBtn.getAttribute('data-policy-preset') || '0';
       syncPolicyDialog();
       return;
     }
@@ -353,6 +430,13 @@
       var expMustCheck = expiryDialog.querySelector('input[name="must_change_password"]');
       if (expMustWrap) expMustWrap.hidden = expSelf;
       if (expMustCheck) expMustCheck.checked = !expSelf && expMust;
+
+      expiryInitial = {
+        mode: expMode,
+        days: parseStrictInt(expDays),
+        mustChange: !expSelf && expMust,
+        self: expSelf
+      };
 
       syncExpiryDialog();
       expiryDialog.showModal();

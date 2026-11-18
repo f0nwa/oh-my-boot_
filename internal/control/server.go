@@ -717,7 +717,14 @@ func (s *Server) userCreate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) usersPasswordPolicy(w http.ResponseWriter, r *http.Request) {
 	info := requestInfo(r)
 	maxAge, err1 := strconv.Atoi(strings.TrimSpace(r.FormValue("max_age_days")))
-	warnDays, err2 := strconv.Atoi(strings.TrimSpace(r.FormValue("warn_days")))
+	rawWarn := strings.TrimSpace(r.FormValue("warn_days"))
+	var warnDays int
+	var err2 error
+	if rawWarn == "" && err1 == nil && maxAge == 0 {
+		warnDays = info.PasswordPolicy.WarnDays
+	} else {
+		warnDays, err2 = strconv.Atoi(rawWarn)
+	}
 	if err1 != nil || err2 != nil {
 		http.Error(w, "Укажите целые числа для срока действия и предупреждения", http.StatusBadRequest)
 		return

@@ -143,6 +143,9 @@ func TestUsersPageModals(t *testing.T) {
 	if !strings.Contains(body, `<button class="btn btn-primary" disabled>Сменить пароль</button>`) {
 		t.Errorf("user-password-dialog submit button must have disabled attribute")
 	}
+	if strings.Count(body, `<button class="btn btn-primary" disabled>Сохранить</button>`) != 2 {
+		t.Errorf("password-policy-dialog and user-expiry-dialog save buttons must have disabled attribute initially")
+	}
 
 	if !strings.Contains(body, `name="username" pattern="^[A-Za-z0-9_.-]{3,32}$" minlength="3" maxlength="32"`) {
 		t.Errorf("user-create-dialog username input must have pattern and length constraints")
@@ -642,8 +645,14 @@ const code = %q;
 let docListeners = {};
 
 const policyMaxInput = { value: '90', addEventListener() {} };
-const policyWarnInput = { value: '7', disabled: false };
+const policyWarnInput = { value: '7', disabled: false, readOnly: false };
 const policyWarnWrap = { style: {} };
+const policySubmitBtn = { disabled: false };
+let policyFormListeners = {};
+const policyFormEl = {
+  getAttribute: (n) => (n === 'data-initial-max' ? '90' : n === 'data-initial-warn' ? '7' : null),
+  addEventListener(type, fn) { policyFormListeners[type] = fn; },
+};
 const policyPresets = [
   { getAttribute: (n) => n === 'data-policy-preset' ? '0' : null, classList: { toggle() {} } },
   { getAttribute: (n) => n === 'data-policy-preset' ? '90' : null, classList: { toggle() {} } },
@@ -653,6 +662,8 @@ const policyDialog = {
   showModal() { this.shown = true; },
   close() { this.shown = false; },
   querySelector(sel) {
+    if (sel === 'form') return policyFormEl;
+    if (sel === 'button.btn-primary') return policySubmitBtn;
     if (sel === 'input[name="max_age_days"]') return policyMaxInput;
     if (sel === 'input[name="warn_days"]') return policyWarnInput;
     if (sel === '[data-policy-warn-wrap]') return policyWarnWrap;
@@ -672,6 +683,11 @@ const expiryDaysInput = { value: '30', required: false };
 const expiryCustomWrap = { hidden: true };
 const expiryMustWrap = { hidden: false };
 const expiryMustCheck = { checked: false };
+const expirySubmitBtn = { disabled: false };
+let expiryFormListeners = {};
+const expiryFormEl = {
+  addEventListener(type, fn) { expiryFormListeners[type] = fn; },
+};
 const radioPolicy = { name: 'password_policy_mode', value: 'policy', checked: false, closest() { return { classList: { toggle() {} } }; } };
 const radioNever = { name: 'password_policy_mode', value: 'never', checked: false, closest() { return { classList: { toggle() {} } }; } };
 const radioCustom = { name: 'password_policy_mode', value: 'custom', checked: false, closest() { return { classList: { toggle() {} } }; } };
@@ -681,6 +697,8 @@ const expiryDialog = {
   showModal() { this.shown = true; },
   close() { this.shown = false; },
   querySelector(sel) {
+    if (sel === 'form') return expiryFormEl;
+    if (sel === 'button.btn-primary') return expirySubmitBtn;
     if (sel === 'input[name="id"]') return expiryIdInput;
     if (sel === '#expiry-modal-user') return expiryUserSpan;
     if (sel === '#expiry-modal-changed') return expiryChangedSpan;
@@ -711,20 +729,40 @@ const document = {
 
 vm.runInNewContext(code, { document, window: {}, Event: class { constructor(t) { this.type = t; } } });
 
-// Open policy dialog and click preset 0
+// Open policy dialog: Save must be disabled initially
 const polOpen = { closest: (s) => (s === '[data-password-policy-open]' ? polOpen : null) };
 docListeners['click']({ target: polOpen, preventDefault() {} });
 assert.equal(policyDialog.shown, true, 'policyDialog must open');
+assert.equal(policySubmitBtn.disabled, true, 'policySubmitBtn must be disabled without changes');
 
+// Click preset 0 -> becomes dirty/enabled and warn_days becomes readOnly (still submitted)
 const presetZero = {
   getAttribute: (n) => (n === 'data-policy-preset' ? '0' : null),
   closest: (s) => (s === '[data-policy-preset]' ? presetZero : null),
 };
 docListeners['click']({ target: presetZero, preventDefault() {} });
 assert.equal(policyMaxInput.value, '0');
-assert.equal(policyWarnInput.disabled, true, 'warn_days disabled when max_age_days=0');
+assert.equal(policyWarnInput.readOnly, true, 'warn_days must be readOnly (not disabled) when max_age_days=0');
+assert.equal(policyWarnInput.disabled, false);
+assert.equal(policySubmitBtn.disabled, false, 'policySubmitBtn must enable when changed');
 
-// Open user-expiry dialog for other user in custom mode
+// Click preset 90 back -> returns to initial, disabled again
+const presetNinety = {
+  getAttribute: (n) => (n === 'data-policy-preset' ? '90' : null),
+  closest: (s) => (s === '[data-policy-preset]' ? presetNinety : null),
+};
+docListeners['click']({ target: presetNinety, preventDefault() {} });
+assert.equal(policySubmitBtn.disabled, true, 'policySubmitBtn must disable when reverted to initial');
+
+// Change warn_days -> enabled; invalid max_age_days -> disabled
+policyWarnInput.value = '14';
+policyFormListeners['input']();
+assert.equal(policySubmitBtn.disabled, false, 'policySubmitBtn must enable when warn_days changed');
+policyMaxInput.value = '9999';
+policyFormListeners['input']();
+assert.equal(policySubmitBtn.disabled, true, 'policySubmitBtn must disable for out-of-range max_age_days');
+
+// Open user-expiry dialog for other user in custom mode -> Save disabled initially
 const expBtn = {
   getAttribute: (n) => ({
     'data-user-expiry-id': '2',
@@ -739,6 +777,7 @@ const expBtn = {
 };
 docListeners['click']({ target: expBtn, preventDefault() {} });
 assert.equal(expiryDialog.shown, true, 'expiryDialog must open');
+assert.equal(expirySubmitBtn.disabled, true, 'expirySubmitBtn must be disabled without changes');
 assert.equal(expiryIdInput.value, '2');
 assert.equal(radioCustom.checked, true);
 assert.equal(expiryCustomWrap.hidden, false);
@@ -747,14 +786,15 @@ assert.equal(expiryDaysInput.required, true);
 assert.equal(expiryMustWrap.hidden, false);
 assert.equal(expiryMustCheck.checked, true);
 
-// Switch mode to never -> custom input hidden and not required
+// Switch mode to never -> custom input hidden and not required, Save enabled
 radioCustom.checked = false;
 radioNever.checked = true;
 docListeners['change']({ target: radioNever });
 assert.equal(expiryCustomWrap.hidden, true);
 assert.equal(expiryDaysInput.required, false);
+assert.equal(expirySubmitBtn.disabled, false, 'expirySubmitBtn must enable when mode changed');
 
-// Open for self -> must_change_password hidden and unchecked
+// Open for self -> must_change_password hidden and unchecked, Save disabled initially
 const selfExpBtn = {
   getAttribute: (n) => ({
     'data-user-expiry-id': '1',
@@ -770,6 +810,12 @@ const selfExpBtn = {
 docListeners['click']({ target: selfExpBtn, preventDefault() {} });
 assert.equal(expiryMustWrap.hidden, true);
 assert.equal(expiryMustCheck.checked, false);
+assert.equal(expirySubmitBtn.disabled, true, 'expirySubmitBtn must reset to disabled on reopen');
+
+// Submit prevented when disabled
+let expPrevented = false;
+docListeners['submit']({ target: expiryFormEl, preventDefault() { expPrevented = true; } });
+assert.equal(expPrevented, true, 'disabled expiryForm submit must be prevented');
 
 console.log('USER_EXPIRY_DIALOG_PASS');
 `, string(scriptBytes))

@@ -929,6 +929,7 @@ tr.is-migrating td{background:var(--draft-bg)}
 .preset-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .preset-btn{min-height:28px;padding:0 10px;margin:0;border:1px solid var(--line-strong);border-radius:6px;background:var(--bg);color:var(--text-2);font-size:12px;font-weight:400}
 .preset-btn.is-on{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:500}
+.user-dialog-head+p.hint{margin:0 0 14px}
 .user-dialog label.check-block{flex-direction:row;align-items:flex-start;gap:8px;font-weight:400;cursor:pointer}
 .user-dialog label.check-block input{width:16px;height:16px;flex:none;margin:2px 0 0}
 .user-dialog label.check-block span{display:flex;flex-direction:column;gap:2px}

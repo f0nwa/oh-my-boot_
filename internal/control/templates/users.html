@@ -84,7 +84,7 @@
 <dialog id="password-policy-dialog" class="user-dialog" aria-labelledby="password-policy-title">
 <div class="user-dialog-head"><h2 id="password-policy-title">{{t "Общая политика паролей"}}</h2><button type="button" class="btn btn-ghost" data-close-dialog aria-label="{{t "Закрыть"}}">×</button></div>
 <p class="hint">{{t "Действует для всех локальных учётных записей с режимом «По политике». Индивидуальные правила задаются в меню ☰ строки."}}</p>
-<form method="post" action="/users/password-policy">
+<form method="post" action="/users/password-policy" data-initial-max="{{.PasswordPolicy.MaxAgeDays}}" data-initial-warn="{{.PasswordPolicy.WarnDays}}">
 <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
 <div>
 <div class="policy-field-title">{{t "Максимальный срок действия"}}</div>
@@ -100,7 +100,7 @@
 <label data-policy-warn-wrap>{{t "Предупреждать до истечения, дней (0–90)"}}<input type="number" name="warn_days" min="0" max="90" value="{{.PasswordPolicy.WarnDays}}" required><small>{{t "За столько дней пользователь увидит уведомление в шапке и в личном кабинете (0 — не предупреждать)."}}</small></label>
 <div class="user-dialog-actions">
 <button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
-<button class="btn btn-primary">{{t "Сохранить"}}</button>
+<button class="btn btn-primary" disabled>{{t "Сохранить"}}</button>
 </div>
 </form>
 </dialog>
@@ -120,7 +120,7 @@
 <label class="check-block" data-expiry-must-change-wrap><input type="checkbox" name="must_change_password"><span><strong>{{t "Потребовать смену пароля при следующем входе"}}</strong><small>{{t "При следующем входе или запросе пользователь будет направлен на смену пароля."}}</small></span></label>
 <div class="user-dialog-actions">
 <button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
-<button class="btn btn-primary">{{t "Сохранить"}}</button>
+<button class="btn btn-primary" disabled>{{t "Сохранить"}}</button>
 </div>
 </form>
 </dialog>

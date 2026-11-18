@@ -838,6 +838,8 @@ var englishMessages = map[string]string{
 	"Исходные файлы на сервере останутся без изменений.":     "Original files on the server will remain unchanged.",
 	"ISO не найден": "ISO not found",
 	"ISO удалён":    "ISO deleted",
+	"ISO «%s» удалён":    "ISO “%s” deleted",
+	"ISO «%s» удалён из хранилища «%s»":    "ISO “%s” deleted from storage “%s”",
 	"SMB подключено для чтения, но проверка записи не пройдена. Учётной записи нужны права чтения и записи.": "SMB is connected for reading, but the write check failed. The account needs read and write permissions.",
 	"Исходный файл и запись в библиотеке будут удалены. Это действие нельзя отменить.":                       "The source file and its library record will be deleted. This action cannot be undone.",
 	"Не удалось удалить ISO. Проверьте доступность хранилища и права на запись.":                             "Could not delete the ISO. Check storage availability and write permissions.",

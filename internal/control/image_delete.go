@@ -33,12 +33,12 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var storageFound, imageFound bool
-	var storageKind, storageKey, server, share, subpath, exportPath, version string
+	var storageKind, storageKey, storageName, server, share, subpath, exportPath, version string
 	var storageUploads bool
 	for _, storage := range catalog.Storages {
 		if storage.ID == storageID {
 			storageFound = true
-			storageKind, storageKey = storage.Kind, storage.Key
+			storageKind, storageKey, storageName = storage.Kind, storage.Key, storage.Name
 			server, share, subpath = storage.Server, storage.Share, storage.Subpath
 			exportPath, version = storage.ExportPath, storage.NFSVersion
 			storageUploads = storage.Uploads
@@ -148,7 +148,15 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "ok", fmt.Sprintf("%d %s", storageID, imagePath))
-	http.Redirect(w, r, "/images?message="+url.QueryEscape("ISO удалён"), http.StatusSeeOther)
+	http.Redirect(w, r, "/images?message="+url.QueryEscape(imageDeletedMessage(imagePath, storageName)), http.StatusSeeOther)
+}
+
+// imageDeletedMessage names the deleted ISO and the storage it was removed from.
+func imageDeletedMessage(imagePath, storageName string) string {
+	if storageName == "" {
+		return fmt.Sprintf("ISO «%s» удалён", imagePath)
+	}
+	return fmt.Sprintf("ISO «%s» удалён из хранилища «%s»", imagePath, storageName)
 }
 
 //go:embed image_delete.js

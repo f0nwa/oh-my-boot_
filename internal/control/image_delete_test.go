@@ -137,6 +137,13 @@ func TestImageDeleteRemovesLocalSourceAndCatalogEntry(t *testing.T) {
 	if len(store.audits) != 1 || store.audits[0] != "iso.delete|ok|7 Windows/win.iso" {
 		t.Fatalf("audit=%v", store.audits)
 	}
+	location, _ := url.Parse(res.Header().Get("Location"))
+	if got, want := location.Query().Get("message"), "ISO «Windows/win.iso» удалён из хранилища «Storage»"; got != want {
+		t.Fatalf("message=%q, want %q", got, want)
+	}
+	if got := translate(langEN, location.Query().Get("message")); got != "ISO “Windows/win.iso” deleted from storage “Storage”" {
+		t.Fatalf("english message=%q", got)
+	}
 }
 
 func TestImageDeleteCleansUnusedProfileAndUsesSMBWriteMount(t *testing.T) {

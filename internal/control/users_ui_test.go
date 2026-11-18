@@ -2,11 +2,15 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestUsersScriptEndpoint(t *testing.T) {
@@ -26,7 +30,16 @@ func TestUsersScriptEndpoint(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, expected := range []string{"user-search", "user-password-dialog", "updateRowDirty", "saveBtn.disabled = !isDirty"} {
+	for _, expected := range []string{
+		"user-search",
+		"user-password-dialog",
+		"updateRowDirty",
+		"saveBtn.disabled = !isDirty",
+		"updateCreateSubmit",
+		"updatePwSubmit",
+		"createSubmitBtn.disabled",
+		"pwSubmitBtn.disabled",
+	} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("users.js does not contain expected identifier %q", expected)
 		}
@@ -110,6 +123,13 @@ func TestUsersPageModals(t *testing.T) {
 	pwGenCount := strings.Count(body, "data-password-generator")
 	if pwGenCount != 2 {
 		t.Errorf("expected 2 data-password-generator inputs, got %d", pwGenCount)
+	}
+
+	if !strings.Contains(body, `<button class="btn btn-primary" disabled>Создать</button>`) {
+		t.Errorf("user-create-dialog submit button must have disabled attribute")
+	}
+	if !strings.Contains(body, `<button class="btn btn-primary" disabled>Сменить пароль</button>`) {
+		t.Errorf("user-password-dialog submit button must have disabled attribute")
 	}
 }
 
@@ -328,4 +348,191 @@ func TestUserDeleteHandler(t *testing.T) {
 			t.Fatalf("status = %d, want 403", res.Code)
 		}
 	})
+}
+
+func TestUserDialogSubmitButtonsGate(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	scriptBytes, err := os.ReadFile("users.js")
+	if err != nil {
+		t.Fatalf("failed to read users.js: %v", err)
+	}
+
+	jsTest := fmt.Sprintf(`
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+
+const code = %q;
+
+let docListeners = {};
+const createSubmitBtn = { disabled: true, classList: { add() {}, remove() {} } };
+const createUserInput = { value: '' };
+const createPwInput = {
+  value: '',
+  listeners: {},
+  addEventListener(type, fn) { this.listeners[type] = fn; },
+  dispatchEvent(event) { if (this.listeners[event.type]) this.listeners[event.type](event); },
+};
+
+let createFormListeners = {};
+const createFormEl = {
+  addEventListener(type, fn) { createFormListeners[type] = fn; },
+  querySelector(sel) {
+    if (sel === 'input[name="username"]') return createUserInput;
+    if (sel === 'input[name="password"]') return createPwInput;
+    if (sel === 'button.btn-primary') return createSubmitBtn;
+    return null;
+  },
+};
+
+const createDialogEl = {
+  shown: false,
+  showModal() { this.shown = true; },
+  close() { this.shown = false; },
+  querySelector(sel) {
+    if (sel === 'form') return createFormEl;
+    if (sel === 'input[name="username"]') return createUserInput;
+    if (sel === 'input[name="password"]') return createPwInput;
+    if (sel === 'button.btn-primary') return createSubmitBtn;
+    return null;
+  },
+  querySelectorAll() { return []; },
+  addEventListener() {},
+};
+
+const pwSubmitBtn = { disabled: true, classList: { add() {}, remove() {} } };
+const pwInput = {
+  value: '',
+  listeners: {},
+  addEventListener(type, fn) { this.listeners[type] = fn; },
+  dispatchEvent(event) { if (this.listeners[event.type]) this.listeners[event.type](event); },
+};
+
+let pwFormListeners = {};
+const pwFormEl = {
+  addEventListener(type, fn) { pwFormListeners[type] = fn; },
+  querySelector(sel) {
+    if (sel === 'input[name="password"]') return pwInput;
+    if (sel === 'button.btn-primary') return pwSubmitBtn;
+    return null;
+  },
+};
+
+const pwDialogEl = {
+  shown: false,
+  showModal() { this.shown = true; },
+  close() { this.shown = false; },
+  querySelector(sel) {
+    if (sel === 'form') return pwFormEl;
+    if (sel === 'input[name="password"]') return pwInput;
+    if (sel === 'button.btn-primary') return pwSubmitBtn;
+    return null;
+  },
+  querySelectorAll() { return []; },
+  addEventListener() {},
+};
+
+const document = {
+  documentElement: { lang: 'ru' },
+  querySelectorAll: () => [],
+  querySelector: () => null,
+  getElementById: (id) => {
+    if (id === 'user-create-dialog') return createDialogEl;
+    if (id === 'user-password-dialog') return pwDialogEl;
+    return null;
+  },
+  addEventListener: (type, fn) => { docListeners[type] = fn; },
+};
+
+const sandbox = {
+  document,
+  window: {},
+  Event: class { constructor(type) { this.type = type; } },
+};
+
+vm.runInNewContext(code, sandbox);
+
+// 1. Initial state: both submit buttons must be disabled
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled initially');
+assert.equal(pwSubmitBtn.disabled, true, 'pwSubmitBtn must be disabled initially');
+
+// 2. User Create Form validation
+// Only username: still disabled
+createUserInput.value = 'testuser';
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled without password');
+
+// Short password (<12): still disabled
+createPwInput.value = 'short123';
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled with short password');
+
+// Valid password (>=12): becomes enabled
+createPwInput.value = 'SecretPass1234!';
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, false, 'createSubmitBtn must be enabled with valid username and 12+ chars password');
+
+// Clear username: becomes disabled again
+createUserInput.value = '   ';
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled when username is whitespace');
+
+// Restore username: becomes enabled
+createUserInput.value = 'ivan';
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, false, 'createSubmitBtn must be enabled when username restored');
+
+// Re-opening create modal resets values and disables button
+const addBtn = { closest: (sel) => (sel === '[data-user-add]' ? addBtn : null) };
+docListeners['click']({ target: addBtn, preventDefault() {} });
+assert.equal(createUserInput.value, '', 'opening create dialog must reset username');
+assert.equal(createPwInput.value, '', 'opening create dialog must reset password');
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled after opening dialog');
+
+// 3. User Password Dialog validation
+// Empty password: disabled
+pwInput.value = '';
+pwFormListeners['input']();
+assert.equal(pwSubmitBtn.disabled, true, 'pwSubmitBtn must be disabled for empty password');
+
+// Short password: disabled
+pwInput.value = '12345678901';
+pwFormListeners['input']();
+assert.equal(pwSubmitBtn.disabled, true, 'pwSubmitBtn must be disabled for 11 chars');
+
+// Valid password (12 chars): enabled
+pwInput.value = '123456789012';
+pwFormListeners['input']();
+assert.equal(pwSubmitBtn.disabled, false, 'pwSubmitBtn must be enabled for 12 chars');
+
+// Re-opening password dialog resets password and disables button
+const pwOpenBtn = {
+  getAttribute: (name) => (name === 'data-user-pw-id' ? '2' : 'operator'),
+  closest: (sel) => (sel === '[data-user-pw-id]' ? pwOpenBtn : null),
+};
+docListeners['click']({ target: pwOpenBtn, preventDefault() {} });
+assert.equal(pwInput.value, '', 'opening pw dialog must reset password');
+assert.equal(pwSubmitBtn.disabled, true, 'pwSubmitBtn must be disabled after opening dialog');
+
+// 4. Form submit gate prevention when disabled
+let prevented = false;
+docListeners['submit']({ target: createFormEl, preventDefault() { prevented = true; } });
+assert.equal(prevented, true, 'submit of create form must be prevented when button is disabled');
+
+let pwPrevented = false;
+docListeners['submit']({ target: pwFormEl, preventDefault() { pwPrevented = true; } });
+assert.equal(pwPrevented, true, 'submit of pw form must be prevented when button is disabled');
+
+console.log('USER_DIALOG_BUTTONS_GATE_PASS');
+`, string(scriptBytes))
+
+	cmd := exec.CommandContext(ctx, "node", "-e", jsTest)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("node users.js test failed: %v\n%s", err, string(out))
+	}
+	if !strings.Contains(string(out), "USER_DIALOG_BUTTONS_GATE_PASS") {
+		t.Fatalf("missing pass marker: %s", string(out))
+	}
 }

@@ -641,6 +641,7 @@ td .mono.muted{color:var(--muted)}
 .user-dialog-actions-split{justify-content:space-between;align-items:center}
 .user-dialog-actions-end{display:flex;gap:8px;align-items:center}
 .user-dialog-actions button{margin-top:0}
+.user-dialog-actions button:disabled{opacity:.45;cursor:default;pointer-events:none}
 .card-wide{grid-column:1/-1}
 .resource-tag{font-size:11px;text-transform:uppercase;letter-spacing:.04em}
 .resource-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:24px;align-items:stretch}

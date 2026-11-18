@@ -7,6 +7,47 @@
   var createDialog = document.getElementById('user-create-dialog');
   var deleteDialog = document.getElementById('user-delete-dialog');
 
+  var createForm = createDialog ? createDialog.querySelector('form') : null;
+  var createSubmitBtn = createDialog ? createDialog.querySelector('button.btn-primary') : null;
+  var createUserInput = createDialog ? createDialog.querySelector('input[name="username"]') : null;
+  var createPwInput = createDialog ? createDialog.querySelector('input[name="password"]') : null;
+
+  function updateCreateSubmit() {
+    if (!createSubmitBtn || !createUserInput || !createPwInput) return;
+    var hasUser = createUserInput.value.trim().length > 0;
+    var hasPw = createPwInput.value.length >= 12;
+    createSubmitBtn.disabled = !(hasUser && hasPw);
+  }
+
+  var pwForm = pwDialog ? pwDialog.querySelector('form') : null;
+  var pwSubmitBtn = pwDialog ? pwDialog.querySelector('button.btn-primary') : null;
+  var pwInput = pwDialog ? pwDialog.querySelector('input[name="password"]') : null;
+
+  function updatePwSubmit() {
+    if (!pwSubmitBtn || !pwInput) return;
+    var hasPw = pwInput.value.length >= 12;
+    pwSubmitBtn.disabled = !hasPw;
+  }
+
+  if (createForm) {
+    createForm.addEventListener('input', updateCreateSubmit);
+    createForm.addEventListener('change', updateCreateSubmit);
+  }
+  if (createPwInput) {
+    createPwInput.addEventListener('omb:password-sync', updateCreateSubmit);
+  }
+
+  if (pwForm) {
+    pwForm.addEventListener('input', updatePwSubmit);
+    pwForm.addEventListener('change', updatePwSubmit);
+  }
+  if (pwInput) {
+    pwInput.addEventListener('omb:password-sync', updatePwSubmit);
+  }
+
+  updateCreateSubmit();
+  updatePwSubmit();
+
   function filterUsers() {
     var query = (searchInput ? searchInput.value : '').toLowerCase().trim();
     var visible = 0;
@@ -100,7 +141,22 @@
 
   document.addEventListener('submit', function (event) {
     var form = event.target;
-    if (!form || !form.id) return;
+    if (!form) return;
+    if (form === createForm) {
+      updateCreateSubmit();
+      if (createSubmitBtn && createSubmitBtn.disabled) {
+        event.preventDefault();
+      }
+      return;
+    }
+    if (form === pwForm) {
+      updatePwSubmit();
+      if (pwSubmitBtn && pwSubmitBtn.disabled) {
+        event.preventDefault();
+      }
+      return;
+    }
+    if (!form.id) return;
     var match = form.id.match(/^user-change-(\d+)$/);
     if (match) {
       var id = match[1];
@@ -171,6 +227,7 @@
         pwInput.type = 'password';
         pwInput.dispatchEvent(new Event('omb:password-sync'));
       }
+      updatePwSubmit();
 
       // Reset any generated copy button or notes from password.js
       pwDialog.querySelectorAll('small[role="status"]').forEach(function (el) { el.textContent = ''; });
@@ -188,12 +245,17 @@
     var addBtn = event.target.closest('[data-user-add]');
     if (addBtn && createDialog && typeof createDialog.showModal === 'function') {
       event.preventDefault();
+      var newUserInput = createDialog.querySelector('input[name="username"]');
+      if (newUserInput) {
+        newUserInput.value = '';
+      }
       var newPwInput = createDialog.querySelector('input[name="password"]');
       if (newPwInput) {
         newPwInput.value = '';
         newPwInput.type = 'password';
         newPwInput.dispatchEvent(new Event('omb:password-sync'));
       }
+      updateCreateSubmit();
       createDialog.querySelectorAll('small[role="status"]').forEach(function (el) { el.textContent = ''; });
       createDialog.querySelectorAll('button').forEach(function (btn) {
         if (btn.textContent === 'Скопировать' || btn.textContent === 'Copy') {

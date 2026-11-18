@@ -538,7 +538,11 @@ func (s *Server) installationAddByID(w http.ResponseWriter, r *http.Request, id 
 	if edit := fmt.Sprintf("/installations/%d/edit", id); r.FormValue("return") == edit {
 		target = edit + "?message=" + url.QueryEscape("Добавлено в черновик меню")
 	} else if strings.HasPrefix(r.URL.Path, "/menu/") {
-		target = "/menu?message=Пункт+возвращён+в+меню"
+		msg := "Пункт возвращён в меню"
+		if installation.Title != "" {
+			msg = fmt.Sprintf("Пункт «%s» возвращён в меню", installation.Title)
+		}
+		target = "/menu?message=" + url.QueryEscape(msg)
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }

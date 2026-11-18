@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -200,14 +201,28 @@ func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось добавить пакет в каталог", http.StatusServiceUnavailable)
 		return
 	}
+	var pkgName string
+	if len(r.MultipartForm.File["zip"]) > 0 && r.MultipartForm.File["zip"][0].Filename != "" {
+		pkgName = r.MultipartForm.File["zip"][0].Filename
+	} else if len(inventory.SHA256) >= 8 {
+		pkgName = inventory.SHA256[:8]
+	}
 	if !created {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver.import", "ok", inventory.SHA256+" existing")
-		http.Redirect(w, r, "/drivers?message=Пакет+уже+есть+в+каталоге", http.StatusSeeOther)
+		msg := "Пакет уже есть в каталоге"
+		if pkgName != "" {
+			msg = fmt.Sprintf("Пакет «%s» уже есть в каталоге", pkgName)
+		}
+		http.Redirect(w, r, "/drivers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver.import", "ok", inventory.SHA256)
 	s.InvalidateResourceAuthorsCache()
-	http.Redirect(w, r, "/drivers?message=Пакет+драйвера+добавлен", http.StatusSeeOther)
+	msg := "Пакет драйвера добавлен"
+	if pkgName != "" {
+		msg = fmt.Sprintf("Пакет драйверов «%s» добавлен", pkgName)
+	}
+	http.Redirect(w, r, "/drivers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 func spoolDriverUpload(r *http.Request) (*os.File, int64, error) {

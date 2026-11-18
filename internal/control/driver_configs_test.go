@@ -163,7 +163,7 @@ func TestDriverConfigRenameValidationAndPermissions(t *testing.T) {
 	// Operator can rename to Russian UTF-8 up to 80 runes.
 	res := menuPost(t, s, "/drivers/configs/1/title", url.Values{"title": {"  Конфигурация для офиса № 1  "}})
 	loc, _ := url.QueryUnescape(res.Header().Get("Location"))
-	if res.Code != http.StatusSeeOther || loc != "/drivers?message=Имя конфигурации сохранено" {
+	if res.Code != http.StatusSeeOther || loc != "/drivers?message=Имя конфигурации обновлено: «Конфигурация для офиса № 1»" {
 		t.Fatalf("operator rename: code=%d loc=%q body=%s", res.Code, loc, res.Body.String())
 	}
 	if store.configs[0].Title != "Конфигурация для офиса № 1" {

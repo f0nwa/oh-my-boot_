@@ -3,6 +3,7 @@ package control
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 func (s *Server) driverPackageDelete(w http.ResponseWriter, r *http.Request) {
@@ -63,5 +64,10 @@ func (s *Server) driverPackageDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-package.delete", "ok", "sha256="+hash)
 	s.InvalidateResourceAuthorsCache()
-	http.Redirect(w, r, "/drivers?message=Пакет+драйверов+удалён", http.StatusSeeOther)
+	short := hash
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	msg := fmt.Sprintf("Пакет драйверов «%s» удалён", short)
+	http.Redirect(w, r, "/drivers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }

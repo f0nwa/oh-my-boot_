@@ -63,5 +63,5 @@ func (s *Server) storageRename(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "storage.rename", "ok", fmt.Sprintf("id=%d name=%s", id, name))
-	http.Redirect(w, r, "/storages?message="+url.QueryEscape("Название хранилища обновлено."), http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message="+url.QueryEscape(fmt.Sprintf("Хранилище «%s» переименовано", name)), http.StatusSeeOther)
 }

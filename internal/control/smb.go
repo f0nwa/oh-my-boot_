@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -75,7 +76,7 @@ func (s *Server) imagesSMBCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditSMB(r, "smb.create", "ok", storage.ID)
-	http.Redirect(w, r, "/storages?message="+url.QueryEscape("Хранилище добавлено. Сканирование запущено."), http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message="+url.QueryEscape(fmt.Sprintf("Хранилище «%s» добавлено. Сканирование запущено.", storage.Name)), http.StatusSeeOther)
 }
 
 func (s *Server) smbStorage(ctx context.Context, idText string) (images.Storage, bool) {
@@ -135,7 +136,7 @@ func (s *Server) imagesSMBRetry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditSMB(r, "smb.retry", "ok", storage.ID)
-	http.Redirect(w, r, "/storages?message="+url.QueryEscape("Хранилище подключено. Сканирование запущено."), http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message="+url.QueryEscape(fmt.Sprintf("Хранилище «%s» подключено. Сканирование запущено.", storage.Name)), http.StatusSeeOther)
 }
 
 func (s *Server) imagesSMBRemove(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +177,7 @@ func (s *Server) imagesSMBRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditSMB(r, "smb.remove", "ok", storage.ID)
-	http.Redirect(w, r, "/storages?message="+url.QueryEscape("Хранилище удалено"), http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message="+url.QueryEscape(fmt.Sprintf("Хранилище «%s» удалено", storage.Name)), http.StatusSeeOther)
 }
 
 func (s *Server) auditSMB(r *http.Request, action, result string, id int64) {

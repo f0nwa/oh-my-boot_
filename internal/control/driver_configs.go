@@ -128,7 +128,11 @@ func (s *Server) driverConfigCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.create", "ok", fmt.Sprintf("id=%d profile=%d", config.ID, config.ProfileID))
 	s.InvalidateResourceAuthorsCache()
-	http.Redirect(w, r, "/drivers?message=Конфигурация+создана", http.StatusSeeOther)
+	msg := "Конфигурация создана"
+	if config.Title != "" {
+		msg = fmt.Sprintf("Конфигурация «%s» создана", config.Title)
+	}
+	http.Redirect(w, r, "/drivers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 func (s *Server) driverConfigRename(w http.ResponseWriter, r *http.Request) {
@@ -147,7 +151,8 @@ func (s *Server) driverConfigRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.rename", "ok", fmt.Sprintf("id=%d title=%s", id, title))
-	http.Redirect(w, r, "/drivers?message="+url.QueryEscape("Имя конфигурации сохранено"), http.StatusSeeOther)
+	msg := fmt.Sprintf("Имя конфигурации обновлено: «%s»", title)
+	http.Redirect(w, r, "/drivers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 // selectDriverINFs validates a configuration before its source is prepared.

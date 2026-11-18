@@ -98,9 +98,9 @@ type editorView struct {
 	SourceTitle string
 	Report      *unattend.ImportReport
 	// Saved variant defaults.
-	Title   string
-	Folder  string
-	CanSave bool
+	Title     string
+	Folder    string
+	CanSave   bool
 	WipesDisk bool
 	AddRow    string
 	Presets   []editorOption
@@ -803,5 +803,9 @@ func (s *Server) answerEditorSave(w http.ResponseWriter, r *http.Request) {
 		fail(status, message)
 		return
 	}
-	http.Redirect(w, r, "/answers?message="+url.QueryEscape(fmt.Sprintf("Файл ответов #%d сохранён", variant.ID)), http.StatusSeeOther)
+	msg := fmt.Sprintf("Файл ответов #%d сохранён", variant.ID)
+	if v.Title != "" {
+		msg = fmt.Sprintf("Файл ответов #%d «%s» сохранён", variant.ID, v.Title)
+	}
+	http.Redirect(w, r, "/answers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }

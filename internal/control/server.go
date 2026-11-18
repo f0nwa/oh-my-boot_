@@ -640,7 +640,8 @@ func (s *Server) userCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось создать пользователя: "+err.Error(), 400)
 		return
 	}
-	http.Redirect(w, r, "/users?message=Пользователь+создан", 303)
+	msg := fmt.Sprintf("Пользователь «%s» создан", r.FormValue("username"))
+	http.Redirect(w, r, "/users?message="+url.QueryEscape(msg), 303)
 }
 
 func (s *Server) userChange(w http.ResponseWriter, r *http.Request) {
@@ -674,7 +675,20 @@ func (s *Server) userChange(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось изменить пользователя: "+err.Error(), 400)
 		return
 	}
-	http.Redirect(w, r, "/users?message=Пользователь+изменён", 303)
+	var username string
+	if users, err := s.Store.Users(r.Context()); err == nil {
+		for _, u := range users {
+			if u.ID == id {
+				username = u.Username
+				break
+			}
+		}
+	}
+	msg := "Пользователь изменён"
+	if username != "" {
+		msg = fmt.Sprintf("Пользователь «%s» обновлён", username)
+	}
+	http.Redirect(w, r, "/users?message="+url.QueryEscape(msg), 303)
 }
 
 func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
@@ -699,7 +713,20 @@ func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", 303)
 		return
 	}
-	http.Redirect(w, r, "/users?message=Пароль+изменён", 303)
+	var username string
+	if users, err := s.Store.Users(r.Context()); err == nil {
+		for _, u := range users {
+			if u.ID == id {
+				username = u.Username
+				break
+			}
+		}
+	}
+	msg := "Пароль изменён"
+	if username != "" {
+		msg = fmt.Sprintf("Пароль пользователя «%s» изменён", username)
+	}
+	http.Redirect(w, r, "/users?message="+url.QueryEscape(msg), 303)
 }
 
 // systemPage is the overview of the System section: services, storages,

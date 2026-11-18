@@ -1,6 +1,7 @@
 package control
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -442,7 +443,11 @@ func (s *Server) machineEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.edit", "ok", mac)
-	http.Redirect(w, r, "/events/machines/"+mac+"?message="+url.QueryEscape("Машина сохранена"), http.StatusSeeOther)
+	msg := fmt.Sprintf("Машина %s сохранена", mac)
+	if edit.Name != "" {
+		msg = fmt.Sprintf("Машина «%s» (%s) сохранена", edit.Name, mac)
+	}
+	http.Redirect(w, r, "/events/machines/"+mac+"?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 // machineDelete removes a machine from the book.
@@ -454,7 +459,7 @@ func (s *Server) machineDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	saved, err := s.mutateBootDrivers(r.Context(), func() error { return book.DeleteMachine(r.Context(), mac) })
-	result, message := driverMutationResult(saved, err, "Машина удалена из списка")
+	result, message := driverMutationResult(saved, err, fmt.Sprintf("Машина %s удалена из списка", mac))
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.delete", result, mac)
 	if !saved {
 		http.Error(w, "Не удалось удалить машину", http.StatusServiceUnavailable)

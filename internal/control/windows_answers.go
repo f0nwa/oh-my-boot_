@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 	"unicode/utf8"
 
@@ -103,7 +104,11 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, message, status)
 		return
 	}
-	http.Redirect(w, r, "/answers?message=Сценарий+загружен", http.StatusSeeOther)
+	msg := "Сценарий загружен"
+	if title != "" {
+		msg = fmt.Sprintf("Сценарий «%s» загружен", title)
+	}
+	http.Redirect(w, r, "/answers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 // saveWindowsAnswer stores a checked answer file as a standalone variant

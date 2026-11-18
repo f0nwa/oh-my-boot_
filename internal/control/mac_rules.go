@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
@@ -166,7 +167,7 @@ func (s *Server) macRuleAdd(w http.ResponseWriter, r *http.Request) {
 		}
 		return err
 	})
-	result, message := driverMutationResult(saved, err, "Правило добавлено")
+	result, message := driverMutationResult(saved, err, fmt.Sprintf("Правило для префикса %s добавлено", prefix))
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "mac_rule.add", result, prefix)
 	if errors.Is(err, errMacRuleExists) {
 		http.Error(w, "Правило для этого префикса уже есть", http.StatusConflict)
@@ -202,7 +203,7 @@ func (s *Server) macRuleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	saved, err := s.mutateBootDrivers(r.Context(), func() error { return book.EditMacRule(r.Context(), rule) })
-	result, message := driverMutationResult(saved, err, "Правило сохранено")
+	result, message := driverMutationResult(saved, err, fmt.Sprintf("Правило для префикса %s сохранено", prefix))
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "mac_rule.edit", result, prefix)
 	if !saved {
 		http.Error(w, "Не удалось сохранить правило", http.StatusServiceUnavailable)
@@ -220,7 +221,7 @@ func (s *Server) macRuleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	saved, err := s.mutateBootDrivers(r.Context(), func() error { return book.DeleteMacRule(r.Context(), prefix) })
-	result, message := driverMutationResult(saved, err, "Правило удалено")
+	result, message := driverMutationResult(saved, err, fmt.Sprintf("Правило для префикса %s удалено", prefix))
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "mac_rule.delete", result, prefix)
 	if !saved {
 		http.Error(w, "Не удалось удалить правило", http.StatusServiceUnavailable)

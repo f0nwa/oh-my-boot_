@@ -192,7 +192,7 @@ func TestDriverImportReportsExistingPackage(t *testing.T) {
 		}
 		messages = append(messages, location)
 	}
-	if messages[0] != "/drivers?message=Пакет драйвера добавлен" || messages[1] != "/drivers?message=Пакет уже есть в каталоге" || len(store.packages) != 1 {
+	if messages[0] != "/drivers?message=Пакет драйверов «driver.zip» добавлен" || messages[1] != "/drivers?message=Пакет «driver.zip» уже есть в каталоге" || len(store.packages) != 1 {
 		t.Fatalf("messages=%q packages=%d", messages, len(store.packages))
 	}
 }

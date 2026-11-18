@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -81,7 +82,7 @@ func (s *Server) imagesNFSCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditNFS(r, "nfs.create", "ok", storage.ID)
-	http.Redirect(w, r, "/storages?message="+url.QueryEscape("Хранилище добавлено. Сканирование запущено."), http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message="+url.QueryEscape(fmt.Sprintf("Хранилище «%s» добавлено. Сканирование запущено.", storage.Name)), http.StatusSeeOther)
 }
 
 func (s *Server) nfsStorage(ctx context.Context, idText string) (images.Storage, bool) {
@@ -144,7 +145,7 @@ func (s *Server) imagesNFSRetry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditNFS(r, "nfs.retry", "ok", storage.ID)
-	http.Redirect(w, r, "/storages?message="+url.QueryEscape("Хранилище подключено. Сканирование запущено."), http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message="+url.QueryEscape(fmt.Sprintf("Хранилище «%s» подключено. Сканирование запущено.", storage.Name)), http.StatusSeeOther)
 }
 
 func (s *Server) imagesNFSRemove(w http.ResponseWriter, r *http.Request) {
@@ -207,7 +208,7 @@ func (s *Server) imagesNFSRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditNFS(r, "nfs.remove", "ok", storage.ID)
-	http.Redirect(w, r, "/storages?message="+url.QueryEscape("Хранилище удалено"), http.StatusSeeOther)
+	http.Redirect(w, r, "/storages?message="+url.QueryEscape(fmt.Sprintf("Хранилище «%s» удалено", storage.Name)), http.StatusSeeOther)
 }
 
 func (s *Server) auditNFS(r *http.Request, action, result string, id int64) {

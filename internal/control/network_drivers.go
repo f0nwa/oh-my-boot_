@@ -95,7 +95,7 @@ func (s *Server) machineNetworkDriver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	saved, err := s.mutateBootDrivers(r.Context(), func() error { return book.SetMachineNetworkDriver(r.Context(), mac, driver) })
-	result, message := driverMutationResult(saved, err, "Сетевой драйвер сохранён")
+	result, message := driverMutationResult(saved, err, fmt.Sprintf("Сетевой драйвер для %s сохранён", mac))
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "machine.network_driver", result, mac)
 	if !saved {
 		http.Error(w, "Не удалось сохранить сетевой драйвер", http.StatusServiceUnavailable)

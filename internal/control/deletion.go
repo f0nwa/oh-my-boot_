@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strconv"
 
@@ -160,7 +161,11 @@ func (s *Server) driverConfigDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-config.delete", "ok", fmt.Sprintf("id=%d", id))
-	http.Redirect(w, r, "/drivers?message=Конфигурация+удалена", http.StatusSeeOther)
+	msg := "Конфигурация удалена"
+	if config.Title != "" {
+		msg = fmt.Sprintf("Конфигурация «%s» удалена", config.Title)
+	}
+	http.Redirect(w, r, "/drivers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +181,7 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Очистка файлов недоступна", http.StatusServiceUnavailable)
 		return
 	}
-	_, err := s.Store.WindowsAnswer(r.Context(), id)
+	answer, err := s.Store.WindowsAnswer(r.Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		http.Error(w, "Сценарий не найден", http.StatusNotFound)
 		return
@@ -227,7 +232,11 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.delete", "ok", fmt.Sprintf("id=%d", id))
-	http.Redirect(w, r, "/answers?message=Сценарий+удалён", http.StatusSeeOther)
+	msg := "Сценарий удалён"
+	if answer.Title != "" {
+		msg = fmt.Sprintf("Сценарий «%s» удалён", answer.Title)
+	}
+	http.Redirect(w, r, "/answers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +252,7 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Очистка файлов недоступна", http.StatusServiceUnavailable)
 		return
 	}
-	_, err := s.Store.WindowsProfile(r.Context(), id)
+	profile, err := s.Store.WindowsProfile(r.Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		http.Error(w, "Профиль не найден", http.StatusNotFound)
 		return
@@ -294,7 +303,15 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-profile.delete", "ok", fmt.Sprintf("id=%d", id))
-	http.Redirect(w, r, "/images?message=Профиль+удалён", http.StatusSeeOther)
+	name := profile.Title
+	if name == "" {
+		name = profile.Path
+	}
+	msg := "Профиль удалён"
+	if name != "" {
+		msg = fmt.Sprintf("Профиль «%s» удалён", name)
+	}
+	http.Redirect(w, r, "/images?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 // rejectDeletion records a refused deletion in the audit log and reports it.

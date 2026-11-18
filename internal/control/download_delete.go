@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -45,6 +46,15 @@ func (s *Server) deleteInstallation(w http.ResponseWriter, r *http.Request, remo
 			return
 		}
 	}
+	var installTitle string
+	if list, err := s.Store.Installations(r.Context()); err == nil {
+		for _, it := range list {
+			if it.ID == id {
+				installTitle = it.Title
+				break
+			}
+		}
+	}
 	err = s.Store.DeleteInstallation(r.Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		http.Error(w, "Загрузка не найдена", http.StatusNotFound)
@@ -60,7 +70,11 @@ func (s *Server) deleteInstallation(w http.ResponseWriter, r *http.Request, remo
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "installation.delete", "ok", fmt.Sprintf("id=%d", id))
-	http.Redirect(w, r, "/installations?message=Загрузка+удалена", http.StatusSeeOther)
+	msg := "Загрузка удалена"
+	if installTitle != "" {
+		msg = fmt.Sprintf("Загрузка «%s» удалена", installTitle)
+	}
+	http.Redirect(w, r, "/installations?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 // publishInstallationRemoval builds from the active snapshot, never from the

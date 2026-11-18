@@ -2,8 +2,10 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -105,6 +107,11 @@ func TestImageMigrateUI(t *testing.T) {
 	// Check insufficient space option disabled
 	if !strings.Contains(bodyAdmin, "недостаточно места") {
 		t.Fatalf("expected 'недостаточно места' note for full storage")
+	}
+
+	// Check submit button is initially disabled
+	if !strings.Contains(bodyAdmin, `<button type="submit" class="btn btn-primary" disabled>`) {
+		t.Fatalf("expected submit button in image-migrate-dialog to be disabled initially")
 	}
 
 	// Check active migration indicator for ubuntu.iso is in "Загрузки и состояние" column, not in ISO file cell
@@ -334,6 +341,118 @@ function createHarness(initialMigrationId) {
 		t.Fatalf("node image_migrate.js test failed: %v\n%s", err, string(out))
 	}
 	if !strings.Contains(string(out), "IMAGE_MIGRATE_JS_PASS") {
+		t.Fatalf("missing pass marker: %s", string(out))
+	}
+}
+
+func TestImageMigrateSubmitButtonGate(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	scriptBytes, err := os.ReadFile("image_migrate.js")
+	if err != nil {
+		t.Fatalf("failed to read image_migrate.js: %v", err)
+	}
+
+	jsTest := fmt.Sprintf(`
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+
+const code = %q;
+
+let listeners = {};
+const submitBtn = { disabled: true };
+const targetSelect = { name: 'target_storage_id', value: '', closest: (sel) => (sel === '[data-image-migrate-form]' ? formEl : null) };
+const formEl = {
+  resetCalled: false,
+  reset() {
+    this.resetCalled = true;
+    targetSelect.value = '';
+  },
+  querySelector(sel) {
+    if (sel === '[name="target_storage_id"]') return targetSelect;
+    if (sel === 'button[type="submit"]') return submitBtn;
+    return null;
+  },
+  closest(sel) {
+    if (sel === '[data-image-migrate-form]') return this;
+    if (sel === 'dialog') return dialogEl;
+    return null;
+  },
+};
+const dialogEl = {
+  shown: false,
+  closed: false,
+  showModal() { this.shown = true; },
+  close() { this.closed = true; },
+  querySelector(sel) {
+    if (sel === 'form') return formEl;
+    return null;
+  },
+};
+const openBtn = {
+  disabled: false,
+  dataset: { imageMigrateOpen: 'dlg-1' },
+  closest(sel) {
+    if (sel === '[data-image-migrate-open]') return this;
+    return null;
+  },
+};
+
+const document = {
+  documentElement: { lang: 'ru' },
+  querySelectorAll: () => [],
+  querySelector: () => null,
+  getElementById: (id) => (id === 'dlg-1' ? dialogEl : null),
+  addEventListener: (type, fn) => { listeners[type] = fn; },
+};
+
+const sandbox = {
+  document,
+  window: { location: { reload() {} } },
+  alert: () => {},
+  FormData: class { constructor() {} },
+  URLSearchParams: class { constructor() {} },
+  setTimeout: () => 1,
+  clearTimeout: () => {},
+  fetch: async () => ({ ok: true, json: async () => [] }),
+};
+
+vm.runInNewContext(code, sandbox);
+
+// 1. Open dialog click: must reset form and keep submitBtn disabled
+targetSelect.value = '6'; // Simulate leftover state from previous interaction
+submitBtn.disabled = false;
+listeners['click']({ target: openBtn });
+assert.equal(formEl.resetCalled, true, 'opening dialog must reset form');
+assert.equal(targetSelect.value, '', 'select value must be reset to empty');
+assert.equal(submitBtn.disabled, true, 'submit button must be disabled upon opening');
+assert.equal(dialogEl.shown, true, 'dialog must be shown');
+
+// 2. Select target storage -> becomes enabled
+targetSelect.value = '6';
+listeners['change']({ target: targetSelect });
+assert.equal(submitBtn.disabled, false, 'submit button must be enabled when target storage selected');
+
+// 3. Reset target storage back to empty -> becomes disabled
+targetSelect.value = '';
+listeners['change']({ target: targetSelect });
+assert.equal(submitBtn.disabled, true, 'submit button must be disabled when target storage cleared');
+
+// 4. Input event also triggers enable
+targetSelect.value = '20';
+listeners['input']({ target: targetSelect });
+assert.equal(submitBtn.disabled, false, 'submit button must be enabled on input event with storage');
+
+console.log('BUTTON_GATE_JS_PASS');
+`, string(scriptBytes))
+
+	cmd := exec.CommandContext(ctx, "node", "-e", jsTest)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("node test failed: %v\n%s", err, string(out))
+	}
+	if !strings.Contains(string(out), "BUTTON_GATE_JS_PASS") {
 		t.Fatalf("missing pass marker: %s", string(out))
 	}
 }

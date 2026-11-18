@@ -42,6 +42,14 @@
     }
   }
 
+  function updateMigrateSubmit(form) {
+    if (!form) return;
+    const select = form.querySelector('[name="target_storage_id"]');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (!select || !submitBtn) return;
+    submitBtn.disabled = !select.value;
+  }
+
   document.addEventListener('click', (event) => {
     const button = event.target.closest('[data-image-migrate-open]');
     if (button) {
@@ -50,6 +58,11 @@
       if (!dialog) return;
       const menu = button.closest('[popover]');
       if (menu && menu.matches(':popover-open')) menu.hidePopover();
+      const form = dialog.querySelector('form');
+      if (form) {
+        form.reset();
+        updateMigrateSubmit(form);
+      }
       dialog.showModal();
       return;
     }
@@ -61,13 +74,30 @@
     }
   });
 
+  document.addEventListener('change', (event) => {
+    const form = event.target.closest('[data-image-migrate-form]');
+    if (form && event.target && event.target.name === 'target_storage_id') {
+      updateMigrateSubmit(form);
+    }
+  });
+
+  document.addEventListener('input', (event) => {
+    const form = event.target.closest('[data-image-migrate-form]');
+    if (form && event.target && event.target.name === 'target_storage_id') {
+      updateMigrateSubmit(form);
+    }
+  });
+
   document.addEventListener('submit', async (event) => {
     const form = event.target.closest('[data-image-migrate-form]');
     if (!form) return;
     event.preventDefault();
     const dialog = form.closest('dialog');
     const targetSelect = form.querySelector('[name="target_storage_id"]');
-    if (!targetSelect || !targetSelect.value) return;
+    if (!targetSelect || !targetSelect.value) {
+      updateMigrateSubmit(form);
+      return;
+    }
 
     const sourceStorageID = form.querySelector('[name="source_storage_id"]').value;
     const path = form.querySelector('[name="path"]').value;
@@ -100,7 +130,7 @@
           }
         } catch (_) {}
         alert(errorMsg || tr('Не удалось запустить перемещение образа'));
-        if (submitBtn) submitBtn.disabled = false;
+        if (submitBtn) updateMigrateSubmit(form);
         return;
       }
 
@@ -117,7 +147,7 @@
       startPolling();
     } catch (err) {
       alert(tr('Ошибка сети при запуске перемещения'));
-      if (submitBtn) submitBtn.disabled = false;
+      if (submitBtn) updateMigrateSubmit(form);
     }
   });
 

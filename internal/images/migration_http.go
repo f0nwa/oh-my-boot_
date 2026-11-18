@@ -58,6 +58,8 @@ func (s *Server) startMigration(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, ErrSameStorage), errors.Is(err, ErrSourceNotFound):
 			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, ErrSourceNotWritable):
+			http.Error(w, "source storage is not writable", http.StatusForbidden)
 		case errors.Is(err, ErrTargetExists), errors.Is(err, ErrMigrationInProgress):
 			http.Error(w, err.Error(), http.StatusConflict)
 		default:

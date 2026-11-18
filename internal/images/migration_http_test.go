@@ -103,3 +103,45 @@ func TestMigrationHTTPHandlers(t *testing.T) {
 		t.Fatalf("destination file should exist, err=%v", err)
 	}
 }
+
+func TestMigrationHTTPStartRejectsReadOnlySMBSourceBeforeCopy(t *testing.T) {
+	srcRO := realTempDir(t)
+	srcUpload := realTempDir(t)
+	dstDir := realTempDir(t)
+	if err := os.WriteFile(filepath.Join(srcRO, "smb.iso"), []byte("ISO"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcUpload, "smb.iso"), []byte("ISO"), 0444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(srcUpload, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(srcUpload, 0755) })
+
+	key := "0123456789abcdef0123456789abcdef"
+	repo := &memoryMigrationRepo{
+		storages: map[int64]Storage{
+			1: {ID: 1, Kind: "smb", Key: key, Server: "nas.example.com", Share: "iso", Root: srcRO, State: "ready"},
+			2: {ID: 2, Kind: "local", Root: dstDir, State: "ready", UploadsEnabled: true},
+		},
+	}
+	server := NewServer(repo)
+	server.writable = func(string) bool { return true }
+	server.mountIdentity = func(string) (string, bool) { return "smb-mount", true }
+	server.uploadRoot = func(string) string { return srcUpload }
+
+	reqBody, _ := json.Marshal(MigrateRequest{
+		SourceStorageID: 1,
+		Path:            "smb.iso",
+		TargetStorageID: 2,
+	})
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/images/migrate", bytes.NewReader(reqBody)))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for read-only SMB source, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if jobs := server.migrations.ListMigrations(); len(jobs) != 0 {
+		t.Fatalf("expected no migration job created for read-only SMB source, got %+v", jobs)
+	}
+}

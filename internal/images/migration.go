@@ -21,6 +21,7 @@ var (
 	ErrMigrationInProgress = errors.New("migration already in progress for this image")
 	ErrSameStorage         = errors.New("source and target storage cannot be the same")
 	ErrSourceNotFound      = errors.New("source image file not found")
+	ErrSourceNotWritable   = errors.New("source storage is not writable")
 	ErrTargetExists        = errors.New("target image file already exists")
 )
 
@@ -88,6 +89,14 @@ func (e *MigrationEngine) StartMigration(ctx context.Context, sourceStorageID in
 		return nil, errors.New("source is not a regular file")
 	}
 	totalBytes := srcInfo.Size()
+
+	srcCheckRoot := srcDeleteRoot
+	if srcCheckRoot == "" {
+		srcCheckRoot = srcStorage.Root
+	}
+	if err := probeDirWritable(filepath.Dir(filepath.Join(srcCheckRoot, relPath))); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSourceNotWritable, err)
+	}
 
 	dstFinalPath := filepath.Join(targetWriteRoot, relPath)
 	if _, err := os.Stat(dstFinalPath); err == nil {
@@ -365,4 +374,19 @@ func (e *MigrationEngine) CommitDeleteSource(ctx context.Context, id string) err
 	job.UpdatedAt = time.Now()
 	e.clearActiveLocked(job)
 	return nil
+}
+
+// probeDirWritable verifies that files can be created and removed in dir before copying starts.
+func probeDirWritable(dir string) error {
+	f, err := os.CreateTemp(dir, ".omb-write-check-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	closeErr := f.Close()
+	removeErr := os.Remove(name)
+	if closeErr != nil {
+		return closeErr
+	}
+	return removeErr
 }

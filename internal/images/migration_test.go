@@ -286,3 +286,34 @@ func TestCommitDeleteSourceFailsJobOnUnlinkPermissionAndUnlocksActive(t *testing
 		t.Fatalf("active migration locks must be released on failure, got %v", engine.active)
 	}
 }
+
+func TestStartMigrationRejectsReadOnlySourceDirectoryBeforeCopy(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	subDir := filepath.Join(srcDir, "Win8")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	relPath := "Win8/win8.iso"
+	if err := os.WriteFile(filepath.Join(srcDir, relPath), []byte("ISO-DATA"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(subDir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(subDir, 0755) })
+
+	repo := &memoryMigrationRepo{
+		storages: map[int64]Storage{
+			1: {ID: 1, Kind: "local", Root: srcDir, State: "ready"},
+			2: {ID: 2, Kind: "local", Root: dstDir, State: "ready", UploadsEnabled: true},
+		},
+	}
+	engine := NewMigrationEngine(repo)
+	if _, err := engine.StartMigration(context.Background(), 1, relPath, srcDir, 2, dstDir); err == nil {
+		t.Fatal("expected StartMigration to reject read-only source directory before copying")
+	}
+	if entries, err := os.ReadDir(dstDir); err != nil || len(entries) != 0 {
+		t.Fatalf("expected no destination files created on preflight write probe failure, got entries=%v err=%v", entries, err)
+	}
+}

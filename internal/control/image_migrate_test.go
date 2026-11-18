@@ -695,3 +695,60 @@ func TestImageMigrationSyncsFailedStateWhenCommitDeleteSourceFailsPermanently(t 
 		t.Fatalf("expected DB state='failed' with error, got state=%q error=%q", dbState, dbErr)
 	}
 }
+
+type roStartFailImages struct {
+	migrationMockImages
+}
+
+func (m *roStartFailImages) StartMigration(context.Context, int64, string, int64) (*images.MigrationJob, error) {
+	return nil, errors.New("local API /images/migrate: 403 source storage is not writable")
+}
+
+func TestImageMigrationStartMapsSourceNotWritableToLocalizedError(t *testing.T) {
+	store := installationTestStore(t)
+	ctx := context.Background()
+
+	if err := store.CreateUser(ctx, "admin4", "AdminPass123!", "admin"); err != nil {
+		t.Fatal(err)
+	}
+	_, adminToken, err := store.Login(ctx, "admin4", "AdminPass123!")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mockImg := &roStartFailImages{
+		migrationMockImages: migrationMockImages{
+			fakeImagesAPI: fakeImagesAPI{
+				catalog: images.Catalog{
+					Storages: []images.Storage{
+						{ID: 6, Name: "DSM", Kind: "smb", Root: "/mnt/omb-smb/6", State: "ready", Uploads: true},
+						{ID: 20, Name: "NFS", Kind: "nfs", Root: "/mnt/omb-nfs/20", State: "ready", Uploads: true, Free: 100 << 30},
+					},
+					Images: []images.Image{
+						{StorageID: 6, Path: "win.iso", Size: 4 << 30, Present: true},
+					},
+				},
+			},
+		},
+	}
+	s := &Server{Store: store, Images: mockImg}
+
+	form := url.Values{
+		"source_storage_id": {"6"},
+		"target_storage_id": {"20"},
+		"path":              {"win.iso"},
+		"csrf":              {CSRFToken(adminToken)},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/images/migrate", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: adminToken})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "исходное хранилище доступно только для чтения") {
+		t.Fatalf("expected localized read-only source error, got: %s", rec.Body.String())
+	}
+}

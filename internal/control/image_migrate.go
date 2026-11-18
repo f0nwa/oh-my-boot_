@@ -210,6 +210,9 @@ func (c *MigrationCoordinator) StartMigration(ctx context.Context, user User, so
 
 	job, err := c.images.StartMigration(ctx, sourceStorageID, path, targetStorageID)
 	if err != nil {
+		if errors.Is(err, images.ErrSourceNotWritable) || strings.Contains(err.Error(), "source storage is not writable") {
+			return nil, errors.New("исходное хранилище доступно только для чтения (удаление оригинала невозможно)")
+		}
 		return nil, err
 	}
 

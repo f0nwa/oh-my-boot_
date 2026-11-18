@@ -15,12 +15,16 @@ import (
 )
 
 type User struct {
-	ID       int64
-	Username string
-	Role     string
-	Enabled  bool
-	Language string
-	Theme    string
+	ID                 int64
+	Username           string
+	Role               string
+	Enabled            bool
+	Language           string
+	Theme              string
+	PasswordChangedAt  time.Time
+	MustChangePassword bool
+	PasswordPolicyMode string
+	PasswordMaxAgeDays int
 }
 type AuditEvent struct {
 	ID     int64
@@ -95,7 +99,8 @@ func (s Store) CreateInitialAdmin(ctx context.Context, username, password string
 func (s Store) Login(ctx context.Context, username, password string) (User, string, error) {
 	var u User
 	var hash string
-	err := s.Pool.QueryRow(ctx, "SELECT id,username,role,enabled,password_hash FROM users WHERE lower(username)=lower($1)", username).Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &hash)
+	err := s.Pool.QueryRow(ctx, `SELECT id,username,role,enabled,language,theme,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),password_hash FROM users WHERE lower(username)=lower($1)`, username).
+		Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &hash)
 	if err != nil || !u.Enabled || !VerifyPassword(hash, password) {
 		return User{}, "", fmt.Errorf("invalid credentials")
 	}
@@ -113,7 +118,8 @@ func (s Store) Session(ctx context.Context, token string) (User, error) {
 	}
 	var u User
 	var expiry time.Time
-	err := s.Pool.QueryRow(ctx, "SELECT u.id,u.username,u.role,u.enabled,u.language,u.theme,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1", tokenHash(token)).Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &expiry)
+	err := s.Pool.QueryRow(ctx, `SELECT u.id,u.username,u.role,u.enabled,u.language,u.theme,u.password_changed_at,u.must_change_password,u.password_policy_mode,coalesce(u.password_max_age_days,0),s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1`, tokenHash(token)).
+		Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &expiry)
 	if err != nil {
 		return User{}, err
 	}
@@ -188,7 +194,7 @@ func (s Store) AuditPaged(ctx context.Context, limit int, beforeID int64) ([]Aud
 }
 
 func (s Store) Users(ctx context.Context) ([]User, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT id,username,role,enabled FROM users ORDER BY username")
+	rows, err := s.Pool.Query(ctx, "SELECT id,username,role,enabled,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0) FROM users ORDER BY username")
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +202,7 @@ func (s Store) Users(ctx context.Context) ([]User, error) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.Enabled); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -205,15 +211,78 @@ func (s Store) Users(ctx context.Context) ([]User, error) {
 }
 
 func (s Store) CreateUser(ctx context.Context, username, password, role string) error {
+	return s.CreateUserWithPolicy(ctx, username, password, role, PasswordModePolicy, 0, false)
+}
+
+func (s Store) CreateUserWithPolicy(ctx context.Context, username, password, role, policyMode string, customDays int, mustChange bool) error {
 	if !userNamePattern.MatchString(username) || !Allowed(role, "view") {
 		return fmt.Errorf("invalid username or role")
+	}
+	if err := ValidateUserPasswordRule(policyMode, customDays); err != nil {
+		return err
 	}
 	hash, err := HashPassword(password)
 	if err != nil {
 		return err
 	}
-	_, err = s.Pool.Exec(ctx, "INSERT INTO users (username,password_hash,role) VALUES ($1,$2,$3)", username, hash, role)
+	var maxAge any
+	if policyMode == PasswordModeCustom {
+		maxAge = customDays
+	}
+	_, err = s.Pool.Exec(ctx, `INSERT INTO users (username,password_hash,role,password_changed_at,must_change_password,password_policy_mode,password_max_age_days) VALUES ($1,$2,$3,now(),$4,$5,$6)`,
+		username, hash, role, mustChange, policyMode, maxAge)
 	return err
+}
+
+func (s Store) PasswordPolicy(ctx context.Context) (PasswordPolicy, error) {
+	var p PasswordPolicy
+	err := s.Pool.QueryRow(ctx, "SELECT max_age_days, warn_days FROM password_policy WHERE id=1").Scan(&p.MaxAgeDays, &p.WarnDays)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PasswordPolicy{MaxAgeDays: 0, WarnDays: defaultWarnDays}, nil
+	}
+	return p, err
+}
+
+func (s Store) SetPasswordPolicy(ctx context.Context, p PasswordPolicy) error {
+	if err := ValidatePasswordPolicy(p); err != nil {
+		return err
+	}
+	_, err := s.Pool.Exec(ctx, `INSERT INTO password_policy (id, max_age_days, warn_days, updated_at) VALUES (1, $1, $2, now())
+		ON CONFLICT (id) DO UPDATE SET max_age_days=$1, warn_days=$2, updated_at=now()`, p.MaxAgeDays, p.WarnDays)
+	return err
+}
+
+func (s Store) SetUserPasswordPolicy(ctx context.Context, id, actorID int64, mode string, customDays int, mustChange *bool) error {
+	if id <= 0 {
+		return fmt.Errorf("invalid user id")
+	}
+	if err := ValidateUserPasswordRule(mode, customDays); err != nil {
+		return err
+	}
+	var maxAge any
+	if mode == PasswordModeCustom {
+		maxAge = customDays
+	}
+	if mustChange != nil && id != actorID {
+		res, err := s.Pool.Exec(ctx, "UPDATE users SET password_policy_mode=$2, password_max_age_days=$3, must_change_password=$4 WHERE id=$1",
+			id, mode, maxAge, *mustChange)
+		if err != nil {
+			return err
+		}
+		if res.RowsAffected() == 0 {
+			return errUserNotFound
+		}
+		return nil
+	}
+	res, err := s.Pool.Exec(ctx, "UPDATE users SET password_policy_mode=$2, password_max_age_days=$3 WHERE id=$1",
+		id, mode, maxAge)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return errUserNotFound
+	}
+	return nil
 }
 
 var (
@@ -300,6 +369,10 @@ func (s Store) ChangeUser(ctx context.Context, id, actorID int64, role string, e
 }
 
 func (s Store) ResetPassword(ctx context.Context, id int64, password string) error {
+	return s.ResetPasswordWithOptions(ctx, id, password, false)
+}
+
+func (s Store) ResetPasswordWithOptions(ctx context.Context, id int64, password string, mustChange bool) error {
 	hash, err := HashPassword(password)
 	if err != nil {
 		return err
@@ -310,7 +383,7 @@ func (s Store) ResetPassword(ctx context.Context, id int64, password string) err
 	}
 	defer tx.Rollback(ctx)
 	var updated int64
-	if err := tx.QueryRow(ctx, "UPDATE users SET password_hash=$2 WHERE id=$1 RETURNING id", id, hash).Scan(&updated); err != nil {
+	if err := tx.QueryRow(ctx, "UPDATE users SET password_hash=$2, password_changed_at=now(), must_change_password=$3 WHERE id=$1 RETURNING id", id, hash, mustChange).Scan(&updated); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, "DELETE FROM sessions WHERE user_id=$1", id); err != nil {
@@ -466,11 +539,14 @@ func (s Store) ChangeOwnPassword(ctx context.Context, id int64, sessionToken, cu
 	if !VerifyPassword(hash, current) {
 		return errWrongPassword
 	}
+	if VerifyPassword(hash, next) {
+		return errSamePassword
+	}
 	newHash, err := HashPassword(next)
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, "UPDATE users SET password_hash=$2 WHERE id=$1", id, newHash); err != nil {
+	if _, err := tx.Exec(ctx, "UPDATE users SET password_hash=$2, password_changed_at=now(), must_change_password=false WHERE id=$1", id, newHash); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, "DELETE FROM sessions WHERE user_id=$1 AND token_hash<>$2", id, tokenHash(sessionToken)); err != nil {

@@ -39,7 +39,30 @@
     }
   }
 
+  function initPasswordWarnBar() {
+    var bar = document.querySelector("[data-pw-warn-bar]");
+    if (!bar) return;
+    var key = "omb_pw_warn_dismissed";
+    var changed = bar.getAttribute("data-pw-changed") || "1";
+    try {
+      if (window.sessionStorage && window.sessionStorage.getItem(key) === changed) {
+        bar.remove();
+        return;
+      }
+    } catch (e) {}
+    var closeBtn = bar.querySelector("[data-pw-warn-close]");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function () {
+        try {
+          if (window.sessionStorage) window.sessionStorage.setItem(key, changed);
+        } catch (e) {}
+        bar.remove();
+      });
+    }
+  }
+
   function start() {
+    initPasswordWarnBar();
     var notices = document.querySelectorAll("[data-notice]");
     for (var i = 0; i < notices.length; i++) init(notices[i]);
     // A reload should not show the same message again.

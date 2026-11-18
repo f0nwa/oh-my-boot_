@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 type accountStore struct {
@@ -31,6 +32,9 @@ func (s *accountStore) ChangeOwnPassword(_ context.Context, id int64, token, cur
 	}
 	if len([]rune(next)) < 12 {
 		return errShortPassword
+	}
+	if current == next {
+		return errSamePassword
 	}
 	s.changed.id, s.changed.token, s.changed.current, s.changed.newPwd = id, token, current, next
 	return nil
@@ -79,6 +83,31 @@ func TestAccountPageShowsProfileLanguageAndPasswordForm(t *testing.T) {
 	}
 	if strings.Contains(body, "<table>") || strings.Contains(body, "<details") || strings.Contains(body, "<summary") || strings.Contains(body, "data-auto-open") {
 		t.Errorf("account page should use compact card and closed dialog without table or details")
+	}
+	for _, want := range []string{"Password changed", "Password expiration", "Never expires"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("account page lacks password status %q", want)
+		}
+	}
+}
+
+func TestAccountAndHeaderShowExpiringSoonWarning(t *testing.T) {
+	now := time.Now()
+	pol := PasswordPolicy{MaxAgeDays: 90, WarnDays: 7}
+	u := User{ID: 3, Username: "viewer", Role: "operator", Enabled: true, PasswordChangedAt: now.Add(-86 * 24 * time.Hour)}
+	pwState := EvaluatePasswordState(u, pol, now)
+	if !pwState.ExpiringSoon {
+		t.Fatalf("expected ExpiringSoon, got %+v", pwState)
+	}
+	res := httptest.NewRecorder()
+	render(res, "account", pageData{
+		Info: requestContext{User: u, CSRF: "x", Path: "/account", PasswordPolicy: pol, PasswordState: pwState},
+	})
+	body := res.Body.String()
+	for _, want := range []string{`data-pw-warn-bar`, `class="account-warn-box"`, `Истекает через`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expiring account page lacks %q", want)
+		}
 	}
 }
 
@@ -147,6 +176,16 @@ func TestChangeOwnPassword(t *testing.T) {
 	}))
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "Новый пароль должен содержать не меньше 12 символов") {
 		t.Fatalf("short password: %d %s", res.Code, res.Body.String())
+	}
+
+	res = httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/account/password", url.Values{
+		"current_password": {"old-password-123"},
+		"new_password":     {"old-password-123"},
+		"confirm_password": {"old-password-123"},
+	}))
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "Новый пароль не должен совпадать с текущим") {
+		t.Fatalf("same password: %d %s", res.Code, res.Body.String())
 	}
 }
 

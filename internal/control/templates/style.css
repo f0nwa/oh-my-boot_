@@ -910,3 +910,58 @@ tr.is-migrating td{background:var(--draft-bg)}
 .storage-recovery-dialog>.error{overflow-wrap:anywhere}
 .storage-recovery-dialog .user-dialog-actions{flex-wrap:wrap}
 .storage-recovery-dialog button:disabled{opacity:.45;color:var(--muted);background:var(--chip);border-color:var(--line);cursor:default;filter:none}
+
+/* Password policy, expiration indicators, and mandatory password change screen */
+.page-head-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.page-head-actions .btn{margin-top:0}
+.toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.policy-summary-pill{display:inline-flex;align-items:center;min-height:32px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);font-size:12px;color:var(--text-2)}
+.policy-summary-pill .dot{margin-right:7px}
+.pw-warn-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px var(--edge);background:var(--draft-bg);border-bottom:1px solid var(--draft-line);font-size:12.5px}
+.pw-warn-bar .dot{margin-right:0}
+.pw-warn-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.pw-warn-actions .btn{margin-top:0;min-height:26px;padding:0 9px;font-size:12px}
+.pw-cell{display:flex;flex-direction:column;gap:2px}
+.pw-status-line{display:flex;align-items:center;gap:6px}
+.pw-status-line .dot{margin-right:0}
+.pw-status-ok{color:var(--text)}
+.pw-status-warn{color:var(--accent-ink);font-weight:500}
+.pw-status-bad{color:var(--bad);font-weight:500}
+.pw-sub{font-size:12px;color:var(--muted)}
+.policy-field-title{font-size:13px;font-weight:500;margin-bottom:6px}
+.preset-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.preset-btn{min-height:28px;padding:0 10px;margin:0;border:1px solid var(--line-strong);border-radius:6px;background:var(--bg);color:var(--text-2);font-size:12px;font-weight:400}
+.preset-btn.is-on{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:500}
+.user-dialog label.check-block{flex-direction:row;align-items:flex-start;gap:8px;font-weight:400;cursor:pointer}
+.user-dialog label.check-block input{width:16px;height:16px;flex:none;margin:2px 0 0}
+.user-dialog label.check-block span{display:flex;flex-direction:column;gap:2px}
+.user-dialog label.check-block strong{font-weight:500}
+.user-dialog label.check-block small{font-size:12px;color:var(--muted)}
+.user-dialog .radio-card{display:flex;flex-direction:row;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--line-strong);border-radius:8px;background:var(--bg);font-weight:400;cursor:pointer}
+.user-dialog .radio-card.is-selected{border-color:var(--accent);background:var(--draft-bg)}
+.user-dialog .radio-card input[type="radio"]{width:16px;height:16px;flex:none;margin:2px 0 0}
+.user-dialog .radio-card span{display:flex;flex-direction:column;gap:2px}
+.user-dialog .radio-card strong{font-weight:500}
+.user-dialog .radio-card small{font-size:12px;color:var(--muted)}
+.user-dialog .radio-card-custom{flex-direction:column;gap:8px}
+.user-dialog label.radio-card-head{flex-direction:row;align-items:flex-start;gap:9px;font-weight:400;cursor:pointer;width:100%}
+.radio-custom-days{display:flex;align-items:center;gap:8px;padding-left:25px}
+.radio-custom-days input{width:100px;flex:none}
+.dialog-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:480px){.dialog-grid-2{grid-template-columns:1fr}}
+.account-warn-box{display:flex;align-items:center;gap:8px;padding:9px 12px;margin-bottom:14px;border:1px solid var(--draft-line);border-radius:6px;background:var(--draft-bg);color:var(--accent-ink);font-size:12.5px}
+.account-warn-box .dot{margin-right:0}
+.account-pw-status{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.account-pw-status .dot{margin-right:0}
+.narrow-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.narrow-head-user{display:flex;align-items:center;gap:8px}
+.narrow-head-user form{margin:0}
+.btn-sm{min-height:28px;padding:0 9px;margin:0;font-size:12px}
+.pw-reason-badge{display:inline-flex;align-items:center;gap:6px;margin-bottom:6px;font-size:12px;font-weight:500;color:var(--accent-ink)}
+.pw-reason-badge .dot{margin-right:0}
+.change-pw-card h1{margin:0 0 6px;font-size:18px}
+.change-pw-form{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.change-pw-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500}
+.change-pw-form input{width:100%;max-width:none}
+.change-pw-form .pw-wrap{max-width:none}
+.change-pw-form button.btn-primary{width:100%;min-height:40px;margin-top:8px}

@@ -6,11 +6,17 @@
   var pwDialog = document.getElementById('user-password-dialog');
   var createDialog = document.getElementById('user-create-dialog');
   var deleteDialog = document.getElementById('user-delete-dialog');
+  var policyDialog = document.getElementById('password-policy-dialog');
+  var expiryDialog = document.getElementById('user-expiry-dialog');
 
   var createForm = createDialog ? createDialog.querySelector('form') : null;
   var createSubmitBtn = createDialog ? createDialog.querySelector('button.btn-primary') : null;
   var createUserInput = createDialog ? createDialog.querySelector('input[name="username"]') : null;
   var createPwInput = createDialog ? createDialog.querySelector('input[name="password"]') : null;
+  var createModeSelect = createDialog ? createDialog.querySelector('[data-create-policy-mode]') : null;
+  var createCustomWrap = createDialog ? createDialog.querySelector('[data-create-custom-wrap]') : null;
+  var createCustomInput = createCustomWrap ? createCustomWrap.querySelector('input[name="password_max_age_days"]') : null;
+  var createMustChange = createDialog ? createDialog.querySelector('input[name="must_change_password"]') : null;
 
   var USERNAME_PATTERN = /^[A-Za-z0-9_.-]{3,32}$/;
 
@@ -49,6 +55,48 @@
 
   updateCreateSubmit();
   updatePwSubmit();
+
+  function syncCreatePolicyMode() {
+    if (!createModeSelect || !createCustomWrap) return;
+    var isCustom = createModeSelect.value === 'custom';
+    createCustomWrap.hidden = !isCustom;
+    if (createCustomInput) createCustomInput.required = isCustom;
+  }
+
+  function syncPolicyDialog() {
+    if (!policyDialog) return;
+    var maxInput = policyDialog.querySelector('input[name="max_age_days"]');
+    var warnInput = policyDialog.querySelector('input[name="warn_days"]');
+    var warnWrap = policyDialog.querySelector('[data-policy-warn-wrap]');
+    var days = maxInput ? Number(maxInput.value || 0) : 0;
+    policyDialog.querySelectorAll('[data-policy-preset]').forEach(function (btn) {
+      btn.classList.toggle('is-on', Number(btn.getAttribute('data-policy-preset')) === days);
+    });
+    var disabled = days === 0;
+    if (warnInput) warnInput.disabled = disabled;
+    if (warnWrap && warnWrap.style) warnWrap.style.opacity = disabled ? '0.45' : '1';
+  }
+
+  if (policyDialog) {
+    var polMaxInput = policyDialog.querySelector('input[name="max_age_days"]');
+    if (polMaxInput) polMaxInput.addEventListener('input', syncPolicyDialog);
+    syncPolicyDialog();
+  }
+
+  function syncExpiryDialog() {
+    if (!expiryDialog) return;
+    var selected = 'policy';
+    expiryDialog.querySelectorAll('input[name="password_policy_mode"]').forEach(function (radio) {
+      if (radio.checked) selected = radio.value;
+      var card = radio.closest ? radio.closest('.radio-card') : null;
+      if (card) card.classList.toggle('is-selected', radio.checked);
+    });
+    var customWrap = expiryDialog.querySelector('[data-expiry-custom-wrap]');
+    var daysInput = expiryDialog.querySelector('input[name="password_max_age_days"]');
+    var isCustom = selected === 'custom';
+    if (customWrap) customWrap.hidden = !isCustom;
+    if (daysInput) daysInput.required = isCustom;
+  }
 
   function filterUsers() {
     var query = (searchInput ? searchInput.value : '').toLowerCase().trim();
@@ -173,6 +221,14 @@
   document.addEventListener('change', function (event) {
     var target = event.target;
     if (!target) return;
+    if (createModeSelect && target === createModeSelect) {
+      syncCreatePolicyMode();
+      return;
+    }
+    if (target.name === 'password_policy_mode' && expiryDialog) {
+      syncExpiryDialog();
+      return;
+    }
     if (target.matches('select[name="role"]') || target.matches('input[name="enabled"]')) {
       var formAttr = target.getAttribute('form') || '';
       var match = formAttr.match(/^user-change-(\d+)$/);
@@ -206,6 +262,7 @@
       event.preventDefault();
       var userId = pwBtn.getAttribute('data-user-pw-id') || '';
       var userName = pwBtn.getAttribute('data-user-pw-name') || '';
+      var isSelf = pwBtn.getAttribute('data-user-self') === 'true';
 
       var idInput = pwDialog.querySelector('input[name="id"]');
       if (idInput) {
@@ -222,6 +279,11 @@
           userSpan.textContent = userName ? (userName + ' (#' + userId + ')') : ('#' + userId);
         }
       }
+
+      var pwMustWrap = pwDialog.querySelector('[data-pw-must-change-wrap]');
+      var pwMustCheck = pwDialog.querySelector('input[name="must_change_password"]');
+      if (pwMustWrap) pwMustWrap.hidden = isSelf;
+      if (pwMustCheck) pwMustCheck.checked = !isSelf;
 
       var pwInput = pwDialog.querySelector('input[name="password"]');
       if (pwInput) {
@@ -243,6 +305,60 @@
       return;
     }
 
+    // Global password policy modal trigger
+    var polOpenBtn = event.target.closest('[data-password-policy-open]');
+    if (polOpenBtn && policyDialog && typeof policyDialog.showModal === 'function') {
+      event.preventDefault();
+      syncPolicyDialog();
+      policyDialog.showModal();
+      return;
+    }
+
+    // Preset buttons inside policy dialog
+    var presetBtn = event.target.closest('[data-policy-preset]');
+    if (presetBtn && policyDialog) {
+      event.preventDefault();
+      var polInput = policyDialog.querySelector('input[name="max_age_days"]');
+      if (polInput) polInput.value = presetBtn.getAttribute('data-policy-preset') || '0';
+      syncPolicyDialog();
+      return;
+    }
+
+    // Per-user password expiry modal trigger
+    var expBtn = event.target.closest('[data-user-expiry-id]');
+    if (expBtn && expiryDialog && typeof expiryDialog.showModal === 'function') {
+      event.preventDefault();
+      var expId = expBtn.getAttribute('data-user-expiry-id') || '';
+      var expName = expBtn.getAttribute('data-user-expiry-name') || '';
+      var expMode = expBtn.getAttribute('data-user-expiry-mode') || 'policy';
+      var expDays = expBtn.getAttribute('data-user-expiry-days') || '30';
+      var expMust = expBtn.getAttribute('data-user-expiry-must-change') === 'true';
+      var expChanged = expBtn.getAttribute('data-user-expiry-changed') || '—';
+      var expSelf = expBtn.getAttribute('data-user-self') === 'true';
+
+      var expIdInput = expiryDialog.querySelector('input[name="id"]');
+      if (expIdInput) expIdInput.value = expId;
+      var expUserSpan = expiryDialog.querySelector('#expiry-modal-user');
+      if (expUserSpan) expUserSpan.textContent = expName ? (expName + ' (#' + expId + ')') : ('#' + expId);
+      var expChangedSpan = expiryDialog.querySelector('#expiry-modal-changed');
+      if (expChangedSpan) expChangedSpan.textContent = expChanged;
+
+      expiryDialog.querySelectorAll('input[name="password_policy_mode"]').forEach(function (radio) {
+        radio.checked = radio.value === expMode;
+      });
+      var expDaysInput = expiryDialog.querySelector('input[name="password_max_age_days"]');
+      if (expDaysInput) expDaysInput.value = expDays;
+
+      var expMustWrap = expiryDialog.querySelector('[data-expiry-must-change-wrap]');
+      var expMustCheck = expiryDialog.querySelector('input[name="must_change_password"]');
+      if (expMustWrap) expMustWrap.hidden = expSelf;
+      if (expMustCheck) expMustCheck.checked = !expSelf && expMust;
+
+      syncExpiryDialog();
+      expiryDialog.showModal();
+      return;
+    }
+
     // Create user modal trigger
     var addBtn = event.target.closest('[data-user-add]');
     if (addBtn && createDialog && typeof createDialog.showModal === 'function') {
@@ -257,6 +373,10 @@
         newPwInput.type = 'password';
         newPwInput.dispatchEvent(new Event('omb:password-sync'));
       }
+      if (createModeSelect) createModeSelect.value = 'policy';
+      if (createCustomInput) createCustomInput.value = '30';
+      if (createMustChange) createMustChange.checked = true;
+      syncCreatePolicyMode();
       updateCreateSubmit();
       createDialog.querySelectorAll('small[role="status"]').forEach(function (el) { el.textContent = ''; });
       createDialog.querySelectorAll('button').forEach(function (btn) {
@@ -304,7 +424,7 @@
   });
 
   // Direct click listener for dialog backdrop close
-  [pwDialog, createDialog, deleteDialog].forEach(function (dialog) {
+  [pwDialog, createDialog, deleteDialog, policyDialog, expiryDialog].forEach(function (dialog) {
     if (!dialog) return;
     dialog.addEventListener('click', function (event) {
       if (event.target === dialog && typeof dialog.close === 'function') {

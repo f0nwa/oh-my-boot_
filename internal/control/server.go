@@ -36,9 +36,14 @@ type Storage interface {
 	AuditPaged(context.Context, int, int64) ([]AuditEvent, bool, error)
 	Users(context.Context) ([]User, error)
 	CreateUser(context.Context, string, string, string) error
+	CreateUserWithPolicy(context.Context, string, string, string, string, int, bool) error
 	ChangeUser(context.Context, int64, int64, string, bool) error
 	DeleteUser(context.Context, int64, int64) (string, error)
 	ResetPassword(context.Context, int64, string) error
+	ResetPasswordWithOptions(context.Context, int64, string, bool) error
+	PasswordPolicy(context.Context) (PasswordPolicy, error)
+	SetPasswordPolicy(context.Context, PasswordPolicy) error
+	SetUserPasswordPolicy(context.Context, int64, int64, string, int, *bool) error
 	MenuVersions(context.Context) ([]MenuVersion, error)
 	MenuByID(context.Context, int64) (MenuVersion, error)
 	SaveActiveMenu(context.Context, int64, MenuVersion) error
@@ -202,11 +207,13 @@ type Server struct {
 }
 
 type requestContext struct {
-	User  User
-	Token string
-	CSRF  string
-	Path  string
-	Draft draftSummary
+	User           User
+	Token          string
+	CSRF           string
+	Path           string
+	Draft          draftSummary
+	PasswordPolicy PasswordPolicy
+	PasswordState  PasswordState
 }
 type ctxKey struct{}
 
@@ -227,6 +234,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /settings/theme", s.protect("view", s.setTheme))
 	mux.HandleFunc("GET /account", s.protect("view", s.accountPage))
 	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
+	mux.HandleFunc("GET /change-password", s.protect("view", s.changePasswordPage))
+	mux.HandleFunc("POST /change-password", s.protect("view", withPageErrors(s.changePasswordPage, s.changePasswordSubmit)))
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
 	mux.HandleFunc("GET /assets/login.js", loginScript)
 	mux.HandleFunc("GET /assets/infinite-scroll.js", infiniteScrollScript)
@@ -305,6 +314,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /users/change", s.protect("users", withPageErrors(s.usersPage, s.userChange)))
 	mux.HandleFunc("POST /users/delete", s.protect("users", withPageErrors(s.usersPage, s.userDelete)))
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
+	mux.HandleFunc("POST /users/password-policy", s.protect("users", withPageErrors(s.usersPage, s.usersPasswordPolicy)))
+	mux.HandleFunc("POST /users/user-password-policy", s.protect("users", withPageErrors(s.usersPage, s.userPasswordPolicy)))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	mux.HandleFunc("GET /usb", s.protect("view", s.usbPage))
@@ -464,12 +475,51 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 			}
 		}
 		info := requestContext{User: user, Token: cookie.Value, CSRF: CSRFToken(cookie.Value), Path: r.URL.Path}
-		if r.Method == http.MethodGet && needsDraftSummary(r) {
+		policy, err := s.Store.PasswordPolicy(r.Context())
+		if err != nil {
+			http.Error(w, translate(normalizeLanguage(user.Language), "Не удалось проверить политику паролей"), http.StatusServiceUnavailable)
+			return
+		}
+		pwState := EvaluatePasswordState(user, policy, time.Now())
+		info.PasswordPolicy = policy
+		info.PasswordState = pwState
+		if pwState.RequiresChange() && !isForcedPasswordAllowed(r) {
+			if r.Method == http.MethodGet && !isForcedPasswordAPIRequest(r) {
+				http.Redirect(w, r, "/change-password", http.StatusSeeOther)
+				return
+			}
+			msg := translate(normalizeLanguage(user.Language), "Требуется смена пароля")
+			if isForcedPasswordAPIRequest(r) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+				return
+			}
+			http.Error(w, msg, http.StatusForbidden)
+			return
+		}
+		if r.Method == http.MethodGet && needsDraftSummary(r) && !pwState.RequiresChange() {
 			info.Draft = s.draftStatus(r.Context())
 		}
 		ctx := context.WithValue(r.Context(), ctxKey{}, info)
 		translateErrors(normalizeLanguage(user.Language), next)(w, r.WithContext(ctx))
 	}
+}
+
+func isForcedPasswordAllowed(r *http.Request) bool {
+	switch r.Method + " " + r.URL.Path {
+	case "GET /change-password", "POST /change-password", "POST /logout", "POST /settings/language", "POST /settings/theme":
+		return true
+	default:
+		return false
+	}
+}
+
+func isForcedPasswordAPIRequest(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, "/api/") ||
+		r.URL.Query().Get("format") == "json" ||
+		strings.Contains(r.Header.Get("Accept"), "application/json") ||
+		r.Header.Get("X-Requested-With") == "XMLHttpRequest"
 }
 
 func requestInfo(r *http.Request) requestContext { return r.Context().Value(ctxKey{}).(requestContext) }
@@ -503,6 +553,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: "omb_session", Value: token, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Expires: time.Now().Add(sessionLifetime)})
 	http.SetCookie(w, &http.Cookie{Name: "omb_login_csrf", Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	_ = s.Store.Audit(r.Context(), user.ID, "login", "ok", "")
+	if policy, err := s.Store.PasswordPolicy(r.Context()); err == nil {
+		if EvaluatePasswordState(user, policy, time.Now()).RequiresChange() {
+			http.Redirect(w, r, "/change-password", 303)
+			return
+		}
+	}
 	http.Redirect(w, r, "/", 303)
 }
 
@@ -620,7 +676,8 @@ func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)}
+	info := requestInfo(r)
+	data := pageData{Info: info, Message: r.URL.Query().Get("message"), Error: pageError(r), PasswordPolicy: info.PasswordPolicy, NowTime: time.Now()}
 	v, err := s.Store.Users(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось прочитать пользователей", 500)
@@ -632,7 +689,18 @@ func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) userCreate(w http.ResponseWriter, r *http.Request) {
 	info := requestInfo(r)
-	err := s.Store.CreateUser(r.Context(), r.FormValue("username"), r.FormValue("password"), r.FormValue("role"))
+	mode := NormalizePasswordMode(r.FormValue("password_policy_mode"))
+	customDays := 0
+	if mode == PasswordModeCustom {
+		n, err := strconv.Atoi(strings.TrimSpace(r.FormValue("password_max_age_days")))
+		if err != nil {
+			http.Error(w, "Некорректный срок действия пароля", http.StatusBadRequest)
+			return
+		}
+		customDays = n
+	}
+	mustChange := r.FormValue("must_change_password") == "on"
+	err := s.Store.CreateUserWithPolicy(r.Context(), r.FormValue("username"), r.FormValue("password"), r.FormValue("role"), mode, customDays, mustChange)
 	result := "ok"
 	if err != nil {
 		result = "error"
@@ -644,6 +712,99 @@ func (s *Server) userCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	msg := fmt.Sprintf("Пользователь «%s» создан", r.FormValue("username"))
 	http.Redirect(w, r, "/users?message="+url.QueryEscape(msg), 303)
+}
+
+func (s *Server) usersPasswordPolicy(w http.ResponseWriter, r *http.Request) {
+	info := requestInfo(r)
+	maxAge, err1 := strconv.Atoi(strings.TrimSpace(r.FormValue("max_age_days")))
+	warnDays, err2 := strconv.Atoi(strings.TrimSpace(r.FormValue("warn_days")))
+	if err1 != nil || err2 != nil {
+		http.Error(w, "Укажите целые числа для срока действия и предупреждения", http.StatusBadRequest)
+		return
+	}
+	policy := PasswordPolicy{MaxAgeDays: maxAge, WarnDays: warnDays}
+	if err := ValidatePasswordPolicy(policy); err != nil {
+		http.Error(w, "Недопустимые значения политики паролей (срок 0–3650 дн., предупреждение 0–90 дн.)", http.StatusBadRequest)
+		return
+	}
+	err := s.Store.SetPasswordPolicy(r.Context(), policy)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	_ = s.Store.Audit(r.Context(), info.User.ID, "users.password-policy", result, fmt.Sprintf("max_age_days=%d warn_days=%d", maxAge, warnDays))
+	if err != nil {
+		http.Error(w, "Не удалось сохранить политику паролей", http.StatusServiceUnavailable)
+		return
+	}
+	var msg string
+	if maxAge == 0 {
+		msg = "Политика паролей обновлена: бессрочно"
+	} else {
+		msg = fmt.Sprintf("Политика паролей обновлена: %d дн.", maxAge)
+	}
+	http.Redirect(w, r, "/users?message="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+func (s *Server) userPasswordPolicy(w http.ResponseWriter, r *http.Request) {
+	info := requestInfo(r)
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, "Неверный ID", http.StatusBadRequest)
+		return
+	}
+	mode := r.FormValue("password_policy_mode")
+	customDays := 0
+	if mode == PasswordModeCustom {
+		n, err := strconv.Atoi(strings.TrimSpace(r.FormValue("password_max_age_days")))
+		if err != nil {
+			http.Error(w, "Некорректный срок действия пароля", http.StatusBadRequest)
+			return
+		}
+		customDays = n
+	}
+	if err := ValidateUserPasswordRule(mode, customDays); err != nil {
+		http.Error(w, "Укажите корректный режим и срок действия пароля (1–3650 дн.)", http.StatusBadRequest)
+		return
+	}
+	var mustChangePtr *bool
+	if id != info.User.ID {
+		mc := r.FormValue("must_change_password") == "on"
+		mustChangePtr = &mc
+	}
+	err = s.Store.SetUserPasswordPolicy(r.Context(), id, info.User.ID, mode, customDays, mustChangePtr)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	_ = s.Store.Audit(r.Context(), info.User.ID, "user.password-policy", result, fmt.Sprintf("id=%d mode=%s days=%d", id, mode, customDays))
+	switch {
+	case errors.Is(err, errUserNotFound):
+		http.Error(w, "Пользователь не найден", http.StatusNotFound)
+		return
+	case err != nil:
+		http.Error(w, "Не удалось обновить настройки пароля", http.StatusBadRequest)
+		return
+	}
+	username := s.lookupUsername(r.Context(), id)
+	msg := "Настройки срока пароля обновлены"
+	if username != "" {
+		msg = fmt.Sprintf("Настройки срока пароля пользователя «%s» обновлены", username)
+	}
+	http.Redirect(w, r, "/users?message="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+func (s *Server) lookupUsername(ctx context.Context, id int64) string {
+	users, err := s.Store.Users(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, u := range users {
+		if u.ID == id {
+			return u.Username
+		}
+	}
+	return ""
 }
 
 func (s *Server) userChange(w http.ResponseWriter, r *http.Request) {
@@ -743,7 +904,8 @@ func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный ID", 400)
 		return
 	}
-	err = s.Store.ResetPassword(r.Context(), id, r.FormValue("password"))
+	mustChange := id != info.User.ID && r.FormValue("must_change_password") == "on"
+	err = s.Store.ResetPasswordWithOptions(r.Context(), id, r.FormValue("password"), mustChange)
 	result := "ok"
 	if err != nil {
 		result = "error"

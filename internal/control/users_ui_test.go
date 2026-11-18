@@ -84,9 +84,15 @@ func TestUsersPageToolbarAndTable(t *testing.T) {
 		`action="/users/create"`,
 		`action="/users/reset-password"`,
 		`action="/users/delete"`,
+		`action="/users/password-policy"`,
+		`action="/users/user-password-policy"`,
+		`data-password-policy-open`,
+		`data-user-expiry-id="1"`,
+		`data-user-expiry-id="2"`,
 		`popovertarget="user-menu-2"`,
 		`data-user-delete-id="2"`,
 		`data-user-delete-name="viewer"`,
+		`class="pw-cell"`,
 	}
 	for _, sel := range requiredSelectors {
 		if !strings.Contains(body, sel) {
@@ -107,8 +113,11 @@ func TestUsersPageModals(t *testing.T) {
 		`id="user-create-dialog"`,
 		`id="user-password-dialog"`,
 		`id="user-delete-dialog"`,
+		`id="password-policy-dialog"`,
+		`id="user-expiry-dialog"`,
 		`id="delete-modal-user"`,
 		`id="delete-modal-id"`,
+		`name="must_change_password" checked`,
 		`class="user-dialog"`,
 		`data-close-dialog`,
 		`src="/assets/users.js"`,
@@ -610,5 +619,163 @@ func TestUserNamePatternValidation(t *testing.T) {
 		if got != tc.valid {
 			t.Errorf("userNamePattern.MatchString(%q) = %v; want %v", tc.username, got, tc.valid)
 		}
+	}
+}
+
+func TestUserPasswordPolicyDialogsJS(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	scriptBytes, err := os.ReadFile("users.js")
+	if err != nil {
+		t.Fatalf("failed to read users.js: %v", err)
+	}
+
+	jsTest := fmt.Sprintf(`
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+
+const code = %q;
+let docListeners = {};
+
+const policyMaxInput = { value: '90', addEventListener() {} };
+const policyWarnInput = { value: '7', disabled: false };
+const policyWarnWrap = { style: {} };
+const policyPresets = [
+  { getAttribute: (n) => n === 'data-policy-preset' ? '0' : null, classList: { toggle() {} } },
+  { getAttribute: (n) => n === 'data-policy-preset' ? '90' : null, classList: { toggle() {} } },
+];
+const policyDialog = {
+  shown: false,
+  showModal() { this.shown = true; },
+  close() { this.shown = false; },
+  querySelector(sel) {
+    if (sel === 'input[name="max_age_days"]') return policyMaxInput;
+    if (sel === 'input[name="warn_days"]') return policyWarnInput;
+    if (sel === '[data-policy-warn-wrap]') return policyWarnWrap;
+    return null;
+  },
+  querySelectorAll(sel) {
+    if (sel === '[data-policy-preset]') return policyPresets;
+    return [];
+  },
+  addEventListener() {},
+};
+
+const expiryIdInput = { value: '' };
+const expiryUserSpan = { textContent: '' };
+const expiryChangedSpan = { textContent: '' };
+const expiryDaysInput = { value: '30', required: false };
+const expiryCustomWrap = { hidden: true };
+const expiryMustWrap = { hidden: false };
+const expiryMustCheck = { checked: false };
+const radioPolicy = { name: 'password_policy_mode', value: 'policy', checked: false, closest() { return { classList: { toggle() {} } }; } };
+const radioNever = { name: 'password_policy_mode', value: 'never', checked: false, closest() { return { classList: { toggle() {} } }; } };
+const radioCustom = { name: 'password_policy_mode', value: 'custom', checked: false, closest() { return { classList: { toggle() {} } }; } };
+
+const expiryDialog = {
+  shown: false,
+  showModal() { this.shown = true; },
+  close() { this.shown = false; },
+  querySelector(sel) {
+    if (sel === 'input[name="id"]') return expiryIdInput;
+    if (sel === '#expiry-modal-user') return expiryUserSpan;
+    if (sel === '#expiry-modal-changed') return expiryChangedSpan;
+    if (sel === 'input[name="password_max_age_days"]') return expiryDaysInput;
+    if (sel === '[data-expiry-custom-wrap]') return expiryCustomWrap;
+    if (sel === '[data-expiry-must-change-wrap]') return expiryMustWrap;
+    if (sel === 'input[name="must_change_password"]') return expiryMustCheck;
+    return null;
+  },
+  querySelectorAll(sel) {
+    if (sel === 'input[name="password_policy_mode"]') return [radioPolicy, radioNever, radioCustom];
+    return [];
+  },
+  addEventListener() {},
+};
+
+const document = {
+  documentElement: { lang: 'ru' },
+  querySelectorAll: () => [],
+  querySelector: () => null,
+  getElementById: (id) => {
+    if (id === 'password-policy-dialog') return policyDialog;
+    if (id === 'user-expiry-dialog') return expiryDialog;
+    return null;
+  },
+  addEventListener: (type, fn) => { docListeners[type] = fn; },
+};
+
+vm.runInNewContext(code, { document, window: {}, Event: class { constructor(t) { this.type = t; } } });
+
+// Open policy dialog and click preset 0
+const polOpen = { closest: (s) => (s === '[data-password-policy-open]' ? polOpen : null) };
+docListeners['click']({ target: polOpen, preventDefault() {} });
+assert.equal(policyDialog.shown, true, 'policyDialog must open');
+
+const presetZero = {
+  getAttribute: (n) => (n === 'data-policy-preset' ? '0' : null),
+  closest: (s) => (s === '[data-policy-preset]' ? presetZero : null),
+};
+docListeners['click']({ target: presetZero, preventDefault() {} });
+assert.equal(policyMaxInput.value, '0');
+assert.equal(policyWarnInput.disabled, true, 'warn_days disabled when max_age_days=0');
+
+// Open user-expiry dialog for other user in custom mode
+const expBtn = {
+  getAttribute: (n) => ({
+    'data-user-expiry-id': '2',
+    'data-user-expiry-name': 'operator1',
+    'data-user-expiry-mode': 'custom',
+    'data-user-expiry-days': '45',
+    'data-user-expiry-must-change': 'true',
+    'data-user-expiry-changed': '24.08.2026',
+    'data-user-self': 'false',
+  }[n] || ''),
+  closest: (s) => (s === '[data-user-expiry-id]' ? expBtn : null),
+};
+docListeners['click']({ target: expBtn, preventDefault() {} });
+assert.equal(expiryDialog.shown, true, 'expiryDialog must open');
+assert.equal(expiryIdInput.value, '2');
+assert.equal(radioCustom.checked, true);
+assert.equal(expiryCustomWrap.hidden, false);
+assert.equal(expiryDaysInput.value, '45');
+assert.equal(expiryDaysInput.required, true);
+assert.equal(expiryMustWrap.hidden, false);
+assert.equal(expiryMustCheck.checked, true);
+
+// Switch mode to never -> custom input hidden and not required
+radioCustom.checked = false;
+radioNever.checked = true;
+docListeners['change']({ target: radioNever });
+assert.equal(expiryCustomWrap.hidden, true);
+assert.equal(expiryDaysInput.required, false);
+
+// Open for self -> must_change_password hidden and unchecked
+const selfExpBtn = {
+  getAttribute: (n) => ({
+    'data-user-expiry-id': '1',
+    'data-user-expiry-name': 'admin',
+    'data-user-expiry-mode': 'never',
+    'data-user-expiry-days': '30',
+    'data-user-expiry-must-change': 'false',
+    'data-user-expiry-changed': '18.11.2026',
+    'data-user-self': 'true',
+  }[n] || ''),
+  closest: (s) => (s === '[data-user-expiry-id]' ? selfExpBtn : null),
+};
+docListeners['click']({ target: selfExpBtn, preventDefault() {} });
+assert.equal(expiryMustWrap.hidden, true);
+assert.equal(expiryMustCheck.checked, false);
+
+console.log('USER_EXPIRY_DIALOG_PASS');
+`, string(scriptBytes))
+
+	out, err := exec.CommandContext(ctx, "node", "-e", jsTest).CombinedOutput()
+	if err != nil {
+		t.Fatalf("node users.js expiry test failed: %v\n%s", err, string(out))
+	}
+	if !strings.Contains(string(out), "USER_EXPIRY_DIALOG_PASS") {
+		t.Fatalf("missing marker: %s", string(out))
 	}
 }

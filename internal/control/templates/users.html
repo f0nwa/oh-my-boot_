@@ -4,14 +4,23 @@
 <h1>{{t "Пользователи"}}</h1>
 <p class="lead">{{t "Кто может входить в админку и что ему разрешено."}}</p>
 </div>
+<div class="page-head-actions">
+<button type="button" class="btn" data-password-policy-open>{{t "Политика паролей"}}</button>
 <button type="button" class="btn btn-primary" data-user-add><span aria-hidden="true">+</span> {{t "Добавить пользователя"}}</button>
+</div>
 </div>
 
 <div class="toolbar">
+<div class="toolbar-left">
 <form class="search user-search" onsubmit="return false;">
 <label for="user-search" class="sr-only">{{t "Поиск"}}</label>
 <input id="user-search" type="search" placeholder="{{t "Поиск по имени, ID или роли"}}" autocomplete="off">
 </form>
+<span class="policy-summary-pill">
+<span class="dot {{if gt .PasswordPolicy.MaxAgeDays 0}}dot-ok{{else}}dot-muted{{end}}"></span>
+<span>{{passwordPolicySummary .PasswordPolicy}}</span>
+</span>
+</div>
 <span id="user-count" class="muted user-counts" data-label-total="{{t "Всего"}}" data-label-active="{{t "активных"}}">{{t "Всего:"}} {{len .Users}}</span>
 </div>
 
@@ -22,12 +31,14 @@
 <th>{{t "Пользователь"}}</th>
 <th>{{t "Роль"}}</th>
 <th>{{t "Статус"}}</th>
+<th>{{t "Пароль"}}</th>
 <th class="user-actions-th"><span class="sr-only">{{t "Действия"}}</span></th>
 </tr>
 </thead>
 <tbody>
 {{range .Users}}
 {{$self := eq .ID $.Info.User.ID}}
+{{$pw := passwordState . $.PasswordPolicy $.NowTime}}
 <tr data-user-row data-user-id="{{.ID}}" data-user-login="{{.Username}}" data-user-role="{{.Role}}" data-user-enabled="{{if .Enabled}}true{{else}}false{{end}}">
 <td>
 {{if not $self}}<form id="user-change-{{.ID}}" method="post" action="/users/change"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"></form>{{end}}
@@ -46,12 +57,22 @@
 <span data-enabled-label>{{if .Enabled}}{{t "Активен"}}{{else}}{{t "Отключён"}}{{end}}</span>
 </label>
 </td>
+<td>
+<div class="pw-cell">
+<div class="pw-status-line">
+<span class="dot {{if $pw.Expired}}dot-error{{else if or $pw.MustChange $pw.ExpiringSoon}}dot-accent{{else}}dot-ok{{end}}"></span>
+<span class="{{if $pw.Expired}}pw-status-bad{{else if or $pw.MustChange $pw.ExpiringSoon}}pw-status-warn{{else}}pw-status-ok{{end}}">{{passwordStatusLabel $pw}}</span>
+</div>
+<div class="pw-sub">{{t "изменён"}} {{formatLocalDate .PasswordChangedAt}} · {{passwordRuleLabel . $.PasswordPolicy}}</div>
+</div>
+</td>
 <td class="row-actions">
 <div class="user-row-actions">
 {{if not $self}}<button form="user-change-{{.ID}}" class="btn" data-user-save="{{.ID}}" disabled>{{t "Сохранить"}}</button>{{end}}
 <button type="button" class="secondary row-menu-btn" data-row-menu popovertarget="user-menu-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-label="{{t "Дополнительные действия"}}">{{template "row_menu_icon"}}</button>
 <div id="user-menu-{{.ID}}" popover class="row-menu-popover" role="menu">
-<button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-pw-id="{{.ID}}" data-user-pw-name="{{.Username}}">{{t "Сменить пароль…"}}</button>
+<button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-pw-id="{{.ID}}" data-user-pw-name="{{.Username}}" data-user-self="{{if $self}}true{{else}}false{{end}}">{{t "Сменить пароль…"}}</button>
+<button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-expiry-id="{{.ID}}" data-user-expiry-name="{{.Username}}" data-user-expiry-mode="{{if .PasswordPolicyMode}}{{.PasswordPolicyMode}}{{else}}policy{{end}}" data-user-expiry-days="{{if gt .PasswordMaxAgeDays 0}}{{.PasswordMaxAgeDays}}{{else}}30{{end}}" data-user-expiry-must-change="{{if .MustChangePassword}}true{{else}}false{{end}}" data-user-expiry-changed="{{formatLocalDate .PasswordChangedAt}}" data-user-self="{{if $self}}true{{else}}false{{end}}">{{t "Срок действия пароля…"}}</button>
 {{if not $self}}<hr class="row-menu-sep"><button type="button" class="row-menu-item row-menu-danger" role="menuitem" data-close-popover data-user-delete-id="{{.ID}}" data-user-delete-name="{{.Username}}">{{t "Удалить"}}</button>{{end}}
 </div>
 </div>
@@ -59,12 +80,56 @@
 </tr>
 {{end}}
 <tr id="users-empty-row" hidden>
-<td colspan="4" class="muted text-center">{{t "Пользователи не найдены"}}</td>
+<td colspan="5" class="muted text-center">{{t "Пользователи не найдены"}}</td>
 </tr>
 </tbody>
 </table>
 </div>
 </section>
+
+<dialog id="password-policy-dialog" class="user-dialog" aria-labelledby="password-policy-title">
+<div class="user-dialog-head"><h2 id="password-policy-title">{{t "Общая политика паролей"}}</h2><button type="button" class="btn btn-ghost" data-close-dialog aria-label="{{t "Закрыть"}}">×</button></div>
+<p class="hint">{{t "Действует для всех локальных учётных записей с режимом «По политике». Индивидуальные правила задаются в меню ☰ строки."}}</p>
+<form method="post" action="/users/password-policy">
+<input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+<div>
+<div class="policy-field-title">{{t "Максимальный срок действия"}}</div>
+<div class="preset-row">
+<button type="button" class="preset-btn" data-policy-preset="0">{{t "Бессрочно"}}</button>
+<button type="button" class="preset-btn" data-policy-preset="30">{{t "30 дн."}}</button>
+<button type="button" class="preset-btn" data-policy-preset="60">{{t "60 дн."}}</button>
+<button type="button" class="preset-btn" data-policy-preset="90">{{t "90 дн."}}</button>
+<button type="button" class="preset-btn" data-policy-preset="180">{{t "180 дн."}}</button>
+</div>
+<label>{{t "Срок в днях (0 = бессрочно, до 3650)"}}<input type="number" name="max_age_days" min="0" max="3650" value="{{.PasswordPolicy.MaxAgeDays}}" required></label>
+</div>
+<label data-policy-warn-wrap>{{t "Предупреждать до истечения, дней (0–90)"}}<input type="number" name="warn_days" min="0" max="90" value="{{.PasswordPolicy.WarnDays}}" required><small>{{t "За столько дней пользователь увидит уведомление в шапке и в личном кабинете (0 — не предупреждать)."}}</small></label>
+<div class="user-dialog-actions">
+<button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
+<button class="btn btn-primary">{{t "Сохранить"}}</button>
+</div>
+</form>
+</dialog>
+
+<dialog id="user-expiry-dialog" class="user-dialog" aria-labelledby="user-expiry-title">
+<div class="user-dialog-head"><h2 id="user-expiry-title">{{t "Срок действия пароля"}} <span id="expiry-modal-user" class="mono"></span></h2><button type="button" class="btn btn-ghost" data-close-dialog aria-label="{{t "Закрыть"}}">×</button></div>
+<p class="hint">{{t "Пароль изменён:"}} <span id="expiry-modal-changed" class="mono"></span></p>
+<form method="post" action="/users/user-password-policy">
+<input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+<input type="hidden" name="id" id="expiry-modal-id">
+<label class="radio-card"><input type="radio" name="password_policy_mode" value="policy" checked><span><strong>{{t "По общей политике"}} ({{if gt .PasswordPolicy.MaxAgeDays 0}}{{.PasswordPolicy.MaxAgeDays}} {{t "дн."}}{{else}}{{t "бессрочно"}}{{end}})</strong><small>{{t "Использует общий срок действия, заданный для всех пользователей."}}</small></span></label>
+<label class="radio-card"><input type="radio" name="password_policy_mode" value="never"><span><strong>{{t "Бессрочный пароль"}}</strong><small>{{t "Срок действия никогда не истекает (для аварийных и сервисных учётных записей)."}}</small></span></label>
+<div class="radio-card radio-card-custom">
+<label class="radio-card-head"><input type="radio" name="password_policy_mode" value="custom"><span><strong>{{t "Свой срок (в днях)"}}</strong><small>{{t "Индивидуальный срок действия пароля только для этого пользователя."}}</small></span></label>
+<div class="radio-custom-days" data-expiry-custom-wrap hidden><input type="number" name="password_max_age_days" min="1" max="3650" value="30"><span>{{t "дней (1–3650)"}}</span></div>
+</div>
+<label class="check-block" data-expiry-must-change-wrap><input type="checkbox" name="must_change_password"><span><strong>{{t "Потребовать смену пароля при следующем входе"}}</strong><small>{{t "При следующем входе или запросе пользователь будет направлен на смену пароля."}}</small></span></label>
+<div class="user-dialog-actions">
+<button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
+<button class="btn btn-primary">{{t "Сохранить"}}</button>
+</div>
+</form>
+</dialog>
 
 <dialog id="user-create-dialog" class="user-dialog">
 <h2>{{t "Добавить пользователя"}}</h2>
@@ -73,7 +138,12 @@
 <label>{{t "Имя"}}<input name="username" pattern="^[A-Za-z0-9_.-]{3,32}$" minlength="3" maxlength="32" required autocomplete="off"></label>
 <p class="hint">{{t "От 3 до 32 символов: латиница, цифры, дефис, точка и подчёркивание."}}</p>
 <label>{{t "Пароль, от 12 символов"}}<input type="password" name="password" minlength="12" autocomplete="new-password" required data-password-generator></label>
+<div class="dialog-grid-2">
 <label>{{t "Роль"}}<select name="role"><option value="observer">{{t "Наблюдатель"}}</option><option value="operator" selected>{{t "Оператор"}}</option><option value="admin">{{t "Администратор"}}</option></select></label>
+<label>{{t "Срок действия пароля"}}<select name="password_policy_mode" data-create-policy-mode><option value="policy" selected>{{t "По политике"}}</option><option value="never">{{t "Бессрочный"}}</option><option value="custom">{{t "Свой срок (дн.)"}}</option></select></label>
+</div>
+<label data-create-custom-wrap hidden>{{t "Индивидуальный срок, дней (1–3650)"}}<input type="number" name="password_max_age_days" min="1" max="3650" value="30"></label>
+<label class="check-block"><input type="checkbox" name="must_change_password" checked><span><strong>{{t "Потребовать смену пароля при следующем входе"}}</strong><small>{{t "Пользователь сменит временный пароль сразу после авторизации."}}</small></span></label>
 <div class="user-dialog-actions">
 <button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
 <button class="btn btn-primary" disabled>{{t "Создать"}}</button>
@@ -88,6 +158,7 @@
 <input type="hidden" name="id" id="pw-modal-id">
 <label>{{t "Новый пароль, от 12 символов"}}<input name="password" type="password" minlength="12" autocomplete="new-password" required data-password-generator></label>
 <p class="hint">{{t "Сеансы пользователя на всех устройствах будут завершены."}}</p>
+<label class="check-block" data-pw-must-change-wrap><input type="checkbox" name="must_change_password" checked><span><strong>{{t "Потребовать смену пароля при следующем входе"}}</strong><small>{{t "Включено по умолчанию для выдачи временного пароля. Снимите, если пароль постоянный."}}</small></span></label>
 <div class="user-dialog-actions">
 <button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
 <button class="btn btn-primary" disabled>{{t "Сменить пароль"}}</button>

@@ -49,6 +49,19 @@ func (a authOnlyStore) Users(context.Context) ([]User, error) {
 func (a authOnlyStore) DeleteUser(context.Context, int64, int64) (string, error) {
 	return "", nil
 }
+func (a authOnlyStore) CreateUserWithPolicy(context.Context, string, string, string, string, int, bool) error {
+	return nil
+}
+func (a authOnlyStore) ResetPasswordWithOptions(context.Context, int64, string, bool) error {
+	return nil
+}
+func (a authOnlyStore) PasswordPolicy(context.Context) (PasswordPolicy, error) {
+	return PasswordPolicy{WarnDays: defaultWarnDays}, nil
+}
+func (a authOnlyStore) SetPasswordPolicy(context.Context, PasswordPolicy) error { return nil }
+func (a authOnlyStore) SetUserPasswordPolicy(context.Context, int64, int64, string, int, *bool) error {
+	return nil
+}
 
 func TestServerRedirectsAnonymousDashboard(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}

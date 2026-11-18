@@ -83,7 +83,7 @@ func samplePageDataBase(lang string) pageData {
 }
 
 func TestEnglishPagesContainNoRussianText(t *testing.T) {
-	for _, name := range []string{"login", "installations", "installation_new", "account", "events", "network", "network_preview", "menu", "users", "audit", "images", "answers", "storages", "drivers", "machine", "machines", "system", "search"} {
+	for _, name := range []string{"login", "change_password", "installations", "installation_new", "account", "events", "network", "network_preview", "menu", "users", "audit", "images", "answers", "storages", "drivers", "machine", "machines", "system", "search"} {
 		for _, data := range []pageData{samplePageData(langEN), {Lang: langEN, Info: requestContext{User: User{ID: 1, Role: "observer", Language: langEN}}}} {
 			res := httptest.NewRecorder()
 			render(res, name, data)

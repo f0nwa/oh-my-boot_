@@ -87,6 +87,8 @@ type pageData struct {
 	Lang                  string
 	Message               string
 	Error                 string
+	PasswordPolicy        PasswordPolicy
+	NowTime               time.Time
 	BootStatus            string
 	AgentStatus           string
 	BootOK                bool
@@ -209,13 +211,13 @@ func parsePages(lang string) *template.Template {
 		"storageKind":        storageKindLabel,
 		"storageKindDisplay": storageKindDisplay,
 		"storageState":       storageStateLabel,
-		"roleLabel":       roleLabel,
-		"roleDescription": roleDescription,
-		"t":               func(text string) string { return translate(lang, text) },
-		"lang":            func() string { return lang },
-		"theme":           normalizeTheme,
-		"nav":             navigation,
-		"subnav":          subnav,
+		"roleLabel":          roleLabel,
+		"roleDescription":    roleDescription,
+		"t":                  func(text string) string { return translate(lang, text) },
+		"lang":               func() string { return lang },
+		"theme":              normalizeTheme,
+		"nav":                navigation,
+		"subnav":             subnav,
 		"formHas": func(form url.Values, key, value string) bool {
 			for _, v := range form[key] {
 				if v == value {
@@ -254,16 +256,43 @@ func parsePages(lang string) *template.Template {
 			}
 			return string(b)
 		},
-		"answerCheckSummary":      answerCheckCellSummary,
-		"answerCheckMap":          answerCheckProfileMap,
-		"readyWindowsAnswers":     filterReadyWindowsAnswers,
-		"validatedUbuntuAnswers":  filterValidatedUbuntuAutoinstalls,
-		"bootChoicesForPage":      filterBootChoicesForPage,
-		"stepMoreCount":           func(total, limit int) int { if total > limit { return total - limit }; return 0 },
-		"compatResult":            EvaluateWindowsAnswerCompatibility,
-		"compatSummaryText":       func(c CompatibilityResult) string { return compatSummaryLabel(lang, c) },
-		"selectedAnswerCompat":    selectedAnswerCompatibility,
-		"chipText":                func(s string) string { return chipText(lang, s) },
+		"answerCheckSummary":     answerCheckCellSummary,
+		"answerCheckMap":         answerCheckProfileMap,
+		"readyWindowsAnswers":    filterReadyWindowsAnswers,
+		"validatedUbuntuAnswers": filterValidatedUbuntuAutoinstalls,
+		"bootChoicesForPage":     filterBootChoicesForPage,
+		"stepMoreCount": func(total, limit int) int {
+			if total > limit {
+				return total - limit
+			}
+			return 0
+		},
+		"compatResult":         EvaluateWindowsAnswerCompatibility,
+		"compatSummaryText":    func(c CompatibilityResult) string { return compatSummaryLabel(lang, c) },
+		"selectedAnswerCompat": selectedAnswerCompatibility,
+		"chipText":             func(s string) string { return chipText(lang, s) },
+		"passwordState": func(u User, pol PasswordPolicy, now time.Time) PasswordState {
+			if now.IsZero() {
+				now = time.Now()
+			}
+			return EvaluatePasswordState(u, pol, now)
+		},
+		"passwordStatusLabel":   func(st PasswordState) string { return formatPasswordStatusLabel(lang, st) },
+		"passwordRuleLabel":     func(u User, pol PasswordPolicy) string { return formatPasswordRuleLabel(lang, u, pol) },
+		"passwordPolicySummary": func(pol PasswordPolicy) string { return formatPasswordPolicySummary(lang, pol) },
+		"passwordWarnMessage":   func(st PasswordState) string { return formatPasswordWarnMessage(lang, st) },
+		"formatLocalDate": func(t time.Time) string {
+			if t.IsZero() {
+				return "—"
+			}
+			return t.Local().Format("02.01.2006")
+		},
+		"formatLocalDateTime": func(t time.Time) string {
+			if t.IsZero() {
+				return "—"
+			}
+			return t.Local().Format("02.01.2006 15:04")
+		},
 	}).ParseFS(templateFS, "templates/*.html"))
 }
 

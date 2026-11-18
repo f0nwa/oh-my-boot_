@@ -10,6 +10,7 @@ import (
 var (
 	errWrongPassword = errors.New("wrong current password")
 	errShortPassword = errors.New("password must have at least 12 characters")
+	errSamePassword  = errors.New("new password must differ from current")
 )
 
 //go:embed password.js
@@ -26,9 +27,27 @@ func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
 	render(w, "account", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)})
 }
 
+// changePasswordPage renders the isolated mandatory password change screen.
+func (s *Server) changePasswordPage(w http.ResponseWriter, r *http.Request) {
+	info := requestInfo(r)
+	if !info.PasswordState.RequiresChange() {
+		http.Redirect(w, r, "/account", http.StatusSeeOther)
+		return
+	}
+	render(w, "change_password", pageData{Info: info, Error: pageError(r)})
+}
+
+func (s *Server) changePasswordSubmit(w http.ResponseWriter, r *http.Request) {
+	s.handleOwnPasswordUpdate(w, r, "/")
+}
+
 // accountPassword changes the signed-in user's own password. The current
 // password is required, and the user's other sessions are ended.
 func (s *Server) accountPassword(w http.ResponseWriter, r *http.Request) {
+	s.handleOwnPasswordUpdate(w, r, "/account?message=Пароль+изменён")
+}
+
+func (s *Server) handleOwnPasswordUpdate(w http.ResponseWriter, r *http.Request, redirectTo string) {
 	info := requestInfo(r)
 	next := r.FormValue("new_password")
 	if next != r.FormValue("confirm_password") {
@@ -44,6 +63,9 @@ func (s *Server) accountPassword(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, errWrongPassword):
 		_ = s.Store.Audit(r.Context(), info.User.ID, "account.password", "error", "wrong current password")
 		http.Error(w, "Текущий пароль неверен", http.StatusBadRequest)
+	case errors.Is(err, errSamePassword):
+		_ = s.Store.Audit(r.Context(), info.User.ID, "account.password", "error", "same password")
+		http.Error(w, "Новый пароль не должен совпадать с текущим", http.StatusBadRequest)
 	case errors.Is(err, errShortPassword):
 		http.Error(w, "Новый пароль должен содержать не меньше 12 символов", http.StatusBadRequest)
 	case err != nil:
@@ -51,6 +73,6 @@ func (s *Server) accountPassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось сменить пароль", http.StatusServiceUnavailable)
 	default:
 		_ = s.Store.Audit(r.Context(), info.User.ID, "account.password", "ok", "")
-		http.Redirect(w, r, "/account?message=Пароль+изменён", http.StatusSeeOther)
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 	}
 }

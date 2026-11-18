@@ -48,8 +48,12 @@
 </td>
 <td class="row-actions">
 <div class="user-row-actions">
-<button type="button" class="btn" data-user-pw-id="{{.ID}}" data-user-pw-name="{{.Username}}">{{t "Сменить пароль"}}</button>
-{{if not $self}}<button form="user-change-{{.ID}}" class="btn" data-user-save="{{.ID}}">{{t "Сохранить"}}</button><button type="button" class="secondary row-menu-btn" data-row-menu popovertarget="user-menu-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-label="{{t "Дополнительные действия"}}">{{template "row_menu_icon"}}</button><div id="user-menu-{{.ID}}" popover class="row-menu-popover" role="menu"><button type="button" class="row-menu-item row-menu-danger" role="menuitem" data-close-popover data-user-delete-id="{{.ID}}" data-user-delete-name="{{.Username}}">{{t "Удалить"}}</button></div>{{end}}
+{{if not $self}}<button form="user-change-{{.ID}}" class="btn" data-user-save="{{.ID}}" disabled>{{t "Сохранить"}}</button>{{end}}
+<button type="button" class="secondary row-menu-btn" data-row-menu popovertarget="user-menu-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-label="{{t "Дополнительные действия"}}">{{template "row_menu_icon"}}</button>
+<div id="user-menu-{{.ID}}" popover class="row-menu-popover" role="menu">
+<button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-pw-id="{{.ID}}" data-user-pw-name="{{.Username}}">{{t "Сменить пароль…"}}</button>
+{{if not $self}}<hr class="row-menu-sep"><button type="button" class="row-menu-item row-menu-danger" role="menuitem" data-close-popover data-user-delete-id="{{.ID}}" data-user-delete-name="{{.Username}}">{{t "Удалить"}}</button>{{end}}
+</div>
 </div>
 </td>
 </tr>

@@ -840,6 +840,7 @@ var englishMessages = map[string]string{
 	"Пароли не совпадают":                         "Passwords do not match",
 	"Повторите новый пароль":                      "Repeat new password",
 	"Сменить пароль":                              "Change password",
+	"Сменить пароль…":                             "Change password…",
 	"Сменить пароль и завершить его сеансы":       "Change password and end the user's sessions",
 	"Смонтированный каталог":                      "Mounted directory",
 	"Сначала подготовьте профиль ISO":             "Prepare the ISO profile first",

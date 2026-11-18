@@ -58,7 +58,7 @@
   // Initial count update on load
   filterUsers();
 
-  // Track initial values of each row to highlight Save button when modified
+  // Track initial values of each row to highlight and enable Save button when modified
   var initialStates = {};
   function recordInitialStates() {
     document.querySelectorAll('tr[data-user-row]').forEach(function (row) {
@@ -66,11 +66,16 @@
       if (!id) return;
       var roleSelect = document.querySelector('select[name="role"][form="user-change-' + id + '"]');
       var enabledInput = document.querySelector('input[name="enabled"][form="user-change-' + id + '"]');
+      var saveBtn = document.querySelector('button[data-user-save="' + id + '"]') || document.querySelector('button[form="user-change-' + id + '"]');
       if (roleSelect && enabledInput && !roleSelect.disabled && !enabledInput.disabled) {
         initialStates[id] = {
           role: roleSelect.value,
           enabled: enabledInput.checked
         };
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.classList.remove('btn-primary');
+        }
       }
     });
   }
@@ -85,12 +90,27 @@
     if (!roleSelect || !enabledInput || !saveBtn) return;
 
     var isDirty = (roleSelect.value !== init.role) || (enabledInput.checked !== init.enabled);
+    saveBtn.disabled = !isDirty;
     if (isDirty) {
       saveBtn.classList.add('btn-primary');
     } else {
       saveBtn.classList.remove('btn-primary');
     }
   }
+
+  document.addEventListener('submit', function (event) {
+    var form = event.target;
+    if (!form || !form.id) return;
+    var match = form.id.match(/^user-change-(\d+)$/);
+    if (match) {
+      var id = match[1];
+      updateRowDirty(id);
+      var saveBtn = document.querySelector('button[data-user-save="' + id + '"]') || document.querySelector('button[form="user-change-' + id + '"]');
+      if (saveBtn && saveBtn.disabled) {
+        event.preventDefault();
+      }
+    }
+  });
 
   document.addEventListener('change', function (event) {
     var target = event.target;

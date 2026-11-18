@@ -26,7 +26,7 @@ func TestUsersScriptEndpoint(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, expected := range []string{"user-search", "user-password-dialog"} {
+	for _, expected := range []string{"user-search", "user-password-dialog", "updateRowDirty", "saveBtn.disabled = !isDirty"} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("users.js does not contain expected identifier %q", expected)
 		}
@@ -164,13 +164,16 @@ func TestUsersPageProtectsCurrentUserRow(t *testing.T) {
 			`data-user-pw-id="1"`,
 			`id="user-change-2"`,
 			`data-user-save="2"`,
+			`<button form="user-change-2" class="btn" data-user-save="2" disabled>`,
+			`popovertarget="user-menu-1"`,
+			`popovertarget="user-menu-2"`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("users (%s) lacks %q", tc.lang, want)
 			}
 		}
-		if strings.Contains(body, `id="user-change-1"`) || strings.Contains(body, `data-user-save="1"`) || strings.Contains(body, `popovertarget="user-menu-1"`) || strings.Contains(body, `data-user-delete-id="1"`) {
-			t.Errorf("users (%s) must not render change form, Save button or delete menu for current user", tc.lang)
+		if strings.Contains(body, `id="user-change-1"`) || strings.Contains(body, `data-user-save="1"`) || strings.Contains(body, `data-user-delete-id="1"`) {
+			t.Errorf("users (%s) must not render change form, Save button or delete action for current user", tc.lang)
 		}
 		selfStart := strings.Index(body, `data-user-id="1"`)
 		selfEnd := strings.Index(body, `data-user-id="2"`)
@@ -186,6 +189,9 @@ func TestUsersPageProtectsCurrentUserRow(t *testing.T) {
 	css, _ := templateFS.ReadFile("templates/style.css")
 	if !strings.Contains(string(css), ".user-table td small{display:inline") {
 		t.Errorf("stylesheet must keep user id and badge inline in .user-table")
+	}
+	if !strings.Contains(string(css), ".user-row-actions button:disabled") {
+		t.Errorf("stylesheet must define disabled state for .user-row-actions buttons")
 	}
 }
 

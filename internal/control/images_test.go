@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -47,17 +48,17 @@ func (f *fakeImagesAPI) Scan(_ context.Context, id int64) error {
 func (f *fakeImagesAPI) CreateSMB(context.Context, images.ManagedStorageInput) (images.Storage, error) {
 	return images.Storage{}, f.err
 }
-func (f *fakeImagesAPI) MarkSMBError(context.Context, int64) error        { return f.err }
-func (f *fakeImagesAPI) MarkSMBScanError(context.Context, int64) error    { return f.err }
-func (f *fakeImagesAPI) DeleteSMB(context.Context, int64) error           { return f.err }
+func (f *fakeImagesAPI) MarkSMBError(context.Context, int64) error     { return f.err }
+func (f *fakeImagesAPI) MarkSMBScanError(context.Context, int64) error { return f.err }
+func (f *fakeImagesAPI) DeleteSMB(context.Context, int64) error        { return f.err }
 func (f *fakeImagesAPI) CreateNFS(context.Context, images.NFSStorageInput) (images.Storage, error) {
 	return images.Storage{}, f.err
 }
 func (f *fakeImagesAPI) UpdateNFSVersion(context.Context, int64, string) error { return f.err }
-func (f *fakeImagesAPI) SetNFSUploads(context.Context, int64, bool) error     { return f.err }
-func (f *fakeImagesAPI) MarkNFSError(context.Context, int64) error            { return f.err }
-func (f *fakeImagesAPI) MarkNFSScanError(context.Context, int64) error        { return f.err }
-func (f *fakeImagesAPI) DeleteNFS(context.Context, int64) error               { return f.err }
+func (f *fakeImagesAPI) SetNFSUploads(context.Context, int64, bool) error      { return f.err }
+func (f *fakeImagesAPI) MarkNFSError(context.Context, int64) error             { return f.err }
+func (f *fakeImagesAPI) MarkNFSScanError(context.Context, int64) error         { return f.err }
+func (f *fakeImagesAPI) DeleteNFS(context.Context, int64) error                { return f.err }
 func (f *fakeImagesAPI) RenameStorage(_ context.Context, id int64, name string) error {
 	if f.err != nil {
 		return f.err
@@ -179,8 +180,9 @@ func TestImagesScanRoleAndCSRF(t *testing.T) {
 }
 
 func TestImagesScanAuditsAcceptedRequestNotCompletion(t *testing.T) {
+	catalog := images.Catalog{Storages: []images.Storage{{ID: 5, Name: "NAS-Archive", State: "ready"}}}
 	store := &auditRecordingStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "operator", Enabled: true}}}
-	s := &Server{Store: store, Images: &fakeImagesAPI{}}
+	s := &Server{Store: store, Images: &fakeImagesAPI{catalog: catalog}}
 	req := httptest.NewRequest("POST", "/images/scan", strings.NewReader("id=5&csrf="+CSRFToken("test-token")))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
@@ -188,5 +190,12 @@ func TestImagesScanAuditsAcceptedRequestNotCompletion(t *testing.T) {
 	s.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusSeeOther || store.action != "images.scan.requested" || store.result != "accepted" {
 		t.Fatalf("status=%d audit=%s/%s", res.Code, store.action, store.result)
+	}
+	loc, _ := url.Parse(res.Header().Get("Location"))
+	if got, want := loc.Query().Get("message"), "Сканирование хранилища «NAS-Archive» запущено"; got != want {
+		t.Fatalf("message=%q, want %q", got, want)
+	}
+	if got := translate(langEN, loc.Query().Get("message")); got != "Scanning storage “NAS-Archive” started" {
+		t.Fatalf("english message=%q", got)
 	}
 }

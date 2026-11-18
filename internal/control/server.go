@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -585,15 +586,17 @@ func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверное хранилище", http.StatusBadRequest)
 		return
 	}
-	if s.NFS != nil {
-		if catalog, err := s.Images.Catalog(r.Context()); err == nil {
-			for _, st := range catalog.Storages {
-				if st.ID == id && st.Kind == "nfs" {
+	var storageName string
+	if catalog, err := s.Images.Catalog(r.Context()); err == nil {
+		for _, st := range catalog.Storages {
+			if st.ID == id {
+				storageName = st.Name
+				if s.NFS != nil && st.Kind == "nfs" {
 					if writable, err := s.NFS.CheckNFSUpload(r.Context(), st.Key); err == nil {
 						_ = s.Images.SetNFSUploads(r.Context(), st.ID, writable)
 					}
-					break
 				}
+				break
 			}
 		}
 	}
@@ -607,7 +610,11 @@ func (s *Server) imagesScan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось запустить сканирование", http.StatusServiceUnavailable)
 		return
 	}
-	http.Redirect(w, r, "/storages?message=Сканирование+запущено", http.StatusSeeOther)
+	msg := "Сканирование запущено"
+	if storageName != "" {
+		msg = fmt.Sprintf("Сканирование хранилища «%s» запущено", storageName)
+	}
+	http.Redirect(w, r, "/storages?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {

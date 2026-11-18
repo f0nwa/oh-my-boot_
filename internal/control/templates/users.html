@@ -49,7 +49,7 @@
 <td class="row-actions">
 <div class="user-row-actions">
 <button type="button" class="btn" data-user-pw-id="{{.ID}}" data-user-pw-name="{{.Username}}">{{t "Сменить пароль"}}</button>
-{{if not $self}}<button form="user-change-{{.ID}}" class="btn" data-user-save="{{.ID}}">{{t "Сохранить"}}</button>{{end}}
+{{if not $self}}<button form="user-change-{{.ID}}" class="btn" data-user-save="{{.ID}}">{{t "Сохранить"}}</button><button type="button" class="secondary row-menu-btn" data-row-menu popovertarget="user-menu-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-label="{{t "Дополнительные действия"}}">{{template "row_menu_icon"}}</button><div id="user-menu-{{.ID}}" popover class="row-menu-popover" role="menu"><button type="button" class="row-menu-item row-menu-danger" role="menuitem" data-close-popover data-user-delete-id="{{.ID}}" data-user-delete-name="{{.Username}}">{{t "Удалить"}}</button></div>{{end}}
 </div>
 </td>
 </tr>
@@ -86,6 +86,19 @@
 <div class="user-dialog-actions">
 <button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
 <button class="btn btn-primary">{{t "Сменить пароль"}}</button>
+</div>
+</form>
+</dialog>
+
+<dialog id="user-delete-dialog" class="user-dialog user-delete-dialog" aria-labelledby="user-delete-title">
+<div class="user-dialog-head"><h2 id="user-delete-title">{{t "Удалить пользователя"}} <span id="delete-modal-user" class="mono"></span>?</h2><button type="button" class="btn btn-ghost" data-close-dialog aria-label="{{t "Закрыть"}}">×</button></div>
+<p class="hint">{{t "Учётная запись будет удалена, а активные сеансы пользователя на всех устройствах немедленно завершатся. История его действий в журнале аудита сохранится."}}</p>
+<form method="post" action="/users/delete">
+<input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+<input type="hidden" name="id" id="delete-modal-id">
+<div class="user-dialog-actions">
+<button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
+<button class="btn btn-danger">{{t "Удалить"}}</button>
 </div>
 </form>
 </dialog>

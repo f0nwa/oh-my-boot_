@@ -623,7 +623,7 @@ td .mono.muted{color:var(--muted)}
 .user-table td select:disabled,.user-table td label.check:has(input:disabled){opacity:.55;cursor:not-allowed}
 .user-table td label.check{display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0}
 .user-row-actions{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end}
-.user-row-actions button{min-height:28px;padding:0 10px;margin-top:0}
+.user-row-actions button:not(.row-menu-btn){min-height:28px;padding:0 10px;margin-top:0}
 .user-actions-th{text-align:right}
 
 .user-dialog{width:min(480px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:24px;border:1px solid var(--line-strong);border-radius:10px;background:var(--panel);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.35);word-break:normal;overflow:auto}
@@ -703,8 +703,8 @@ td .mono.muted{color:var(--muted)}
 /* Align answer file actions with their row contents. */
 .answers-table td{vertical-align:middle}
 .answers-table .answer-actions{text-align:right}
-.answer-delete-dialog,.image-delete-dialog,.image-migrate-dialog,.download-delete-dialog,.storage-delete-dialog{width:min(460px,calc(100vw - 32px));text-align:left;white-space:normal}
-.answer-delete-dialog .user-dialog-actions,.image-delete-dialog .user-dialog-actions,.image-migrate-dialog .user-dialog-actions,.download-delete-dialog .user-dialog-actions,.storage-delete-dialog .user-dialog-actions{flex-wrap:wrap}
+.answer-delete-dialog,.image-delete-dialog,.image-migrate-dialog,.download-delete-dialog,.storage-delete-dialog,.user-delete-dialog{width:min(460px,calc(100vw - 32px));text-align:left;white-space:normal}
+.answer-delete-dialog .user-dialog-actions,.image-delete-dialog .user-dialog-actions,.image-migrate-dialog .user-dialog-actions,.download-delete-dialog .user-dialog-actions,.storage-delete-dialog .user-dialog-actions,.user-delete-dialog .user-dialog-actions{flex-wrap:wrap}
 .image-migrate-file{margin:4px 0 16px;word-break:break-all;font-size:13px;color:var(--text)}
 .migrate-meta{margin-bottom:16px;padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:6px}
 .migrate-meta .kv{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:6px}

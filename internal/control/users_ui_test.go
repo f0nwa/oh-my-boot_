@@ -70,6 +70,10 @@ func TestUsersPageToolbarAndTable(t *testing.T) {
 		`/users/change`,
 		`action="/users/create"`,
 		`action="/users/reset-password"`,
+		`action="/users/delete"`,
+		`popovertarget="user-menu-2"`,
+		`data-user-delete-id="2"`,
+		`data-user-delete-name="viewer"`,
 	}
 	for _, sel := range requiredSelectors {
 		if !strings.Contains(body, sel) {
@@ -89,6 +93,9 @@ func TestUsersPageModals(t *testing.T) {
 	modalRequirements := []string{
 		`id="user-create-dialog"`,
 		`id="user-password-dialog"`,
+		`id="user-delete-dialog"`,
+		`id="delete-modal-user"`,
+		`id="delete-modal-id"`,
 		`class="user-dialog"`,
 		`data-close-dialog`,
 		`src="/assets/users.js"`,
@@ -108,10 +115,12 @@ func TestUsersPageModals(t *testing.T) {
 
 type userChangeMockStore struct {
 	authOnlyStore
-	users     []User
-	called    bool
-	lastErr   error
-	audits    []string
+	users       []User
+	called      bool
+	deletedID   int64
+	deletedName string
+	lastErr     error
+	audits      []string
 }
 
 func (s *userChangeMockStore) Users(context.Context) ([]User, error) {
@@ -121,6 +130,15 @@ func (s *userChangeMockStore) Users(context.Context) ([]User, error) {
 func (s *userChangeMockStore) ChangeUser(context.Context, int64, int64, string, bool) error {
 	s.called = true
 	return s.lastErr
+}
+
+func (s *userChangeMockStore) DeleteUser(_ context.Context, id, _ int64) (string, error) {
+	s.called = true
+	s.deletedID = id
+	if s.lastErr != nil {
+		return "", s.lastErr
+	}
+	return s.deletedName, nil
 }
 
 func (s *userChangeMockStore) Audit(_ context.Context, _ int64, action, result, detail string) error {
@@ -151,8 +169,8 @@ func TestUsersPageProtectsCurrentUserRow(t *testing.T) {
 				t.Errorf("users (%s) lacks %q", tc.lang, want)
 			}
 		}
-		if strings.Contains(body, `id="user-change-1"`) || strings.Contains(body, `data-user-save="1"`) {
-			t.Errorf("users (%s) must not render change form or Save button for current user", tc.lang)
+		if strings.Contains(body, `id="user-change-1"`) || strings.Contains(body, `data-user-save="1"`) || strings.Contains(body, `popovertarget="user-menu-1"`) || strings.Contains(body, `data-user-delete-id="1"`) {
+			t.Errorf("users (%s) must not render change form, Save button or delete menu for current user", tc.lang)
 		}
 		selfStart := strings.Index(body, `data-user-id="1"`)
 		selfEnd := strings.Index(body, `data-user-id="2"`)
@@ -217,6 +235,91 @@ func TestUserChangeBlocksSelfDemotionAndDisable(t *testing.T) {
 		(&Server{Store: store}).Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/users/change", url.Values{"id": {"2"}, "role": {"operator"}, "enabled": {"on"}}))
 		if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "You cannot disable or demote the last administrator") {
 			t.Fatalf("last admin alert: %d %s", res.Code, res.Body.String())
+		}
+	})
+}
+
+func TestUserDeleteHandler(t *testing.T) {
+	admin := User{ID: 1, Username: "vlad", Role: "admin", Enabled: true, Language: langRU}
+	other := User{ID: 2, Username: "op", Role: "operator", Enabled: true}
+
+	t.Run("success", func(t *testing.T) {
+		store := &userChangeMockStore{
+			authOnlyStore: authOnlyStore{user: admin},
+			users:         []User{admin, other},
+			deletedName:   "op",
+		}
+		res := httptest.NewRecorder()
+		(&Server{Store: store}).Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/users/delete", url.Values{"id": {"2"}}))
+		if res.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want 303: %s", res.Code, res.Body.String())
+		}
+		loc, _ := url.QueryUnescape(res.Header().Get("Location"))
+		if loc != "/users?message=Пользователь «op» удалён" {
+			t.Fatalf("location = %q", loc)
+		}
+		if store.deletedID != 2 {
+			t.Fatalf("deletedID = %d, want 2", store.deletedID)
+		}
+		if len(store.audits) == 0 || store.audits[0] != "user.delete|ok|id=2 username=op" {
+			t.Fatalf("audits = %v", store.audits)
+		}
+	})
+
+	t.Run("blocks self deletion", func(t *testing.T) {
+		store := &userChangeMockStore{
+			authOnlyStore: authOnlyStore{user: admin},
+			users:         []User{admin, other},
+		}
+		res := httptest.NewRecorder()
+		(&Server{Store: store}).Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/users/delete", url.Values{"id": {"1"}}))
+		if res.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", res.Code)
+		}
+		if store.called {
+			t.Fatalf("DeleteUser in store must not be called for self deletion")
+		}
+		if !strings.Contains(res.Body.String(), "Нельзя удалить свою учётную запись") {
+			t.Fatalf("missing self-delete error message: %s", res.Body.String())
+		}
+	})
+
+	t.Run("last admin error in English", func(t *testing.T) {
+		enAdmin := admin
+		enAdmin.Language = langEN
+		store := &userChangeMockStore{
+			authOnlyStore: authOnlyStore{user: enAdmin},
+			users:         []User{enAdmin, other},
+			lastErr:       errLastAdmin,
+		}
+		res := httptest.NewRecorder()
+		(&Server{Store: store}).Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/users/delete", url.Values{"id": {"2"}}))
+		if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "You cannot delete the last administrator") {
+			t.Fatalf("last admin delete alert: %d %s", res.Code, res.Body.String())
+		}
+	})
+
+	t.Run("user not found", func(t *testing.T) {
+		store := &userChangeMockStore{
+			authOnlyStore: authOnlyStore{user: admin},
+			users:         []User{admin},
+			lastErr:       errUserNotFound,
+		}
+		res := httptest.NewRecorder()
+		(&Server{Store: store}).Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/users/delete", url.Values{"id": {"99"}}))
+		if res.Code != http.StatusNotFound || !strings.Contains(res.Body.String(), "Пользователь не найден") {
+			t.Fatalf("not found alert: %d %s", res.Code, res.Body.String())
+		}
+	})
+
+	t.Run("operator forbidden", func(t *testing.T) {
+		store := &userChangeMockStore{
+			authOnlyStore: authOnlyStore{user: other},
+		}
+		res := httptest.NewRecorder()
+		(&Server{Store: store}).Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/users/delete", url.Values{"id": {"1"}}))
+		if res.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", res.Code)
 		}
 	})
 }

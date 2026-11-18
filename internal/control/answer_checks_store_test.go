@@ -143,3 +143,55 @@ func TestAnswerChecksMigration(t *testing.T) {
 		t.Fatalf("migration changed checks: %+v %v", got, err)
 	}
 }
+
+func TestDeleteUserPreservesAnswerChecksAndProtectsAdmins(t *testing.T) {
+	ctx := context.Background()
+	store := installationTestStore(t)
+	user, win, _, profile := answerCheckFixtures(t, store)
+
+	var adminID int64
+	if err := store.Pool.QueryRow(ctx, `INSERT INTO users(username,password_hash,role,enabled) VALUES('admin1','unused','admin',true) RETURNING id`).Scan(&adminID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Pool.Exec(ctx, `INSERT INTO sessions(token_hash,user_id,expires_at) VALUES('tok-checker',$1,now()+interval '1 hour')`, user); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveAnswerCheck(ctx, AnswerCheck{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, WindowsProfileID: profile.ID, Result: "success", UserID: user}); err != nil {
+		t.Fatal(err)
+	}
+
+	migration, err := os.ReadFile("../../deploy/sql/2026-11-18-user-delete.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := store.DeleteUser(ctx, adminID, adminID); !errors.Is(err, errSelfDelete) {
+		t.Fatalf("expected errSelfDelete, got %v", err)
+	}
+	if _, err := store.DeleteUser(ctx, adminID, user); !errors.Is(err, errLastAdmin) {
+		t.Fatalf("expected errLastAdmin when deleting sole active admin, got %v", err)
+	}
+
+	deletedName, err := store.DeleteUser(ctx, user, adminID)
+	if err != nil || deletedName != "checker" {
+		t.Fatalf("DeleteUser(checker) = %q, %v", deletedName, err)
+	}
+	if _, err := store.DeleteUser(ctx, user, adminID); !errors.Is(err, errUserNotFound) {
+		t.Fatalf("expected errUserNotFound on second delete, got %v", err)
+	}
+
+	var sessionCount int
+	if err := store.Pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE user_id=$1`, user).Scan(&sessionCount); err != nil || sessionCount != 0 {
+		t.Fatalf("sessions remaining = %d, err = %v", sessionCount, err)
+	}
+
+	checks, err := store.LatestAnswerChecksByProfile(ctx)
+	if err != nil || len(checks) != 1 || checks[0].Author != "checker" || checks[0].UserID != 0 {
+		t.Fatalf("checks after user delete = %+v, err = %v", checks, err)
+	}
+}

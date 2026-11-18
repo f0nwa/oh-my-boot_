@@ -264,7 +264,7 @@ CREATE TABLE IF NOT EXISTS answer_installation_checks (
  result TEXT NOT NULL CHECK (result IN ('success','failure')),
  machine TEXT NOT NULL DEFAULT '' CHECK (char_length(machine) <= 200),
  comment TEXT NOT NULL DEFAULT '' CHECK (char_length(comment) <= 2000),
- user_id BIGINT NOT NULL REFERENCES users(id),
+ user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
  author TEXT NOT NULL,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  CHECK (num_nonnulls(windows_answer_id,ubuntu_autoinstall_id) = 1)

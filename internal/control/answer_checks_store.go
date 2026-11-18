@@ -53,7 +53,7 @@ func (s Store) SaveAnswerCheck(ctx context.Context, input AnswerCheck) error {
 	return tx.Commit(ctx)
 }
 
-const answerCheckFields = `id,CASE WHEN windows_answer_id IS NOT NULL THEN 'windows' ELSE 'ubuntu' END,COALESCE(windows_answer_id,ubuntu_autoinstall_id),COALESCE(windows_profile_id,0),profile_title,sha256,result,machine,comment,user_id,author,created_at`
+const answerCheckFields = `id,CASE WHEN windows_answer_id IS NOT NULL THEN 'windows' ELSE 'ubuntu' END,COALESCE(windows_answer_id,ubuntu_autoinstall_id),COALESCE(windows_profile_id,0),profile_title,sha256,result,machine,comment,COALESCE(user_id,0),author,created_at`
 
 func scanAnswerChecks(rows pgx.Rows) ([]AnswerCheck, error) {
 	defer rows.Close()

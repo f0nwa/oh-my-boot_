@@ -37,6 +37,7 @@ type Storage interface {
 	Users(context.Context) ([]User, error)
 	CreateUser(context.Context, string, string, string) error
 	ChangeUser(context.Context, int64, int64, string, bool) error
+	DeleteUser(context.Context, int64, int64) (string, error)
 	ResetPassword(context.Context, int64, string) error
 	MenuVersions(context.Context) ([]MenuVersion, error)
 	MenuByID(context.Context, int64) (MenuVersion, error)
@@ -302,6 +303,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /users", s.protect("users", s.usersPage))
 	mux.HandleFunc("POST /users/create", s.protect("users", s.userCreate))
 	mux.HandleFunc("POST /users/change", s.protect("users", withPageErrors(s.usersPage, s.userChange)))
+	mux.HandleFunc("POST /users/delete", s.protect("users", withPageErrors(s.usersPage, s.userDelete)))
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
@@ -689,6 +691,49 @@ func (s *Server) userChange(w http.ResponseWriter, r *http.Request) {
 		msg = fmt.Sprintf("Пользователь «%s» обновлён", username)
 	}
 	http.Redirect(w, r, "/users?message="+url.QueryEscape(msg), 303)
+}
+
+func (s *Server) userDelete(w http.ResponseWriter, r *http.Request) {
+	info := requestInfo(r)
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, "Неверный ID", http.StatusBadRequest)
+		return
+	}
+	if id == info.User.ID {
+		_ = s.Store.Audit(r.Context(), info.User.ID, "user.delete", "error", fmt.Sprintf("id=%d self", id))
+		http.Error(w, "Нельзя удалить свою учётную запись", http.StatusBadRequest)
+		return
+	}
+	username, err := s.Store.DeleteUser(r.Context(), id, info.User.ID)
+	result := "ok"
+	detail := fmt.Sprintf("id=%d", id)
+	if err != nil {
+		result = "error"
+	} else if username != "" {
+		detail = fmt.Sprintf("id=%d username=%s", id, username)
+	}
+	_ = s.Store.Audit(r.Context(), info.User.ID, "user.delete", result, detail)
+	switch {
+	case errors.Is(err, errSelfDelete):
+		http.Error(w, "Нельзя удалить свою учётную запись", http.StatusBadRequest)
+		return
+	case errors.Is(err, errLastAdmin):
+		http.Error(w, "Нельзя удалить последнего администратора", http.StatusBadRequest)
+		return
+	case errors.Is(err, errUserNotFound):
+		http.Error(w, "Пользователь не найден", http.StatusNotFound)
+		return
+	case err != nil:
+		http.Error(w, "Не удалось удалить пользователя: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.InvalidateResourceAuthorsCache()
+	msg := "Пользователь удалён"
+	if username != "" {
+		msg = fmt.Sprintf("Пользователь «%s» удалён", username)
+	}
+	http.Redirect(w, r, "/users?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {

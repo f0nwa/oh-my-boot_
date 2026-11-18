@@ -5,6 +5,7 @@
   var countEl = document.getElementById('user-count');
   var pwDialog = document.getElementById('user-password-dialog');
   var createDialog = document.getElementById('user-create-dialog');
+  var deleteDialog = document.getElementById('user-delete-dialog');
 
   function filterUsers() {
     var query = (searchInput ? searchInput.value : '').toLowerCase().trim();
@@ -183,6 +184,24 @@
       return;
     }
 
+    // Delete user modal trigger
+    var delBtn = event.target.closest('[data-user-delete-id]');
+    if (delBtn && deleteDialog && typeof deleteDialog.showModal === 'function') {
+      event.preventDefault();
+      var delId = delBtn.getAttribute('data-user-delete-id') || '';
+      var delName = delBtn.getAttribute('data-user-delete-name') || '';
+      var delIdInput = deleteDialog.querySelector('input[name="id"]');
+      if (delIdInput) {
+        delIdInput.value = delId;
+      }
+      var delUserSpan = deleteDialog.querySelector('#delete-modal-user');
+      if (delUserSpan) {
+        delUserSpan.textContent = delName ? (delName + ' (#' + delId + ')') : ('#' + delId);
+      }
+      deleteDialog.showModal();
+      return;
+    }
+
     // Close buttons [data-close-dialog]
     var closeBtn = event.target.closest('[data-close-dialog]');
     if (closeBtn) {
@@ -201,7 +220,7 @@
   });
 
   // Direct click listener for dialog backdrop close
-  [pwDialog, createDialog].forEach(function (dialog) {
+  [pwDialog, createDialog, deleteDialog].forEach(function (dialog) {
     if (!dialog) return;
     dialog.addEventListener('click', function (event) {
       if (event.target === dialog && typeof dialog.close === 'function') {

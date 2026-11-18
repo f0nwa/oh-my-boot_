@@ -46,6 +46,9 @@ func (a authOnlyStore) DriverPackages(context.Context) ([]DriverPackage, error) 
 func (a authOnlyStore) Users(context.Context) ([]User, error) {
 	return nil, nil
 }
+func (a authOnlyStore) DeleteUser(context.Context, int64, int64) (string, error) {
+	return "", nil
+}
 
 func TestServerRedirectsAnonymousDashboard(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}

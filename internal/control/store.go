@@ -217,9 +217,52 @@ func (s Store) CreateUser(ctx context.Context, username, password, role string) 
 }
 
 var (
-	errSelfDemote = errors.New("cannot remove your own administrator access")
-	errLastAdmin  = errors.New("cannot disable the last administrator")
+	errSelfDemote   = errors.New("cannot remove your own administrator access")
+	errSelfDelete   = errors.New("cannot delete your own account")
+	errLastAdmin    = errors.New("cannot disable the last administrator")
+	errUserNotFound = errors.New("user not found")
 )
+
+func (s Store) DeleteUser(ctx context.Context, id, actorID int64) (string, error) {
+	if id <= 0 {
+		return "", fmt.Errorf("invalid user id")
+	}
+	if id == actorID {
+		return "", errSelfDelete
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(724312)"); err != nil {
+		return "", err
+	}
+	var username, role string
+	var enabled bool
+	if err := tx.QueryRow(ctx, "SELECT username,role,enabled FROM users WHERE id=$1 FOR UPDATE", id).Scan(&username, &role, &enabled); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", errUserNotFound
+		}
+		return "", err
+	}
+	if role == "admin" && enabled {
+		var count int
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM users WHERE role='admin' AND enabled").Scan(&count); err != nil {
+			return "", err
+		}
+		if count <= 1 {
+			return "", errLastAdmin
+		}
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM users WHERE id=$1", id); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return username, nil
+}
 
 func (s Store) ChangeUser(ctx context.Context, id, actorID int64, role string, enabled bool) error {
 	if !Allowed(role, "view") {

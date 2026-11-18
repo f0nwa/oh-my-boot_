@@ -61,7 +61,7 @@ type MenuVersionItem struct {
 }
 type Store struct{ Pool *pgxpool.Pool }
 
-var userNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{3,64}$`)
+var userNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{3,32}$`)
 
 func (s Store) CreateInitialAdmin(ctx context.Context, username, password string) error {
 	if !userNamePattern.MatchString(username) {

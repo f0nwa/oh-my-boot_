@@ -12,9 +12,11 @@
   var createUserInput = createDialog ? createDialog.querySelector('input[name="username"]') : null;
   var createPwInput = createDialog ? createDialog.querySelector('input[name="password"]') : null;
 
+  var USERNAME_PATTERN = /^[A-Za-z0-9_.-]{3,32}$/;
+
   function updateCreateSubmit() {
     if (!createSubmitBtn || !createUserInput || !createPwInput) return;
-    var hasUser = createUserInput.value.trim().length > 0;
+    var hasUser = USERNAME_PATTERN.test(createUserInput.value.trim());
     var hasPw = createPwInput.value.length >= 12;
     createSubmitBtn.disabled = !(hasUser && hasPw);
   }

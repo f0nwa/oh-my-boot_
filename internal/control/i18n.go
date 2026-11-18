@@ -688,6 +688,7 @@ var englishMessages = map[string]string{
 	"Опубликовать":                "Publish",
 	"Отмена":                      "Cancel",
 	"Отменить":                    "Cancel",
+	"От 3 до 32 символов: латиница, цифры, дефис, точка и подчёркивание.": "3 to 32 characters: Latin letters, digits, hyphen, dot, and underscore.",
 	"Отсутствует":                 "Missing",
 	"Очистка файлов недоступна":   "File cleanup is unavailable",
 	"Ошибка":                      "Error",

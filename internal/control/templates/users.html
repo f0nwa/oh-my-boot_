@@ -70,7 +70,8 @@
 <h2>{{t "Добавить пользователя"}}</h2>
 <form method="post" action="/users/create">
 <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
-<label>{{t "Имя"}}<input name="username" required autocomplete="off"></label>
+<label>{{t "Имя"}}<input name="username" pattern="^[A-Za-z0-9_.-]{3,32}$" minlength="3" maxlength="32" required autocomplete="off"></label>
+<p class="hint">{{t "От 3 до 32 символов: латиница, цифры, дефис, точка и подчёркивание."}}</p>
 <label>{{t "Пароль, от 12 символов"}}<input type="password" name="password" minlength="12" autocomplete="new-password" required data-password-generator></label>
 <label>{{t "Роль"}}<select name="role"><option value="observer">{{t "Наблюдатель"}}</option><option value="operator" selected>{{t "Оператор"}}</option><option value="admin">{{t "Администратор"}}</option></select></label>
 <div class="user-dialog-actions">

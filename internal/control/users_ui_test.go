@@ -131,6 +131,20 @@ func TestUsersPageModals(t *testing.T) {
 	if !strings.Contains(body, `<button class="btn btn-primary" disabled>Сменить пароль</button>`) {
 		t.Errorf("user-password-dialog submit button must have disabled attribute")
 	}
+
+	if !strings.Contains(body, `name="username" pattern="^[A-Za-z0-9_.-]{3,32}$" minlength="3" maxlength="32"`) {
+		t.Errorf("user-create-dialog username input must have pattern and length constraints")
+	}
+	if !strings.Contains(body, `От 3 до 32 символов: латиница, цифры, дефис, точка и подчёркивание.`) {
+		t.Errorf("user-create-dialog missing RU username format hint")
+	}
+
+	recEN := httptest.NewRecorder()
+	render(recEN, "users", samplePageData(langEN))
+	bodyEN := recEN.Body.String()
+	if !strings.Contains(bodyEN, `3 to 32 characters: Latin letters, digits, hyphen, dot, and underscore.`) {
+		t.Errorf("user-create-dialog missing EN username format hint: %s", bodyEN)
+	}
 }
 
 type userChangeMockStore struct {
@@ -478,8 +492,37 @@ createUserInput.value = '   ';
 createFormListeners['input']();
 assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled when username is whitespace');
 
+// Invalid username checks (forbidden characters, Cyrillic, lengths):
+createUserInput.value = 'админ'; // Cyrillic
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled for Cyrillic username');
+
+createUserInput.value = 'user name'; // space
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled for username with space');
+
+createUserInput.value = 'user@domain'; // @ forbidden
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled for username with @');
+
+createUserInput.value = 'user/admin'; // slash forbidden
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled for username with slash');
+
+createUserInput.value = 'ab'; // too short (< 3)
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled for username shorter than 3 chars');
+
+createUserInput.value = 'a'.repeat(33); // too long (> 32)
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, true, 'createSubmitBtn must be disabled for username longer than 32 chars');
+
+createUserInput.value = 'a'.repeat(32); // exactly 32 chars: valid
+createFormListeners['input']();
+assert.equal(createSubmitBtn.disabled, false, 'createSubmitBtn must be enabled for 32 chars valid username');
+
 // Restore username: becomes enabled
-createUserInput.value = 'ivan';
+createUserInput.value = 'ivan-1.dev_';
 createFormListeners['input']();
 assert.equal(createSubmitBtn.disabled, false, 'createSubmitBtn must be enabled when username restored');
 
@@ -534,5 +577,38 @@ console.log('USER_DIALOG_BUTTONS_GATE_PASS');
 	}
 	if !strings.Contains(string(out), "USER_DIALOG_BUTTONS_GATE_PASS") {
 		t.Fatalf("missing pass marker: %s", string(out))
+	}
+}
+
+func TestUserNamePatternValidation(t *testing.T) {
+	cases := []struct {
+		username string
+		valid    bool
+	}{
+		{"", false},
+		{"ab", false},
+		{"abc", true},
+		{"admin", true},
+		{"john.doe", true},
+		{"ops-team_1", true},
+		{strings.Repeat("a", 32), true},
+		{strings.Repeat("a", 33), false},
+		{"админ", false},
+		{"user name", false},
+		{"user@domain", false},
+		{"user/path", false},
+		{"user\\domain", false},
+		{"user:1", false},
+		{"user*name", false},
+		{"user?name", false},
+		{"user#1", false},
+		{"user$1", false},
+	}
+
+	for _, tc := range cases {
+		got := userNamePattern.MatchString(tc.username)
+		if got != tc.valid {
+			t.Errorf("userNamePattern.MatchString(%q) = %v; want %v", tc.username, got, tc.valid)
+		}
 	}
 }

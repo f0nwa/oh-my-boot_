@@ -57,6 +57,7 @@ type MigrationCoordinator struct {
 	windowsISO WindowsISOAPI
 	ubuntuISO  UbuntuISOAPI
 	agent      any
+	nfs        any
 	mu         *sync.Mutex
 	onRebind   func()
 }
@@ -112,6 +113,12 @@ func (c *MigrationCoordinator) CheckPreflight(ctx context.Context, sourceStorage
 	}
 	if !targetStorage.Uploads {
 		return errors.New("целевое хранилище доступно только для чтения")
+	}
+	if err := c.verifyNFSWritable(ctx, *sourceStorage, true); err != nil {
+		return err
+	}
+	if err := c.verifyNFSWritable(ctx, *targetStorage, false); err != nil {
+		return err
 	}
 
 	var sourceImage *images.Image
@@ -170,6 +177,27 @@ func (c *MigrationCoordinator) CheckPreflight(ctx context.Context, sourceStorage
 	}
 
 	return nil
+}
+
+func (c *MigrationCoordinator) verifyNFSWritable(ctx context.Context, st images.Storage, isSource bool) error {
+	if st.Kind != "nfs" || st.Key == "" || isNilProvider(c.nfs) {
+		return nil
+	}
+	checker, ok := c.nfs.(interface {
+		CheckNFSUpload(context.Context, string) (bool, error)
+	})
+	if !ok {
+		return nil
+	}
+	writable, err := checker.CheckNFSUpload(ctx, st.Key)
+	if err != nil || writable {
+		return nil
+	}
+	_ = c.images.SetNFSUploads(ctx, st.ID, false)
+	if isSource {
+		return errors.New("исходное хранилище доступно только для чтения (удаление оригинала невозможно)")
+	}
+	return errors.New("целевое хранилище доступно только для чтения")
 }
 
 func (c *MigrationCoordinator) StartMigration(ctx context.Context, user User, sourceStorageID int64, path string, targetStorageID int64) (*images.MigrationJob, error) {
@@ -361,6 +389,15 @@ func (c *MigrationCoordinator) ProcessCompletedMigration(ctx context.Context, jo
 
 func (c *MigrationCoordinator) finishDeleteSource(ctx context.Context, job *images.MigrationJob) error {
 	if err := c.images.CommitDeleteSource(ctx, job.ID); err != nil {
+		if updated, getErr := c.images.GetMigration(ctx, job.ID); getErr == nil && updated.State == "failed" {
+			errText := updated.Error
+			if errText == "" {
+				errText = err.Error()
+			}
+			if c.store.Pool != nil {
+				_, _ = c.store.Pool.Exec(ctx, `UPDATE image_migrations SET state='failed', error=$2, updated_at=NOW() WHERE id=$1`, job.ID, errText)
+			}
+		}
 		return fmt.Errorf("не удалось удалить исходный образ после перепривязки: %w", err)
 	}
 	if c.store.Pool != nil {
@@ -413,8 +450,12 @@ func (s *Server) migrationCoordinator() *MigrationCoordinator {
 		store = st
 	}
 	var agentAPI any
-	if s.Agent != nil {
+	if !isNilProvider(s.Agent) {
 		agentAPI = s.Agent
+	}
+	var nfsAPI any
+	if !isNilProvider(s.NFS) {
+		nfsAPI = s.NFS
 	}
 	return &MigrationCoordinator{
 		store:      store,
@@ -422,6 +463,7 @@ func (s *Server) migrationCoordinator() *MigrationCoordinator {
 		windowsISO: s.WindowsISO,
 		ubuntuISO:  s.UbuntuISO,
 		agent:      agentAPI,
+		nfs:        nfsAPI,
 		mu:         &s.migrationMu,
 		onRebind:   s.InvalidateResourceAuthorsCache,
 	}

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -37,11 +38,12 @@ type MigrationJob struct {
 	StartedAt        time.Time `json:"started_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 
-	cancel       context.CancelFunc
-	tempFilePath string
-	dstFinalPath string
-	srcFullPath   string
-	srcDeleteRoot string
+	cancel         context.CancelFunc
+	tempFilePath   string
+	dstFinalPath   string
+	srcFullPath    string
+	srcDeleteRoot  string
+	deleteFailures int
 }
 
 type MigrationEngine struct {
@@ -247,6 +249,11 @@ func (e *MigrationEngine) runCopy(ctx context.Context, job *MigrationJob, tempFi
 	e.mu.Unlock()
 }
 
+func (e *MigrationEngine) clearActiveLocked(job *MigrationJob) {
+	delete(e.active, fmt.Sprintf("%d:%s", job.SourceStorageID, job.Path))
+	delete(e.active, fmt.Sprintf("%d:%s", job.TargetStorageID, job.Path))
+}
+
 func (e *MigrationEngine) failJob(job *MigrationJob, errMsg string) {
 	_ = os.Remove(job.tempFilePath)
 	e.mu.Lock()
@@ -254,8 +261,7 @@ func (e *MigrationEngine) failJob(job *MigrationJob, errMsg string) {
 	job.State = "failed"
 	job.Error = errMsg
 	job.UpdatedAt = time.Now()
-	delete(e.active, fmt.Sprintf("%d:%s", job.SourceStorageID, job.Path))
-	delete(e.active, fmt.Sprintf("%d:%s", job.TargetStorageID, job.Path))
+	e.clearActiveLocked(job)
 }
 
 func (e *MigrationEngine) cancelJob(job *MigrationJob) {
@@ -264,8 +270,7 @@ func (e *MigrationEngine) cancelJob(job *MigrationJob) {
 	defer e.mu.Unlock()
 	job.State = "canceled"
 	job.UpdatedAt = time.Now()
-	delete(e.active, fmt.Sprintf("%d:%s", job.SourceStorageID, job.Path))
-	delete(e.active, fmt.Sprintf("%d:%s", job.TargetStorageID, job.Path))
+	e.clearActiveLocked(job)
 }
 
 func (e *MigrationEngine) GetMigration(id string) (*MigrationJob, bool) {
@@ -327,27 +332,37 @@ func (e *MigrationEngine) CommitDeleteSource(ctx context.Context, id string) err
 		e.mu.Unlock()
 		return fmt.Errorf("cannot commit migration in state %s", job.State)
 	}
-	e.mu.Unlock()
-
-	// 1. Delete record from catalog (ignore if a previous commit attempt already removed it)
-	if err := e.repo.DeleteImage(ctx, job.SourceStorageID, job.Path); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("failed to delete source image from catalog: %w", err)
-	}
-
-	// 2. Delete source file from filesystem
 	deletePath := job.srcFullPath
 	if job.srcDeleteRoot != "" {
 		deletePath = filepath.Join(job.srcDeleteRoot, job.Path)
 	}
+	srcStorageID, path := job.SourceStorageID, job.Path
+	e.mu.Unlock()
+
+	// 1. Delete source file from disk first so catalog stays consistent if unlink fails.
 	if err := os.Remove(deletePath); err != nil && !os.IsNotExist(err) {
+		e.mu.Lock()
+		job.deleteFailures++
+		permanent := errors.Is(err, syscall.EROFS) || errors.Is(err, os.ErrPermission) || job.deleteFailures >= 3
+		if permanent {
+			job.State = "failed"
+			job.Error = fmt.Sprintf("failed to remove source file from disk: %v", err)
+			job.UpdatedAt = time.Now()
+			e.clearActiveLocked(job)
+		}
+		e.mu.Unlock()
 		return fmt.Errorf("failed to remove source file from disk: %w", err)
+	}
+
+	// 2. Delete record from catalog (ignore if a previous commit attempt already removed it)
+	if err := e.repo.DeleteImage(ctx, srcStorageID, path); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("failed to delete source image from catalog: %w", err)
 	}
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	job.State = "completed"
 	job.UpdatedAt = time.Now()
-	delete(e.active, fmt.Sprintf("%d:%s", job.SourceStorageID, job.Path))
-	delete(e.active, fmt.Sprintf("%d:%s", job.TargetStorageID, job.Path))
+	e.clearActiveLocked(job)
 	return nil
 }

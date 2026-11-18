@@ -229,3 +229,60 @@ func TestListMigrationsSortedByStartedAt(t *testing.T) {
 		}
 	}
 }
+
+func TestCommitDeleteSourceFailsJobOnUnlinkPermissionAndUnlocksActive(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	subDir := filepath.Join(srcDir, "Win8")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	relPath := "Win8/win8.iso"
+	if err := os.WriteFile(filepath.Join(srcDir, relPath), []byte("ISO-DATA"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := &memoryMigrationRepo{
+		storages: map[int64]Storage{
+			1: {ID: 1, Kind: "local", Root: srcDir, State: "ready"},
+			2: {ID: 2, Kind: "local", Root: dstDir, State: "ready", UploadsEnabled: true},
+		},
+	}
+	engine := NewMigrationEngine(repo)
+	job, err := engine.StartMigration(context.Background(), 1, relPath, srcDir, 2, dstDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, _ := engine.GetMigration(job.ID)
+		if got.State == "ready_to_rebind" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Make source directory read-only so os.Remove fails with permission denied.
+	if err := os.Chmod(subDir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(subDir, 0755) })
+
+	if err := engine.CommitDeleteSource(context.Background(), job.ID); err == nil {
+		t.Fatal("expected CommitDeleteSource to fail on read-only source directory")
+	}
+
+	got, _ := engine.GetMigration(job.ID)
+	if got.State != "failed" {
+		t.Fatalf("expected job state 'failed' instead of sticking on %q", got.State)
+	}
+	if got.Error == "" {
+		t.Fatal("expected descriptive error on failed job")
+	}
+	if len(repo.deleted) != 0 {
+		t.Fatalf("source catalog entry must not be deleted when file removal failed, got %v", repo.deleted)
+	}
+	if len(engine.active) != 0 {
+		t.Fatalf("active migration locks must be released on failure, got %v", engine.active)
+	}
+}

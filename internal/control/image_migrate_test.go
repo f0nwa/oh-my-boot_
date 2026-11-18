@@ -552,3 +552,146 @@ func TestImageMigrationCoordinatorSerializesConcurrentRebindAndRetriesCommit(t *
 		t.Fatalf("expected invalidated ResourceAuthors cache to show author on target storage, got %+v", afterAuthors.Images)
 	}
 }
+
+type nfsUploadCheckMock struct {
+	writableByKey map[string]bool
+	checkedKeys   []string
+}
+
+func (n *nfsUploadCheckMock) MountNFS(context.Context, string, string, string, string) (bool, error) {
+	return false, nil
+}
+func (n *nfsUploadCheckMock) EnableNFSUpload(context.Context, string, string, string, string) error {
+	return nil
+}
+func (n *nfsUploadCheckMock) CheckNFSUpload(_ context.Context, key string) (bool, error) {
+	n.checkedKeys = append(n.checkedKeys, key)
+	return n.writableByKey[key], nil
+}
+func (n *nfsUploadCheckMock) RemoveNFS(context.Context, string) error { return nil }
+
+type recordingNFSUploadsImages struct {
+	migrationMockImages
+	updatedUploads map[int64]bool
+}
+
+func (m *recordingNFSUploadsImages) SetNFSUploads(_ context.Context, id int64, enabled bool) error {
+	if m.updatedUploads == nil {
+		m.updatedUploads = map[int64]bool{}
+	}
+	m.updatedUploads[id] = enabled
+	return nil
+}
+
+func TestImageMigrationPreflightRejectsStaleWritableNFS(t *testing.T) {
+	store := installationTestStore(t)
+	ctx := context.Background()
+
+	mockImg := &recordingNFSUploadsImages{
+		migrationMockImages: migrationMockImages{
+			fakeImagesAPI: fakeImagesAPI{
+				catalog: images.Catalog{
+					Storages: []images.Storage{
+						{ID: 20, Name: "NFS", Kind: "nfs", Key: "nfskey20", Root: "/mnt/omb-nfs/nfskey20", State: "ready", Uploads: true, UploadsEnabled: true},
+						{ID: 6, Name: "DSM", Kind: "smb", Key: "smbkey6", Root: "/mnt/omb-smb/smbkey6", State: "ready", Uploads: true, Free: 100 << 30},
+					},
+					Images: []images.Image{
+						{StorageID: 20, Path: "win8.iso", Size: 4 << 30, Present: true},
+					},
+				},
+			},
+		},
+	}
+	nfsMock := &nfsUploadCheckMock{writableByKey: map[string]bool{"nfskey20": false}}
+
+	s := &Server{
+		Store:  store,
+		Images: mockImg,
+		NFS:    nfsMock,
+	}
+
+	err := s.migrationCoordinator().CheckPreflight(ctx, 20, "win8.iso", 6)
+	if err == nil || !strings.Contains(err.Error(), "только для чтения") {
+		t.Fatalf("expected read-only error when live CheckNFSUpload is false, got %v", err)
+	}
+	if val, ok := mockImg.updatedUploads[20]; !ok || val {
+		t.Fatalf("expected SetNFSUploads(20, false) to sync stale DB state, got %+v", mockImg.updatedUploads)
+	}
+}
+
+type permanentFailCommitImages struct {
+	migrationMockImages
+}
+
+func (m *permanentFailCommitImages) CommitDeleteSource(_ context.Context, id string) error {
+	if j, ok := m.migrations[id]; ok {
+		j.State = "failed"
+		j.Error = "failed to remove source file from disk: read-only file system"
+	}
+	return errors.New("400 failed to remove source file from disk: read-only file system")
+}
+
+func TestImageMigrationSyncsFailedStateWhenCommitDeleteSourceFailsPermanently(t *testing.T) {
+	store := installationTestStore(t)
+	ctx := context.Background()
+
+	if err := store.CreateUser(ctx, "admin3", "AdminPass123!", "admin"); err != nil {
+		t.Fatal(err)
+	}
+	users, err := store.Users(ctx)
+	if err != nil || len(users) == 0 {
+		t.Fatal(err)
+	}
+	user := users[0]
+	_, adminToken, err := store.Login(ctx, "admin3", "AdminPass123!")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mockImg := &permanentFailCommitImages{
+		migrationMockImages: migrationMockImages{
+			fakeImagesAPI: fakeImagesAPI{
+				catalog: images.Catalog{
+					Storages: []images.Storage{
+						{ID: 20, Name: "NFS", Kind: "nfs", Root: "/mnt/omb-nfs/20", State: "ready", Uploads: true},
+						{ID: 6, Name: "DSM", Kind: "smb", Root: "/mnt/omb-smb/6", State: "ready", Uploads: true, Free: 100 << 30},
+					},
+					Images: []images.Image{
+						{StorageID: 20, Path: "win8.iso", Size: 4 << 30, Present: true},
+					},
+				},
+			},
+		},
+	}
+	s := &Server{Store: store, Images: mockImg}
+
+	job, err := s.migrationCoordinator().StartMigration(ctx, user, 20, "win8.iso", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job.State = "ready_to_rebind"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/images/migrations", nil)
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: adminToken})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+
+	var got []*images.MigrationJob
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].State != "failed" || got[0].Error == "" {
+		t.Fatalf("expected failed migration with error instead of stuck ready_to_rebind, got %+v", got)
+	}
+
+	var dbState, dbErr string
+	if err := store.Pool.QueryRow(ctx, `SELECT state, error FROM image_migrations WHERE id=$1`, job.ID).Scan(&dbState, &dbErr); err != nil {
+		t.Fatal(err)
+	}
+	if dbState != "failed" || dbErr == "" {
+		t.Fatalf("expected DB state='failed' with error, got state=%q error=%q", dbState, dbErr)
+	}
+}

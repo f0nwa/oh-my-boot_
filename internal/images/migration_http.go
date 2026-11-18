@@ -33,6 +33,10 @@ func (s *Server) startMigration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "source storage unavailable or read-only", srcStatus)
 		return
 	}
+	if !s.verifyUploadMount(srcStorage, srcUploadRoot) {
+		http.Error(w, "source upload mount unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	targetStorage, err := s.repo.Storage(r.Context(), req.TargetStorageID)
 	if err != nil {
@@ -42,6 +46,10 @@ func (s *Server) startMigration(w http.ResponseWriter, r *http.Request) {
 	targetRoot, status := s.storageUploadRoot(targetStorage)
 	if status != 0 {
 		http.Error(w, "target storage unavailable or not writable", status)
+		return
+	}
+	if !s.verifyUploadMount(targetStorage, targetRoot) {
+		http.Error(w, "target upload mount unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -61,6 +69,14 @@ func (s *Server) startMigration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(job)
+}
+
+func (s *Server) verifyUploadMount(storage Storage, uploadRoot string) bool {
+	if storage.Kind != "smb" && storage.Kind != "nfs" {
+		return true
+	}
+	_, ok := s.mountIdentity(uploadRoot)
+	return ok
 }
 
 func (s *Server) listMigrations(w http.ResponseWriter, r *http.Request) {

@@ -174,3 +174,123 @@ func (s *Server) networkApply(w http.ResponseWriter, r *http.Request) {
 	}
 	render(w, "network", data)
 }
+
+// Network comparison helpers for preview diff highlighting
+
+func (p pageData) NetworkChangedMode() bool {
+	return p.OldNetwork.Mode != p.Network.Mode
+}
+
+func (p pageData) NetworkChangedInterface() bool {
+	return p.OldNetwork.Interface != p.Network.Interface
+}
+
+func (p pageData) NetworkChangedServerIP() bool {
+	return p.OldNetwork.ServerIP != p.Network.ServerIP
+}
+
+func (p pageData) NetworkChangedSubnet() bool {
+	return p.OldNetwork.Subnet != p.Network.Subnet
+}
+
+func (p pageData) NetworkChangedUEFILoader() bool {
+	oldGrub := p.OldNetwork.UEFILoader == "grub-test"
+	newGrub := p.Network.UEFILoader == "grub-test"
+	return oldGrub != newGrub
+}
+
+func (p pageData) NetworkChangedDefaultDriver() bool {
+	oldGrub := p.OldNetwork.UEFILoader == "grub-test"
+	newGrub := p.Network.UEFILoader == "grub-test"
+	if oldGrub != newGrub {
+		return true
+	}
+	if oldGrub {
+		return false
+	}
+	oldSNP := p.OldNetwork.DefaultDriver == "snp"
+	newSNP := p.Network.DefaultDriver == "snp"
+	return oldSNP != newSNP
+}
+
+func (p pageData) NetworkChangedReuseFirmware() bool {
+	oldGrub := p.OldNetwork.UEFILoader == "grub-test"
+	newGrub := p.Network.UEFILoader == "grub-test"
+	if oldGrub != newGrub {
+		return true
+	}
+	if oldGrub {
+		return false
+	}
+	return p.OldNetwork.ReuseFirmwareNetwork != p.Network.ReuseFirmwareNetwork
+}
+
+func (p pageData) NetworkChangedWinPETimeout() bool {
+	return p.OldNetwork.EffectiveWinPETimeout() != p.Network.EffectiveWinPETimeout()
+}
+
+func (p pageData) NetworkChangedWinPERetry() bool {
+	return p.OldNetwork.EffectiveWinPERetry() != p.Network.EffectiveWinPERetry()
+}
+
+func (p pageData) NetworkChangedWinPEExitAction() bool {
+	return p.OldNetwork.EffectiveWinPEExitAction() != p.Network.EffectiveWinPEExitAction()
+}
+
+func (p pageData) NetworkChangedDHCPPool() bool {
+	return p.OldNetwork.DHCPStart != p.Network.DHCPStart || p.OldNetwork.DHCPEnd != p.Network.DHCPEnd
+}
+
+func (p pageData) NetworkChangedBootURL() bool {
+	return p.OldNetwork.BootURL != p.Network.BootURL
+}
+
+func (p pageData) NetworkChangedTFTPRoot() bool {
+	return p.OldNetwork.TFTPRoot != p.Network.TFTPRoot
+}
+
+func (p pageData) NetworkChangesCount() int {
+	count := 0
+	if p.NetworkChangedMode() {
+		count++
+	}
+	if p.NetworkChangedInterface() {
+		count++
+	}
+	if p.NetworkChangedServerIP() {
+		count++
+	}
+	if p.NetworkChangedSubnet() {
+		count++
+	}
+	if p.NetworkChangedUEFILoader() {
+		count++
+	}
+	if p.OldNetwork.UEFILoader != "grub-test" || p.Network.UEFILoader != "grub-test" {
+		if p.NetworkChangedDefaultDriver() {
+			count++
+		}
+		if p.NetworkChangedReuseFirmware() {
+			count++
+		}
+	}
+	if p.NetworkChangedWinPETimeout() {
+		count++
+	}
+	if p.NetworkChangedWinPERetry() {
+		count++
+	}
+	if p.NetworkChangedWinPEExitAction() {
+		count++
+	}
+	if p.NetworkChangedDHCPPool() {
+		count++
+	}
+	if p.OldNetwork.BootURL != "" && p.NetworkChangedBootURL() {
+		count++
+	}
+	if p.OldNetwork.TFTPRoot != "" && p.NetworkChangedTFTPRoot() {
+		count++
+	}
+	return count
+}

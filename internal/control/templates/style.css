@@ -227,6 +227,10 @@ td form{margin:0}
 .drag-handle:hover{color:var(--text);background:var(--chip)}
 tr.dragging{opacity:.5;background:var(--chip)}
 #menu-items td{vertical-align:middle}
+tr.row-changed{background:var(--draft-bg)!important;box-shadow:inset 3px 0 0 var(--accent)}
+tr.row-changed td:first-child{font-weight:600}
+tr.row-changed td:last-child{font-weight:600;color:var(--text)}
+.row-change-badge{display:inline-flex;align-items:center;gap:4px;padding:1px 6px;margin-left:8px;border-radius:4px;font-size:11px;font-weight:500;background:var(--accent);color:var(--on-accent);letter-spacing:normal;text-transform:none;vertical-align:middle}
 
 /* Status: a 7px dot always followed by a word */
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;vertical-align:1px;flex:none}

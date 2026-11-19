@@ -1113,6 +1113,7 @@ var englishMessages = map[string]string{
 	"Машину можно занести заранее, до первой загрузки: например, чтобы сразу дать ей имя. MAC — в любом виде: bc:24:11:aa:bb:01, BC-24-11-AA-BB-01, bc2411aabb01.": "You can add a machine before its first boot, for example to name it right away. The MAC can be in any form: bc:24:11:aa:bb:01, BC-24-11-AA-BB-01, bc2411aabb01.",
 	"MAC-адрес":          "MAC address",
 	"сохранено":          "saved",
+	"изменено":           "changed",
 	"ещё не загружалась": "has not booted yet",
 	"Пустые производитель и модель — как сообщила машина.":          "Leave maker and model empty to use what the machine reported.",
 	"Не удалось сохранить. Обновите страницу и попробуйте ещё раз.": "Could not save. Reload the page and try again.",

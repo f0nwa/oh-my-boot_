@@ -819,3 +819,25 @@ func (c *AgentClient) RemoveDriverPackage(ctx context.Context, hash string) erro
 	}
 	return localCall(ctx, c.http, http.MethodPost, "/winpe-drivers/remove-package", body, nil)
 }
+
+func (c *AgentClient) SystemTime(ctx context.Context) (agent.SystemTimeState, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	client := &http.Client{Transport: c.http.Transport, Timeout: 5 * time.Second}
+	var state agent.SystemTimeState
+	err := localCall(ctx, client, http.MethodGet, "/system/time", nil, &state)
+	return state, err
+}
+
+func (c *AgentClient) SetSystemTime(ctx context.Context, req agent.SystemTimeUpdate) (agent.SystemTimeState, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return agent.SystemTimeState{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	client := &http.Client{Transport: c.http.Transport, Timeout: 15 * time.Second}
+	var state agent.SystemTimeState
+	err = localCall(ctx, client, http.MethodPost, "/system/time", body, &state)
+	return state, err
+}

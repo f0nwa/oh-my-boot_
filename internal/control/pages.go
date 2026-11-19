@@ -88,6 +88,8 @@ type pageData struct {
 	Message               string
 	Error                 string
 	PasswordPolicy        PasswordPolicy
+	SystemTime            *systemTimeView
+	SystemTimeError       string
 	NowTime               time.Time
 	BootStatus            string
 	AgentStatus           string
@@ -284,13 +286,13 @@ func parsePages(lang string) *template.Template {
 			if t.IsZero() {
 				return "—"
 			}
-			return t.Local().Format("02.01.2006")
+			return t.In(serverLocation()).Format("02.01.2006")
 		},
 		"formatLocalDateTime": func(t time.Time) string {
 			if t.IsZero() {
 				return "—"
 			}
-			return t.Local().Format("02.01.2006 15:04")
+			return t.In(serverLocation()).Format("02.01.2006 15:04")
 		},
 	}).ParseFS(templateFS, "templates/*.html"))
 }

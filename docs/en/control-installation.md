@@ -213,6 +213,16 @@ Administrators can unbind a connected SMB or NFS storage via the row menu **☰ 
 2. **If storage was disconnected externally:** Remote network unreachability (status `unavailable`) does not prevent clean unbinding. Agent safely stops and disables systemd mount units (`systemctl disable --now`; NFS uses `TimeoutSec=15s`), removes local mount points in `/mnt/omb-*/...`, cleans up credentials and configuration files, and Images removes the database entry while purging catalog records for its ISOs.
 3. **Data safety on NAS/server:** Removing storage from OMB removes only local mount points and OMB database entries. The original ISO files on the remote NAS/server remain untouched and are never deleted.
 
+## Server time and corporate NTP
+
+**System → Overview** displays the **Server time** card with the current host clock, IANA time zone, and NTP synchronization status. Operators and observers have read-only access; administrators can click **Edit…** to:
+
+- change the host time zone (`timedatectl set-timezone`; Control updates displayed timestamps immediately without restarting);
+- enable NTP synchronization and configure up to 8 corporate NTP servers (space-separated IPs or hostnames; leaving the field empty reverts to OS defaults);
+- or disable NTP and set the date and time manually (with a **Use browser time** button) for fully air-gapped hosts without an internal NTP server.
+
+Agent auto-detects the host NTP backend (`chrony` via `/etc/chrony/sources.d/omb.sources` or `systemd-timesyncd` via `/etc/systemd/timesyncd.conf.d/omb.conf`). `omb-agent.service` requires `-/etc/chrony/sources.d -/etc/systemd/timesyncd.conf.d` in `ReadWritePaths`. Every update is recorded in the audit log as `system.time`.
+
 ## Diagnostics and rollback
 
 Run as root:

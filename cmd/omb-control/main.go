@@ -56,7 +56,7 @@ func main() {
 	store := control.Store{Pool: pool}
 	agentClient := control.NewAgentClient(*agentSocket)
 	bootClient := control.NewBootClient(*bootSocket)
-	server := &control.Server{Store: store, Boot: bootClient, UbuntuSource: bootClient, DeletionMenu: bootClient, Agent: agentClient, DiskUsage: agentClient, BootDrivers: agentClient, SMB: agentClient, NFS: agentClient, WindowsISO: agentClient, UbuntuISO: agentClient, WindowsAnswers: agentClient, DriverPackages: agentClient, DriverConfigs: agentClient, Cleanup: agentClient, StorageRecovery: agentClient, UEFICAUSB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist, BootBaseURL: os.Getenv("OMB_CONTROL_BOOT_BASE_URL")}
+	server := &control.Server{Store: store, Boot: bootClient, UbuntuSource: bootClient, DeletionMenu: bootClient, Agent: agentClient, DiskUsage: agentClient, BootDrivers: agentClient, SMB: agentClient, NFS: agentClient, WindowsISO: agentClient, UbuntuISO: agentClient, WindowsAnswers: agentClient, DriverPackages: agentClient, DriverConfigs: agentClient, Cleanup: agentClient, StorageRecovery: agentClient, SystemTime: agentClient, UEFICAUSB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist, BootBaseURL: os.Getenv("OMB_CONTROL_BOOT_BASE_URL")}
 	if err := server.SyncBootDrivers(pingCtx); err != nil {
 		log.Printf("boot driver synchronization: %v", err)
 	}

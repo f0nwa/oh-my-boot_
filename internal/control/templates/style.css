@@ -963,3 +963,15 @@ tr.is-migrating td{background:var(--draft-bg)}
 .change-pw-form input{width:100%;max-width:none}
 .change-pw-form .pw-wrap{max-width:none}
 .change-pw-form button.btn-primary{width:100%;min-height:40px;margin-top:8px}
+.card .page-head button.card-head-action{margin:0;padding:0;min-height:0;border:0;background:transparent;font-size:12px;font-weight:400;color:var(--text-2);text-decoration:underline;text-underline-offset:2px}
+.card .page-head button.card-head-action:hover{background:transparent;color:var(--text)}
+.time-sync-val{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.time-sync-val .dot{margin-right:4px}
+.time-clock-chip{padding:3px 8px;border-radius:6px;background:var(--chip);border:1px solid var(--line);font-size:12px;color:var(--text);white-space:nowrap}
+.time-radio-body{padding-left:25px;display:flex;flex-direction:column;gap:6px;width:100%}
+.time-radio-body label{margin:0}
+.time-radio-body p.hint{margin:0}
+.time-dt-row{display:flex;align-items:center;gap:8px}
+.time-dt-row input{flex:1;min-width:0}
+.time-dt-row button{flex:none;margin:0;min-height:36px;white-space:nowrap}
+.time-warn-box{padding:8px 10px;border:1px solid var(--draft-line);border-radius:6px;background:var(--draft-bg);color:var(--accent-ink);font-size:12px;line-height:1.4}

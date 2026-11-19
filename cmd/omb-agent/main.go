@@ -95,7 +95,7 @@ func main() {
 		},
 	}
 	handler := agent.HandlerWithNFS(agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder), nfs)
-	handler = agent.HandlerWithDiskUsage(agent.HandlerWithUbuntuISO(handler, ubuntu), diskUsage)
+	handler = agent.HandlerWithSystemTime(agent.HandlerWithDiskUsage(agent.HandlerWithUbuntuISO(handler, ubuntu), diskUsage), &agent.SystemTimeManager{})
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

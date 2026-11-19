@@ -555,3 +555,44 @@ func HandlerWithNFS(inner http.Handler, nfs *NFSManager) http.Handler {
 	mux.Handle("/", inner)
 	return mux
 }
+
+// HandlerWithSystemTime exposes host timezone and NTP inspection and updates.
+func HandlerWithSystemTime(inner http.Handler, manager *SystemTimeManager) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /system/time", func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "system time unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		state, err := manager.State(r.Context())
+		if err != nil {
+			http.Error(w, "system time read failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state)
+	})
+	mux.HandleFunc("POST /system/time", func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "system time unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req SystemTimeUpdate
+		if !decodeAgentRequest(w, r, &req, 8<<10) {
+			return
+		}
+		state, err := manager.Apply(r.Context(), req)
+		if err != nil {
+			if errors.Is(err, ErrInvalidSystemTime) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			http.Error(w, "system time apply failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state)
+	})
+	mux.Handle("/", inner)
+	return mux
+}

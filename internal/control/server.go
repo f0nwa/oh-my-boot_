@@ -189,6 +189,7 @@ type Server struct {
 	DriverConfigs     DriverConfigAPI
 	Cleanup           AssetCleanupAPI
 	StorageRecovery   StorageRecoveryAPI
+	SystemTime        SystemTimeAPI
 	UEFICAUSB         UEFICAUSBAPI
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
@@ -331,6 +332,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /answers", s.protect("view", s.answersPage))
 	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
 	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))
+	mux.HandleFunc("POST /system/time", s.protect("network", withPageErrors(s.systemPage, s.systemTimeUpdate)))
 	mux.HandleFunc("GET /api/system/metrics", s.protect("view", s.systemMetricsAPI))
 	mux.HandleFunc("POST /answers/{id}/inspect", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerInspect)))
 	mux.HandleFunc("GET /answers/editor", s.protect("view", s.answerEditorNew))
@@ -957,6 +959,7 @@ func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
 			data.Network, data.HasNetwork = c, true
 		}
 	}
+	s.loadSystemTime(r.Context(), &data)
 	if Allowed(data.Info.User.Role, "users") {
 		if users, err := s.Store.Users(r.Context()); err == nil {
 			data.Users = users

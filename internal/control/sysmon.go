@@ -44,6 +44,7 @@ type SystemSnapshot struct {
 	TxTotalHuman    string     `json:"tx_total_human"`
 	UptimeSeconds   uint64     `json:"uptime_seconds"`
 	UptimeHuman     string     `json:"uptime_human"`
+	ServerTime      string     `json:"server_time,omitempty"`
 }
 
 type SystemMonitor struct {
@@ -193,6 +194,7 @@ func (m *SystemMonitor) Snapshot(lang string) SystemSnapshot {
 	snap.RxTotalHuman = formatHumanBytes(snap.RxTotal, lang)
 	snap.TxTotalHuman = formatHumanBytes(snap.TxTotal, lang)
 	snap.UptimeHuman = formatHumanUptime(snap.UptimeSeconds, lang)
+	snap.ServerTime = time.Now().In(serverLocation()).Format("02.01.2006 15:04:05")
 	return snap
 }
 

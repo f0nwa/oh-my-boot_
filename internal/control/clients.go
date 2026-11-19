@@ -700,6 +700,20 @@ func (c *AgentClient) ClearSMBSessions(ctx context.Context) error {
 	return localCall(ctx, c.http, "POST", "/smb-sessions/clear", nil, nil)
 }
 
+// DisconnectSMBSession asks the Agent to close an active client connection on the install share.
+func (c *AgentClient) DisconnectSMBSession(ctx context.Context, id, ip, pid string) error {
+	body, err := json.Marshal(map[string]string{"id": id, "ip": ip, "pid": pid})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, "POST", "/smb-sessions/disconnect", body, nil)
+}
+
+// CancelTransfer asks Boot to abort an in-flight HTTP file transfer.
+func (c *BootClient) CancelTransfer(ctx context.Context, id int) error {
+	return localCall(ctx, c.http, "POST", fmt.Sprintf("/transfers/%d/cancel", id), nil, nil)
+}
+
 // BuildUEFICAUSB has the Agent build (or find in its cache) the
 // "enable the Microsoft UEFI CA key" USB stick archive of a profile.
 func (c *AgentClient) BuildUEFICAUSB(ctx context.Context, profileID int64, loader string) (ueficausb.Result, error) {

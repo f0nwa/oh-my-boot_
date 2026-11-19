@@ -225,3 +225,40 @@ func TestSMBWatcherClearKeepsConnectedSessions(t *testing.T) {
 		t.Fatalf("left=%+v", got.Sessions)
 	}
 }
+
+func TestSMBWatcherTracksPIDLastIOAndDisconnects(t *testing.T) {
+	r := newSetupRun(t, filepath.Join(t.TempDir(), "s.json"))
+	s1 := r.step(300<<20, true, withWIM()...)
+	if s1.PID != "58474" || s1.LastIOAt == nil {
+		t.Fatalf("expected PID and LastIOAt, got %+v", s1)
+	}
+	firstIO := *s1.LastIOAt
+
+	// Advance time with no read growth: LastIOAt stays frozen while LastSeen advances.
+	r.now = r.now.Add(10 * time.Minute)
+	s2 := r.step(300<<20, true, withWIM()...)
+	if s2.LastIOAt == nil || !s2.LastIOAt.Equal(firstIO) {
+		t.Fatalf("LastIOAt should not advance when bytes do not grow: got %v want %v", s2.LastIOAt, firstIO)
+	}
+
+	// Disconnect closes the session via DisconnectFn and refreshes the snapshot.
+	var disconnectedIP, disconnectedPID string
+	r.w.DisconnectFn = func(_ context.Context, ip, pid string) error {
+		disconnectedIP, disconnectedPID = ip, pid
+		r.status = smbStatusJSON(false)
+		return nil
+	}
+	h := HandlerWithSMBSessions(http.NotFoundHandler(), r.w)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/smb-sessions/disconnect", strings.NewReader(`{"id":"1002"}`)))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"disconnected":true`) {
+		t.Fatalf("disconnect response=%d %s", rec.Code, rec.Body.String())
+	}
+	if disconnectedIP != "10.30.0.19" || disconnectedPID != "58474" {
+		t.Fatalf("disconnect args ip=%q pid=%q", disconnectedIP, disconnectedPID)
+	}
+	got, _ := r.w.Sessions()
+	if len(got.Sessions) != 1 || got.Sessions[0].Ended == nil {
+		t.Fatalf("session should be marked ended after disconnect: %+v", got.Sessions)
+	}
+}

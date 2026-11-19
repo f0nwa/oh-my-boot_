@@ -29,7 +29,10 @@ var (
 	tftpRoot = "/srv/omb/tftp/"
 )
 
-const maxDHCPLog = 1000
+const (
+	maxDHCPLog         = 1000
+	maxDHCPEventsPerMAC = 50
+)
 
 type dnsmasqEvent struct {
 	DHCPEvent
@@ -66,6 +69,12 @@ type dnsmasqBuffer struct {
 func (b *dnsmasqBuffer) read(r io.Reader) error {
 	if b.events == nil {
 		b.events = make(dnsmasqHeap, 0, maxDHCPLog)
+	}
+	macCounts := make(map[string]int)
+	for _, ev := range b.events {
+		if ev.MAC != "" {
+			macCounts[ev.MAC]++
+		}
 	}
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64<<10), 1<<20)
@@ -117,12 +126,58 @@ func (b *dnsmasqBuffer) read(r io.Reader) error {
 		b.next++
 		if len(b.events) < maxDHCPLog {
 			heap.Push(&b.events, candidate)
-		} else if candidate.At.After(b.events[0].At) {
+			if candidate.MAC != "" {
+				macCounts[candidate.MAC]++
+			}
+			continue
+		}
+		if candidate.MAC != "" && macCounts[candidate.MAC] >= maxDHCPEventsPerMAC {
+			// A noisy MAC at or above quota only evicts its own oldest event.
+			victim := b.oldestIndex(func(ev dnsmasqEvent) bool { return ev.MAC == candidate.MAC })
+			if victim >= 0 && candidate.At.After(b.events[victim].At) {
+				b.events[victim] = candidate
+				heap.Fix(&b.events, victim)
+			}
+			continue
+		}
+		// Prefer evicting an over-quota MAC before disturbing quiet clients.
+		victim := b.oldestIndex(func(ev dnsmasqEvent) bool { return ev.MAC != "" && macCounts[ev.MAC] > maxDHCPEventsPerMAC })
+		if victim >= 0 {
+			if evictedMAC := b.events[victim].MAC; evictedMAC != "" {
+				macCounts[evictedMAC]--
+			}
+			b.events[victim] = candidate
+			heap.Fix(&b.events, victim)
+			if candidate.MAC != "" {
+				macCounts[candidate.MAC]++
+			}
+			continue
+		}
+		if candidate.At.After(b.events[0].At) {
+			if evictedMAC := b.events[0].MAC; evictedMAC != "" {
+				macCounts[evictedMAC]--
+			}
 			b.events[0] = candidate
 			heap.Fix(&b.events, 0)
+			if candidate.MAC != "" {
+				macCounts[candidate.MAC]++
+			}
 		}
 	}
 	return scanner.Err()
+}
+
+func (b *dnsmasqBuffer) oldestIndex(match func(dnsmasqEvent) bool) int {
+	best := -1
+	for i := range b.events {
+		if !match(b.events[i]) {
+			continue
+		}
+		if best < 0 || b.events.Less(i, best) {
+			best = i
+		}
+	}
+	return best
 }
 func (b *dnsmasqBuffer) ordered() []DHCPEvent {
 	ordered := append(dnsmasqHeap(nil), b.events...)

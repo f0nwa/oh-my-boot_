@@ -23,6 +23,19 @@ func TestRenderDHCPHosts(t *testing.T) {
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("empty=%q %v", empty, err)
 	}
+	ignored, err := RenderDHCPHosts([]BootDriverRule{
+		{"DE:AD:BE:EF:00:99", "ignore"},
+		{"a4:bb:6d:14:cb:f7", "snp"},
+	})
+	wantIgnored := "a4:bb:6d:14:cb:f7,set:omb-driver-machine-snp\nde:ad:be:ef:00:99,ignore\n"
+	if err != nil || string(ignored) != wantIgnored {
+		t.Fatalf("ignored=%q err=%v; want %q", ignored, err, wantIgnored)
+	}
+	for _, bad := range []BootDriverRule{{"a4:bb:6d", "ignore"}, {"a4:bb:6d:*:*:*", "ignore"}, {"a4:bb:6d:14:cb:*", "ignore"}} {
+		if err := ValidateBootDriverRules([]BootDriverRule{bad}); err == nil {
+			t.Errorf("accepted prefix ignore rule %+v", bad)
+		}
+	}
 }
 
 func TestValidateBootDriverRulesRejectsInvalidInput(t *testing.T) {

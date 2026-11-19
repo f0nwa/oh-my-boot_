@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,10 +33,13 @@ const InstallShare = "ombisos"
 type SMBSession struct {
 	ID        string     `json:"id"`
 	IP        string     `json:"ip"`
+	PID       string     `json:"pid,omitempty"`
 	User      string     `json:"user,omitempty"`
 	Profile   string     `json:"profile,omitempty"`
 	Started   time.Time  `json:"started"`
 	LastSeen  time.Time  `json:"last_seen"`
+	LastRead  int64      `json:"last_read,omitempty"`
+	LastIOAt  *time.Time `json:"last_io_at,omitempty"`
 	Setup     bool       `json:"setup,omitempty"`
 	WIMOpened *time.Time `json:"wim_opened,omitempty"` // first seen open
 	WIMOpen   bool       `json:"wim_open,omitempty"`   // open right now
@@ -172,8 +177,9 @@ type SMBWatcher struct {
 	Now      func() time.Time
 	// ReadBytes is how much a Samba process has read so far; SizeOf is the
 	// size of a file. Nil uses /proc and stat.
-	ReadBytes func(pid string) (int64, bool)
-	SizeOf    func(path string) int64
+	ReadBytes    func(pid string) (int64, bool)
+	SizeOf       func(path string) int64
+	DisconnectFn func(ctx context.Context, ip, pid string) error
 
 	mu       sync.Mutex
 	sessions map[string]*SMBSession
@@ -192,11 +198,54 @@ func NewSMBWatcher(path string) *SMBWatcher {
 			// interfaces); the JSON on stdout is complete.
 			return exec.CommandContext(ctx, "smbstatus", "--json").Output()
 		},
-		Path:     path,
-		Share:    InstallShare,
-		Interval: 10 * time.Second,
-		Keep:     7 * 24 * time.Hour,
+		Path:         path,
+		Share:        InstallShare,
+		Interval:     10 * time.Second,
+		Keep:         7 * 24 * time.Hour,
+		DisconnectFn: disconnectSMBClient,
 	}
+}
+
+func disconnectSMBClient(ctx context.Context, ip, pid string) error {
+	if pid != "" {
+		if _, err := strconv.Atoi(pid); err != nil {
+			return fmt.Errorf("invalid smb pid")
+		}
+	}
+	if ip != "" {
+		if _, err := netip.ParseAddr(ip); err != nil {
+			return fmt.Errorf("invalid smb ip")
+		}
+	}
+	if pid == "" && ip == "" {
+		return fmt.Errorf("pid or ip required")
+	}
+	var errs []error
+	succeeded := false
+	if pid != "" {
+		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		out, err := exec.CommandContext(cctx, "smbcontrol", pid, "close-share", InstallShare).CombinedOutput()
+		cancel()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("smbcontrol close-share: %v (%s)", err, strings.TrimSpace(string(out))))
+		} else {
+			succeeded = true
+		}
+	}
+	if ip != "" {
+		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		out, err := exec.CommandContext(cctx, "smbcontrol", "smbd", "kill-client-ip", ip).CombinedOutput()
+		cancel()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("smbcontrol kill-client-ip: %v (%s)", err, strings.TrimSpace(string(out))))
+		} else {
+			succeeded = true
+		}
+	}
+	if !succeeded && len(errs) > 0 {
+		return errs[0]
+	}
+	return nil
 }
 
 // procReadBytes reads rchar of a process: everything it read, from disk or
@@ -294,6 +343,9 @@ func (w *SMBWatcher) observe(snap smbSnapshot) {
 
 // follow updates the copy state of a session from one look at it.
 func (w *SMBWatcher) follow(s *SMBSession, live smbLive, at time.Time) {
+	if live.pid != "" {
+		s.PID = live.pid
+	}
 	s.WIMOpen = live.wim
 	if live.wim && s.WIMOpened == nil {
 		s.WIMOpened = &at
@@ -310,12 +362,20 @@ func (w *SMBWatcher) follow(s *SMBSession, live smbLive, at time.Time) {
 		readBytes = procReadBytes
 	}
 	if read, ok := readBytes(live.pid); ok {
+		if s.LastIOAt == nil || read > s.LastRead {
+			t := at
+			s.LastIOAt = &t
+			s.LastRead = read
+		}
 		if live.wim && s.ReadStart == nil {
 			s.ReadStart = &read
 		}
 		if s.ReadStart != nil && read >= *s.ReadStart {
 			s.CopyRead = read - *s.ReadStart
 		}
+	} else if s.LastIOAt == nil {
+		t := s.Started
+		s.LastIOAt = &t
 	}
 	switch {
 	case live.wim && s.Copying == nil && s.CopyRead >= CopyStartBytes:
@@ -400,6 +460,53 @@ func (w *SMBWatcher) Sessions() (SMBSessions, error) {
 	return SMBSessions{Since: since, Sessions: w.list()}, nil
 }
 
+// Disconnect forcibly closes an active SMB session on the install share and
+// refreshes the watcher snapshot.
+func (w *SMBWatcher) Disconnect(ctx context.Context, sessionID, ip, pid string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	ip = strings.TrimSpace(ip)
+	pid = strings.TrimSpace(pid)
+	w.mu.Lock()
+	w.load()
+	var matched *SMBSession
+	for _, s := range w.sessions {
+		if s.Ended != nil {
+			continue
+		}
+		if sessionID != "" && s.ID == sessionID {
+			matched = s
+			break
+		}
+		if sessionID == "" && ip != "" && s.IP == ip {
+			matched = s
+			break
+		}
+	}
+	if matched != nil {
+		if ip == "" {
+			ip = matched.IP
+		}
+		if pid == "" {
+			pid = matched.PID
+		}
+	}
+	w.mu.Unlock()
+	if ip == "" && pid == "" {
+		return errors.New("active smb session not found")
+	}
+	fn := w.DisconnectFn
+	if fn == nil {
+		fn = disconnectSMBClient
+	}
+	if err := fn(ctx, ip, pid); err != nil {
+		return err
+	}
+	if w.Status != nil {
+		_ = w.Poll(ctx)
+	}
+	return nil
+}
+
 // ClearEnded forgets the sessions that are over; the ones still connected
 // stay, so an installation in progress keeps its state.
 func (w *SMBWatcher) ClearEnded() (int, error) {
@@ -446,6 +553,33 @@ func (w *SMBWatcher) Run(ctx context.Context) {
 func HandlerWithSMBSessions(inner http.Handler, watcher *SMBWatcher) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", inner)
+	mux.HandleFunc("POST /smb-sessions/disconnect", func(rw http.ResponseWriter, r *http.Request) {
+		if watcher == nil {
+			http.Error(rw, "smb sessions unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			ID  string `json:"id"`
+			IP  string `json:"ip"`
+			PID string `json:"pid"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(rw, r.Body, 4096)).Decode(&req); err != nil {
+			http.Error(rw, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if err := watcher.Disconnect(r.Context(), req.ID, req.IP, req.PID); err != nil {
+			status := http.StatusBadGateway
+			if strings.Contains(err.Error(), "not found") {
+				status = http.StatusNotFound
+			} else if strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "required") {
+				status = http.StatusBadRequest
+			}
+			http.Error(rw, err.Error(), status)
+			return
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(rw).Encode(map[string]bool{"disconnected": true})
+	})
 	mux.HandleFunc("POST /smb-sessions/clear", func(rw http.ResponseWriter, _ *http.Request) {
 		if watcher == nil {
 			http.Error(rw, "smb sessions unavailable", http.StatusServiceUnavailable)

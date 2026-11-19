@@ -81,7 +81,7 @@ func TestTransfersListFilesBeingSent(t *testing.T) {
 	res := httptest.NewRecorder()
 	ControlHandlerWithTransfers(p, nil, transfers, nil).ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/transfers", nil))
 	var list []Transfer
-	if err := json.Unmarshal(res.Body.Bytes(), &list); err != nil || len(list) != 1 || list[0].Path != "/assets/boot.wim" || list[0].Size != 1<<20 || list[0].Bytes <= 0 {
+	if err := json.Unmarshal(res.Body.Bytes(), &list); err != nil || len(list) != 1 || list[0].ID <= 0 || list[0].LastActivity.IsZero() || list[0].Path != "/assets/boot.wim" || list[0].Size != 1<<20 || list[0].Bytes <= 0 {
 		t.Fatalf("list=%+v err=%v", list, err)
 	}
 	close(w.resume)
@@ -93,6 +93,51 @@ func TestTransfersListFilesBeingSent(t *testing.T) {
 		t.Fatalf("written=%d", w.written)
 	}
 	_ = io.Discard
+}
+
+func TestTransferCancelEndpointAbortsInFlightTransfer(t *testing.T) {
+	dir := t.TempDir()
+	data := make([]byte, 2<<20)
+	if err := os.WriteFile(filepath.Join(dir, "boot.wim"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	transfers := NewTransfers()
+	p, err := NewPublisher(filepath.Join(dir, ".menu"), []byte("#!ipxe\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewDynamicHandlerWithTransfers(dir, p, nil, "", transfers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &blockingWriter{ResponseRecorder: httptest.NewRecorder(), pause: make(chan struct{}), resume: make(chan struct{})}
+	done := make(chan struct{})
+	go func() {
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/assets/boot.wim", nil))
+		close(done)
+	}()
+	<-w.pause
+
+	list := transfers.List()
+	if len(list) != 1 {
+		t.Fatalf("expected 1 active transfer, got %+v", list)
+	}
+	ctrl := ControlHandlerWithTransfers(p, nil, transfers, nil)
+	rec := httptest.NewRecorder()
+	ctrl.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/transfers/1/cancel", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"canceled":true`) {
+		t.Fatalf("cancel response=%d %s", rec.Code, rec.Body.String())
+	}
+	close(w.resume)
+	<-done
+	if w.written >= len(data) {
+		t.Fatalf("canceled transfer should stop early: written=%d total=%d", w.written, len(data))
+	}
+	rec404 := httptest.NewRecorder()
+	ctrl.ServeHTTP(rec404, httptest.NewRequest(http.MethodPost, "/transfers/1/cancel", nil))
+	if rec404.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 after finish, got %d", rec404.Code)
+	}
 }
 
 func TestHelloRecordsMachineDetails(t *testing.T) {

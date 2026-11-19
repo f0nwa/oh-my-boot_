@@ -27,6 +27,7 @@ type machineList struct {
 	NoModel   int // never reported a model and none was written in
 	// CanEdit and CanDelete follow the viewer's role.
 	CanEdit, CanDelete bool
+	CSRF               string
 	// Duplicate is a MAC that «Добавить MAC» found already in the list.
 	Duplicate string
 	// Rules are the MAC prefix rules with how many machines fit each;
@@ -133,6 +134,9 @@ func (r machineListRow) matches(query string) bool {
 		if strings.Contains(strings.ToLower(field), q) {
 			return true
 		}
+	}
+	if r.DHCPIgnored && (strings.Contains(strings.ToLower("Игнорируется в DHCP"), q) || strings.Contains(strings.ToLower(translate(langEN, "Игнорируется в DHCP")), q)) {
+		return true
 	}
 	// "001b21" or "00-1B-21": compare hex digits only, when the query looks
 	// like a piece of a MAC.
@@ -296,6 +300,7 @@ func (s *Server) machinesData(r *http.Request) pageData {
 	role := data.Info.User.Role
 	data.MachineList.CanEdit = ok && Allowed(role, "images")
 	data.MachineList.CanDelete = ok && Allowed(role, "delete")
+	data.MachineList.CSRF = data.Info.CSRF
 	// A failed «Добавить MAC» for a MAC already in the list links to it.
 	if data.Error != "" && data.Form != nil {
 		if mac, valid := parseMAC(data.Form.Get("mac")); valid {

@@ -15,6 +15,7 @@ import (
 // machine itself reported, and what people wrote about it.
 type MachineInfo struct {
 	NetworkDriver         string
+	DHCPIgnored           bool
 	MAC                   string
 	FirstSeen, LastSeen   time.Time
 	LastIP, Firmware      string
@@ -65,6 +66,11 @@ type MachineBook interface {
 	EditMachine(context.Context, string, MachineEdit) error
 	DeleteMachine(context.Context, string) error
 	SetMachineNetworkDriver(context.Context, string, string) error
+}
+
+// MachineDHCPIgnoreBook toggles per-MAC DHCP ignore rules (<mac>,ignore).
+type MachineDHCPIgnoreBook interface {
+	SetMachineDHCPIgnored(context.Context, string, bool) error
 }
 
 // Maker is the machine's maker: what a person wrote, else SMBIOS.

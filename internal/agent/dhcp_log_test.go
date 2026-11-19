@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -75,5 +76,40 @@ func TestDHCPEventsEndpoint(t *testing.T) {
 	HandlerWithDHCPLog(http.NotFoundHandler(), log).ServeHTTP(other, httptest.NewRequest(http.MethodGet, "/status", nil))
 	if other.Code != http.StatusNotFound {
 		t.Fatalf("inner handler not used: %d", other.Code)
+	}
+}
+
+func TestDHCPBufferProtectsQuietClientsFromFlooder(t *testing.T) {
+	var b strings.Builder
+	ts := int64(1792268900000000)
+	// 10 quiet machines (2 events each = 20 events) first
+	for i := 1; i <= 10; i++ {
+		mac := fmt.Sprintf("52:54:00:00:00:%02x", i)
+		for j := 0; j < 2; j++ {
+			ts += 1000
+			fmt.Fprintf(&b, `{"__REALTIME_TIMESTAMP":"%d","SYSLOG_IDENTIFIER":"dnsmasq-dhcp","MESSAGE":"DHCPACK(ens19) 10.30.0.%d %s quiet-%d"}`+"\n", ts, 10+i, mac, i)
+		}
+	}
+	// One flooder sends 1500 events afterwards
+	for n := 0; n < 1500; n++ {
+		ts += 1000
+		fmt.Fprintf(&b, `{"__REALTIME_TIMESTAMP":"%d","SYSLOG_IDENTIFIER":"dnsmasq-dhcp","MESSAGE":"DHCPDISCOVER(ens19) de:ad:be:ef:00:99 flood-%d"}`+"\n", ts, n)
+	}
+	// Another quiet machine arrives after the buffer is already saturated by the flooder
+	ts += 1000
+	fmt.Fprintf(&b, `{"__REALTIME_TIMESTAMP":"%d","SYSLOG_IDENTIFIER":"dnsmasq-dhcp","MESSAGE":"DHCPACK(ens19) 10.30.0.99 52:54:00:00:00:99 late-quiet"}`+"\n", ts)
+
+	events := ParseDnsmasqJournal(strings.NewReader(b.String()))
+	if len(events) != maxDHCPLog {
+		t.Fatalf("expected %d events, got %d", maxDHCPLog, len(events))
+	}
+	seenQuiet := map[string]int{}
+	for _, ev := range events {
+		if strings.HasPrefix(ev.MAC, "52:54:00:00:00:") {
+			seenQuiet[ev.MAC]++
+		}
+	}
+	if len(seenQuiet) != 11 {
+		t.Fatalf("quiet clients evicted by flooder: kept %d of 11 (%+v)", len(seenQuiet), seenQuiet)
 	}
 }

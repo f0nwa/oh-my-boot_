@@ -19,6 +19,9 @@
   }
   setupDialog('[data-machine-edit-open]', 'machine-edit-dialog');
   setupDialog('[data-machine-delete-open]', 'machine-delete-dialog');
+  setupDialog('[data-machine-smb-disconnect-open]', 'machine-smb-disconnect-dialog');
+  setupDialog('[data-machine-http-cancel-open]', 'machine-http-cancel-dialog');
+  setupDialog('[data-machine-dhcp-ignore-open]', 'machine-dhcp-ignore-dialog');
   var retry = document.querySelector('[data-events-retry]');
   if (retry) {
     retry.addEventListener('click', function() {

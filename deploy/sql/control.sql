@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS machines (
     product_override TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
     network_driver TEXT NOT NULL DEFAULT '' CHECK (network_driver IN ('', 'ipxe', 'snp')),
+    dhcp_ignored BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS machines_last_seen_idx ON machines (last_seen DESC);

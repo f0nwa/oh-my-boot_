@@ -557,7 +557,7 @@ func (s Store) ChangeOwnPassword(ctx context.Context, id int64, sessionToken, cu
 
 // Machines returns the book of machines, most recently seen first.
 func (s Store) Machines(ctx context.Context) ([]MachineInfo, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT mac,first_seen,last_seen,last_ip,firmware,manufacturer,product,serial,uuid,detected_at,name,manufacturer_override,product_override,note,manual,network_driver FROM machines ORDER BY last_seen DESC`)
+	rows, err := s.Pool.Query(ctx, `SELECT mac,first_seen,last_seen,last_ip,firmware,manufacturer,product,serial,uuid,detected_at,name,manufacturer_override,product_override,note,manual,network_driver,dhcp_ignored FROM machines ORDER BY last_seen DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -565,7 +565,7 @@ func (s Store) Machines(ctx context.Context) ([]MachineInfo, error) {
 	var out []MachineInfo
 	for rows.Next() {
 		var m MachineInfo
-		if err := rows.Scan(&m.MAC, &m.FirstSeen, &m.LastSeen, &m.LastIP, &m.Firmware, &m.Manufacturer, &m.Product, &m.Serial, &m.UUID, &m.DetectedAt, &m.Name, &m.ManufacturerOverride, &m.ProductOverride, &m.Note, &m.Manual, &m.NetworkDriver); err != nil {
+		if err := rows.Scan(&m.MAC, &m.FirstSeen, &m.LastSeen, &m.LastIP, &m.Firmware, &m.Manufacturer, &m.Product, &m.Serial, &m.UUID, &m.DetectedAt, &m.Name, &m.ManufacturerOverride, &m.ProductOverride, &m.Note, &m.Manual, &m.NetworkDriver, &m.DHCPIgnored); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -711,9 +711,18 @@ func (s Store) SetMachineNetworkDriver(ctx context.Context, mac, driver string) 
 	return nil
 }
 
+// SetMachineDHCPIgnored records whether dnsmasq should ignore DHCP requests from mac.
+// A machine not yet in the book is inserted automatically.
+func (s Store) SetMachineDHCPIgnored(ctx context.Context, mac string, ignored bool) error {
+	_, err := s.Pool.Exec(ctx, `INSERT INTO machines (mac,first_seen,last_seen,dhcp_ignored,updated_at)
+VALUES ($1,now(),now(),$2,now())
+ON CONFLICT (mac) DO UPDATE SET dhcp_ignored=$2,updated_at=now()`, mac, ignored)
+	return err
+}
+
 // BootDriverRules reads one consistent snapshot of all explicit selections.
 func (s Store) BootDriverRules(ctx context.Context) ([]network.BootDriverRule, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT mac,network_driver FROM machines WHERE network_driver<>'' UNION ALL SELECT prefix,network_driver FROM mac_prefix_rules WHERE network_driver<>''`)
+	rows, err := s.Pool.Query(ctx, `SELECT mac, CASE WHEN dhcp_ignored THEN 'ignore' ELSE network_driver END FROM machines WHERE dhcp_ignored OR network_driver<>'' UNION ALL SELECT prefix,network_driver FROM mac_prefix_rules WHERE network_driver<>''`)
 	if err != nil {
 		return nil, err
 	}

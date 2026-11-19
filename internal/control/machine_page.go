@@ -353,16 +353,32 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 	}
 	names := s.menuNames(r.Context())
 	now := time.Now()
-	install := s.loadInstallLog(r.Context(), httpEvents)
+	rawSMB, smbKnown := s.loadRawSMBSessions(r.Context())
+	var install installLog
+	if smbKnown {
+		install = installEvents(rawSMB, httpEvents)
+	}
 	resolvedDHCP := resolveDHCPMACs(dhcp, httpEvents)
 	macDHCP := filterDHCPByMAC(resolvedDHCP, mac)
 	rows := machineRowsWith(httpEvents, macDHCP, install, names, now)
+	if len(rows) > 0 {
+		transfers := s.bootTransfers(r.Context())
+		attachDownloads(rows, transfers, now)
+		attachActiveHTTPTransfers(rows, transfers, now)
+	}
+	if smbKnown {
+		attachActiveSMBSessions(rows, rawSMB, httpEvents, now)
+	}
+	detectDHCPFlood(rows, macDHCP, now)
 	book := s.machineBook(r.Context(), rows, httpEvents)
 	rules := s.macRules(r.Context())
 	describeMachines(rows, book, rules)
+	var matchedRow *machineRow
 	for _, row := range rows {
 		if row.MAC == mac {
-			data.Machines = []machineRow{row}
+			r := row
+			matchedRow = &r
+			data.Machines = []machineRow{r}
 			break
 		}
 	}
@@ -377,11 +393,17 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 				defaultDriver = config.DefaultDriver
 			}
 		}
-		data.Machine = &machineCard{MachineInfo: info, Known: known, Label: machineLabel(&info, mac), EffectiveDriver: effectiveNetworkDriver(info, rules, defaultDriver)}
+		card := &machineCard{MachineInfo: info, Known: known, Label: machineLabel(&info, mac), EffectiveDriver: effectiveNetworkDriver(info, rules, defaultDriver)}
+		if matchedRow != nil {
+			card.ActiveSMB = matchedRow.ActiveSMB
+			card.ActiveHTTP = matchedRow.ActiveHTTP
+			card.DHCPFlood = matchedRow.DHCPFlood
+			card.DHCPFloodCount = matchedRow.DHCPFloodCount
+		}
+		data.Machine = card
 	}
 	data.Sessions = machineSessionsWith(mac, httpEvents, macDHCP, install, names, now)
 	if len(data.Machines) == 1 && len(data.Sessions) > 0 {
-		attachDownloads(data.Machines, s.bootTransfers(r.Context()), now)
 		data.Sessions[0].Download = data.Machines[0].Download
 	}
 	if n, err := strconv.Atoi(r.URL.Query().Get("boot")); err == nil && n >= 0 && n < len(data.Sessions) {
@@ -394,8 +416,12 @@ func (s *Server) machinePage(w http.ResponseWriter, r *http.Request) {
 type machineCard struct {
 	EffectiveDriver EffectiveNetworkDriver
 	MachineInfo
-	Known bool
-	Label string
+	Known          bool
+	Label          string
+	ActiveSMB      *activeSMBSession
+	ActiveHTTP     *activeHTTPTransfer
+	DHCPFlood      bool
+	DHCPFloodCount int
 }
 
 // cleanMachineText trims a field typed into the machine form and checks its

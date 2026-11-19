@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"omb/internal/agent"
@@ -142,6 +143,18 @@ func machineTrail(row machineRow, live bool) []trailStep {
 	if row.Stage == "copy" || row.Stage == "copied" || row.Stage == "copy_broken" {
 		steps[6].Bytes = row.CopyRead
 	}
+	if row.DHCPFlood {
+		steps[0].State = "failed"
+		steps[0].Sub = fmt.Sprintf("флуд · %d за 2 мин", row.DHCPFloodCount)
+	}
+	if row.ActiveHTTP != nil && row.ActiveHTTP.Stale {
+		steps[5].State = "failed"
+		steps[5].Sub = fmt.Sprintf("зависла · %d мин", row.ActiveHTTP.IdleMinutes)
+	}
+	if row.ActiveSMB != nil && row.ActiveSMB.Stale {
+		steps[6].State = "failed"
+		steps[6].Sub = fmt.Sprintf("зависла · %d мин", row.ActiveSMB.IdleMinutes)
+	}
 	return steps
 }
 
@@ -249,16 +262,26 @@ func (s *Server) nowPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	now := time.Now()
-	install := s.loadInstallLog(r.Context(), httpEvents)
+	rawSMB, smbKnown := s.loadRawSMBSessions(r.Context())
+	var install installLog
+	if smbKnown {
+		install = installEvents(rawSMB, httpEvents)
+	}
+	transfers := s.bootTransfers(r.Context())
 	rows := machineRowsWith(httpEvents, dhcp, install, s.menuNames(r.Context()), now)
-	attachDownloads(rows, s.bootTransfers(r.Context()), now)
+	attachDownloads(rows, transfers, now)
+	attachActiveHTTPTransfers(rows, transfers, now)
+	if smbKnown {
+		attachActiveSMBSessions(rows, rawSMB, httpEvents, now)
+	}
+	detectDHCPFlood(rows, dhcp, now)
 	describeMachines(rows, s.machineBook(r.Context(), rows, httpEvents), s.macRules(r.Context()))
 	view.Show = r.URL.Query().Get("show")
 	if view.Show != "day" && view.Show != "failed" {
 		view.Show = "now"
 	}
 	fillNowMachines(view, rows, now)
-	view.Alerts = nowAlerts(data)
+	view.Alerts = append(nowSessionAlerts(rows), nowAlerts(data)...)
 	if Allowed(data.Info.User.Role, "users") {
 		if events, err := s.Store.AuditList(r.Context()); err == nil {
 			view.Audit = events[:min(5, len(events))]
@@ -293,14 +316,62 @@ func (s *Server) bootTransfers(ctx context.Context) []boot.Transfer {
 	return transfers
 }
 
+// nowSessionAlerts reports stale SMB/HTTP sessions and active DHCP flood sources.
+func nowSessionAlerts(rows []machineRow) []nowAlert {
+	var staleCount, floodCount int
+	var staleNames, floodMACs []string
+	for _, row := range rows {
+		if row.DHCPIgnored {
+			continue
+		}
+		if (row.ActiveSMB != nil && row.ActiveSMB.Stale) || (row.ActiveHTTP != nil && row.ActiveHTTP.Stale) {
+			staleCount++
+			label := row.Name
+			if label == "" {
+				label = row.MAC
+			}
+			if len(staleNames) < 3 {
+				staleNames = append(staleNames, label)
+			}
+		}
+		if row.DHCPFlood {
+			floodCount++
+			if len(floodMACs) < 3 {
+				floodMACs = append(floodMACs, row.MAC)
+			}
+		}
+	}
+	var alerts []nowAlert
+	if staleCount > 0 {
+		alerts = append(alerts, nowAlert{
+			State:  "bad",
+			Title:  fmt.Sprintf("Зависшие сессии: %d", staleCount),
+			Detail: strings.Join(staleNames, ", "),
+			Link:   "/?show=failed",
+		})
+	}
+	if floodCount > 0 {
+		alerts = append(alerts, nowAlert{
+			State:  "accent",
+			Title:  fmt.Sprintf("DHCP-флуд: %d", floodCount),
+			Detail: strings.Join(floodMACs, ", "),
+			Link:   "/?show=failed",
+		})
+	}
+	return alerts
+}
+
 // fillNowMachines counts the machines of the last 24 hours and lists those
 // view.Show asks for: booting now, all of the day, or failed.
 func fillNowMachines(view *nowView, rows []machineRow, now time.Time) {
 	for _, row := range rows {
-		live := now.Sub(row.LastSeen) <= liveWindow
-		day := now.Sub(row.LastSeen) <= 24*time.Hour
-		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: row.Stage == "loader_failed" || row.Stage == "loader_rejected" || row.Stage == "files_failed" || row.Stage == "stuck" || row.Stage == "copy_broken"}
-		if view.Last == nil {
+		hasActive := row.ActiveSMB != nil || row.ActiveHTTP != nil
+		live := !row.DHCPIgnored && (now.Sub(row.LastSeen) <= liveWindow || hasActive)
+		day := now.Sub(row.LastSeen) <= 24*time.Hour || hasActive
+		stale := (row.ActiveSMB != nil && row.ActiveSMB.Stale) || (row.ActiveHTTP != nil && row.ActiveHTTP.Stale)
+		bad := row.Stage == "loader_failed" || row.Stage == "loader_rejected" || row.Stage == "files_failed" || row.Stage == "stuck" || row.Stage == "copy_broken" || stale || (row.DHCPFlood && !row.DHCPIgnored)
+		machine := nowMachine{machineRow: row, Trail: machineTrail(row, live), When: ago(now, row.LastSeen), Live: live, Bad: bad}
+		if view.Last == nil && !row.DHCPIgnored {
 			last := machine
 			view.Last = &last
 		}

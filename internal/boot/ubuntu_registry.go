@@ -40,6 +40,7 @@ type ubuntuRegistry struct {
 	entries      map[string]ubuntuRegistryEntry
 	locks        map[string]*sync.Mutex
 	loadSource   func(string, string) *UbuntuSource
+	transfers    *Transfers
 }
 
 // UbuntuRegistry shares verified source snapshots between the public and local APIs.
@@ -243,6 +244,12 @@ func (r *ubuntuRegistry) serve(w http.ResponseWriter, req *http.Request, iso boo
 	}
 	if iso {
 		w.Header().Set("Content-Type", "application/octet-stream")
+	}
+	if r.transfers != nil {
+		id, live := r.transfers.startWithCancel(req.URL.Path, req.RemoteAddr, info.Size(), cancelWriterDeadline(w))
+		http.ServeContent(w, req, info.Name(), info.ModTime(), countingFile{File: f, sent: &live.sent, lastActivity: &live.lastActivity, canceled: &live.canceled})
+		r.transfers.finish(id)
+		return
 	}
 	http.ServeContent(w, req, info.Name(), info.ModTime(), f)
 }

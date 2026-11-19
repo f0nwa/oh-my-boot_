@@ -26,6 +26,13 @@ type machineRow struct {
 	Problem string
 	// Download is a boot file being sent to the machine right now.
 	Download *boot.Transfer
+	// ActiveSMB and ActiveHTTP hold live transfer/install connections for staleness and reset controls.
+	ActiveSMB  *activeSMBSession
+	ActiveHTTP *activeHTTPTransfer
+	// DHCPFlood marks a client repeatedly requesting DHCP without progressing to PXE.
+	DHCPFlood      bool
+	DHCPFloodCount int
+	DHCPIgnored    bool
 	// Name and Label come from the book of machines: a person's name for
 	// the machine, and its maker and model (or network card maker).
 	Name, Label string
@@ -44,6 +51,7 @@ func describeMachines(rows []machineRow, book map[string]MachineInfo, rules macR
 		}
 		rows[i].Name = info.Name
 		rows[i].Label = machineLabel(&info, rows[i].MAC)
+		rows[i].DHCPIgnored = info.DHCPIgnored
 	}
 }
 

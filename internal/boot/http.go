@@ -69,6 +69,9 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 	if len(registries) > 0 && registries[0] != nil {
 		ubuntuSources = registries[0]
 	}
+	if transfers != nil {
+		ubuntuSources.transfers = transfers
+	}
 	strictLegacyUbuntu := len(registries) > 0 && registries[0] != nil
 
 	mux := http.NewServeMux()
@@ -99,7 +102,9 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 				return
 			}
 			w.Header().Set("Content-Type", "application/octet-stream")
-			http.ServeContent(w, r, "ubuntu-desktop.iso", openedInfo.ModTime(), file)
+			id, live := transfers.startWithCancel(r.URL.Path, r.RemoteAddr, openedInfo.Size(), cancelWriterDeadline(w))
+			http.ServeContent(w, r, "ubuntu-desktop.iso", openedInfo.ModTime(), countingFile{File: file, sent: &live.sent, lastActivity: &live.lastActivity, canceled: &live.canceled})
+			transfers.finish(id)
 			if record != nil {
 				record(Event{Kind: "iso", Path: r.URL.Path, RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
 			}
@@ -234,9 +239,9 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			notFound()
 			return
 		}
-		id, live := transfers.start(r.URL.Path, r.RemoteAddr, info.Size())
+		id, live := transfers.startWithCancel(r.URL.Path, r.RemoteAddr, info.Size(), cancelWriterDeadline(w))
 		sw := &statusWriter{ResponseWriter: w}
-		http.ServeContent(sw, r, info.Name(), info.ModTime(), countingFile{File: file, sent: &live.sent})
+		http.ServeContent(sw, r, info.Name(), info.ModTime(), countingFile{File: file, sent: &live.sent, lastActivity: &live.lastActivity, canceled: &live.canceled})
 		transfers.finish(id)
 		if record != nil {
 			event := Event{Kind: "asset", Path: r.URL.Path, RemoteAddr: r.RemoteAddr, At: time.Now().UTC(), Status: sw.status, Bytes: sw.bytes}

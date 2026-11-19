@@ -59,12 +59,15 @@ func normalizedBootDriverRules(rules []BootDriverRule) ([]BootDriverRule, error)
 	normalized := make([]BootDriverRule, 0, len(rules))
 	seen := make(map[string]bool, len(rules))
 	for _, rule := range rules {
-		if rule.Driver != "ipxe" && rule.Driver != "snp" {
+		if rule.Driver != "ipxe" && rule.Driver != "snp" && rule.Driver != "ignore" {
 			return nil, fmt.Errorf("invalid boot driver %q", rule.Driver)
 		}
-		match, _, err := canonicalDriverMatch(rule.Match)
+		match, level, err := canonicalDriverMatch(rule.Match)
 		if err != nil {
 			return nil, fmt.Errorf("invalid match %q: %w", rule.Match, err)
+		}
+		if rule.Driver == "ignore" && level != "machine" {
+			return nil, fmt.Errorf("ignore rule requires an exact MAC address, got %q", rule.Match)
 		}
 		if seen[match] {
 			return nil, fmt.Errorf("duplicate boot driver match %q", match)
@@ -88,6 +91,10 @@ func RenderDHCPHosts(rules []BootDriverRule) ([]byte, error) {
 	}
 	var b strings.Builder
 	for _, rule := range normalized {
+		if rule.Driver == "ignore" {
+			fmt.Fprintf(&b, "%s,ignore\n", rule.Match)
+			continue
+		}
 		_, level, _ := canonicalDriverMatch(rule.Match)
 		fmt.Fprintf(&b, "%s,set:omb-driver-%s-%s\n", rule.Match, level, rule.Driver)
 	}

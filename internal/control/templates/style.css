@@ -398,6 +398,18 @@ button[disabled]{opacity:.45;cursor:default}
 .counter{margin:0;font-size:12px;color:var(--muted);display:flex;align-items:center}
 .scroll-x{overflow-x:auto}
 .trail-head,.trail-row{display:grid;grid-template-columns:180px repeat(7,minmax(0,1fr)) 96px;gap:0 6px;align-items:center;min-width:760px}
+.trail-head.trail-with-menu,.trail-row.trail-with-menu{grid-template-columns:180px repeat(7,minmax(0,1fr)) 90px 34px;min-width:800px}
+.now-row-actions{display:flex;justify-content:flex-end;align-items:center}
+.chip-warn{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;background:var(--draft-bg);color:var(--accent-ink);border:1px solid var(--draft-line);vertical-align:middle}
+.chip-inline{margin:3px 0 0}
+.session-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 14px;padding:11px 14px;margin-bottom:14px;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel)}
+.session-banner strong{display:flex;align-items:center;font-weight:600}
+.session-banner small{display:block;color:var(--text-2);margin-top:2px}
+.session-banner-stale{border-color:var(--bad-line);background:var(--bad-bg)}
+.session-banner-stale strong{color:var(--bad-text)}
+.session-banner-warn{border-color:var(--draft-line);background:var(--draft-bg)}
+.session-banner-warn strong{color:var(--accent-ink)}
+.row-dhcp-ignored td{background:var(--draft-bg)}
 .trail-head{padding:0 15px 6px;color:var(--muted);font-size:11px;letter-spacing:.04em;text-transform:uppercase}
 .trail-head span:last-child,.machine-when{text-align:right}
 .machines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;min-width:720px}

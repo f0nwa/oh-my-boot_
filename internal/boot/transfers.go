@@ -1,6 +1,7 @@
 package boot
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -10,13 +11,17 @@ import (
 	"time"
 )
 
+var errTransferCanceled = errors.New("transfer canceled")
+
 // Transfer is a file being sent to a client right now.
 type Transfer struct {
-	Path       string    `json:"path"`
-	RemoteAddr string    `json:"remote_addr"`
-	Started    time.Time `json:"started"`
-	Size       int64     `json:"size"`
-	Bytes      int64     `json:"bytes"`
+	ID           int       `json:"id"`
+	Path         string    `json:"path"`
+	RemoteAddr   string    `json:"remote_addr"`
+	Started      time.Time `json:"started"`
+	LastActivity time.Time `json:"last_activity"`
+	Size         int64     `json:"size"`
+	Bytes        int64     `json:"bytes"`
 }
 
 // Transfers lists the files being sent, so that Control can show how far a
@@ -29,7 +34,10 @@ type Transfers struct {
 
 type liveTransfer struct {
 	Transfer
-	sent atomic.Int64
+	sent         atomic.Int64
+	lastActivity atomic.Int64
+	canceled     atomic.Bool
+	cancelFn     func()
 }
 
 func NewTransfers() *Transfers {
@@ -37,15 +45,27 @@ func NewTransfers() *Transfers {
 }
 
 func (t *Transfers) start(path, remote string, size int64) (int, *liveTransfer) {
+	return t.startWithCancel(path, remote, size, nil)
+}
+
+func (t *Transfers) startWithCancel(path, remote string, size int64, cancelFn func()) (int, *liveTransfer) {
+	now := time.Now().UTC()
 	if t == nil {
-		return 0, &liveTransfer{}
+		live := &liveTransfer{Transfer: Transfer{Path: path, RemoteAddr: remote, Started: now, LastActivity: now, Size: size}, cancelFn: cancelFn}
+		live.lastActivity.Store(now.UnixNano())
+		return 0, live
 	}
-	live := &liveTransfer{Transfer: Transfer{Path: path, RemoteAddr: remote, Started: time.Now().UTC(), Size: size}}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.next++
-	t.active[t.next] = live
-	return t.next, live
+	id := t.next
+	live := &liveTransfer{
+		Transfer: Transfer{ID: id, Path: path, RemoteAddr: remote, Started: now, LastActivity: now, Size: size},
+		cancelFn: cancelFn,
+	}
+	live.lastActivity.Store(now.UnixNano())
+	t.active[id] = live
+	return id, live
 }
 
 func (t *Transfers) finish(id int) {
@@ -55,6 +75,24 @@ func (t *Transfers) finish(id int) {
 	t.mu.Lock()
 	delete(t.active, id)
 	t.mu.Unlock()
+}
+
+// Cancel forcibly aborts an in-flight transfer by ID.
+func (t *Transfers) Cancel(id int) bool {
+	if t == nil || id <= 0 {
+		return false
+	}
+	t.mu.Lock()
+	live := t.active[id]
+	t.mu.Unlock()
+	if live == nil {
+		return false
+	}
+	live.canceled.Store(true)
+	if live.cancelFn != nil {
+		live.cancelFn()
+	}
+	return true
 }
 
 // List returns the running transfers, oldest first.
@@ -67,6 +105,9 @@ func (t *Transfers) List() []Transfer {
 	for _, live := range t.active {
 		copy := live.Transfer
 		copy.Bytes = live.sent.Load()
+		if ns := live.lastActivity.Load(); ns > 0 {
+			copy.LastActivity = time.Unix(0, ns).UTC()
+		}
 		out = append(out, copy)
 	}
 	t.mu.Unlock()
@@ -78,13 +119,32 @@ func (t *Transfers) List() []Transfer {
 // it as it sends, so the count follows the transfer.
 type countingFile struct {
 	*os.File
-	sent *atomic.Int64
+	sent         *atomic.Int64
+	lastActivity *atomic.Int64
+	canceled     *atomic.Bool
 }
 
 func (f countingFile) Read(p []byte) (int, error) {
+	if f.canceled != nil && f.canceled.Load() {
+		return 0, errTransferCanceled
+	}
 	n, err := f.File.Read(p)
-	f.sent.Add(int64(n))
+	if n > 0 {
+		if f.sent != nil {
+			f.sent.Add(int64(n))
+		}
+		if f.lastActivity != nil {
+			f.lastActivity.Store(time.Now().UTC().UnixNano())
+		}
+	}
 	return n, err
+}
+
+func cancelWriterDeadline(w http.ResponseWriter) func() {
+	rc := http.NewResponseController(w)
+	return func() {
+		_ = rc.SetWriteDeadline(time.Now())
+	}
 }
 
 // Seek keeps ServeContent's size probe from counting as sent.

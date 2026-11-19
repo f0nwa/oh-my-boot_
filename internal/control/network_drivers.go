@@ -110,5 +110,8 @@ func validNetworkDriverSelection(match, driver string) bool {
 	if driver == "" {
 		return true
 	}
+	if driver == "ignore" {
+		return false
+	}
 	return network.ValidateBootDriverRules([]network.BootDriverRule{{Match: match, Driver: driver}}) == nil
 }

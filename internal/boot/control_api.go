@@ -80,6 +80,19 @@ func controlMux(p *Publisher, events EventReader, transfers *Transfers, assets *
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(transfers.List())
 	})
+	mux.HandleFunc("POST /transfers/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid transfer id", http.StatusBadRequest)
+			return
+		}
+		if !transfers.Cancel(id) {
+			http.Error(w, "transfer not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"canceled": true})
+	})
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		_, hash := p.Current()
 		w.Header().Set("Content-Type", "application/json")

@@ -149,6 +149,28 @@ func (s *Server) systemTimeAPI() SystemTimeAPI {
 	return nil
 }
 
+func buildSystemTimeStatusSnapshot(st agent.SystemTimeState, lang string) *SystemTimeStatusSnapshot {
+	if st.Timezone != "" {
+		SetServerTimezone(st.Timezone)
+	}
+	statusLabel := translate(lang, "Вручную (NTP выключен)")
+	if st.NTPEnabled {
+		if st.NTPSynchronized {
+			statusLabel = "NTP"
+		} else {
+			statusLabel = translate(lang, "NTP (ожидание синхронизации)")
+		}
+	}
+	return &SystemTimeStatusSnapshot{
+		Timezone:        st.Timezone,
+		NTPEnabled:      st.NTPEnabled,
+		NTPSynchronized: st.NTPSynchronized,
+		StatusLabel:     statusLabel,
+		ServersText:     strings.Join(st.NTPServers, " "),
+		DefaultLabel:    translate(lang, "по умолчанию ОС"),
+	}
+}
+
 func (s *Server) loadSystemTime(ctx context.Context, data *pageData) {
 	api := s.systemTimeAPI()
 	if api == nil {

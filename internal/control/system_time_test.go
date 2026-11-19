@@ -546,3 +546,145 @@ assert.match(manualInput.value, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
 	}
 }
 
+func TestSystemMetricsAPIIncludesTimeStatus(t *testing.T) {
+	api := &fakeSystemTimeAPI{
+		state: agent.SystemTimeState{
+			Timezone:        "Europe/Moscow",
+			NTPEnabled:      true,
+			NTPSynchronized: false,
+			NTPServers:      []string{"0.ru.pool.ntp.org"},
+		},
+	}
+	s := &Server{
+		Store:      authOnlyStore{user: User{ID: 1, Username: "admin", Role: "admin", Enabled: true}},
+		SystemTime: api,
+	}
+	h := s.Handler()
+
+	// 1. Unsynced NTP (RU)
+	req := httptest.NewRequest(http.MethodGet, "/api/system/metrics", nil)
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /api/system/metrics = %d", res.Code)
+	}
+	var snap SystemSnapshot
+	if err := json.Unmarshal(res.Body.Bytes(), &snap); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if snap.TimeStatus == nil {
+		t.Fatalf("expected non-nil TimeStatus")
+	}
+	if snap.TimeStatus.NTPSynchronized || snap.TimeStatus.StatusLabel != "NTP (ожидание синхронизации)" || snap.TimeStatus.ServersText != "0.ru.pool.ntp.org" {
+		t.Fatalf("unexpected unsynced TimeStatus: %+v", snap.TimeStatus)
+	}
+
+	// 2. Synced NTP (EN)
+	api.state.NTPSynchronized = true
+	sEN := &Server{
+		Store:      authOnlyStore{user: User{ID: 1, Username: "admin", Role: "admin", Enabled: true, Language: langEN}},
+		SystemTime: api,
+	}
+	reqEN := httptest.NewRequest(http.MethodGet, "/api/system/metrics", nil)
+	reqEN.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	resEN := httptest.NewRecorder()
+	sEN.Handler().ServeHTTP(resEN, reqEN)
+	var snapEN SystemSnapshot
+	if err := json.Unmarshal(resEN.Body.Bytes(), &snapEN); err != nil {
+		t.Fatalf("decode EN: %v", err)
+	}
+	if snapEN.TimeStatus == nil || !snapEN.TimeStatus.NTPSynchronized || snapEN.TimeStatus.StatusLabel != "NTP" || snapEN.TimeStatus.DefaultLabel != "OS default" {
+		t.Fatalf("unexpected synced EN TimeStatus: %+v", snapEN.TimeStatus)
+	}
+}
+
+func TestSystemTimeLiveSyncUpdateJS(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	scriptBytes, err := os.ReadFile("system.js")
+	if err != nil {
+		t.Fatalf("read system.js: %v", err)
+	}
+
+	jsTest := fmt.Sprintf(`
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+
+const code = %q;
+let visibilityHandler = null;
+const sysTimeNow = { textContent: '' };
+const sysTimeTz = { textContent: 'UTC' };
+function makeEl(tag) {
+  return { tagName: tag.toUpperCase(), className: '', textContent: '', children: [], appendChild(c) { this.children.push(c); return c; } };
+}
+const sysTimeSync = {
+  children: [],
+  replaceChildren(...nodes) { this.children = nodes; },
+};
+
+const document = {
+  hidden: false,
+  getElementById(id) {
+    if (id === 'server-resources-card') return {};
+    if (id === 'sys-time-now') return sysTimeNow;
+    if (id === 'sys-time-tz') return sysTimeTz;
+    if (id === 'sys-time-sync') return sysTimeSync;
+    return null;
+  },
+  querySelectorAll() { return []; },
+  createElement(tag) { return makeEl(tag); },
+  createTextNode(t) { return { nodeType: 3, textContent: t }; },
+  addEventListener(ev, fn) { if (ev === 'visibilitychange') visibilityHandler = fn; },
+};
+
+let pendingFetch = null;
+vm.runInNewContext(code, {
+  document,
+  window: {},
+  Date,
+  Math,
+  String,
+  setInterval() { return 1; },
+  clearInterval() {},
+  fetch() {
+    pendingFetch = Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({
+        available: true,
+        server_time: '19.11.2026 04:20:00',
+        time_status: {
+          timezone: 'Europe/Moscow',
+          ntp_enabled: true,
+          ntp_synchronized: true,
+          status_label: 'NTP',
+          servers_text: '0.ru.pool.ntp.org',
+          default_label: 'по умолчанию ОС',
+        },
+      }),
+    });
+    return pendingFetch;
+  },
+});
+
+(async () => {
+  visibilityHandler();
+  await pendingFetch;
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(sysTimeNow.textContent, '19.11.2026 04:20:00');
+  assert.equal(sysTimeTz.textContent, 'Europe/Moscow');
+  assert.equal(sysTimeSync.children.length, 3);
+  assert.equal(sysTimeSync.children[0].className, 'dot dot-ok');
+  assert.equal(sysTimeSync.children[1].textContent, 'NTP · ');
+  assert.equal(sysTimeSync.children[2].textContent, '0.ru.pool.ntp.org');
+})();
+`, string(scriptBytes))
+
+	cmd := exec.CommandContext(ctx, "node", "-e", jsTest)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("node live sync JS test failed: %v\n%s", err, string(out))
+	}
+}
+

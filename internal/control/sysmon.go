@@ -42,9 +42,20 @@ type SystemSnapshot struct {
 	TxRateHuman     string     `json:"tx_rate_human"`
 	RxTotalHuman    string     `json:"rx_total_human"`
 	TxTotalHuman    string     `json:"tx_total_human"`
-	UptimeSeconds   uint64     `json:"uptime_seconds"`
-	UptimeHuman     string     `json:"uptime_human"`
-	ServerTime      string     `json:"server_time,omitempty"`
+	UptimeSeconds   uint64                    `json:"uptime_seconds"`
+	UptimeHuman     string                    `json:"uptime_human"`
+	ServerTime      string                    `json:"server_time,omitempty"`
+	TimeStatus      *SystemTimeStatusSnapshot `json:"time_status,omitempty"`
+}
+
+// SystemTimeStatusSnapshot carries live timezone and NTP sync status for /system polling.
+type SystemTimeStatusSnapshot struct {
+	Timezone        string `json:"timezone"`
+	NTPEnabled      bool   `json:"ntp_enabled"`
+	NTPSynchronized bool   `json:"ntp_synchronized"`
+	StatusLabel     string `json:"status_label"`
+	ServersText     string `json:"servers_text"`
+	DefaultLabel    string `json:"default_label"`
 }
 
 type SystemMonitor struct {

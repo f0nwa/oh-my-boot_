@@ -1,6 +1,8 @@
 (function () {
   var card = document.getElementById("server-resources-card");
   var elSysTimeNow = document.getElementById("sys-time-now");
+  var elSysTimeTz = document.getElementById("sys-time-tz");
+  var elSysTimeSync = document.getElementById("sys-time-sync");
   var elDialogClock = document.getElementById("sys-time-dialog-clock");
 
   if (card) {
@@ -39,6 +41,30 @@
           if (d.server_time) {
             if (elSysTimeNow) elSysTimeNow.textContent = d.server_time;
             if (elDialogClock) elDialogClock.textContent = d.server_time;
+          }
+          if (d.time_status) {
+            var ts = d.time_status;
+            if (elSysTimeTz && ts.timezone) {
+              elSysTimeTz.textContent = ts.timezone;
+            }
+            if (elSysTimeSync && typeof elSysTimeSync.replaceChildren === "function") {
+              var dot = document.createElement("span");
+              dot.className = ts.ntp_enabled && ts.ntp_synchronized ? "dot dot-ok" : "dot dot-accent";
+              if (ts.ntp_enabled) {
+                var label = document.createTextNode((ts.status_label || "NTP") + " · ");
+                var tail = document.createElement("span");
+                if (ts.servers_text) {
+                  tail.className = "mono";
+                  tail.textContent = ts.servers_text;
+                } else {
+                  tail.className = "muted";
+                  tail.textContent = ts.default_label || "";
+                }
+                elSysTimeSync.replaceChildren(dot, label, tail);
+              } else {
+                elSysTimeSync.replaceChildren(dot, document.createTextNode(ts.status_label || ""));
+              }
+            }
           }
           if (!d.available) return;
           var cpuPct = Math.round(d.cpu_percent || 0);

@@ -974,6 +974,14 @@ func (s *Server) systemMetricsAPI(w http.ResponseWriter, r *http.Request) {
 	if s.SysMon != nil {
 		snap = s.SysMon.Snapshot(lang)
 	}
+	if api := s.systemTimeAPI(); api != nil {
+		tctx, cancel := context.WithTimeout(r.Context(), 1500*time.Millisecond)
+		if st, err := api.SystemTime(tctx); err == nil {
+			snap.TimeStatus = buildSystemTimeStatusSnapshot(st, lang)
+			snap.ServerTime = time.Now().In(serverLocation()).Format("02.01.2006 15:04:05")
+		}
+		cancel()
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(snap)

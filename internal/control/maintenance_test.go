@@ -320,4 +320,16 @@ func TestMaintenanceBlocksMutatingWebOperations(t *testing.T) {
 	if !rows[0].Maintenance || rows[0].MaintenanceReason != "NAS update" || !rows[0].Available {
 		t.Fatalf("unexpected menu row after applyMenuStorageStatus: %+v", rows[0])
 	}
+
+	// 5. POST /images/delete returns 409 Conflict during maintenance
+	s.Images = &fakeImagesAPI{}
+	delForm := url.Values{"csrf": {csrf}, "storage_id": {"2"}, "path": {"win11.iso"}}
+	req = httptest.NewRequest("POST", "/images/delete", strings.NewReader(delForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: token})
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusConflict {
+		t.Fatalf("delete ISO during maintenance: got %d, want 409 (%s)", res.Code, res.Body.String())
+	}
 }

@@ -1881,4 +1881,5 @@ var englishMessages = map[string]string{
 	"Образ в режиме обслуживания":                                                                                                                       "Image is in maintenance mode",
 	"Хранилище или образ в режиме обслуживания":                                                                                                         "Storage or image is in maintenance mode",
 	"целевое хранилище в режиме обслуживания":                                                                                                           "target storage is in maintenance mode",
+	"исходное хранилище или образ в режиме обслуживания":                                                                                                "source storage or image is in maintenance mode",
 }

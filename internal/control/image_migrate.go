@@ -110,7 +110,11 @@ func (c *MigrationCoordinator) CheckPreflight(ctx context.Context, sourceStorage
 	}
 	if c.store.Pool != nil {
 		if locks, err := c.store.MaintenanceLocks(ctx); err == nil {
-			if _, locked := newMaintenanceLookup(locks).StorageLock(targetStorageID); locked {
+			lookup := newMaintenanceLookup(locks)
+			if _, _, locked := lookup.ImageLock(sourceStorageID, path); locked {
+				return errors.New("исходное хранилище или образ в режиме обслуживания")
+			}
+			if _, locked := lookup.StorageLock(targetStorageID); locked {
 				return errors.New("целевое хранилище в режиме обслуживания")
 			}
 		}

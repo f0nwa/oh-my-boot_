@@ -27,6 +27,10 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	imagePath := r.FormValue("path")
+	if _, _, locked := s.loadMaintenanceLookup(r.Context()).ImageLock(storageID, imagePath); locked {
+		http.Error(w, "Хранилище или образ в режиме обслуживания", http.StatusConflict)
+		return
+	}
 	catalog, err := s.Images.Catalog(r.Context())
 	if err != nil {
 		http.Error(w, "Сервис образов недоступен", http.StatusServiceUnavailable)

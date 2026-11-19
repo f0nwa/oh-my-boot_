@@ -61,6 +61,8 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Draft = draft
 	data.DraftRows = menuDraftRows(draft, profiles, answers, configs, sources)
+	installs := installationRows(profiles, answers, configs, draft, active, sources)
+	s.applyMenuStorageStatus(r.Context(), data.DraftRows, installs)
 	data.Changes = diffMenuDraft(active, draft)
 	// The draft bar on this page follows the same read as the page itself.
 	data.Info.Draft = summarizeChanges(data.Changes)
@@ -72,8 +74,54 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	if !menuScreenLabel.MatchString(screen) {
 		screen = ""
 	}
-	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installationRows(profiles, answers, configs, draft, active, sources), profiles, answers, configs, key, screen, sources)
+	data.Preview = buildMenuPreview(draft, data.Changes, data.DraftRows, installs, profiles, answers, configs, key, screen, sources)
 	render(w, "menu", data)
+}
+
+func (s *Server) applyMenuStorageStatus(ctx context.Context, rows []menuDraftRow, installs []installationRow) {
+	if s.Images == nil {
+		return
+	}
+	byID := map[int64]installationRow{}
+	needsCatalog := false
+	for _, inst := range installs {
+		if inst.ID > 0 {
+			byID[inst.ID] = inst
+			if (isISOBootKind(inst.Kind) || inst.Kind == BootProfileUbuntuISO) && inst.StorageID > 0 {
+				needsCatalog = true
+			}
+		}
+	}
+	if !needsCatalog {
+		return
+	}
+	catalog, err := s.Images.Catalog(ctx)
+	if err != nil {
+		return
+	}
+	storageStates := map[int64]string{}
+	for _, storage := range catalog.Storages {
+		storageStates[storage.ID] = storage.State
+	}
+	for i := range rows {
+		if !rows[i].Available || rows[i].Item.InstallationID <= 0 {
+			continue
+		}
+		inst, ok := byID[rows[i].Item.InstallationID]
+		if !ok || !(isISOBootKind(inst.Kind) || inst.Kind == BootProfileUbuntuISO) || inst.StorageID <= 0 {
+			continue
+		}
+		switch state, found := storageStates[inst.StorageID]; {
+		case !found:
+			rows[i].Available, rows[i].Error = false, "Хранилище ISO не найдено"
+		case state == "unavailable":
+			rows[i].Available, rows[i].Error = false, "Хранилище ISO недоступно"
+		case state == "scanning":
+			rows[i].Available, rows[i].Error = false, "Проверяется хранилище ISO"
+		case state == "unknown":
+			rows[i].Available, rows[i].Error = false, "Хранилище ISO не проверено"
+		}
+	}
 }
 
 func (s *Server) menuVersions(w http.ResponseWriter, r *http.Request) {

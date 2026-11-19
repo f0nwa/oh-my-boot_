@@ -5,10 +5,51 @@ import (
 	"fmt"
 	"net/http"
 	"omb/internal/agent"
+	"omb/internal/images"
 	"path"
 	"strconv"
 	"strings"
 )
+
+func applyCatalogStorageStatesToChoices(choices []bootProfileChoice, windows []WindowsProfile, catalog images.Catalog) {
+	storagesByID := map[int64]images.Storage{}
+	for _, storage := range catalog.Storages {
+		storagesByID[storage.ID] = storage
+	}
+	windowsByID := map[int64]WindowsProfile{}
+	for _, w := range windows {
+		windowsByID[w.ID] = w
+	}
+	for i := range choices {
+		var storageID int64
+		switch choices[i].Kind {
+		case BootProfileUbuntuISO, BootProfileUbuntuBuiltin:
+			storageID = choices[i].UbuntuStorageID
+		case BootProfileWindowsISO, BootProfileWinPEISO:
+			if w, ok := windowsByID[choices[i].WindowsProfileID]; ok {
+				storageID = w.StorageID
+			}
+		}
+		if storageID <= 0 {
+			continue
+		}
+		storage, ok := storagesByID[storageID]
+		if !ok {
+			continue
+		}
+		if choices[i].StorageName == "" {
+			choices[i].StorageName = storage.Name
+		}
+		switch storage.State {
+		case "unavailable":
+			choices[i].State, choices[i].Error, choices[i].InspectStorageID = "unavailable", "Хранилище недоступно", 0
+		case "scanning":
+			choices[i].State, choices[i].Error, choices[i].InspectStorageID = "unavailable", "Проверяется хранилище", 0
+		case "unknown":
+			choices[i].State, choices[i].Error, choices[i].InspectStorageID = "unavailable", "Хранилище не проверено", 0
+		}
+	}
+}
 
 func (c bootProfileChoice) Selectable() bool {
 	return c.State == "ready" || isISOBootKind(c.Kind) && (c.State == "pending" || c.State == "error") || c.Kind == BootProfileUbuntuISO && (c.State == "verified" || c.State == "error")
@@ -56,17 +97,7 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		return nil, fmt.Errorf("Каталог ISO недоступен")
 	}
 	records = matchingImageInspections(catalog, records)
-	for i := range choices {
-		if choices[i].Kind != BootProfileUbuntuISO && choices[i].Kind != BootProfileUbuntuBuiltin {
-			continue
-		}
-		for _, storage := range catalog.Storages {
-			if storage.ID == choices[i].UbuntuStorageID {
-				choices[i].StorageName = storage.Name
-				break
-			}
-		}
-	}
+	applyCatalogStorageStatesToChoices(choices, windows, catalog)
 	for _, image := range catalog.Images {
 		if existing[fmt.Sprintf("%d:%s", image.StorageID, image.Path)] {
 			continue
@@ -158,7 +189,13 @@ func (s *Server) resolveDownloadSource(r *http.Request, sources InstallationMenu
 	if err != nil {
 		return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Выберите источник загрузки")
 	}
-	for _, choice := range s.bootProfileChoices(r.Context(), sources.BootProfiles, profiles) {
+	choices := s.bootProfileChoices(r.Context(), sources.BootProfiles, profiles)
+	if r.PathValue("id") == "" && s.Images != nil {
+		if catalog, err := s.Images.Catalog(r.Context()); err == nil {
+			applyCatalogStorageStatesToChoices(choices, profiles, catalog)
+		}
+	}
+	for _, choice := range choices {
 		if choice.ID == id {
 			if !choice.Selectable() && r.PathValue("id") == "" {
 				return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Источник загрузки недоступен: %s", choice.Error)

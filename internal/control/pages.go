@@ -23,6 +23,10 @@ type imageRow struct {
 	AddedVia            string
 	Image               images.Image
 	StorageName, Author string
+	StorageState        string
+	StorageUnavailable  bool
+	StorageScanning     bool
+	StorageUnknown      bool
 	DisplayName         string
 	Kind, Problem       string
 	Arch                string
@@ -34,6 +38,10 @@ type imageRow struct {
 	ActiveMigration     *images.MigrationJob
 }
 
+func (r imageRow) StorageBlocked() bool {
+	return r.StorageUnavailable || r.StorageScanning || r.StorageUnknown
+}
+
 func (r imageRow) MatchesTab(tab string) bool {
 	switch tab {
 	case "used":
@@ -41,7 +49,7 @@ func (r imageRow) MatchesTab(tab string) bool {
 	case "free":
 		return len(r.Downloads) == 0
 	case "attention":
-		return !r.Image.Present || r.Problem != ""
+		return !r.Image.Present || r.Problem != "" || r.StorageBlocked()
 	default:
 		return true
 	}

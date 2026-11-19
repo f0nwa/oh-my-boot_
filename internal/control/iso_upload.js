@@ -48,7 +48,8 @@
     folderField.hidden = true;
     folder.replaceChildren();
     status.textContent = tr('Читаю папки…');
-    if (!storage.value) { status.textContent = ''; return; }
+    const selectedOpt = storage.selectedOptions[0];
+    if (!storage.value || (selectedOpt && selectedOpt.disabled)) { status.textContent = ''; return; }
     try {
       const response = await fetch(`/images/storages/${storage.value}/folders`, {credentials: 'same-origin', signal: controller.signal});
       if (!response.ok) throw new Error(tr('Не удалось прочитать папки хранилища'));
@@ -73,7 +74,8 @@
   form.addEventListener('submit', event => {
     event.preventDefault();
     const iso = file.files[0];
-    if (!iso || !storage.value || !foldersReady || !folder.options.length || request) return;
+    const selectedOpt = storage.selectedOptions[0];
+    if (!iso || !storage.value || (selectedOpt && selectedOpt.disabled) || !foldersReady || !folder.options.length || request) return;
     if (!/\.iso$/i.test(iso.name) || iso.size <= 0 || iso.size > 32 * 1024 ** 3) {
       status.textContent = tr('Выберите ISO размером до 32 ГБ.');
       return;

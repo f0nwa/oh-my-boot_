@@ -319,6 +319,8 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 				rows[i].StorageWarning, rows[i].StorageUnavailable = "Хранилище ISO недоступно", true
 			case state == "scanning":
 				rows[i].StorageWarning = "Проверяется хранилище ISO"
+			case state == "unknown":
+				rows[i].StorageWarning = "Хранилище ISO не проверено"
 			}
 		}
 		if rows[i].Kind != BootProfileUbuntuBuiltin {

@@ -1596,6 +1596,11 @@ var englishMessages = map[string]string{
 	"Хранилище ISO не найдено":           "ISO storage was not found",
 	"Не удалось проверить хранилище ISO": "Could not check ISO storage",
 	"Проверяется хранилище ISO":          "Checking ISO storage",
+	"Хранилище ISO не проверено":         "ISO storage not checked",
+	"Проверяется хранилище":              "Checking storage",
+	"Хранилище не проверено":             "Storage not checked",
+	"недоступно":                         "unavailable",
+	"сканирование":                       "scanning",
 
 	"Поиск по имени, ID или роли": "Search by name, ID or role",
 	"активных:":        "active:",

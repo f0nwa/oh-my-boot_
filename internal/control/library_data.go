@@ -248,9 +248,9 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	}
 	data.HasAnyISOImages = len(catalog.Images) > 0
 	authors := s.resourceAuthors(r.Context())
-	names := map[int64]string{}
+	storagesByID := map[int64]images.Storage{}
 	for _, storage := range catalog.Storages {
-		names[storage.ID] = storage.Name
+		storagesByID[storage.ID] = storage
 	}
 	sources, usageErr := s.libraryMenuReferences(r.Context())
 	uses := imageDownloadsBySource(data.WindowsProfiles, sources)
@@ -310,7 +310,26 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 		if record, ok := inspections[key]; ok {
 			kind, problem, arch = inspectionLabel(record.Kind)
 		}
-		row := imageRow{Image: image, StorageName: names[image.StorageID], Author: authors.Images[imageAuthorKey(image.StorageID, image.Path)], Kind: kind, Problem: problem, DisplayName: namesByImage[key], Arch: arch, ActiveMigration: activeMigrations[key]}
+		storage, storageFound := storagesByID[image.StorageID]
+		row := imageRow{
+			Image:           image,
+			StorageName:     storage.Name,
+			StorageState:    storage.State,
+			Author:          authors.Images[imageAuthorKey(image.StorageID, image.Path)],
+			Kind:            kind,
+			Problem:         problem,
+			DisplayName:     namesByImage[key],
+			Arch:            arch,
+			ActiveMigration: activeMigrations[key],
+		}
+		switch {
+		case !storageFound || storage.State == "unavailable":
+			row.StorageUnavailable = true
+		case storage.State == "scanning":
+			row.StorageScanning = true
+		case storage.State == "unknown":
+			row.StorageUnknown = true
+		}
 		if uploaded, ok := authors.ImageUploadedAt[key]; ok && !uploaded.IsZero() {
 			row.AddedAt, row.AddedVia = &uploaded, "Загружен"
 		} else if image.FirstSeenAt != nil {
@@ -350,7 +369,7 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 		} else {
 			data.ImageCounts["free"]++
 		}
-		if !row.Image.Present || row.Problem != "" {
+		if !row.Image.Present || row.Problem != "" || row.StorageBlocked() {
 			data.ImageCounts["attention"]++
 		}
 		if row.MatchesTab(data.Tab) {
@@ -437,6 +456,13 @@ func imageMatchesQuery(row imageRow, query string) bool {
 		row.AddedVia,
 		translate(langEN, row.AddedVia),
 		row.Problem,
+	}
+	if row.StorageUnavailable {
+		parts = append(parts, "Хранилище недоступно", translate(langEN, "Хранилище недоступно"))
+	} else if row.StorageScanning {
+		parts = append(parts, "Проверяется хранилище", translate(langEN, "Проверяется хранилище"))
+	} else if row.StorageUnknown {
+		parts = append(parts, "Хранилище не проверено", translate(langEN, "Хранилище не проверено"))
 	}
 	for _, d := range row.Downloads {
 		parts = append(parts, d.Title)

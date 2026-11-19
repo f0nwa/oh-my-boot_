@@ -807,8 +807,8 @@ func TestLocalSFTPRWUploadTriggersHookAndSetsMode0644(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Stat failed: %v", err)
 	}
-	if info.Mode().Perm() != 0644 {
-		t.Fatalf("expected mode 0644, got %#o", info.Mode().Perm())
+	if info.Mode().Perm() != 0664 {
+		t.Fatalf("expected mode 0664, got %#o", info.Mode().Perm())
 	}
 
 	uploadedMu.Lock()
@@ -844,6 +844,64 @@ func TestLocalSFTPRWUploadTriggersHookAndSetsMode0644(t *testing.T) {
 	uploadedMu.Unlock()
 	if txtPath != "" {
 		t.Fatalf("expected OnISOUploaded not called for .txt, but got '%s'", txtPath)
+	}
+}
+
+func TestLocalSFTPDirectoryPermissionsAndRmdirWithVetoFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	keyPath := filepath.Join(t.TempDir(), "host_ed25519")
+
+	hooks := SFTPHooks{
+		Authenticate: func(ctx context.Context, username, password string) (User, error) {
+			if username == "alice" && password == "pwd123456789" {
+				return User{ID: 42, Username: "alice", Enabled: true, FSAccessMode: "rw"}, nil
+			}
+			return User{}, errors.New("denied")
+		},
+	}
+
+	server := NewLocalSFTPServer(rootDir, keyPath, hooks)
+	defer server.Close()
+
+	if err := server.Apply(true, "127.0.0.1", 0); err != nil {
+		t.Fatalf("server.Apply failed: %v", err)
+	}
+	_, addr := server.Running()
+
+	client, err := dialTestSFTP(t, addr, "alice", "pwd123456789")
+	if err != nil {
+		t.Fatalf("dialTestSFTP failed: %v", err)
+	}
+	defer client.Close()
+
+	// 1. Mkdir should create directory with 0770 permissions
+	if err := client.Mkdir("folder"); err != nil {
+		t.Fatalf("Mkdir folder failed: %v", err)
+	}
+	dirInfo, err := os.Stat(filepath.Join(rootDir, "folder"))
+	if err != nil {
+		t.Fatalf("os.Stat folder failed: %v", err)
+	}
+	if dirInfo.Mode().Perm()&0070 != 0070 {
+		t.Fatalf("expected group rwx on created dir, got %#o", dirInfo.Mode().Perm())
+	}
+
+	// 2. Put veto files inside folder (.DS_Store and ._metadata)
+	if err := os.WriteFile(filepath.Join(rootDir, "folder", ".DS_Store"), []byte("mac-ds-store"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, "folder", "._test.iso"), []byte("apple-double"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Client calls Rmdir on "folder". Even though .DS_Store is inside, Rmdir should succeed!
+	if err := client.Rmdir("folder"); err != nil {
+		t.Fatalf("Rmdir folder with veto files failed: %v", err)
+	}
+
+	// Folder should now be gone from disk
+	if _, err := os.Stat(filepath.Join(rootDir, "folder")); !os.IsNotExist(err) {
+		t.Fatalf("expected folder to be deleted, err: %v", err)
 	}
 }
 

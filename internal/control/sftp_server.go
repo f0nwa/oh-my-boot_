@@ -311,13 +311,21 @@ type sftpHandleEntry struct {
 }
 
 func (s *LocalSFTPServer) sanitizePath(clientPath string) (string, string, uint32) {
+	return s.sanitizePathInternal(clientPath, false)
+}
+
+func (s *LocalSFTPServer) sanitizePathAllowVeto(clientPath string) (string, string, uint32) {
+	return s.sanitizePathInternal(clientPath, true)
+}
+
+func (s *LocalSFTPServer) sanitizePathInternal(clientPath string, allowVeto bool) (string, string, uint32) {
 	toSlash := filepath.ToSlash(clientPath)
 
 	for _, part := range strings.Split(toSlash, "/") {
 		if part == ".." {
 			return "", "", sftpStatusPermissionDenied
 		}
-		if isVetoName(part) {
+		if !allowVeto && isVetoName(part) {
 			return "", "", sftpStatusPermissionDenied
 		}
 	}
@@ -504,10 +512,19 @@ func (s *LocalSFTPServer) handleSFTP(ctx context.Context, ch ssh.Channel, user U
 			}
 
 			if flags&sftpFXFCreat != 0 {
-				_ = os.MkdirAll(filepath.Dir(abs), 0755)
+				parent := filepath.Dir(abs)
+				_ = os.MkdirAll(parent, 0770)
+				curr := parent
+				for curr != s.rootDir && len(curr) > len(s.rootDir) {
+					_ = os.Chmod(curr, 0770|os.ModeSetgid)
+					curr = filepath.Dir(curr)
+				}
 			}
 
-			file, err := os.OpenFile(abs, osFlags, 0644)
+			file, err := os.OpenFile(abs, osFlags, 0664)
+			if flags&sftpFXFCreat != 0 && err == nil {
+				_ = os.Chmod(abs, 0664)
+			}
 			if err != nil {
 				if os.IsNotExist(err) {
 					_ = sendSFTPStatus(ch, id, sftpStatusNoSuchFile, "no such file")
@@ -550,8 +567,8 @@ func (s *LocalSFTPServer) handleSFTP(ctx context.Context, ch ssh.Channel, user U
 			if h.file != nil {
 				_ = h.file.Close()
 				if h.isWrite {
+					_ = os.Chmod(h.absPath, 0664)
 					if strings.EqualFold(filepath.Ext(h.relPath), ".iso") {
-						_ = os.Chmod(h.absPath, 0644)
 						if s.hooks.OnISOUploaded != nil {
 							s.hooks.OnISOUploaded(ctx, h.user, h.relPath)
 						}
@@ -787,6 +804,9 @@ func (s *LocalSFTPServer) handleSFTP(ctx context.Context, ch ssh.Channel, user U
 				continue
 			}
 			rel, abs, status := s.sanitizePath(pathStr)
+			if status != sftpStatusOK && isVetoName(filepath.Base(pathStr)) {
+				rel, abs, status = s.sanitizePathAllowVeto(pathStr)
+			}
 			if status != sftpStatusOK {
 				_ = sendSFTPStatus(ch, id, status, "permission denied")
 				continue
@@ -877,7 +897,10 @@ func (s *LocalSFTPServer) handleSFTP(ctx context.Context, ch ssh.Channel, user U
 				_ = sendSFTPStatus(ch, id, sftpStatusPermissionDenied, "permission denied")
 				continue
 			}
-			err = os.Mkdir(abs, 0755)
+			err = os.Mkdir(abs, 0770)
+			if err == nil {
+				_ = os.Chmod(abs, 0770|os.ModeSetgid)
+			}
 			if err != nil {
 				if os.IsPermission(err) {
 					_ = sendSFTPStatus(ch, id, sftpStatusPermissionDenied, "permission denied")
@@ -908,6 +931,23 @@ func (s *LocalSFTPServer) handleSFTP(ctx context.Context, ch ssh.Channel, user U
 				continue
 			}
 			err = os.Remove(abs)
+			if err != nil {
+				if entries, readErr := os.ReadDir(abs); readErr == nil && len(entries) > 0 {
+					allVeto := true
+					for _, e := range entries {
+						if e.IsDir() || !isVetoName(e.Name()) {
+							allVeto = false
+							break
+						}
+					}
+					if allVeto {
+						for _, e := range entries {
+							_ = os.Remove(filepath.Join(abs, e.Name()))
+						}
+						err = os.Remove(abs)
+					}
+				}
+			}
 			if err != nil {
 				if os.IsNotExist(err) {
 					_ = sendSFTPStatus(ch, id, sftpStatusNoSuchFile, "no such file")

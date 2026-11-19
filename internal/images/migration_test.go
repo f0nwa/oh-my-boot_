@@ -115,6 +115,12 @@ func TestMigrationEngineCopyAndCommit(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(srcDir, relPath)); !os.IsNotExist(err) {
 		t.Fatalf("source file should be deleted after commit, got err=%v", err)
 	}
+	if _, err := os.Stat(subfolder); !os.IsNotExist(err) {
+		t.Fatalf("source subfolder should be deleted after commit, got err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(srcDir, "Windows")); !os.IsNotExist(err) {
+		t.Fatalf("source Windows folder should be deleted after commit, got err=%v", err)
+	}
 
 	gotAfter, _ := engine.GetMigration(job.ID)
 	if gotAfter.State != "completed" {

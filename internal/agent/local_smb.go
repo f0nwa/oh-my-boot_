@@ -275,7 +275,11 @@ func renderEnabledSMBConf(opts renderSMBOptions) string {
 	b.WriteString("[iso]\n")
 	fmt.Fprintf(&b, "   path = %s\n", opts.isoRoot)
 	b.WriteString("   browseable = yes\n")
-	b.WriteString("   read only = yes\n")
+	if opts.readOnlyAll {
+		b.WriteString("   read only = yes\n")
+	} else {
+		b.WriteString("   read only = no\n")
+	}
 	b.WriteString("   guest ok = no\n")
 
 	var validUsers []string
@@ -284,12 +288,16 @@ func renderEnabledSMBConf(opts renderSMBOptions) string {
 
 	for _, u := range opts.users {
 		unixUser := fmt.Sprintf("omb-fs-%d", u.ID)
-		if u.Mode == "ro" || u.Mode == "rw" {
+		if u.Mode == "ro" {
 			validUsers = append(validUsers, unixUser)
 			readList = append(readList, unixUser)
-		}
-		if u.Mode == "rw" {
-			writeList = append(writeList, unixUser)
+		} else if u.Mode == "rw" {
+			validUsers = append(validUsers, unixUser)
+			if opts.readOnlyAll {
+				readList = append(readList, unixUser)
+			} else {
+				writeList = append(writeList, unixUser)
+			}
 		}
 	}
 
@@ -297,16 +305,18 @@ func renderEnabledSMBConf(opts renderSMBOptions) string {
 		b.WriteString("   available = no\n")
 	} else {
 		fmt.Fprintf(&b, "   valid users = %s\n", strings.Join(validUsers, " "))
-		fmt.Fprintf(&b, "   read list = %s\n", strings.Join(readList, " "))
-		if !opts.readOnlyAll && len(writeList) > 0 {
+		if len(readList) > 0 {
+			fmt.Fprintf(&b, "   read list = %s\n", strings.Join(readList, " "))
+		}
+		if len(writeList) > 0 {
 			fmt.Fprintf(&b, "   write list = %s\n", strings.Join(writeList, " "))
 		}
 	}
 
 	b.WriteString("   force user = omb-images\n")
 	b.WriteString("   force group = omb-images\n")
-	b.WriteString("   create mask = 0644\n")
-	b.WriteString("   force create mode = 0644\n")
+	b.WriteString("   create mask = 0664\n")
+	b.WriteString("   force create mode = 0664\n")
 	b.WriteString("   directory mask = 2770\n")
 	b.WriteString("   force directory mode = 2770\n")
 	b.WriteString("   veto files = /._*/.DS_Store/Thumbs.db/desktop.ini/\n")

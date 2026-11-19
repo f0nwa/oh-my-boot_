@@ -107,7 +107,7 @@ func (e *MigrationEngine) StartMigration(ctx context.Context, sourceStorageID in
 
 	// Prepare destination directory
 	dstDir := filepath.Dir(dstFinalPath)
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
+	if err := ensureDirMode(dstDir, targetWriteRoot, 0770|os.ModeSetgid); err != nil {
 		return nil, fmt.Errorf("cannot create target directory: %w", err)
 	}
 
@@ -342,11 +342,18 @@ func (e *MigrationEngine) CommitDeleteSource(ctx context.Context, id string) err
 		return fmt.Errorf("cannot commit migration in state %s", job.State)
 	}
 	deletePath := job.srcFullPath
-	if job.srcDeleteRoot != "" {
-		deletePath = filepath.Join(job.srcDeleteRoot, job.Path)
+	deleteRoot := job.srcDeleteRoot
+	if deleteRoot != "" {
+		deletePath = filepath.Join(deleteRoot, job.Path)
 	}
 	srcStorageID, path := job.SourceStorageID, job.Path
 	e.mu.Unlock()
+
+	if deleteRoot == "" {
+		if st, err := e.repo.Storage(ctx, srcStorageID); err == nil {
+			deleteRoot = st.Root
+		}
+	}
 
 	// 1. Delete source file from disk first so catalog stays consistent if unlink fails.
 	if err := os.Remove(deletePath); err != nil && !os.IsNotExist(err) {
@@ -361,6 +368,10 @@ func (e *MigrationEngine) CommitDeleteSource(ctx context.Context, id string) err
 		}
 		e.mu.Unlock()
 		return fmt.Errorf("failed to remove source file from disk: %w", err)
+	}
+
+	if deleteRoot != "" {
+		_ = cleanEmptyParentDirs(deletePath, deleteRoot)
 	}
 
 	// 2. Delete record from catalog (ignore if a previous commit attempt already removed it)

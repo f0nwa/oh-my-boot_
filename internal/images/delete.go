@@ -32,5 +32,9 @@ func DeleteISO(root, relative string) error {
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: not a regular file", ErrInvalidISO)
 	}
-	return os.Remove(target)
+	if err := os.Remove(target); err != nil {
+		return err
+	}
+	_ = cleanEmptyParentDirs(target, root)
+	return nil
 }

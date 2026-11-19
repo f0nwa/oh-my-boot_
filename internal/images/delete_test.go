@@ -74,6 +74,9 @@ func TestDeleteISOHTTPRemovesFileAndCatalogRecord(t *testing.T) {
 			if _, err := os.Lstat(target); !os.IsNotExist(err) {
 				t.Fatalf("source ISO remains: %v", err)
 			}
+			if _, err := os.Lstat(filepath.Join(root, "Windows")); !os.IsNotExist(err) {
+				t.Fatalf("empty parent directory remains: %v", err)
+			}
 			if len(repo.deleted) != 1 || repo.deleted[0].StorageID != 3 || repo.deleted[0].Path != "Windows/win.iso" {
 				t.Fatalf("deleted catalog records = %+v", repo.deleted)
 			}

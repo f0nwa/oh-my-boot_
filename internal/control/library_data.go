@@ -306,6 +306,10 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	}
 	maintLookup := s.loadMaintenanceLookup(r.Context())
 	drainCounts := s.countActiveDrainClients(r.Context())
+	data.MaintenanceStorages = make(map[int64]bool, len(maintLookup.byStorage))
+	for sid := range maintLookup.byStorage {
+		data.MaintenanceStorages[sid] = true
+	}
 	for _, image := range catalog.Images {
 		key := imageAuthorKey(image.StorageID, image.Path)
 		kind, problem, arch := inspectionLabel("")

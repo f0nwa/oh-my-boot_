@@ -88,6 +88,7 @@ type pageData struct {
 	EventsAsync           bool
 	UbuntuEditor          *ubuntuAutoinstallEditorView
 	UbuntuAutoinstalls    []UbuntuAutoinstallSummary
+	MaintenanceStorages   map[int64]bool
 	Editor                *editorView
 	USB                   *usbView
 	Journal               *journalView

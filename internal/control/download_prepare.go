@@ -261,6 +261,14 @@ func (s *Server) installationPrepare(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, item := range items {
 		if item.ID == id {
+			if sources, err := s.installationMenuSources(r.Context()); err == nil {
+				if profiles, err := s.Store.WindowsProfiles(r.Context()); err == nil {
+					if s.installationMaintenanceLocked(r.Context(), item, sources, profiles) {
+						http.Error(w, "Хранилище или образ в режиме обслуживания", http.StatusConflict)
+						return
+					}
+				}
+			}
 			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(22 * time.Minute))
 			message := "Загрузка подготовлена"
 			if err := s.prepareDownload(r.Context(), item, requestInfo(r).User.ID); err != nil {

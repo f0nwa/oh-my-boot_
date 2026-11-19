@@ -18,12 +18,14 @@ import (
 )
 
 type menuDraftRow struct {
-	Item      MenuDraftItem
-	Title     string
-	Folder    string // the folder the item shows in
-	Kind      string
-	Available bool
-	Error     string
+	Item              MenuDraftItem
+	Title             string
+	Folder            string // the folder the item shows in
+	Kind              string
+	Available         bool
+	Error             string
+	Maintenance       bool
+	MaintenanceReason string
 }
 
 func (row menuDraftRow) Key() string { return menuDraftItemKey(row.Item) }
@@ -79,9 +81,6 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) applyMenuStorageStatus(ctx context.Context, rows []menuDraftRow, installs []installationRow) {
-	if s.Images == nil {
-		return
-	}
 	byID := map[int64]installationRow{}
 	needsCatalog := false
 	for _, inst := range installs {
@@ -92,7 +91,23 @@ func (s *Server) applyMenuStorageStatus(ctx context.Context, rows []menuDraftRow
 			}
 		}
 	}
-	if !needsCatalog {
+	maintLookup := s.loadMaintenanceLookup(ctx)
+	if len(maintLookup.locks) > 0 {
+		for i := range rows {
+			if rows[i].Item.InstallationID <= 0 {
+				continue
+			}
+			inst, ok := byID[rows[i].Item.InstallationID]
+			if !ok || inst.StorageID <= 0 {
+				continue
+			}
+			if lock, _, locked := maintLookup.ImageLock(inst.StorageID, inst.SourcePath); locked {
+				rows[i].Maintenance = true
+				rows[i].MaintenanceReason = lock.Reason
+			}
+		}
+	}
+	if s.Images == nil || !needsCatalog {
 		return
 	}
 	catalog, err := s.Images.Catalog(ctx)

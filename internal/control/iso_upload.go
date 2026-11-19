@@ -73,6 +73,10 @@ func (s *Server) imagesUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Хранилище недоступно", http.StatusNotFound)
 		return
 	}
+	if _, locked := s.loadMaintenanceLookup(r.Context()).StorageLock(storage.ID); locked {
+		http.Error(w, "Хранилище в режиме обслуживания", http.StatusConflict)
+		return
+	}
 	name, folder := r.URL.Query().Get("name"), r.URL.Query().Get("folder")
 	if !images.ValidISOName(name) {
 		http.Error(w, "Неверное имя ISO", http.StatusBadRequest)

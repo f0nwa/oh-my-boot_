@@ -534,6 +534,10 @@ func (s *Server) installationAddByID(w http.ResponseWriter, r *http.Request, id 
 			break
 		}
 	}
+	if s.installationMaintenanceLocked(r.Context(), installation, sources, profiles) {
+		http.Error(w, "Хранилище или образ в режиме обслуживания", http.StatusConflict)
+		return
+	}
 	draft, active, err := s.currentDraft(r.Context())
 	if err != nil {
 		http.Error(w, "Не удалось прочитать черновик меню", http.StatusServiceUnavailable)

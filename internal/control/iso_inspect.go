@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"omb/internal/agent"
@@ -29,6 +30,10 @@ func (s *Server) inspectISO(w http.ResponseWriter, r *http.Request) {
 	storageID, err := strconv.ParseInt(r.FormValue("storage_id"), 10, 64)
 	if err != nil || storageID <= 0 {
 		http.Error(w, "Выберите исходный ISO", http.StatusBadRequest)
+		return
+	}
+	if _, _, locked := s.loadMaintenanceLookup(r.Context()).ImageLock(storageID, strings.TrimSpace(r.FormValue("path"))); locked {
+		http.Error(w, "Хранилище или образ в режиме обслуживания", http.StatusConflict)
 		return
 	}
 	catalog, err := s.Images.Catalog(r.Context())

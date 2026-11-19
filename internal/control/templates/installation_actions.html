@@ -1,6 +1,6 @@
 {{define "installation_actions"}}{{$info := .Info}}{{with .Row}}
-{{$prepare := and .ID (or (eq .Status "needs_prepare") (eq .Status "needs_build") (eq .Status "error") (eq .Status "unavailable") (eq .Status "preparing") (eq .Status "building"))}}
-{{$add := or (eq .Status "not_in_menu") (eq .Status "pending_remove")}}
+{{$prepare := and .ID (not .Maintenance) (or (eq .Status "needs_prepare") (eq .Status "needs_build") (eq .Status "error") (eq .Status "unavailable") (eq .Status "preparing") (eq .Status "building"))}}
+{{$add := and (not .Maintenance) (or (eq .Status "not_in_menu") (eq .Status "pending_remove"))}}
 {{$remove := or (eq .Status "in_menu") (eq .Status "pending_add") (eq .Status "pending_change")}}
 {{$delete := and .ID (or .CanDelete .InMenu) (eq $info.User.Role "admin")}}
 {{$menu := and (or $prepare $add $remove) $delete}}

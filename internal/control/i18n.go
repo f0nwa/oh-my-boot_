@@ -1876,4 +1876,9 @@ var englishMessages = map[string]string{
 	"Новые загрузки заблокированы · активных клиентов: %d":                                                                                              "New boots paused · active clients: %d",
 	"Хранилище «%s» на обслуживании":                                                                                                                    "Storage “%s” in maintenance",
 	"Образ «%s» на обслуживании":                                                                                                                        "Image “%s” in maintenance",
+	"обслуживание":                                                                                                                                      "maintenance",
+	"Хранилище в режиме обслуживания":                                                                                                                   "Storage is in maintenance mode",
+	"Образ в режиме обслуживания":                                                                                                                       "Image is in maintenance mode",
+	"Хранилище или образ в режиме обслуживания":                                                                                                         "Storage or image is in maintenance mode",
+	"целевое хранилище в режиме обслуживания":                                                                                                           "target storage is in maintenance mode",
 }

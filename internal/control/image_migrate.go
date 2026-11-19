@@ -108,6 +108,13 @@ func (c *MigrationCoordinator) CheckPreflight(ctx context.Context, sourceStorage
 	if targetStorage.State != "ready" {
 		return fmt.Errorf("целевое хранилище недоступно (статус: %s)", targetStorage.State)
 	}
+	if c.store.Pool != nil {
+		if locks, err := c.store.MaintenanceLocks(ctx); err == nil {
+			if _, locked := newMaintenanceLookup(locks).StorageLock(targetStorageID); locked {
+				return errors.New("целевое хранилище в режиме обслуживания")
+			}
+		}
+	}
 	if !sourceStorage.Uploads {
 		return errors.New("исходное хранилище доступно только для чтения (удаление оригинала невозможно)")
 	}

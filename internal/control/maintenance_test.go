@@ -261,3 +261,63 @@ func TestNowMaintenanceAlerts(t *testing.T) {
 		t.Fatalf("unexpected image alert: %+v", alerts[1])
 	}
 }
+
+func TestMaintenanceBlocksMutatingWebOperations(t *testing.T) {
+	store := &maintTestStore{
+		authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
+		winProfiles: []WindowsProfile{
+			{ID: 10, WindowsProfileSource: WindowsProfileSource{StorageID: 2, Path: "win11.iso"}, State: "ready"},
+		},
+		bootProfiles: []BootProfile{
+			{ID: 100, Kind: BootProfileWindowsISO, WindowsProfileID: 10},
+		},
+		installs: []Installation{
+			{ID: 1, Title: "Win11", BootProfileID: 100},
+		},
+		locks: []MaintenanceLock{
+			{ID: 1, Scope: "storage", StorageID: 2, Reason: "NAS update"},
+		},
+	}
+	s := &Server{Store: store}
+	h := s.Handler()
+	token := "test-token"
+	csrf := CSRFToken(token)
+
+	// 1. applyMaintenanceLocksToChoices marks choice unavailable
+	choices := []bootProfileChoice{
+		{BootProfile: BootProfile{ID: 100, Kind: BootProfileWindowsISO, WindowsProfileID: 10}, State: "ready"},
+	}
+	applyMaintenanceLocksToChoices(choices, store.winProfiles, s.loadMaintenanceLookup(context.Background()))
+	if choices[0].State != "unavailable" || choices[0].Error != "Хранилище в режиме обслуживания" {
+		t.Fatalf("choice after lock = %+v", choices[0])
+	}
+
+	// 2. POST /installations/1/add returns 409 Conflict
+	form := url.Values{"csrf": {csrf}}
+	req := httptest.NewRequest("POST", "/installations/1/add", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: token})
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusConflict {
+		t.Fatalf("add to menu during maintenance: got %d, want 409 (%s)", res.Code, res.Body.String())
+	}
+
+	// 3. POST /installations/1/prepare returns 409 Conflict
+	req = httptest.NewRequest("POST", "/installations/1/prepare", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: token})
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusConflict {
+		t.Fatalf("prepare during maintenance: got %d, want 409 (%s)", res.Code, res.Body.String())
+	}
+
+	// 4. applyMenuStorageStatus flags Maintenance on menuDraftRow without blocking Available
+	rows := []menuDraftRow{{Item: MenuDraftItem{InstallationID: 1}, Available: true}}
+	installs := []installationRow{{ID: 1, Kind: BootProfileWindowsISO, StorageID: 2, SourcePath: "win11.iso"}}
+	s.applyMenuStorageStatus(context.Background(), rows, installs)
+	if !rows[0].Maintenance || rows[0].MaintenanceReason != "NAS update" || !rows[0].Available {
+		t.Fatalf("unexpected menu row after applyMenuStorageStatus: %+v", rows[0])
+	}
+}

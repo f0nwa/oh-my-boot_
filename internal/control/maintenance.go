@@ -107,6 +107,33 @@ func (s *Server) loadMaintenanceLookup(ctx context.Context) maintenanceLookup {
 	return newMaintenanceLookup(locks)
 }
 
+func (s *Server) installationMaintenanceLocked(ctx context.Context, inst Installation, sources InstallationMenuSources, profiles []WindowsProfile) bool {
+	lookup := s.loadMaintenanceLookup(ctx)
+	if len(lookup.locks) == 0 {
+		return false
+	}
+	for _, bp := range sources.BootProfiles {
+		if bp.ID != inst.BootProfileID {
+			continue
+		}
+		switch bp.Kind {
+		case BootProfileWindowsISO, BootProfileWinPEISO:
+			for _, wp := range profiles {
+				if wp.ID == bp.WindowsProfileID {
+					_, _, locked := lookup.ImageLock(wp.StorageID, wp.Path)
+					return locked
+				}
+			}
+		case BootProfileUbuntuISO, BootProfileUbuntuBuiltin:
+			if bp.UbuntuStorageID > 0 {
+				_, _, locked := lookup.ImageLock(bp.UbuntuStorageID, bp.UbuntuPath)
+				return locked
+			}
+		}
+	}
+	return false
+}
+
 // SyncMaintenance recomputes the set of paused installations and boot asset
 // namespaces from maintenance_locks and pushes it to omb-boot.
 func (s *Server) SyncMaintenance(ctx context.Context) error {

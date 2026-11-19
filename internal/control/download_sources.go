@@ -51,6 +51,38 @@ func applyCatalogStorageStatesToChoices(choices []bootProfileChoice, windows []W
 	}
 }
 
+func applyMaintenanceLocksToChoices(choices []bootProfileChoice, windows []WindowsProfile, lookup maintenanceLookup) {
+	if len(lookup.locks) == 0 {
+		return
+	}
+	windowsByID := map[int64]WindowsProfile{}
+	for _, w := range windows {
+		windowsByID[w.ID] = w
+	}
+	for i := range choices {
+		var storageID int64
+		var imgPath string
+		switch choices[i].Kind {
+		case BootProfileUbuntuISO, BootProfileUbuntuBuiltin:
+			storageID, imgPath = choices[i].UbuntuStorageID, choices[i].UbuntuPath
+		case BootProfileWindowsISO, BootProfileWinPEISO:
+			if w, ok := windowsByID[choices[i].WindowsProfileID]; ok {
+				storageID, imgPath = w.StorageID, w.Path
+			}
+		}
+		if storageID <= 0 {
+			continue
+		}
+		if _, inherited, locked := lookup.ImageLock(storageID, imgPath); locked {
+			msg := "Образ в режиме обслуживания"
+			if inherited {
+				msg = "Хранилище в режиме обслуживания"
+			}
+			choices[i].State, choices[i].Error, choices[i].InspectStorageID = "unavailable", msg, 0
+		}
+	}
+}
+
 func (c bootProfileChoice) Selectable() bool {
 	return c.State == "ready" || isISOBootKind(c.Kind) && (c.State == "pending" || c.State == "error") || c.Kind == BootProfileUbuntuISO && (c.State == "verified" || c.State == "error")
 }
@@ -98,6 +130,8 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 	}
 	records = matchingImageInspections(catalog, records)
 	applyCatalogStorageStatesToChoices(choices, windows, catalog)
+	maintLookup := s.loadMaintenanceLookup(ctx)
+	applyMaintenanceLocksToChoices(choices, windows, maintLookup)
 	for _, image := range catalog.Images {
 		if existing[fmt.Sprintf("%d:%s", image.StorageID, image.Path)] {
 			continue
@@ -127,6 +161,15 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 		if !image.Present {
 			choice.State, choice.Error = "unavailable", "Исходный ISO недоступен"
 		}
+		if choice.State != "unavailable" {
+			if _, inherited, locked := maintLookup.ImageLock(image.StorageID, image.Path); locked {
+				if inherited {
+					choice.State, choice.Error = "unavailable", "Хранилище в режиме обслуживания"
+				} else {
+					choice.State, choice.Error = "unavailable", "Образ в режиме обслуживания"
+				}
+			}
+		}
 		if choice.State == "unavailable" {
 			choice.InspectStorageID = 0
 		}
@@ -147,6 +190,12 @@ func (s *Server) resolveDownloadSource(r *http.Request, sources InstallationMenu
 		sid, err := strconv.ParseInt(parts[1], 10, 64)
 		if err != nil {
 			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Выберите исходный ISO")
+		}
+		if _, inherited, locked := s.loadMaintenanceLookup(r.Context()).ImageLock(sid, parts[2]); locked {
+			if inherited {
+				return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Хранилище в режиме обслуживания")
+			}
+			return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Образ в режиме обслуживания")
 		}
 		catalog, err := s.Images.Catalog(r.Context())
 		if err != nil {
@@ -190,10 +239,13 @@ func (s *Server) resolveDownloadSource(r *http.Request, sources InstallationMenu
 		return BootProfile{}, WindowsProfile{}, nil, fmt.Errorf("Выберите источник загрузки")
 	}
 	choices := s.bootProfileChoices(r.Context(), sources.BootProfiles, profiles)
-	if r.PathValue("id") == "" && s.Images != nil {
-		if catalog, err := s.Images.Catalog(r.Context()); err == nil {
-			applyCatalogStorageStatesToChoices(choices, profiles, catalog)
+	if r.PathValue("id") == "" {
+		if s.Images != nil {
+			if catalog, err := s.Images.Catalog(r.Context()); err == nil {
+				applyCatalogStorageStatesToChoices(choices, profiles, catalog)
+			}
 		}
+		applyMaintenanceLocksToChoices(choices, profiles, s.loadMaintenanceLookup(r.Context()))
 	}
 	for _, choice := range choices {
 		if choice.ID == id {

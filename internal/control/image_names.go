@@ -38,6 +38,14 @@ func (s Store) SetImageName(ctx context.Context, id int64, path, name string) er
 	return err
 }
 
+func (s Store) DeleteImageName(ctx context.Context, id int64, path string) error {
+	if s.Pool == nil {
+		return nil
+	}
+	_, err := s.Pool.Exec(ctx, `DELETE FROM image_names WHERE storage_id=$1 AND path=$2`, id, path)
+	return err
+}
+
 func (s *Server) imageNames(ctx context.Context) (map[string]string, error) {
 	if store, ok := s.Store.(imageNamesStore); ok {
 		return store.ImageNames(ctx)

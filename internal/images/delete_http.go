@@ -78,9 +78,11 @@ func (s *Server) deleteISO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	found := false
+	imagePresent := false
 	for _, image := range catalog.Images {
-		if image.StorageID == id && image.Path == input.Path && image.Present {
+		if image.StorageID == id && image.Path == input.Path {
 			found = true
+			imagePresent = image.Present
 			break
 		}
 	}
@@ -88,18 +90,18 @@ func (s *Server) deleteISO(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "image not found", http.StatusNotFound)
 		return
 	}
-	if err := DeleteISO(root, input.Path); err != nil {
-		status := http.StatusServiceUnavailable
-		switch {
-		case errors.Is(err, ErrInvalidISO), errors.Is(err, ErrInvalidFolder):
-			status = http.StatusBadRequest
-		case errors.Is(err, os.ErrNotExist):
-			status = http.StatusNotFound
-		case errors.Is(err, os.ErrPermission):
-			status = http.StatusForbidden
+	if imagePresent {
+		if err := DeleteISO(root, input.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			status := http.StatusServiceUnavailable
+			switch {
+			case errors.Is(err, ErrInvalidISO), errors.Is(err, ErrInvalidFolder):
+				status = http.StatusBadRequest
+			case errors.Is(err, os.ErrPermission):
+				status = http.StatusForbidden
+			}
+			http.Error(w, "cannot delete ISO", status)
+			return
 		}
-		http.Error(w, "cannot delete ISO", status)
-		return
 	}
 	if storage.Kind != "local" {
 		mountAfter, ok := s.mountIdentity(root)

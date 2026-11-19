@@ -46,6 +46,13 @@ func (s Store) SetImageInspection(ctx context.Context, r ImageInspection) error 
 	_, err := s.Pool.Exec(ctx, `INSERT INTO image_inspections(storage_id,path,storage_root,size_bytes,modified_at,kind) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(storage_id,path) DO UPDATE SET storage_root=EXCLUDED.storage_root,size_bytes=EXCLUDED.size_bytes,modified_at=EXCLUDED.modified_at,kind=EXCLUDED.kind`, r.StorageID, r.Path, r.StorageRoot, r.Size, r.Modified, r.Kind)
 	return err
 }
+func (s Store) DeleteImageInspection(ctx context.Context, id int64, path string) error {
+	if s.Pool == nil {
+		return nil
+	}
+	_, err := s.Pool.Exec(ctx, `DELETE FROM image_inspections WHERE storage_id=$1 AND path=$2`, id, path)
+	return err
+}
 func (s *Server) imageInspections(ctx context.Context) (map[string]ImageInspection, error) {
 	if store, ok := s.Store.(imageInspectionStore); ok {
 		return store.ImageInspections(ctx)

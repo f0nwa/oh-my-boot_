@@ -135,6 +135,29 @@ func TestDeleteISOHTTPRequiresCataloguedPresentImage(t *testing.T) {
 	}
 }
 
+func TestDeleteISOAbsentImageRemovesCatalogRecordWithoutFileOnDisk(t *testing.T) {
+	root := realTempDir(t)
+	repo := &deleteRepository{httpRepository: httpRepository{memoryRepository: memoryRepository{
+		storages: map[int64]Storage{3: {ID: 3, Kind: "local", Root: root, State: "ready"}},
+		images: map[int64]map[string]Image{
+			3: {
+				"absent.iso": {StorageID: 3, Path: "absent.iso", Present: false},
+			},
+		},
+		state: map[int64]string{3: "ready"},
+	}}}
+	server := NewServer(repo)
+	req := httptest.NewRequest(http.MethodDelete, "/storages/3/images", strings.NewReader(`{"path":"absent.iso"}`))
+	res := httptest.NewRecorder()
+	server.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+	}
+	if len(repo.deleted) != 1 || repo.deleted[0].Path != "absent.iso" {
+		t.Fatalf("expected absent.iso to be deleted from repo, got: %+v", repo.deleted)
+	}
+}
+
 func TestDeleteISORejectsTraversalAndSymlinks(t *testing.T) {
 	root := realTempDir(t)
 	outside := filepath.Join(realTempDir(t), "outside.iso")

@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"net/http"
@@ -36,7 +37,7 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Сервис образов недоступен", http.StatusServiceUnavailable)
 		return
 	}
-	var storageFound, imageFound bool
+	var storageFound, imageFound, imagePresent bool
 	var storageKind, storageKey, storageName, server, share, subpath, exportPath, version string
 	var storageUploads bool
 	for _, storage := range catalog.Storages {
@@ -54,8 +55,9 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, image := range catalog.Images {
-		if image.StorageID == storageID && image.Path == imagePath && image.Present {
+		if image.StorageID == storageID && image.Path == imagePath {
 			imageFound = true
+			imagePresent = image.Present
 			break
 		}
 	}
@@ -63,7 +65,7 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "ISO не найден", http.StatusNotFound)
 		return
 	}
-	if storageKind == "nfs" && !storageUploads {
+	if storageKind == "nfs" && !storageUploads && imagePresent {
 		http.Error(w, "Хранилище доступно только для чтения", http.StatusForbidden)
 		return
 	}
@@ -124,26 +126,28 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if storageKind == "smb" {
-		if s.SMB == nil {
-			http.Error(w, "Служба хранилищ недоступна", http.StatusServiceUnavailable)
-			return
+	if imagePresent {
+		if storageKind == "smb" {
+			if s.SMB == nil {
+				http.Error(w, "Служба хранилищ недоступна", http.StatusServiceUnavailable)
+				return
+			}
+			if err := s.SMB.EnableUpload(r.Context(), storageKey, server, share, subpath); err != nil {
+				_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s mount", storageID, imagePath))
+				http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права SMB.", http.StatusServiceUnavailable)
+				return
+			}
 		}
-		if err := s.SMB.EnableUpload(r.Context(), storageKey, server, share, subpath); err != nil {
-			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s mount", storageID, imagePath))
-			http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права SMB.", http.StatusServiceUnavailable)
-			return
-		}
-	}
-	if storageKind == "nfs" {
-		if s.NFS == nil {
-			http.Error(w, "Служба хранилищ недоступна", http.StatusServiceUnavailable)
-			return
-		}
-		if err := s.NFS.EnableNFSUpload(r.Context(), storageKey, server, exportPath, version); err != nil {
-			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s mount", storageID, imagePath))
-			http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права NFS.", http.StatusServiceUnavailable)
-			return
+		if storageKind == "nfs" {
+			if s.NFS == nil {
+				http.Error(w, "Служба хранилищ недоступна", http.StatusServiceUnavailable)
+				return
+			}
+			if err := s.NFS.EnableNFSUpload(r.Context(), storageKey, server, exportPath, version); err != nil {
+				_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s mount", storageID, imagePath))
+				http.Error(w, "Не удалось подключить хранилище для записи. Проверьте права NFS.", http.StatusServiceUnavailable)
+				return
+			}
 		}
 	}
 	if err := s.Images.DeleteImage(r.Context(), storageID, imagePath); err != nil {
@@ -151,12 +155,25 @@ func (s *Server) imageDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось удалить ISO. Проверьте доступность хранилища и права на запись.", http.StatusServiceUnavailable)
 		return
 	}
+	if store, ok := s.Store.(interface {
+		DeleteImageName(context.Context, int64, string) error
+	}); ok {
+		_ = store.DeleteImageName(r.Context(), storageID, imagePath)
+	}
+	if store, ok := s.Store.(interface {
+		DeleteImageInspection(context.Context, int64, string) error
+	}); ok {
+		_ = store.DeleteImageInspection(r.Context(), storageID, imagePath)
+	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "ok", fmt.Sprintf("%d %s", storageID, imagePath))
-	http.Redirect(w, r, "/images?message="+url.QueryEscape(imageDeletedMessage(imagePath, storageName)), http.StatusSeeOther)
+	http.Redirect(w, r, "/images?message="+url.QueryEscape(imageDeletedMessage(imagePath, storageName, imagePresent)), http.StatusSeeOther)
 }
 
 // imageDeletedMessage names the deleted ISO and the storage it was removed from.
-func imageDeletedMessage(imagePath, storageName string) string {
+func imageDeletedMessage(imagePath, storageName string, present bool) string {
+	if !present {
+		return fmt.Sprintf("Запись образа «%s» удалена из библиотеки", imagePath)
+	}
 	if storageName == "" {
 		return fmt.Sprintf("ISO «%s» удалён", imagePath)
 	}

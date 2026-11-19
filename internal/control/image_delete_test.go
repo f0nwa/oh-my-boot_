@@ -224,3 +224,71 @@ func TestImagesPageShowsSourceDeletionOnlyToAdmin(t *testing.T) {
 		}
 	}
 }
+
+func TestImageDeleteRemovesAbsentCatalogEntry(t *testing.T) {
+	storage := images.Storage{ID: 7, Name: "Storage", Kind: "local", State: "ready"}
+	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{storage}, Images: []images.Image{{StorageID: 7, Path: "absent.iso", Present: false}}}}
+	store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
+	server := deletionTestServer(store, &deletionCleaner{})
+	server.Images = api
+	res := submitImageDeletion(t, server, imageDeletionForm("7", "absent.iso"))
+	if res.Code != http.StatusSeeOther || len(api.deleted) != 1 || api.deleted[0].Path != "absent.iso" {
+		t.Fatalf("status=%d body=%s deleted=%+v", res.Code, res.Body.String(), api.deleted)
+	}
+	if len(store.audits) != 1 || store.audits[0] != "iso.delete|ok|7 absent.iso" {
+		t.Fatalf("audit=%v", store.audits)
+	}
+	location, _ := url.Parse(res.Header().Get("Location"))
+	if got, want := location.Query().Get("message"), "Запись образа «absent.iso» удалена из библиотеки"; got != want {
+		t.Fatalf("message=%q, want %q", got, want)
+	}
+	if got := translate(langEN, location.Query().Get("message")); got != "Image record “absent.iso” removed from library" {
+		t.Fatalf("english message=%q", got)
+	}
+}
+
+func TestImageDeleteBlocksAbsentImageUsedByInstallation(t *testing.T) {
+	storage := images.Storage{ID: 7, Name: "Storage", Kind: "local", State: "ready"}
+	api := &fakeImagesAPI{catalog: images.Catalog{Storages: []images.Storage{storage}, Images: []images.Image{{StorageID: 7, Path: "absent.iso", Present: false}}}}
+	base := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}, profiles: []WindowsProfile{{ID: 17, WindowsProfileSource: WindowsProfileSource{StorageID: 7, Path: "absent.iso"}}}}
+	store := &referencedDeletionStore{deletionStore: base, source: InstallationMenuSources{BootProfiles: []BootProfile{{ID: 1, Kind: BootProfileWindowsISO, WindowsProfileID: 17}}, Installations: []Installation{{ID: 9, BootProfileID: 1, Title: "Used"}}}}
+	cleaner := &deletionCleaner{}
+	server := deletionTestServer(base, cleaner)
+	server.Store = store
+	server.Images = api
+	res := submitImageDeletion(t, server, imageDeletionForm("7", "absent.iso"))
+	if res.Code != http.StatusConflict || len(api.deleted) != 0 || len(cleaner.calls) != 0 || len(base.deleted) != 0 {
+		t.Fatalf("status=%d deleted=%+v cleanup=%v database=%v", res.Code, api.deleted, cleaner.calls, base.deleted)
+	}
+}
+
+func TestImagesPageShowsAbsentImageDeletionOnlyToAdmin(t *testing.T) {
+	for _, role := range []string{"admin", "operator", "observer"} {
+		data := pageData{
+			Info: requestContext{User: User{Role: role}, CSRF: "test"},
+			ISOImages: []imageRow{{
+				Image:       images.Image{StorageID: 7, Path: "absent.iso", Present: false},
+				StorageName: "Local",
+			}},
+		}
+		res := httptest.NewRecorder()
+		render(res, "images", data)
+		body := res.Body.String()
+		hasButton := strings.Contains(body, `data-image-delete-open="image-delete-absent-0"`)
+		hasDialog := strings.Contains(body, `id="image-delete-absent-0"`)
+		if hasButton != (role == "admin") {
+			t.Fatalf("role=%s hasButton=%v", role, hasButton)
+		}
+		if hasDialog != (role == "admin") {
+			t.Fatalf("role=%s hasDialog=%v", role, hasDialog)
+		}
+		if role == "admin" {
+			if !strings.Contains(body, "Удалить из библиотеки") {
+				t.Fatal("missing 'Удалить из библиотеки' menu item")
+			}
+			if !strings.Contains(body, "Файл отсутствует на диске хранилища") {
+				t.Fatal("missing absent description in dialog")
+			}
+		}
+	}
+}

@@ -14,10 +14,31 @@ const maxMenuSize = 256 << 10
 
 // Publisher owns the durable menu snapshot and its live in-memory copy.
 type Publisher struct {
-	mu   sync.RWMutex
-	path string
-	menu []byte
-	hash string
+	mu          sync.RWMutex
+	path        string
+	menu        []byte
+	hash        string
+	maintenance *MaintenanceManager
+}
+
+// SetMaintenance attaches an optional maintenance manager used on client reads.
+func (p *Publisher) SetMaintenance(m *MaintenanceManager) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.maintenance = m
+	p.mu.Unlock()
+}
+
+// Maintenance returns the attached maintenance manager, if any.
+func (p *Publisher) Maintenance() *MaintenanceManager {
+	if p == nil {
+		return nil
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.maintenance
 }
 
 func NewPublisher(path string, initial []byte) (*Publisher, error) {

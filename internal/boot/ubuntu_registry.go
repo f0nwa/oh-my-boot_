@@ -41,6 +41,7 @@ type ubuntuRegistry struct {
 	locks        map[string]*sync.Mutex
 	loadSource   func(string, string) *UbuntuSource
 	transfers    *Transfers
+	maintenance  *MaintenanceManager
 }
 
 // UbuntuRegistry shares verified source snapshots between the public and local APIs.
@@ -208,6 +209,10 @@ func (r *ubuntuRegistry) serve(w http.ResponseWriter, req *http.Request, iso boo
 	id, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != parts[0] {
 		http.NotFound(w, req)
+		return
+	}
+	if r.maintenance.IsUbuntuSourceBlocked(id) {
+		http.Error(w, "installation is in maintenance mode", http.StatusServiceUnavailable)
 		return
 	}
 	digest := parts[1]

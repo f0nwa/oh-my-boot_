@@ -76,6 +76,28 @@ func controlMux(p *Publisher, events EventReader, transfers *Transfers, assets *
 		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(info)
 	})
+	mux.HandleFunc("GET /maintenance", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(p.Maintenance().Current())
+	})
+	mux.HandleFunc("PUT /maintenance", func(w http.ResponseWriter, r *http.Request) {
+		m := p.Maintenance()
+		if m == nil {
+			http.Error(w, "maintenance mode unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var state MaintenanceState
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&state); err != nil {
+			http.Error(w, "invalid maintenance payload", http.StatusBadRequest)
+			return
+		}
+		if err := m.Set(state); err != nil {
+			http.Error(w, "failed to save maintenance state", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(m.Current())
+	})
 	mux.HandleFunc("GET /transfers", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(transfers.List())

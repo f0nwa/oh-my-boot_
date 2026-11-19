@@ -282,6 +282,7 @@ func (s *Server) nowPage(w http.ResponseWriter, r *http.Request) {
 	}
 	fillNowMachines(view, rows, now)
 	view.Alerts = append(nowSessionAlerts(rows), nowAlerts(data)...)
+	view.Alerts = append(view.Alerts, s.nowMaintenanceAlerts(r.Context(), data.Storages)...)
 	if Allowed(data.Info.User.Role, "users") {
 		if events, err := s.Store.AuditList(r.Context()); err == nil {
 			view.Audit = events[:min(5, len(events))]

@@ -178,6 +178,7 @@ type Server struct {
 	Agent             *AgentClient
 	SMBDisconnect     SMBSessionDisconnectAPI
 	TransferCancel    BootTransferCancelAPI
+	BootMaintenance   BootMaintenanceAPI
 	DiskUsage         DiskUsageAPI
 	Images            ImagesAPI
 	SMB               SMBMountAPI
@@ -261,6 +262,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/answers.js", answersScript)
 	mux.HandleFunc("GET /assets/events.js", eventsScript)
 	mux.HandleFunc("GET /assets/row-menu.js", rowMenuScript)
+	mux.HandleFunc("GET /assets/maintenance.js", maintenanceScript)
 	mux.HandleFunc("GET /assets/system.js", systemScript)
 	mux.HandleFunc("GET /search", s.protect("view", s.searchPage))
 	mux.HandleFunc("GET /assets/search.js", searchScript)
@@ -284,6 +286,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /events/machines/{mac}/delete", s.protect("delete", withPageErrors(s.machinePage, s.machineDelete)))
 	mux.HandleFunc("POST /sessions/smb/disconnect", s.protect("images", withPageErrors(s.nowPage, s.disconnectSMBSession)))
 	mux.HandleFunc("POST /sessions/http/cancel", s.protect("images", withPageErrors(s.nowPage, s.cancelHTTPTransfer)))
+	mux.HandleFunc("POST /maintenance/enable", s.protect("network", withPageErrors(s.storagesPage, s.maintenanceEnable)))
+	mux.HandleFunc("POST /maintenance/disable", s.protect("network", withPageErrors(s.storagesPage, s.maintenanceDisable)))
 	mux.HandleFunc("POST /events/retention", s.protect("delete", withPageErrors(s.eventsPage, s.journalRetention)))
 	mux.HandleFunc("POST /events/clear", s.protect("delete", withPageErrors(s.eventsPage, s.journalClear)))
 	mux.HandleFunc("GET /machines", s.protect("view", s.machinesPage))

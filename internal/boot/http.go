@@ -72,6 +72,9 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 	if transfers != nil {
 		ubuntuSources.transfers = transfers
 	}
+	if m := publisher.Maintenance(); m != nil {
+		ubuntuSources.maintenance = m
+	}
 	strictLegacyUbuntu := len(registries) > 0 && registries[0] != nil
 
 	mux := http.NewServeMux()
@@ -83,6 +86,10 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			if r.Method != http.MethodGet && r.Method != http.MethodHead {
 				w.Header().Set("Allow", "GET, HEAD")
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if publisher.Maintenance().IsPathBlocked(r.URL.Path) {
+				http.Error(w, "installation is in maintenance mode", http.StatusServiceUnavailable)
 				return
 			}
 			info, err := os.Lstat(isoPath)
@@ -144,6 +151,9 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		menu, _ := publisher.Current()
+		if m := publisher.Maintenance(); m != nil {
+			menu = m.RewriteMenu(menu)
+		}
 		_, _ = w.Write(menu)
 		if record != nil {
 			record(Event{Kind: "menu", Path: r.URL.Path, RemoteAddr: r.RemoteAddr, At: time.Now().UTC()})
@@ -168,6 +178,10 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if publisher.Maintenance().IsPathBlocked(r.URL.Path) {
+			http.Error(w, "installation is in maintenance mode", http.StatusServiceUnavailable)
 			return
 		}
 		name := strings.TrimPrefix(r.URL.Path, "/assets/")

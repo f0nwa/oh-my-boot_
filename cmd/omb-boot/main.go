@@ -34,6 +34,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	publisher.SetMaintenance(boot.NewMaintenanceManager(filepath.Join(filepath.Dir(*snapshot), "maintenance.json")))
 	var store boot.EventStore
 	var reader boot.EventReader
 	journal := &boot.Journal{Path: filepath.Join(filepath.Dir(*snapshot), "journal.json")}

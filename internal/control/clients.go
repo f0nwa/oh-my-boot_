@@ -714,6 +714,15 @@ func (c *BootClient) CancelTransfer(ctx context.Context, id int) error {
 	return localCall(ctx, c.http, "POST", fmt.Sprintf("/transfers/%d/cancel", id), nil, nil)
 }
 
+// SetMaintenance pushes the current maintenance pause state to omb-boot.
+func (c *BootClient) SetMaintenance(ctx context.Context, state boot.MaintenanceState) error {
+	body, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, http.MethodPut, "/maintenance", body, nil)
+}
+
 // BuildUEFICAUSB has the Agent build (or find in its cache) the
 // "enable the Microsoft UEFI CA key" USB stick archive of a profile.
 func (c *AgentClient) BuildUEFICAUSB(ctx context.Context, profileID int64, loader string) (ueficausb.Result, error) {

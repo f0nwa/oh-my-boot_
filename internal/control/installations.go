@@ -37,6 +37,8 @@ type installationRow struct {
 	StorageID                          int64
 	StorageWarning                     string
 	StorageUnavailable                 bool
+	Maintenance                        bool
+	MaintenanceReason                  string
 	CanDelete                          bool
 	InMenu                             bool
 	AnswerWipesDisk                    *bool
@@ -357,6 +359,15 @@ func (s *Server) installationRows(ctx context.Context, profiles []WindowsProfile
 			rows[i].Status, rows[i].Error = "unavailable", problem.Error()
 		}
 	}
+	maintLookup := s.loadMaintenanceLookup(ctx)
+	for i := range rows {
+		if rows[i].StorageID > 0 {
+			if lock, _, locked := maintLookup.ImageLock(rows[i].StorageID, rows[i].SourcePath); locked {
+				rows[i].Maintenance = true
+				rows[i].MaintenanceReason = lock.Reason
+			}
+		}
+	}
 	authors := s.resourceAuthors(ctx)
 	profileByID := make(map[int64]WindowsProfile, len(profiles))
 	for _, profile := range profiles {
@@ -440,10 +451,10 @@ func (s *Server) installationsPage(w http.ResponseWriter, r *http.Request) {
 		row.Used, row.LastUsed = use[row.Key].Count, use[row.Key].Last
 		data.InstallCounts["all"]++
 		data.InstallCounts[row.Group()]++
-		if row.StorageWarning != "" && row.Group() != "attention" {
+		if (row.StorageWarning != "" || row.Maintenance) && row.Group() != "attention" {
 			data.InstallCounts["attention"]++
 		}
-		if data.Tab == "" || data.Tab == row.Group() || (data.Tab == "attention" && row.StorageWarning != "") {
+		if data.Tab == "" || data.Tab == row.Group() || (data.Tab == "attention" && (row.StorageWarning != "" || row.Maintenance)) {
 			data.Installations = append(data.Installations, row)
 		}
 	}

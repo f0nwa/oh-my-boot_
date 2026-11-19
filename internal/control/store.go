@@ -737,3 +737,40 @@ func (s Store) BootDriverRules(ctx context.Context) ([]network.BootDriverRule, e
 	}
 	return rules, rows.Err()
 }
+
+// MaintenanceLocks returns all active maintenance mode locks.
+func (s Store) MaintenanceLocks(ctx context.Context) ([]MaintenanceLock, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id,scope,storage_id,image_path,reason,COALESCE(created_by,0),created_at FROM maintenance_locks ORDER BY created_at DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MaintenanceLock
+	for rows.Next() {
+		var l MaintenanceLock
+		if err := rows.Scan(&l.ID, &l.Scope, &l.StorageID, &l.ImagePath, &l.Reason, &l.CreatedBy, &l.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// SetMaintenanceLock enables or updates maintenance mode on a storage or ISO image.
+func (s Store) SetMaintenanceLock(ctx context.Context, scope string, storageID int64, imagePath, reason string, userID int64) error {
+	var createdBy any
+	if userID > 0 {
+		createdBy = userID
+	}
+	_, err := s.Pool.Exec(ctx, `INSERT INTO maintenance_locks (scope,storage_id,image_path,reason,created_by)
+VALUES ($1,$2,$3,$4,$5)
+ON CONFLICT (scope,storage_id,image_path) DO UPDATE SET reason=$4,created_by=$5,created_at=now()`,
+		scope, storageID, imagePath, reason, createdBy)
+	return err
+}
+
+// DeleteMaintenanceLock disables maintenance mode on a storage or ISO image.
+func (s Store) DeleteMaintenanceLock(ctx context.Context, scope string, storageID int64, imagePath string) error {
+	_, err := s.Pool.Exec(ctx, `DELETE FROM maintenance_locks WHERE scope=$1 AND storage_id=$2 AND image_path=$3`, scope, storageID, imagePath)
+	return err
+}

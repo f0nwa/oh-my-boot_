@@ -23,11 +23,15 @@ type imageRow struct {
 	AddedVia            string
 	Image               images.Image
 	StorageName, Author string
-	StorageState        string
-	StorageUnavailable  bool
-	StorageScanning     bool
-	StorageUnknown      bool
-	DisplayName         string
+	StorageState             string
+	StorageUnavailable       bool
+	StorageScanning          bool
+	StorageUnknown           bool
+	Maintenance              bool
+	MaintenanceInherited     bool
+	MaintenanceReason        string
+	MaintenanceActiveClients int
+	DisplayName              string
 	Kind, Problem       string
 	Arch                string
 	ServerBytes         int64
@@ -49,7 +53,7 @@ func (r imageRow) MatchesTab(tab string) bool {
 	case "free":
 		return len(r.Downloads) == 0
 	case "attention":
-		return !r.Image.Present || r.Problem != "" || r.StorageBlocked()
+		return !r.Image.Present || r.Problem != "" || r.StorageBlocked() || r.Maintenance
 	default:
 		return true
 	}

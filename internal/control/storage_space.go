@@ -56,15 +56,18 @@ type localDiskView struct {
 
 type storageRowView struct {
 	images.Storage
-	ISOCount     int
-	ISOBytes     int64
-	OtherBytes   int64
-	OutsideBytes int64
-	ISOPct       string
-	OtherPct     string
-	OutsidePct   string
-	ServerBytes  int64
-	ServerKinds  []string
+	ISOCount                 int
+	ISOBytes                 int64
+	OtherBytes               int64
+	OutsideBytes             int64
+	ISOPct                   string
+	OtherPct                 string
+	OutsidePct               string
+	ServerBytes              int64
+	ServerKinds              []string
+	Maintenance              bool
+	MaintenanceReason        string
+	MaintenanceActiveClients int
 }
 
 type artifactLink struct {
@@ -548,6 +551,16 @@ func (s *Server) loadStorageSpace(ctx context.Context, data *pageData, catalog *
 		}
 	}
 	view := buildStorageSpaceView(in)
+	lookup := s.loadMaintenanceLookup(ctx)
+	counts := s.countActiveDrainClients(ctx)
+	for i := range view.Storages {
+		id := view.Storages[i].ID
+		view.Storages[i].MaintenanceActiveClients = counts.byStorage[id]
+		if lock, ok := lookup.StorageLock(id); ok {
+			view.Storages[i].Maintenance = true
+			view.Storages[i].MaintenanceReason = lock.Reason
+		}
+	}
 	data.StorageSpace = &view
 }
 

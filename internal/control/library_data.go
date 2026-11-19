@@ -304,6 +304,8 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 			}
 		}
 	}
+	maintLookup := s.loadMaintenanceLookup(r.Context())
+	drainCounts := s.countActiveDrainClients(r.Context())
 	for _, image := range catalog.Images {
 		key := imageAuthorKey(image.StorageID, image.Path)
 		kind, problem, arch := inspectionLabel("")
@@ -329,6 +331,12 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 			row.StorageScanning = true
 		case storage.State == "unknown":
 			row.StorageUnknown = true
+		}
+		row.MaintenanceActiveClients = drainCounts.byImage[key]
+		if lock, inherited, ok := maintLookup.ImageLock(image.StorageID, image.Path); ok {
+			row.Maintenance = true
+			row.MaintenanceInherited = inherited
+			row.MaintenanceReason = lock.Reason
 		}
 		if uploaded, ok := authors.ImageUploadedAt[key]; ok && !uploaded.IsZero() {
 			row.AddedAt, row.AddedVia = &uploaded, "Загружен"
@@ -369,7 +377,7 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 		} else {
 			data.ImageCounts["free"]++
 		}
-		if !row.Image.Present || row.Problem != "" || row.StorageBlocked() {
+		if !row.Image.Present || row.Problem != "" || row.StorageBlocked() || row.Maintenance {
 			data.ImageCounts["attention"]++
 		}
 		if row.MatchesTab(data.Tab) {

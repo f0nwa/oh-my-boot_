@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -36,6 +37,8 @@ func TestStoragesScriptEndpoint(t *testing.T) {
 		"storage-rename-dialog", "data-storage-rename-id", "data-storage-rename-save",
 		"storage-delete-dialog", "data-storage-delete-id",
 		"data-close-dialog",
+		"data-smb-submit", "data-nfs-submit", "data-smb-retry-submit",
+		"updateNfsSubmit", "updateSmbSubmit", "updateSmbRetrySubmit",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("storages.js lacks %q", want)
@@ -70,6 +73,9 @@ func TestStoragesPageConnectStorageMenuAndModals(t *testing.T) {
 			`disabled`,
 			`placeholder="//nas.example.com/share/iso"`,
 			`placeholder="nas.example.com"`,
+			`data-smb-submit`,
+			`data-nfs-submit`,
+			`data-smb-retry-submit`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("/storages (%s) missing %q", lang, want)
@@ -391,5 +397,277 @@ func TestNFSStorageUIBrowser(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "NFS_UI_BROWSER_TESTS_PASS") {
 		t.Fatalf("browser check missing success marker: %s", string(out))
+	}
+}
+
+func TestStorageConnectDialogsSubmitGate(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	scriptBytes, err := os.ReadFile("storages.js")
+	if err != nil {
+		t.Fatalf("failed to read storages.js: %v", err)
+	}
+
+	jsTest := fmt.Sprintf(`
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+
+const code = %q;
+
+let docListeners = {};
+
+// NFS elements
+const nfsSubmitBtn = { disabled: true };
+const nfsServerInput = { value: '', validity: { valid: true }, focused: false, focus() { this.focused = true; } };
+const nfsExportPathInput = { value: '', validity: { valid: true } };
+let nfsFormListeners = {};
+const nfsFormEl = {
+  reset() {
+    nfsServerInput.value = '';
+    nfsExportPathInput.value = '';
+  },
+  addEventListener(type, fn) { nfsFormListeners[type] = fn; },
+  querySelector(sel) {
+    if (sel === 'input[name="server"]') return nfsServerInput;
+    if (sel === 'input[name="export_path"]') return nfsExportPathInput;
+    if (sel === '[data-nfs-submit]' || sel === 'button.btn-primary') return nfsSubmitBtn;
+    return null;
+  },
+};
+const nfsDialogEl = {
+  shown: false,
+  showModal() { this.shown = true; },
+  close() { this.shown = false; },
+  querySelector(sel) {
+    if (sel === 'form') return nfsFormEl;
+    if (sel === 'input[name="server"]') return nfsServerInput;
+    if (sel === 'input[name="export_path"]') return nfsExportPathInput;
+    if (sel === '[data-nfs-submit]' || sel === 'button.btn-primary') return nfsSubmitBtn;
+    return null;
+  },
+};
+
+// SMB elements
+const smbSubmitBtn = { disabled: true };
+const smbPathInput = { value: '', validity: { valid: true }, focused: false, focus() { this.focused = true; } };
+const smbUserInput = { value: '', validity: { valid: true } };
+const smbPwInput = { value: '', validity: { valid: true } };
+let smbFormListeners = {};
+const smbFormEl = {
+  reset() {
+    smbPathInput.value = '';
+    smbUserInput.value = '';
+    smbPwInput.value = '';
+  },
+  addEventListener(type, fn) { smbFormListeners[type] = fn; },
+  querySelector(sel) {
+    if (sel === 'input[name="path"]') return smbPathInput;
+    if (sel === 'input[name="username"]') return smbUserInput;
+    if (sel === 'input[name="password"]') return smbPwInput;
+    if (sel === '[data-smb-submit]' || sel === 'button.btn-primary') return smbSubmitBtn;
+    return null;
+  },
+};
+const smbDialogEl = {
+  shown: false,
+  showModal() { this.shown = true; },
+  close() { this.shown = false; },
+  querySelector(sel) {
+    if (sel === 'form') return smbFormEl;
+    if (sel === 'input[name="path"]') return smbPathInput;
+    if (sel === 'input[name="username"]') return smbUserInput;
+    if (sel === 'input[name="password"]') return smbPwInput;
+    if (sel === '[data-smb-submit]' || sel === 'button.btn-primary') return smbSubmitBtn;
+    return null;
+  },
+};
+
+// SMB retry elements
+const retrySubmitBtn = { disabled: true };
+const retryUserInput = { value: '', validity: { valid: true }, focused: false, focus() { this.focused = true; } };
+const retryPwInput = { value: '', validity: { valid: true } };
+let retryFormListeners = {};
+const retryFormEl = {
+  action: '',
+  reset() {
+    retryUserInput.value = '';
+    retryPwInput.value = '';
+  },
+  addEventListener(type, fn) { retryFormListeners[type] = fn; },
+  querySelector(sel) {
+    if (sel === 'input[name="username"]') return retryUserInput;
+    if (sel === 'input[name="password"]') return retryPwInput;
+    if (sel === '[data-smb-retry-submit]' || sel === 'button.btn-primary') return retrySubmitBtn;
+    return null;
+  },
+};
+const retryDialogEl = {
+  shown: false,
+  showModal() { this.shown = true; },
+  close() { this.shown = false; },
+  querySelector(sel) {
+    if (sel === 'form') return retryFormEl;
+    if (sel === 'input[name="username"]') return retryUserInput;
+    if (sel === 'input[name="password"]') return retryPwInput;
+    if (sel === '[data-smb-retry-submit]' || sel === 'button.btn-primary') return retrySubmitBtn;
+    return null;
+  },
+};
+
+const document = {
+  documentElement: { lang: 'ru' },
+  querySelectorAll: () => [],
+  querySelector: () => null,
+  getElementById: (id) => {
+    if (id === 'nfs-create-dialog') return nfsDialogEl;
+    if (id === 'smb-create-dialog') return smbDialogEl;
+    if (id === 'smb-retry-dialog') return retryDialogEl;
+    return null;
+  },
+  addEventListener: (type, fn) => { docListeners[type] = fn; },
+};
+
+const sandbox = {
+  document,
+  window: {},
+  Event: class { constructor(type) { this.type = type; } },
+};
+
+vm.runInNewContext(code, sandbox);
+
+// 1. Initial states: buttons must be disabled
+assert.equal(nfsSubmitBtn.disabled, true, 'nfsSubmitBtn must be disabled initially');
+assert.equal(smbSubmitBtn.disabled, true, 'smbSubmitBtn must be disabled initially');
+assert.equal(retrySubmitBtn.disabled, true, 'retrySubmitBtn must be disabled initially');
+
+// 2. NFS Validation
+nfsServerInput.value = 'nas.example.com';
+nfsFormListeners['input']();
+assert.equal(nfsSubmitBtn.disabled, true, 'nfsSubmitBtn must remain disabled with server only');
+
+nfsExportPathInput.value = '/volume1/iso';
+nfsFormListeners['input']();
+assert.equal(nfsSubmitBtn.disabled, false, 'nfsSubmitBtn must be enabled when server and export_path are set');
+
+nfsServerInput.value = '   ';
+nfsFormListeners['input']();
+assert.equal(nfsSubmitBtn.disabled, true, 'nfsSubmitBtn must be disabled when server is blank');
+
+// Prevent submit if disabled
+let prevented = false;
+nfsFormListeners['submit']({ preventDefault() { prevented = true; } });
+assert.equal(prevented, true, 'nfsForm submission must be prevented when button is disabled');
+
+// Trigger open via [data-nfs-add]
+nfsServerInput.value = 'nas.example.com';
+nfsExportPathInput.value = '/volume1/iso';
+nfsSubmitBtn.disabled = false;
+docListeners['click']({
+  preventDefault() {},
+  target: {
+    closest(sel) {
+      if (sel === '[data-nfs-add]') return { closest() { return null; } };
+      return null;
+    },
+  },
+});
+assert.equal(nfsDialogEl.shown, true, 'nfsDialog should be shown');
+assert.equal(nfsSubmitBtn.disabled, true, 'nfsSubmitBtn must be disabled after opening and reset');
+assert.equal(nfsServerInput.focused, true, 'serverInput should receive focus');
+
+// 3. SMB Validation
+smbPathInput.value = '//nas.example.com/iso';
+smbFormListeners['input']();
+assert.equal(smbSubmitBtn.disabled, true, 'smbSubmitBtn must remain disabled with path only');
+
+smbUserInput.value = 'user1';
+smbFormListeners['input']();
+assert.equal(smbSubmitBtn.disabled, true, 'smbSubmitBtn must remain disabled with path and user only');
+
+smbPwInput.value = 'secret';
+smbFormListeners['input']();
+assert.equal(smbSubmitBtn.disabled, false, 'smbSubmitBtn must be enabled when path, user, and password are set');
+
+smbUserInput.value = '   ';
+smbFormListeners['input']();
+assert.equal(smbSubmitBtn.disabled, true, 'smbSubmitBtn must be disabled when username is whitespace');
+
+prevented = false;
+smbFormListeners['submit']({ preventDefault() { prevented = true; } });
+assert.equal(prevented, true, 'smbForm submission must be prevented when button is disabled');
+
+// Trigger open via [data-smb-add]
+smbPathInput.value = '//nas/iso';
+smbUserInput.value = 'u';
+smbPwInput.value = 'p';
+smbSubmitBtn.disabled = false;
+docListeners['click']({
+  preventDefault() {},
+  target: {
+    closest(sel) {
+      if (sel === '[data-smb-add]') return { closest() { return null; } };
+      return null;
+    },
+  },
+});
+assert.equal(smbDialogEl.shown, true, 'smbDialog should be shown');
+assert.equal(smbSubmitBtn.disabled, true, 'smbSubmitBtn must be disabled after opening and reset');
+assert.equal(smbPathInput.focused, true, 'pathInput should receive focus');
+
+// 4. SMB Retry Validation
+retryUserInput.value = 'user1';
+retryFormListeners['input']();
+assert.equal(retrySubmitBtn.disabled, true, 'retrySubmitBtn must be disabled with user only');
+
+retryPwInput.value = 'secret';
+retryFormListeners['input']();
+assert.equal(retrySubmitBtn.disabled, false, 'retrySubmitBtn must be enabled with user and password');
+
+retryPwInput.value = '';
+retryFormListeners['input']();
+assert.equal(retrySubmitBtn.disabled, true, 'retrySubmitBtn must be disabled with empty password');
+
+prevented = false;
+retryFormListeners['submit']({ preventDefault() { prevented = true; } });
+assert.equal(prevented, true, 'retryForm submission must be prevented when button is disabled');
+
+// Trigger open via [data-smb-retry-id]
+retryUserInput.value = 'u';
+retryPwInput.value = 'p';
+retrySubmitBtn.disabled = false;
+docListeners['click']({
+  preventDefault() {},
+  target: {
+    closest(sel) {
+      if (sel === '[data-smb-retry-id]') {
+        return {
+          closest() { return null; },
+          getAttribute(name) {
+            if (name === 'data-smb-retry-id') return '5';
+            if (name === 'data-smb-retry-name') return 'Storage5';
+            if (name === 'data-smb-retry-path') return '//nas/iso';
+            return '';
+          },
+        };
+      }
+      return null;
+    },
+  },
+});
+assert.equal(retryDialogEl.shown, true, 'retryDialog should be shown');
+assert.equal(retrySubmitBtn.disabled, true, 'retrySubmitBtn must be disabled after opening and reset');
+assert.equal(retryUserInput.focused, true, 'retryUserInput should receive focus');
+
+console.log('STORAGE_SUBMIT_GATE_TESTS_PASS');
+`, string(scriptBytes))
+
+	cmd := exec.CommandContext(ctx, "node", "-e", jsTest)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("node test failed: %v\nOutput: %s", err, string(out))
+	}
+	if !strings.Contains(string(out), "STORAGE_SUBMIT_GATE_TESTS_PASS") {
+		t.Fatalf("missing success marker: %s", string(out))
 	}
 }

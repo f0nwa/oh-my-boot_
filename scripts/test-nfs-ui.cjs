@@ -72,6 +72,18 @@ const path = require('node:path');
           
           const versionSelect = nfsDialog.locator('select[name="version"]');
           assert.equal(await versionSelect.inputValue(), '4.1', 'NFSv4.1 selected by default');
+
+          const nfsSubmitBtn = nfsDialog.locator('[data-nfs-submit]');
+          assert.equal(await nfsSubmitBtn.isDisabled(), true, 'NFS submit button initially disabled');
+
+          const nfsServerInput = nfsDialog.locator('input[name="server"]');
+          const nfsPathInput = nfsDialog.locator('input[name="export_path"]');
+          await nfsServerInput.fill('nas.example.com');
+          assert.equal(await nfsSubmitBtn.isDisabled(), true, 'NFS submit button disabled with server only');
+          await nfsPathInput.fill('/volume1/iso');
+          assert.equal(await nfsSubmitBtn.isDisabled(), false, 'NFS submit button enabled with required fields');
+          await nfsServerInput.fill('   ');
+          assert.equal(await nfsSubmitBtn.isDisabled(), true, 'NFS submit button disabled with blank server');
           
           // Close NFS dialog
           await nfsDialog.locator('[data-close-dialog]').click();
@@ -82,6 +94,16 @@ const path = require('node:path');
           await smbItem.click();
           const smbDialog = page.locator('#smb-create-dialog');
           assert.equal(await smbDialog.isVisible(), true, 'SMB dialog opened');
+          const smbSubmitBtn = smbDialog.locator('[data-smb-submit]');
+          assert.equal(await smbSubmitBtn.isDisabled(), true, 'SMB submit button initially disabled');
+          const smbPathInput = smbDialog.locator('input[name="path"]');
+          const smbUserInput = smbDialog.locator('input[name="username"]');
+          const smbPwInput = smbDialog.locator('input[name="password"]');
+          await smbPathInput.fill('//nas/share');
+          await smbUserInput.fill('user1');
+          assert.equal(await smbSubmitBtn.isDisabled(), true, 'SMB submit button disabled without password');
+          await smbPwInput.fill('pass123');
+          assert.equal(await smbSubmitBtn.isDisabled(), false, 'SMB submit button enabled with required fields');
           await smbDialog.locator('[data-close-dialog]').click();
           assert.equal(await smbDialog.isVisible(), false, 'SMB dialog closed on cancel');
 

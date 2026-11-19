@@ -25,6 +25,54 @@
   var sftpChip = document.getElementById('fs-sftp-chip');
   var sftpAddr = document.getElementById('fs-sftp-addr');
 
+  var smbForm = smbDialog && smbDialog.querySelector('form');
+  var smbPathInput = smbDialog && smbDialog.querySelector('input[name="path"]');
+  var smbUserInput = smbDialog && smbDialog.querySelector('input[name="username"]');
+  var smbPwInput = smbDialog && smbDialog.querySelector('input[name="password"]');
+  var smbSubmitBtn = smbDialog && (smbDialog.querySelector('[data-smb-submit]') || smbDialog.querySelector('button.btn-primary'));
+
+  var nfsForm = nfsDialog && nfsDialog.querySelector('form');
+  var nfsServerInput = nfsDialog && nfsDialog.querySelector('input[name="server"]');
+  var nfsExportPathInput = nfsDialog && nfsDialog.querySelector('input[name="export_path"]');
+  var nfsSubmitBtn = nfsDialog && (nfsDialog.querySelector('[data-nfs-submit]') || nfsDialog.querySelector('button.btn-primary'));
+
+  var retryForm = retryDialog && retryDialog.querySelector('form');
+  var retryUserInput = retryDialog && retryDialog.querySelector('input[name="username"]');
+  var retryPwInput = retryDialog && retryDialog.querySelector('input[name="password"]');
+  var retrySubmitBtn = retryDialog && (retryDialog.querySelector('[data-smb-retry-submit]') || retryDialog.querySelector('button.btn-primary'));
+
+  function updateNfsSubmit() {
+    if (!nfsSubmitBtn || !nfsServerInput || !nfsExportPathInput) return;
+    var serverVal = (nfsServerInput.value || '').trim();
+    var exportPathVal = (nfsExportPathInput.value || '').trim();
+    var isValid = serverVal.length > 0 && exportPathVal.length > 0;
+    if (nfsServerInput.validity && !nfsServerInput.validity.valid) isValid = false;
+    if (nfsExportPathInput.validity && !nfsExportPathInput.validity.valid) isValid = false;
+    nfsSubmitBtn.disabled = !isValid;
+  }
+
+  function updateSmbSubmit() {
+    if (!smbSubmitBtn || !smbPathInput || !smbUserInput || !smbPwInput) return;
+    var pathVal = (smbPathInput.value || '').trim();
+    var userVal = (smbUserInput.value || '').trim();
+    var pwVal = smbPwInput.value || '';
+    var isValid = pathVal.length > 0 && userVal.length > 0 && pwVal.length > 0;
+    if (smbPathInput.validity && !smbPathInput.validity.valid) isValid = false;
+    if (smbUserInput.validity && !smbUserInput.validity.valid) isValid = false;
+    if (smbPwInput.validity && !smbPwInput.validity.valid) isValid = false;
+    smbSubmitBtn.disabled = !isValid;
+  }
+
+  function updateSmbRetrySubmit() {
+    if (!retrySubmitBtn || !retryUserInput || !retryPwInput) return;
+    var userVal = (retryUserInput.value || '').trim();
+    var pwVal = retryPwInput.value || '';
+    var isValid = userVal.length > 0 && pwVal.length > 0;
+    if (retryUserInput.validity && !retryUserInput.validity.valid) isValid = false;
+    if (retryPwInput.validity && !retryPwInput.validity.valid) isValid = false;
+    retrySubmitBtn.disabled = !isValid;
+  }
+
   function updateFileServerSave() {
     if (!fsForm || !fsSave) return;
     var smbInit = smbCheck ? smbCheck.defaultChecked : false;
@@ -121,6 +169,42 @@
     updateRecoverySave();
   }
 
+  if (nfsForm) {
+    nfsForm.addEventListener('input', updateNfsSubmit);
+    nfsForm.addEventListener('change', updateNfsSubmit);
+    nfsForm.addEventListener('submit', function (event) {
+      updateNfsSubmit();
+      if (nfsSubmitBtn && nfsSubmitBtn.disabled) {
+        event.preventDefault();
+      }
+    });
+    updateNfsSubmit();
+  }
+
+  if (smbForm) {
+    smbForm.addEventListener('input', updateSmbSubmit);
+    smbForm.addEventListener('change', updateSmbSubmit);
+    smbForm.addEventListener('submit', function (event) {
+      updateSmbSubmit();
+      if (smbSubmitBtn && smbSubmitBtn.disabled) {
+        event.preventDefault();
+      }
+    });
+    updateSmbSubmit();
+  }
+
+  if (retryForm) {
+    retryForm.addEventListener('input', updateSmbRetrySubmit);
+    retryForm.addEventListener('change', updateSmbRetrySubmit);
+    retryForm.addEventListener('submit', function (event) {
+      updateSmbRetrySubmit();
+      if (retrySubmitBtn && retrySubmitBtn.disabled) {
+        event.preventDefault();
+      }
+    });
+    updateSmbRetrySubmit();
+  }
+
   function hideClosestPopover(element) {
     if (!element) return;
     var popover = element.closest('[popover]');
@@ -207,14 +291,13 @@
     if (addBtn && smbDialog && typeof smbDialog.showModal === 'function') {
       event.preventDefault();
       hideClosestPopover(addBtn);
-      var form = smbDialog.querySelector('form');
-      if (form) {
-        form.reset();
+      if (smbForm) {
+        smbForm.reset();
       }
+      updateSmbSubmit();
       smbDialog.showModal();
-      var pathInput = smbDialog.querySelector('input[name="path"]');
-      if (pathInput) {
-        pathInput.focus();
+      if (smbPathInput) {
+        smbPathInput.focus();
       }
       return;
     }
@@ -223,14 +306,13 @@
     if (nfsAddBtn && nfsDialog && typeof nfsDialog.showModal === 'function') {
       event.preventDefault();
       hideClosestPopover(nfsAddBtn);
-      var nfsForm = nfsDialog.querySelector('form');
       if (nfsForm) {
         nfsForm.reset();
       }
+      updateNfsSubmit();
       nfsDialog.showModal();
-      var serverInput = nfsDialog.querySelector('input[name="server"]');
-      if (serverInput) {
-        serverInput.focus();
+      if (nfsServerInput) {
+        nfsServerInput.focus();
       }
       return;
     }
@@ -243,7 +325,6 @@
       var name = retryBtn.getAttribute('data-smb-retry-name') || '';
       var path = retryBtn.getAttribute('data-smb-retry-path') || '';
 
-      var retryForm = retryDialog.querySelector('form');
       if (retryForm) {
         retryForm.reset();
         retryForm.action = '/images/smb/' + encodeURIComponent(id) + '/retry';
@@ -256,10 +337,10 @@
       if (pathEl) {
         pathEl.textContent = path;
       }
+      updateSmbRetrySubmit();
       retryDialog.showModal();
-      var userInput = retryDialog.querySelector('input[name="username"]');
-      if (userInput) {
-        userInput.focus();
+      if (retryUserInput) {
+        retryUserInput.focus();
       }
       return;
     }

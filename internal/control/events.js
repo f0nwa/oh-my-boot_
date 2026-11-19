@@ -114,6 +114,10 @@
       if (area) loadBlock(area);
       else location.reload();
     });
+    document.addEventListener('change', (event) => {
+      const sel = event.target.closest('.system-events-filter select');
+      if (sel && sel.form) sel.form.submit();
+    });
     window.addEventListener('pagehide', () => {
       flights.forEach((controller) => controller.abort());
     });

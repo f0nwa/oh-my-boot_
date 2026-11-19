@@ -13,6 +13,61 @@
   var recoveryDialog = document.getElementById('storage-recovery-dialog');
   var recoveryForm = document.getElementById('storage-recovery-settings');
   var recoverySave = recoveryDialog && recoveryDialog.querySelector('[data-storage-recovery-save]');
+  var fsDialog = document.getElementById('file-server-dialog');
+  var fsForm = document.getElementById('file-server-form');
+  var fsSave = fsDialog && fsDialog.querySelector('[data-file-server-save]');
+  var smbCheck = document.getElementById('fs-smb-enabled');
+  var sftpCheck = document.getElementById('fs-sftp-enabled');
+  var sftpPortInput = document.getElementById('fs-sftp-port');
+  var smbCard = document.getElementById('proto-card-smb');
+  var sftpCard = document.getElementById('proto-card-sftp');
+  var smbChip = document.getElementById('fs-smb-chip');
+  var sftpChip = document.getElementById('fs-sftp-chip');
+  var sftpAddr = document.getElementById('fs-sftp-addr');
+
+  function updateFileServerSave() {
+    if (!fsForm || !fsSave) return;
+    var smbInit = smbCheck ? smbCheck.defaultChecked : false;
+    var sftpInit = sftpCheck ? sftpCheck.defaultChecked : false;
+    var portInit = sftpPortInput ? Number(sftpPortInput.defaultValue) : 2022;
+
+    var smbCur = smbCheck ? smbCheck.checked : false;
+    var sftpCur = sftpCheck ? sftpCheck.checked : false;
+    var portCur = sftpPortInput ? sftpPortInput.valueAsNumber : NaN;
+
+    var isDirty = (smbCur !== smbInit) || (sftpCur !== sftpInit) || (portCur !== portInit);
+    var isValid = !isNaN(portCur) && portCur >= 1024 && portCur <= 65535;
+
+    fsSave.disabled = !isDirty || !isValid;
+
+    if (smbCard) smbCard.classList.toggle('is-on', smbCur);
+    if (sftpCard) sftpCard.classList.toggle('is-on', sftpCur);
+    var isEn = document.documentElement && document.documentElement.lang === 'en';
+    if (smbChip) {
+      smbChip.className = 'chip ' + (smbCur ? 'chip-ok' : 'chip-off');
+      smbChip.textContent = smbCur ? (isEn ? 'Active · port 445' : 'Активен · порт 445') : (isEn ? 'Disabled' : 'Выключен');
+    }
+    if (sftpChip) {
+      sftpChip.className = 'chip ' + (sftpCur ? 'chip-ok' : 'chip-off');
+      var portDisplay = isValid ? portCur : (portInit || 2022);
+      sftpChip.textContent = sftpCur ? ((isEn ? 'Active · port ' : 'Активен · порт ') + portDisplay) : (isEn ? 'Disabled' : 'Выключен');
+    }
+    if (sftpAddr && isValid && sftpAddr.dataset && sftpAddr.dataset.baseHost) {
+      sftpAddr.textContent = 'sftp://' + sftpAddr.dataset.baseHost + ':' + portCur + '/';
+    }
+  }
+
+  if (fsForm) {
+    fsForm.addEventListener('input', updateFileServerSave);
+    fsForm.addEventListener('change', updateFileServerSave);
+    fsForm.addEventListener('submit', function (event) {
+      updateFileServerSave();
+      if (fsSave && fsSave.disabled) {
+        event.preventDefault();
+      }
+    });
+    updateFileServerSave();
+  }
 
   function updateRenameSave() {
     if (!renameNameInput || !renameSave) {
@@ -74,7 +129,69 @@
     }
   }
 
+  function copyText(btn, text) {
+    var origText = btn.textContent;
+    var copiedText = (document.documentElement && document.documentElement.lang === 'en') ? 'Copied' : 'Скопировано';
+    function showSuccess() {
+      btn.textContent = copiedText;
+      setTimeout(function () {
+        btn.textContent = origText;
+      }, 1200);
+    }
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText(text).then(showSuccess, function () {
+        fallbackCopy(text, showSuccess);
+      });
+    } else {
+      fallbackCopy(text, showSuccess);
+    }
+  }
+
+  function fallbackCopy(text, cb) {
+    try {
+      var tmp = document.createElement('textarea');
+      tmp.value = text;
+      tmp.setAttribute('readonly', '');
+      tmp.style.position = 'fixed';
+      tmp.style.left = '-9999px';
+      document.body.appendChild(tmp);
+      tmp.select();
+      if (document.execCommand('copy')) {
+        cb();
+      }
+      document.body.removeChild(tmp);
+    } catch (_) {
+      // ignore copy failures
+    }
+  }
+
   document.addEventListener('click', function (event) {
+    var copyBtn = event.target.closest('[data-copy], [data-copy-target]');
+    if (copyBtn) {
+      event.preventDefault();
+      var text = copyBtn.getAttribute('data-copy');
+      if (!text && copyBtn.getAttribute('data-copy-target')) {
+        var targetEl = document.querySelector(copyBtn.getAttribute('data-copy-target'));
+        if (targetEl) text = targetEl.textContent.trim();
+      }
+      if (text) {
+        copyText(copyBtn, text);
+      }
+      return;
+    }
+
+    var fsOpenBtn = event.target.closest('[data-file-server-open]');
+    if (fsOpenBtn && fsDialog && typeof fsDialog.showModal === 'function') {
+      event.preventDefault();
+      hideClosestPopover(fsOpenBtn);
+      if (fsForm) {
+        fsForm.reset();
+        updateFileServerSave();
+      }
+      fsDialog.showModal();
+      return;
+    }
+
     var recoveryBtn = event.target.closest('[data-storage-recovery-open]');
     if (recoveryBtn && recoveryDialog && typeof recoveryDialog.showModal === 'function') {
       event.preventDefault();

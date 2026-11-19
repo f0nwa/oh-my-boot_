@@ -17,6 +17,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+ReadWritePaths=-/var/lib/omb-images/iso
 RestrictAddressFamilies=AF_INET AF_UNIX AF_NETLINK
 
 [Install]

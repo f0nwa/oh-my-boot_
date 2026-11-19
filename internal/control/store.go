@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -15,16 +16,19 @@ import (
 )
 
 type User struct {
-	ID                 int64
-	Username           string
-	Role               string
-	Enabled            bool
-	Language           string
-	Theme              string
-	PasswordChangedAt  time.Time
-	MustChangePassword bool
-	PasswordPolicyMode string
-	PasswordMaxAgeDays int
+	ID                  int64
+	Username            string
+	Role                string
+	Enabled             bool
+	Language            string
+	Theme               string
+	PasswordChangedAt   time.Time
+	MustChangePassword  bool
+	PasswordPolicyMode  string
+	PasswordMaxAgeDays  int
+	FSAccessMode        string
+	HasFSPassword       bool
+	FSPasswordChangedAt *time.Time
 }
 type AuditEvent struct {
 	ID     int64
@@ -99,11 +103,13 @@ func (s Store) CreateInitialAdmin(ctx context.Context, username, password string
 func (s Store) Login(ctx context.Context, username, password string) (User, string, error) {
 	var u User
 	var hash string
-	err := s.Pool.QueryRow(ctx, `SELECT id,username,role,enabled,language,theme,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),password_hash FROM users WHERE lower(username)=lower($1)`, username).
-		Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &hash)
+	var fsHash string
+	err := s.Pool.QueryRow(ctx, `SELECT id,username,role,enabled,language,theme,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),password_hash,fs_access_mode,fs_password_hash,fs_password_changed_at FROM users WHERE lower(username)=lower($1)`, username).
+		Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &hash, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt)
 	if err != nil || !u.Enabled || !VerifyPassword(hash, password) {
 		return User{}, "", fmt.Errorf("invalid credentials")
 	}
+	u.HasFSPassword = fsHash != ""
 	token, err := randomToken()
 	if err != nil {
 		return User{}, "", err
@@ -118,14 +124,16 @@ func (s Store) Session(ctx context.Context, token string) (User, error) {
 	}
 	var u User
 	var expiry time.Time
-	err := s.Pool.QueryRow(ctx, `SELECT u.id,u.username,u.role,u.enabled,u.language,u.theme,u.password_changed_at,u.must_change_password,u.password_policy_mode,coalesce(u.password_max_age_days,0),s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1`, tokenHash(token)).
-		Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &expiry)
+	var fsHash string
+	err := s.Pool.QueryRow(ctx, `SELECT u.id,u.username,u.role,u.enabled,u.language,u.theme,u.password_changed_at,u.must_change_password,u.password_policy_mode,coalesce(u.password_max_age_days,0),s.expires_at,u.fs_access_mode,u.fs_password_hash,u.fs_password_changed_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1`, tokenHash(token)).
+		Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &expiry, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt)
 	if err != nil {
 		return User{}, err
 	}
 	if !SessionValid(expiry, u.Enabled) {
 		return User{}, fmt.Errorf("session expired or disabled")
 	}
+	u.HasFSPassword = fsHash != ""
 	return u, nil
 }
 
@@ -194,7 +202,7 @@ func (s Store) AuditPaged(ctx context.Context, limit int, beforeID int64) ([]Aud
 }
 
 func (s Store) Users(ctx context.Context) ([]User, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT id,username,role,enabled,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0) FROM users ORDER BY username")
+	rows, err := s.Pool.Query(ctx, "SELECT id,username,role,enabled,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),fs_access_mode,(fs_password_hash <> ''),fs_password_changed_at FROM users ORDER BY username")
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +210,7 @@ func (s Store) Users(ctx context.Context) ([]User, error) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &u.FSAccessMode, &u.HasFSPassword, &u.FSPasswordChangedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -772,5 +780,81 @@ ON CONFLICT (scope,storage_id,image_path) DO UPDATE SET reason=$4,created_by=$5,
 // DeleteMaintenanceLock disables maintenance mode on a storage or ISO image.
 func (s Store) DeleteMaintenanceLock(ctx context.Context, scope string, storageID int64, imagePath string) error {
 	_, err := s.Pool.Exec(ctx, `DELETE FROM maintenance_locks WHERE scope=$1 AND storage_id=$2 AND image_path=$3`, scope, storageID, imagePath)
+	return err
+}
+
+// RecordSystemEvent appends a system incident or recovery event.
+func (s Store) RecordSystemEvent(ctx context.Context, ev SystemEvent) error {
+	at := ev.OccurredAt
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	_, err := s.Pool.Exec(ctx, `INSERT INTO system_events (occurred_at,severity,category,source_key,title,detail,link) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		at, ev.Severity, ev.Category, ev.SourceKey, ev.Title, ev.Detail, ev.Link)
+	return err
+}
+
+// SystemEventsPaged returns a page of system events newest-first using cursor pagination.
+func (s Store) SystemEventsPaged(ctx context.Context, filter SystemEventFilter, limit int) ([]SystemEvent, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	var conds []string
+	var args []any
+	add := func(val any) string {
+		args = append(args, val)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	if filter.Severity != "" && filter.Severity != "all" {
+		conds = append(conds, "severity = "+add(filter.Severity))
+	}
+	if filter.Category != "" && filter.Category != "all" {
+		conds = append(conds, "category = "+add(filter.Category))
+	}
+	if q := strings.TrimSpace(filter.Query); q != "" {
+		pat := "%" + q + "%"
+		p := add(pat)
+		conds = append(conds, "(title ILIKE "+p+" OR detail ILIKE "+p+" OR source_key ILIKE "+p+")")
+	}
+	if filter.BeforeTime != nil {
+		pTime := add(*filter.BeforeTime)
+		if filter.BeforeID > 0 {
+			pID := add(filter.BeforeID)
+			conds = append(conds, "(occurred_at, id) < ("+pTime+", "+pID+")")
+		} else {
+			conds = append(conds, "occurred_at < "+pTime)
+		}
+	}
+	query := `SELECT id,occurred_at,severity,category,source_key,title,detail,link FROM system_events`
+	if len(conds) > 0 {
+		query += " WHERE " + strings.Join(conds, " AND ")
+	}
+	query += " ORDER BY occurred_at DESC, id DESC LIMIT " + add(limit)
+	rows, err := s.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SystemEvent
+	for rows.Next() {
+		var ev SystemEvent
+		if err := rows.Scan(&ev.ID, &ev.OccurredAt, &ev.Severity, &ev.Category, &ev.SourceKey, &ev.Title, &ev.Detail, &ev.Link); err != nil {
+			return nil, err
+		}
+		out = append(out, ev)
+	}
+	return out, rows.Err()
+}
+
+// CountRecentSystemErrors returns how many error-level system events occurred since the given time.
+func (s Store) CountRecentSystemErrors(ctx context.Context, since time.Time) (int, error) {
+	var count int
+	err := s.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM system_events WHERE severity='error' AND occurred_at >= $1`, since).Scan(&count)
+	return count, err
+}
+
+// PruneSystemEvents removes system events older than the given cutoff.
+func (s Store) PruneSystemEvents(ctx context.Context, olderThan time.Time) error {
+	_, err := s.Pool.Exec(ctx, `DELETE FROM system_events WHERE occurred_at < $1`, olderThan)
 	return err
 }

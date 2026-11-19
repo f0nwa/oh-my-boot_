@@ -32,9 +32,22 @@ func needsDraftSummary(r *http.Request) bool {
 }
 
 func eventsRequest(r *http.Request) pageData {
-	data := pageData{Info: requestInfo(r), Tab: r.URL.Query().Get("tab"), MACFilter: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mac")))}
-	if data.Tab != "requests" && data.Tab != "dhcp" {
+	data := pageData{
+		Info:      requestInfo(r),
+		Tab:       r.URL.Query().Get("tab"),
+		MACFilter: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mac"))),
+		SystemSev: strings.TrimSpace(r.URL.Query().Get("sev")),
+		SystemCat: strings.TrimSpace(r.URL.Query().Get("cat")),
+		Query:     strings.TrimSpace(r.URL.Query().Get("q")),
+	}
+	if data.Tab != "requests" && data.Tab != "dhcp" && data.Tab != "system" {
 		data.Tab = "machines"
+	}
+	if data.SystemSev != "error" && data.SystemSev != "warning" && data.SystemSev != "info" {
+		data.SystemSev = "all"
+	}
+	if data.SystemCat != "storage" && data.SystemCat != "service" && data.SystemCat != "network" && data.SystemCat != "task" {
+		data.SystemCat = "all"
 	}
 	return data
 }
@@ -54,6 +67,7 @@ func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
 		s.loadServiceStatus(r.Context(), &data)
 		s.loadEventsJournal(r, &data)
 	}
+	data.SystemErrorCount = s.recentSystemErrorCount(r.Context())
 	render(w, "events", data)
 }
 
@@ -76,6 +90,14 @@ func (s *Server) eventsContent(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			render(w, "event_dhcp_partial", data)
+			return
+		}
+		if data.Tab == "system" {
+			if data.SystemEventError != "" {
+				http.Error(w, data.SystemEventError, http.StatusServiceUnavailable)
+				return
+			}
+			render(w, "event_system_partial", data)
 			return
 		}
 	}
@@ -113,6 +135,46 @@ func (s *Server) eventsJournal(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) eventsTableData(r *http.Request) pageData {
 	data := eventsRequest(r)
+
+	if data.Tab == "system" {
+		store, ok := s.Store.(SystemEventStore)
+		if !ok {
+			data.SystemEventError = "Журнал системных событий недоступен"
+			return data
+		}
+		filter := SystemEventFilter{
+			Severity: data.SystemSev,
+			Category: data.SystemCat,
+			Query:    data.Query,
+		}
+		if bt := r.URL.Query().Get("before_time"); bt != "" {
+			if t, err := time.Parse(time.RFC3339Nano, bt); err == nil {
+				filter.BeforeTime = &t
+			} else if t, err := time.Parse(time.RFC3339, bt); err == nil {
+				filter.BeforeTime = &t
+			}
+		}
+		if bid := r.URL.Query().Get("before_id"); bid != "" {
+			if id, err := strconv.ParseInt(bid, 10, 64); err == nil && id > 0 {
+				filter.BeforeID = id
+			}
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		items, err := store.SystemEventsPaged(ctx, filter, 50)
+		if err != nil {
+			data.SystemEventError = "Журнал системных событий временно недоступен"
+			return data
+		}
+		data.SystemEvents = items
+		if len(items) == 50 {
+			data.EventsHasMore = true
+			last := items[len(items)-1]
+			data.EventsNextTime = last.OccurredAt.Format(time.RFC3339Nano)
+			data.EventsNextID = last.ID
+		}
+		return data
+	}
 
 	if data.Tab == "requests" {
 		var beforeTime *time.Time

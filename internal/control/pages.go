@@ -89,6 +89,11 @@ type pageData struct {
 	UbuntuEditor          *ubuntuAutoinstallEditorView
 	UbuntuAutoinstalls    []UbuntuAutoinstallSummary
 	MaintenanceStorages   map[int64]bool
+	SystemEvents          []SystemEvent
+	SystemErrorCount      int
+	SystemSev             string
+	SystemCat             string
+	SystemEventError      string
 	Editor                *editorView
 	USB                   *usbView
 	Journal               *journalView
@@ -101,6 +106,7 @@ type pageData struct {
 	Message               string
 	Error                 string
 	PasswordPolicy        PasswordPolicy
+	FileServer            fileServerView
 	SystemTime            *systemTimeView
 	SystemTimeError       string
 	NowTime               time.Time
@@ -242,6 +248,9 @@ func parsePages(lang string) *template.Template {
 			return false
 		},
 		"dhcpKind":            dhcpKindLabel,
+		"sysEventSev":         systemEventSeverityLabel,
+		"sysEventCat":         systemEventCategoryLabel,
+		"sysEventLinkLabel":   systemEventLinkLabel,
 		"machineStage":        machineStageLabel,
 		"machineCol":          machineCol,
 		"machineImportFields": func() []string { return []string{"name", "manufacturer", "product", "note"} },

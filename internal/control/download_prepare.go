@@ -273,6 +273,14 @@ func (s *Server) installationPrepare(w http.ResponseWriter, r *http.Request) {
 			message := "Загрузка подготовлена"
 			if err := s.prepareDownload(r.Context(), item, requestInfo(r).User.ID); err != nil {
 				message = "Подготовка не завершена; подробности в строке загрузки."
+				s.recordSystemEvent(r.Context(), SystemEvent{
+					Severity:  "error",
+					Category:  "task",
+					SourceKey: fmt.Sprintf("prepare:%d", item.ID),
+					Title:     fmt.Sprintf("Ошибка подготовки загрузки «%s»", item.Title),
+					Detail:    err.Error(),
+					Link:      "/installations",
+				})
 			}
 			http.Redirect(w, r, "/installations?message="+url.QueryEscape(message), http.StatusSeeOther)
 			return

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"omb/internal/drivers"
 	"omb/internal/nfsstorage"
@@ -594,5 +595,70 @@ func HandlerWithSystemTime(inner http.Handler, manager *SystemTimeManager) http.
 		_ = json.NewEncoder(w).Encode(state)
 	})
 	mux.Handle("/", inner)
+	return mux
+}
+
+// HandlerWithLocalSMB exposes local SMB management operations over the agent socket.
+func HandlerWithLocalSMB(next http.Handler, manager *LocalSMBManager) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /local-smb/config", func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "local SMB unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var cfg LocalSMBConfig
+		if !decodeAgentRequest(w, r, &cfg, 64<<10) {
+			return
+		}
+		for _, u := range cfg.Users {
+			if u.ID <= 0 {
+				http.Error(w, "invalid user ID", http.StatusBadRequest)
+				return
+			}
+			if !validLocalSMBUsername.MatchString(u.Username) {
+				http.Error(w, "invalid username", http.StatusBadRequest)
+				return
+			}
+			if u.Mode != "ro" && u.Mode != "rw" {
+				http.Error(w, "invalid user access mode", http.StatusBadRequest)
+				return
+			}
+		}
+		if err := manager.ApplyConfig(r.Context(), cfg); err != nil {
+			http.Error(w, "local SMB apply failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("POST /local-smb/password", func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "local SMB unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req LocalSMBPasswordRequest
+		if !decodeAgentRequest(w, r, &req, 4<<10) {
+			return
+		}
+		if req.ID <= 0 {
+			http.Error(w, "invalid user ID", http.StatusBadRequest)
+			return
+		}
+		if !validLocalSMBUsername.MatchString(req.Username) {
+			http.Error(w, "invalid username", http.StatusBadRequest)
+			return
+		}
+		if len(req.Password) < 12 || strings.ContainsAny(req.Password, "\r\n") {
+			http.Error(w, "invalid password", http.StatusBadRequest)
+			return
+		}
+		if err := manager.SetPassword(r.Context(), req); err != nil {
+			http.Error(w, "set local SMB password failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.Handle("/", next)
 	return mux
 }

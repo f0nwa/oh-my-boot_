@@ -56,12 +56,67 @@ func main() {
 	store := control.Store{Pool: pool}
 	agentClient := control.NewAgentClient(*agentSocket)
 	bootClient := control.NewBootClient(*bootSocket)
-	server := &control.Server{Store: store, Boot: bootClient, UbuntuSource: bootClient, DeletionMenu: bootClient, Agent: agentClient, DiskUsage: agentClient, BootDrivers: agentClient, SMB: agentClient, NFS: agentClient, WindowsISO: agentClient, UbuntuISO: agentClient, WindowsAnswers: agentClient, DriverPackages: agentClient, DriverConfigs: agentClient, Cleanup: agentClient, StorageRecovery: agentClient, SystemTime: agentClient, UEFICAUSB: agentClient, Images: control.NewImagesClient(*imagesSocket), AllowedInterfaces: allowlist, BootBaseURL: os.Getenv("OMB_CONTROL_BOOT_BASE_URL")}
+	var server *control.Server
+	sftpServer := control.NewLocalSFTPServer(
+		"/var/lib/omb-images/iso",
+		"/var/lib/omb-control/sftp_host_ed25519_key",
+		control.SFTPHooks{
+			Authenticate: func(ctx context.Context, username, password string) (control.User, error) {
+				return store.AuthenticateFSUser(ctx, username, password)
+			},
+			IsLocalMaintenance: func(ctx context.Context) bool {
+				if server == nil {
+					return false
+				}
+				return server.IsLocalMaintenance(ctx)
+			},
+			IsISOProtected: func(ctx context.Context, relPath string) bool {
+				if server == nil {
+					return false
+				}
+				return server.IsLocalISOProtected(ctx, relPath)
+			},
+			OnISOUploaded: func(ctx context.Context, user control.User, relPath string) {
+				if server != nil {
+					server.OnISOUploaded(ctx, user, relPath)
+				}
+			},
+		},
+	)
+	server = &control.Server{
+		Store:             store,
+		Boot:              bootClient,
+		UbuntuSource:      bootClient,
+		DeletionMenu:      bootClient,
+		Agent:             agentClient,
+		DiskUsage:         agentClient,
+		BootDrivers:       agentClient,
+		SMB:               agentClient,
+		NFS:               agentClient,
+		WindowsISO:        agentClient,
+		UbuntuISO:         agentClient,
+		WindowsAnswers:    agentClient,
+		DriverPackages:    agentClient,
+		DriverConfigs:     agentClient,
+		Cleanup:           agentClient,
+		StorageRecovery:   agentClient,
+		SystemTime:        agentClient,
+		UEFICAUSB:         agentClient,
+		LocalSMB:          agentClient,
+		SFTPServer:        sftpServer,
+		ListenAddr:        *listen,
+		Images:            control.NewImagesClient(*imagesSocket),
+		AllowedInterfaces: allowlist,
+		BootBaseURL:       os.Getenv("OMB_CONTROL_BOOT_BASE_URL"),
+	}
 	if err := server.SyncBootDrivers(pingCtx); err != nil {
 		log.Printf("boot driver synchronization: %v", err)
 	}
 	if err := server.SyncMaintenance(pingCtx); err != nil {
 		log.Printf("maintenance synchronization: %v", err)
+	}
+	if err := server.SyncLocalFileServer(pingCtx); err != nil {
+		log.Printf("local file server synchronization: %v", err)
 	}
 	httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 6 * time.Minute, IdleTimeout: 60 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
@@ -69,11 +124,15 @@ func main() {
 	if server.SysMon != nil {
 		server.SysMon.Start(shutdownCtx)
 	}
+	control.NewSystemEventMonitor(server).Start(shutdownCtx)
 	go func() {
 		<-shutdownCtx.Done()
 		timeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(timeout)
+		if sftpServer != nil {
+			_ = sftpServer.Close()
+		}
 	}()
 	log.Printf("Oh My Boot: Control HTTPS listening on %s", *listen)
 	if err := httpServer.ListenAndServeTLS(*cert, *key); err != nil && err != http.ErrServerClosed {

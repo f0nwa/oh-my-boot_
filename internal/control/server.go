@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"omb/internal/agent"
@@ -21,6 +22,7 @@ import (
 )
 
 type Storage interface {
+	FileServerStore
 	SaveAnswerCheck(context.Context, AnswerCheck) error
 	LatestAnswerChecks(context.Context) ([]AnswerCheck, error)
 	LatestAnswerChecksByProfile(context.Context) ([]AnswerCheck, error)
@@ -194,6 +196,9 @@ type Server struct {
 	StorageRecovery   StorageRecoveryAPI
 	SystemTime        SystemTimeAPI
 	UEFICAUSB         UEFICAUSBAPI
+	LocalSMB          LocalSMBAPI
+	SFTPServer        *LocalSFTPServer
+	ListenAddr        string
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
 	SysMon            *SystemMonitor
@@ -205,6 +210,7 @@ type Server struct {
 	bookCache         machineBookCache
 	machineImports    *machineImportStash
 	windowsMu         sync.Mutex
+	localID           atomic.Int64
 	ubuntuCacheMu     sync.Mutex
 	ubuntuCache       *ubuntuReadinessCache
 	authorsCache      resourceAuthorsCache
@@ -238,6 +244,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /settings/theme", s.protect("view", s.setTheme))
 	mux.HandleFunc("GET /account", s.protect("view", s.accountPage))
 	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
+	mux.HandleFunc("POST /account/file-password", s.protect("view", withPageErrors(s.accountPage, s.accountFilePassword)))
 	mux.HandleFunc("GET /change-password", s.protect("view", s.changePasswordPage))
 	mux.HandleFunc("POST /change-password", s.protect("view", withPageErrors(s.changePasswordPage, s.changePasswordSubmit)))
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
@@ -326,6 +333,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
 	mux.HandleFunc("POST /users/password-policy", s.protect("users", withPageErrors(s.usersPage, s.usersPasswordPolicy)))
 	mux.HandleFunc("POST /users/user-password-policy", s.protect("users", withPageErrors(s.usersPage, s.userPasswordPolicy)))
+	mux.HandleFunc("POST /users/file-access", s.protect("admin", withPageErrors(s.usersPage, s.userFileAccessSave)))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	mux.HandleFunc("GET /usb", s.protect("view", s.usbPage))
@@ -382,6 +390,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /images/nfs/{id}/retry", s.protect("nfs", withPageErrors(s.storagesPage, s.imagesNFSRetry)))
 	mux.HandleFunc("POST /images/nfs/{id}/remove", s.protect("nfs", withPageErrors(s.storagesPage, s.imagesNFSRemove)))
 	mux.HandleFunc("POST /images/storages/{id}/rename", s.protect("smb", withPageErrors(s.storagesPage, s.storageRename)))
+	mux.HandleFunc("POST /images/file-server", s.protect("admin", withPageErrors(s.storagesPage, s.fileServerSettingsSave)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
@@ -642,6 +651,13 @@ func (s *Server) storagesPage(w http.ResponseWriter, r *http.Request) {
 	if data.StorageSpace != nil && len(data.StorageSpace.Artifacts) > 0 {
 		sortServerArtifacts(data.StorageSpace.Artifacts, data.Sort, data.Dir)
 	}
+	for _, st := range data.Storages {
+		if st.Kind == "local" {
+			s.localID.Store(st.ID)
+			break
+		}
+	}
+	data.FileServer = s.localFileServerState(r.Context(), r.Host)
 	render(w, "storages", data)
 }
 
@@ -695,6 +711,7 @@ func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Users = v
+	data.FileServer = s.localFileServerState(r.Context(), r.Host)
 	render(w, "users", data)
 }
 
@@ -865,6 +882,7 @@ func (s *Server) userChange(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	_ = s.SyncLocalFileServer(r.Context())
 	msg := "Пользователь изменён"
 	if username != "" {
 		msg = fmt.Sprintf("Пользователь «%s» обновлён", username)
@@ -908,6 +926,7 @@ func (s *Server) userDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.InvalidateResourceAuthorsCache()
+	_ = s.SyncLocalFileServer(r.Context())
 	msg := "Пользователь удалён"
 	if username != "" {
 		msg = fmt.Sprintf("Пользователь «%s» удалён", username)

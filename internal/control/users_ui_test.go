@@ -133,8 +133,8 @@ func TestUsersPageModals(t *testing.T) {
 	}
 
 	pwGenCount := strings.Count(body, "data-password-generator")
-	if pwGenCount != 2 {
-		t.Errorf("expected 2 data-password-generator inputs, got %d", pwGenCount)
+	if pwGenCount != 3 {
+		t.Errorf("expected 3 data-password-generator inputs, got %d", pwGenCount)
 	}
 
 	if !strings.Contains(body, `<button class="btn btn-primary" disabled>Создать</button>`) {

@@ -864,3 +864,32 @@ func (c *AgentClient) SetSystemTime(ctx context.Context, req agent.SystemTimeUpd
 	err = localCall(ctx, client, http.MethodPost, "/system/time", body, &state)
 	return state, err
 }
+
+type LocalSMBAPI interface {
+	ApplyLocalSMB(context.Context, agent.LocalSMBConfig) error
+	SetLocalSMBPassword(context.Context, agent.LocalSMBPasswordRequest) error
+}
+
+var _ LocalSMBAPI = (*AgentClient)(nil)
+
+func (c *AgentClient) ApplyLocalSMB(ctx context.Context, cfg agent.LocalSMBConfig) error {
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	client := &http.Client{Transport: c.http.Transport, Timeout: 30 * time.Second}
+	return localCall(ctx, client, http.MethodPut, "/local-smb/config", body, nil)
+}
+
+func (c *AgentClient) SetLocalSMBPassword(ctx context.Context, req agent.LocalSMBPasswordRequest) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	client := &http.Client{Transport: c.http.Transport, Timeout: 15 * time.Second}
+	return localCall(ctx, client, http.MethodPost, "/local-smb/password", body, nil)
+}

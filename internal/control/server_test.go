@@ -62,6 +62,24 @@ func (a authOnlyStore) SetPasswordPolicy(context.Context, PasswordPolicy) error 
 func (a authOnlyStore) SetUserPasswordPolicy(context.Context, int64, int64, string, int, *bool) error {
 	return nil
 }
+func (a authOnlyStore) FileServerSettings(context.Context) (FileServerSettings, error) {
+	return FileServerSettings{SFTPPort: DefaultSFTPPort}, nil
+}
+func (a authOnlyStore) SetFileServerSettings(context.Context, FileServerSettings) error {
+	return nil
+}
+func (a authOnlyStore) SetUserFileAccess(context.Context, int64, string, string) (string, error) {
+	return "", nil
+}
+func (a authOnlyStore) SetOwnFilePassword(context.Context, int64, string) (string, error) {
+	return "", nil
+}
+func (a authOnlyStore) AuthenticateFSUser(context.Context, string, string) (User, error) {
+	return User{}, errUserNotFound
+}
+func (a authOnlyStore) FileServerUsers(context.Context) ([]FileServerUser, error) {
+	return nil, nil
+}
 
 func TestServerRedirectsAnonymousDashboard(t *testing.T) {
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Role: "observer", Enabled: true}}}

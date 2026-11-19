@@ -8,6 +8,73 @@
   var deleteDialog = document.getElementById('user-delete-dialog');
   var policyDialog = document.getElementById('password-policy-dialog');
   var expiryDialog = document.getElementById('user-expiry-dialog');
+  var userFsDialog = document.getElementById('user-fs-access-dialog');
+  var userFsForm = userFsDialog ? userFsDialog.querySelector('form') : null;
+  var userFsSave = userFsDialog ? userFsDialog.querySelector('[data-user-fs-save]') : null;
+  var userFsIdInput = document.getElementById('user-fs-modal-id');
+  var userFsNameSpan = document.getElementById('user-fs-modal-name');
+  var userFsPwInput = document.getElementById('user-fs-pw-input');
+  var userFsPwBox = document.getElementById('user-fs-pw-box');
+  var userFsPwLabel = document.getElementById('user-fs-pw-label');
+
+  var userFsInitial = {
+    id: '',
+    name: '',
+    mode: 'none',
+    hasPw: false
+  };
+
+  function updateUserFsSave() {
+    if (!userFsDialog || !userFsSave) return;
+    var selectedRadio = userFsDialog.querySelector('input[name="mode"]:checked');
+    var curMode = selectedRadio ? selectedRadio.value : 'none';
+    var curPw = userFsPwInput ? userFsPwInput.value : '';
+
+    userFsDialog.querySelectorAll('.radio-card[data-fs-card]').forEach(function (card) {
+      var radio = card.querySelector('input[type="radio"]');
+      card.classList.toggle('selected', !!(radio && radio.checked));
+      card.classList.toggle('is-selected', !!(radio && radio.checked));
+    });
+
+    if (userFsPwBox && userFsPwBox.style) {
+      userFsPwBox.style.opacity = (curMode === 'none') ? '0.4' : '1';
+      userFsPwBox.style.pointerEvents = (curMode === 'none') ? 'none' : 'auto';
+    }
+
+    var modeChanged = curMode !== userFsInitial.mode;
+    var isDirty = false;
+    var isValid = false;
+
+    if (curMode === 'none') {
+      isDirty = modeChanged;
+      isValid = true;
+    } else {
+      if (!userFsInitial.hasPw) {
+        isValid = curPw.length >= 12;
+        isDirty = isValid;
+      } else {
+        var pwValid = (curPw.length === 0) || (curPw.length >= 12);
+        isValid = pwValid;
+        isDirty = modeChanged || (curPw.length >= 12);
+      }
+    }
+
+    userFsSave.disabled = !isDirty || !isValid;
+  }
+
+  if (userFsForm) {
+    userFsForm.addEventListener('input', updateUserFsSave);
+    userFsForm.addEventListener('change', updateUserFsSave);
+    userFsForm.addEventListener('submit', function (event) {
+      updateUserFsSave();
+      if (userFsSave && userFsSave.disabled) {
+        event.preventDefault();
+      }
+    });
+  }
+  if (userFsPwInput) {
+    userFsPwInput.addEventListener('omb:password-sync', updateUserFsSave);
+  }
 
   var createForm = createDialog ? createDialog.querySelector('form') : null;
   var createSubmitBtn = createDialog ? createDialog.querySelector('button.btn-primary') : null;
@@ -472,6 +539,61 @@
       return;
     }
 
+    // User File Server Access modal trigger
+    var userFsBtn = event.target.closest('[data-user-fs-id]');
+    if (userFsBtn && userFsDialog && typeof userFsDialog.showModal === 'function') {
+      event.preventDefault();
+      var userId = userFsBtn.getAttribute('data-user-fs-id') || '';
+      var userName = userFsBtn.getAttribute('data-user-fs-name') || '';
+      var userMode = userFsBtn.getAttribute('data-user-fs-mode') || 'none';
+      var userHasPw = userFsBtn.getAttribute('data-user-fs-has-pw') === 'true';
+
+      userFsInitial = {
+        id: userId,
+        name: userName,
+        mode: userMode,
+        hasPw: userHasPw
+      };
+
+      if (userFsIdInput) userFsIdInput.value = userId;
+      if (userFsNameSpan) userFsNameSpan.textContent = userName;
+
+      userFsDialog.querySelectorAll('input[name="mode"]').forEach(function (radio) {
+        radio.checked = radio.value === userMode;
+      });
+
+      if (userFsPwInput) {
+        userFsPwInput.value = '';
+        userFsPwInput.type = 'password';
+        userFsPwInput.dispatchEvent(new Event('omb:password-sync'));
+      }
+
+      // Reset any generated copy button or notes from password.js
+      userFsDialog.querySelectorAll('small[role="status"]').forEach(function (el) { el.textContent = ''; });
+      userFsDialog.querySelectorAll('.pw-tools button').forEach(function (btn) {
+        if (btn.textContent === 'Скопировать' || btn.textContent === 'Copy') {
+          btn.hidden = true;
+        }
+      });
+
+      if (userFsPwLabel) {
+        var isEn = document.documentElement && document.documentElement.lang === 'en';
+        if (!userHasPw) {
+          userFsPwLabel.textContent = isEn
+            ? 'Dedicated SMB / SFTP password (at least 12 characters; required for first access)'
+            : 'Отдельный пароль SMB / SFTP (не менее 12 символов; обязателен при первом включении)';
+        } else {
+          userFsPwLabel.textContent = isEn
+            ? 'Dedicated SMB / SFTP password (at least 12 characters; leave blank to keep current)'
+            : 'Отдельный пароль SMB / SFTP (не менее 12 символов; оставьте пустым, чтобы не менять текущий)';
+        }
+      }
+
+      updateUserFsSave();
+      userFsDialog.showModal();
+      return;
+    }
+
     // Delete user modal trigger
     var delBtn = event.target.closest('[data-user-delete-id]');
     if (delBtn && deleteDialog && typeof deleteDialog.showModal === 'function') {
@@ -508,7 +630,7 @@
   });
 
   // Direct click listener for dialog backdrop close
-  [pwDialog, createDialog, deleteDialog, policyDialog, expiryDialog].forEach(function (dialog) {
+  [pwDialog, createDialog, deleteDialog, policyDialog, expiryDialog, userFsDialog].forEach(function (dialog) {
     if (!dialog) return;
     dialog.addEventListener('click', function (event) {
       if (event.target === dialog && typeof dialog.close === 'function') {

@@ -24,7 +24,7 @@ func (s *Server) passwordScript(w http.ResponseWriter, r *http.Request) {
 
 // accountPage shows the signed-in user's own settings.
 func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
-	render(w, "account", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r)})
+	render(w, "account", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), FileServer: s.localFileServerState(r.Context(), r.Host)})
 }
 
 // changePasswordPage renders the isolated mandatory password change screen.

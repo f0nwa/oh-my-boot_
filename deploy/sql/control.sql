@@ -323,3 +323,32 @@ CREATE TABLE IF NOT EXISTS maintenance_locks (
  UNIQUE (scope, storage_id, image_path)
 );
 
+CREATE TABLE IF NOT EXISTS system_events (
+ id BIGSERIAL PRIMARY KEY,
+ occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ severity TEXT NOT NULL CHECK (severity IN ('error', 'warning', 'info')),
+ category TEXT NOT NULL CHECK (category IN ('storage', 'service', 'network', 'task')),
+ source_key TEXT NOT NULL DEFAULT '',
+ title TEXT NOT NULL,
+ detail TEXT NOT NULL DEFAULT '',
+ link TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS system_events_occurred_idx ON system_events (occurred_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS system_events_severity_idx ON system_events (severity, occurred_at DESC);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS fs_access_mode TEXT NOT NULL DEFAULT 'none'
+	CHECK (fs_access_mode IN ('none', 'ro', 'rw'));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS fs_password_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS fs_password_changed_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS file_server_settings (
+	id SMALLINT PRIMARY KEY CHECK (id = 1),
+	smb_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+	sftp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+	sftp_port INT NOT NULL DEFAULT 2022 CHECK (sftp_port BETWEEN 1024 AND 65535),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO file_server_settings (id, smb_enabled, sftp_enabled, sftp_port)
+VALUES (1, FALSE, FALSE, 2022)
+ON CONFLICT (id) DO NOTHING;
+

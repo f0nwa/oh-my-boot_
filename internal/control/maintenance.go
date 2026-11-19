@@ -354,11 +354,32 @@ func (s *Server) maintenanceEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	syncErr := s.SyncMaintenance(r.Context())
+	_ = s.SyncLocalFileServer(r.Context())
 	detail := fmt.Sprintf("scope=%s storage=%d path=%s", scope, storageID, imagePath)
 	if syncErr != nil {
 		_ = s.Store.Audit(r.Context(), userID, "maintenance.enable", "apply_error", detail)
+		s.recordSystemEvent(r.Context(), SystemEvent{
+			Severity:  "error",
+			Category:  "task",
+			SourceKey: fmt.Sprintf("maintenance:%s:%d:%s", scope, storageID, imagePath),
+			Title:     "Не удалось применить режим обслуживания в Boot",
+			Detail:    syncErr.Error(),
+			Link:      "/storages",
+		})
 	} else {
 		_ = s.Store.Audit(r.Context(), userID, "maintenance.enable", "ok", detail)
+		link := "/storages"
+		if scope == "image" {
+			link = "/images"
+		}
+		s.recordSystemEvent(r.Context(), SystemEvent{
+			Severity:  "info",
+			Category:  "task",
+			SourceKey: fmt.Sprintf("maintenance:%s:%d:%s", scope, storageID, imagePath),
+			Title:     "Включён режим обслуживания",
+			Detail:    strings.TrimSpace(detail + " " + reason),
+			Link:      link,
+		})
 	}
 	fallback := "/storages"
 	if scope == "image" {
@@ -401,11 +422,32 @@ func (s *Server) maintenanceDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	syncErr := s.SyncMaintenance(r.Context())
+	_ = s.SyncLocalFileServer(r.Context())
 	detail := fmt.Sprintf("scope=%s storage=%d path=%s", scope, storageID, imagePath)
 	if syncErr != nil {
 		_ = s.Store.Audit(r.Context(), userID, "maintenance.disable", "apply_error", detail)
+		s.recordSystemEvent(r.Context(), SystemEvent{
+			Severity:  "error",
+			Category:  "task",
+			SourceKey: fmt.Sprintf("maintenance:%s:%d:%s", scope, storageID, imagePath),
+			Title:     "Не удалось снять режим обслуживания в Boot",
+			Detail:    syncErr.Error(),
+			Link:      "/storages",
+		})
 	} else {
 		_ = s.Store.Audit(r.Context(), userID, "maintenance.disable", "ok", detail)
+		link := "/storages"
+		if scope == "image" {
+			link = "/images"
+		}
+		s.recordSystemEvent(r.Context(), SystemEvent{
+			Severity:  "info",
+			Category:  "task",
+			SourceKey: fmt.Sprintf("maintenance:%s:%d:%s", scope, storageID, imagePath),
+			Title:     "Режим обслуживания завершён",
+			Detail:    detail,
+			Link:      link,
+		})
 	}
 	fallback := "/storages"
 	if scope == "image" {

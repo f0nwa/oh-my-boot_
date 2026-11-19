@@ -64,7 +64,7 @@ func Allowed(role, action string) bool {
 		return role == "admin" || role == "operator" || role == "observer"
 	case "menu", "images":
 		return role == "admin" || role == "operator"
-	case "network", "users", "smb", "nfs", "delete":
+	case "network", "users", "smb", "nfs", "delete", "admin":
 		return role == "admin"
 	default:
 		return false

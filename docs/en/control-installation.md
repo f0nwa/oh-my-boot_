@@ -213,6 +213,28 @@ Administrators can unbind a connected SMB or NFS storage via the row menu **☰ 
 2. **If storage was disconnected externally:** Remote network unreachability (status `unavailable`) does not prevent clean unbinding. Agent safely stops and disables systemd mount units (`systemctl disable --now`; NFS uses `TimeoutSec=15s`), removes local mount points in `/mnt/omb-*/...`, cleans up credentials and configuration files, and Images removes the database entry while purging catalog records for its ISOs.
 3. **Data safety on NAS/server:** Removing storage from OMB removes only local mount points and OMB database entries. The original ISO files on the remote NAS/server remain untouched and are never deleted.
 
+## Local File Server (SMB and SFTP)
+
+OMB allows uploading and downloading ISO images directly to and from local storage `/var/lib/omb-images/iso` via standard SMB and SFTP protocols, without requiring root SSH access to the host.
+
+### Protocols and Architecture
+
+- **SMB:** network share `[iso]` in Samba (`smbd`), managed by `omb-agent`. The WinPE boot share `[ombisos]` remains strictly isolated (read-only and restricted to the PXE boot network via `hosts allow`). Access to `[iso]` uses system accounts `omb-fs-<id>`, mapped to web dashboard logins via `/etc/omb/samba-usermap.conf`.
+- **SFTP:** an isolated SFTPv3 server built into `omb-control` based on SSH. By default, it listens on TCP port `2022` (configurable between `1024..65535`). The sandbox is strictly confined to `/var/lib/omb-images/iso`. Directory traversal via `../` or symlinks is blocked (`SSH_FX_PERMISSION_DENIED`). OS metadata files (`.DS_Store`, `._*`, `Thumbs.db`, `.Spotlight-*`) are rejected on creation. ISO files referenced by active boots or under maintenance are protected against overwrite, rename, and deletion. After an ISO upload finishes, the server automatically triggers an `omb-images` catalog scan and records an `iso.upload` audit event.
+
+### Access Permissions and Passwords
+
+- **Access Modes:** Disabled (`none`), Read-only (`ro`), and Read-write (`rw`). Configured by administrators per-user under System → Users.
+- **File Access Password:** a separate dedicated password (at least 12 characters) independent of the web dashboard login. Plaintext passwords are never stored: PostgreSQL (`omb_control`) stores a `yescrypt` hash (for SFTP), and Samba's `passdb.tdb` receives an NT-hash via stdin through `smbpasswd -s`.
+- **Self-Service:** users with `ro` or `rw` access see their personalized connection addresses in their profile (Account / `/account`) and can change their file access password independently.
+- **Maintenance Mode:** when local storage maintenance is activated under System → Storages, both protocols automatically enforce read-only access, preventing file modifications and deletions.
+
+### Management in the Web Dashboard
+
+1. Enable/disable SMB and SFTP, configure SFTP port, and view server connection endpoints under **System → Storages** (via the header button or row menu for `Local`).
+2. Grant user permissions and set initial passwords under **System → Users** (via the "SMB / SFTP" column or row menu **☰ → SMB / SFTP access…**).
+3. Change file access password under **Account** (`/account`).
+
 ## Server time and corporate NTP
 
 **System → Overview** displays the **Server time** card with the current host clock, IANA time zone, and NTP synchronization status. Operators and observers have read-only access; administrators can click **Edit…** to:

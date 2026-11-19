@@ -199,7 +199,7 @@ func TestPasswordInputsOfferGenerator(t *testing.T) {
 	res := httptest.NewRecorder()
 	render(res, "users", pageData{Info: requestContext{User: User{ID: 1, Role: "admin"}, CSRF: "x"}})
 	body := res.Body.String()
-	if strings.Count(body, "data-password-generator") != 2 || !strings.Contains(body, `src="/assets/password.js"`) {
+	if strings.Count(body, "data-password-generator") != 3 || !strings.Contains(body, `src="/assets/password.js"`) {
 		t.Fatalf("users page password fields lack the generator: %s", body)
 	}
 	script := httptest.NewRecorder()

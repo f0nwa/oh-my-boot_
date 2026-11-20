@@ -29,8 +29,13 @@ func TestFormatNavBadgesPriorityAndLocalization(t *testing.T) {
 	if b := ru["/events"]; b.Level != "bad" || b.Count != 2 || !strings.Contains(b.Hint, "Активных системных сбоев: 2") {
 		t.Fatalf("unexpected /events RU badge: %+v", b)
 	}
-	if b := ru["/storages"]; b.Level != "bad" || b.Count != 2 || !strings.Contains(b.Hint, "Недоступно хранилищ: 1") || !strings.Contains(b.Hint, "Ошибка автовосстановления хранилищ") || !strings.Contains(b.Hint, "Хранилищ на обслуживании: 1") {
+	if b := ru["/storages"]; b.Level != "bad" || b.Count != 1 || !strings.Contains(b.Hint, "Недоступно хранилищ: 1") || !strings.Contains(b.Hint, "Ошибка автовосстановления хранилищ") || !strings.Contains(b.Hint, "Хранилищ на обслуживании: 1") {
 		t.Fatalf("unexpected /storages RU badge: %+v", b)
+	}
+	// When no storages are down, recovery error alone still counts as 1.
+	snapRecoveryOnly := navBadgeSnapshot{recoveryError: true}
+	if b := formatNavBadges(snapRecoveryOnly, "ru")["/storages"]; b.Level != "bad" || b.Count != 1 || !strings.Contains(b.Hint, "Ошибка автовосстановления хранилищ") {
+		t.Fatalf("unexpected recovery-only /storages RU badge: %+v", b)
 	}
 	if b := ru["/images"]; b.Level != "accent" || b.Count != 3 || !strings.Contains(b.Hint, "Образов на обслуживании: 1") || !strings.Contains(b.Hint, "Переносится образов: 2") {
 		t.Fatalf("unexpected /images RU badge: %+v", b)

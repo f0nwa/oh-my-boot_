@@ -135,15 +135,32 @@ func formatNavBadges(snap navBadgeSnapshot, lang string) map[string]navBadge {
 		}
 	}
 
-	if bad, acc, hint := buildPageBadge(
-		[]badgePart{
-			{snap.storageDown, fmt.Sprintf(t("Недоступно хранилищ: %d"), snap.storageDown)},
-			{boolToInt(snap.recoveryError), t("Ошибка автовосстановления хранилищ")},
-		},
-		[]badgePart{
-			{snap.storageMaint, fmt.Sprintf(t("Хранилищ на обслуживании: %d"), snap.storageMaint)},
-		},
-	); bad > 0 || acc > 0 {
+	var storageBad []badgePart
+	if snap.storageDown > 0 {
+		storageBad = append(storageBad, badgePart{
+			count: snap.storageDown,
+			label: fmt.Sprintf(t("Недоступно хранилищ: %d"), snap.storageDown),
+		})
+	}
+	if snap.recoveryError {
+		recCount := 0
+		if snap.storageDown == 0 {
+			recCount = 1
+		}
+		storageBad = append(storageBad, badgePart{
+			count: recCount,
+			label: t("Ошибка автовосстановления хранилищ"),
+		})
+	}
+	var storageAcc []badgePart
+	if snap.storageMaint > 0 {
+		storageAcc = append(storageAcc, badgePart{
+			count: snap.storageMaint,
+			label: fmt.Sprintf(t("Хранилищ на обслуживании: %d"), snap.storageMaint),
+		})
+	}
+
+	if bad, acc, hint := buildPageBadge(storageBad, storageAcc); bad > 0 || acc > 0 {
 		if bad > 0 {
 			out["/storages"] = navBadge{Level: "bad", Count: bad, Hint: hint}
 		} else {
@@ -151,15 +168,28 @@ func formatNavBadges(snap navBadgeSnapshot, lang string) map[string]navBadge {
 		}
 	}
 
-	if bad, acc, hint := buildPageBadge(
-		[]badgePart{
-			{snap.imageError, fmt.Sprintf(t("Недоступно образов: %d"), snap.imageError)},
-		},
-		[]badgePart{
-			{snap.imageMaint, fmt.Sprintf(t("Образов на обслуживании: %d"), snap.imageMaint)},
-			{snap.imageMigrating, fmt.Sprintf(t("Переносится образов: %d"), snap.imageMigrating)},
-		},
-	); bad > 0 || acc > 0 {
+	var imageBad []badgePart
+	if snap.imageError > 0 {
+		imageBad = append(imageBad, badgePart{
+			count: snap.imageError,
+			label: fmt.Sprintf(t("Недоступно образов: %d"), snap.imageError),
+		})
+	}
+	var imageAcc []badgePart
+	if snap.imageMaint > 0 {
+		imageAcc = append(imageAcc, badgePart{
+			count: snap.imageMaint,
+			label: fmt.Sprintf(t("Образов на обслуживании: %d"), snap.imageMaint),
+		})
+	}
+	if snap.imageMigrating > 0 {
+		imageAcc = append(imageAcc, badgePart{
+			count: snap.imageMigrating,
+			label: fmt.Sprintf(t("Переносится образов: %d"), snap.imageMigrating),
+		})
+	}
+
+	if bad, acc, hint := buildPageBadge(imageBad, imageAcc); bad > 0 || acc > 0 {
 		if bad > 0 {
 			out["/images"] = navBadge{Level: "bad", Count: bad, Hint: hint}
 		} else {
@@ -167,15 +197,28 @@ func formatNavBadges(snap navBadgeSnapshot, lang string) map[string]navBadge {
 		}
 	}
 
-	if bad, acc, hint := buildPageBadge(
-		[]badgePart{
-			{snap.winpeError, fmt.Sprintf(t("Ошибок сборки WinPE: %d"), snap.winpeError)},
-		},
-		[]badgePart{
-			{snap.winpePreparing, fmt.Sprintf(t("Собирается WinPE: %d"), snap.winpePreparing)},
-			{snap.winpePending, fmt.Sprintf(t("Ожидает сборки WinPE: %d"), snap.winpePending)},
-		},
-	); bad > 0 || acc > 0 {
+	var instBad []badgePart
+	if snap.winpeError > 0 {
+		instBad = append(instBad, badgePart{
+			count: snap.winpeError,
+			label: fmt.Sprintf(t("Ошибок сборки WinPE: %d"), snap.winpeError),
+		})
+	}
+	var instAcc []badgePart
+	if snap.winpePreparing > 0 {
+		instAcc = append(instAcc, badgePart{
+			count: snap.winpePreparing,
+			label: fmt.Sprintf(t("Собирается WinPE: %d"), snap.winpePreparing),
+		})
+	}
+	if snap.winpePending > 0 {
+		instAcc = append(instAcc, badgePart{
+			count: snap.winpePending,
+			label: fmt.Sprintf(t("Ожидает сборки WinPE: %d"), snap.winpePending),
+		})
+	}
+
+	if bad, acc, hint := buildPageBadge(instBad, instAcc); bad > 0 || acc > 0 {
 		if bad > 0 {
 			out["/installations"] = navBadge{Level: "bad", Count: bad, Hint: hint}
 		} else {
@@ -199,12 +242,16 @@ func buildPageBadge(badParts, accParts []badgePart) (badCount, accCount int, hin
 	for _, p := range badParts {
 		if p.count > 0 {
 			badCount += p.count
+		}
+		if p.label != "" {
 			hints = append(hints, p.label)
 		}
 	}
 	for _, p := range accParts {
 		if p.count > 0 {
 			accCount += p.count
+		}
+		if p.label != "" {
 			hints = append(hints, p.label)
 		}
 	}

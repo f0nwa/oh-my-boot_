@@ -107,24 +107,26 @@ func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *test
 		t.Fatal("could not find <main class=\"content\"> in page")
 	}
 
-	// Must contain the service strip, dialog, and exactly 1 clear button
+	// Must contain the service strip, settings dialog, and exactly 1 settings button in header
 	for _, want := range []string{
 		"service-strip events-strip",
-		"journal-clear-dialog",
-		"data-journal-clear-open",
+		"journal-settings-dialog",
+		"data-journal-settings-open",
+		"Настройки журнала",
 		"/assets/events.js",
 		"btn-danger-outline",
-		"btn btn-danger",
+		"danger-section",
 		"page-head-title",
 		`action="/events/retention"`,
 		`<button class="btn" disabled>`,
+		`action="/events/clear"`,
 	} {
 		if !strings.Contains(pageAdmin, want) {
 			t.Errorf("admin events page missing %q", want)
 		}
 	}
-	if cnt := strings.Count(pageAdmin, "data-journal-clear-open"); cnt != 1 {
-		t.Errorf("expected exactly 1 data-journal-clear-open button, got %d", cnt)
+	if cnt := strings.Count(pageAdmin, "data-journal-settings-open"); cnt != 1 {
+		t.Errorf("expected exactly 1 data-journal-settings-open button, got %d", cnt)
 	}
 
 	// Observer view
@@ -138,7 +140,7 @@ func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *test
 			t.Fatalf("observer events page content contains forbidden <details> or <summary>")
 		}
 	}
-	if strings.Contains(pageObs, "data-journal-clear-open") || strings.Contains(pageObs, "journal-clear-dialog") {
-		t.Errorf("observer should not see clear dialog triggers or clear dialog")
+	if strings.Contains(pageObs, "data-journal-settings-open") || strings.Contains(pageObs, "journal-settings-dialog") || strings.Contains(pageObs, "data-journal-clear-open") || strings.Contains(pageObs, "journal-clear-dialog") {
+		t.Errorf("observer should not see settings dialog triggers or settings dialog")
 	}
 }

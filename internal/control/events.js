@@ -1,11 +1,11 @@
 // Oh My Boot — журнал сетевой загрузки (/events)
 (() => {
   function initJournal() {
-    // 1. Управление модальным окном подтверждения очистки журнала
-    const dialog = document.getElementById('journal-clear-dialog');
+    // 1. Управление модальным окном настроек журнала
+    const dialog = document.getElementById('journal-settings-dialog') || document.getElementById('journal-clear-dialog');
     if (dialog && !dialog.dataset.initialized) {
       dialog.dataset.initialized = "true";
-      document.querySelectorAll('[data-journal-clear-open]').forEach((btn) => {
+      document.querySelectorAll('[data-journal-settings-open], [data-journal-clear-open]').forEach((btn) => {
         btn.addEventListener('click', () => {
           if (typeof dialog.showModal === 'function') {
             dialog.showModal();

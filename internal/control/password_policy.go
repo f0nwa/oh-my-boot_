@@ -41,9 +41,8 @@ func (s PasswordState) RequiresChange() bool {
 }
 
 // IsLocal reports whether the account authenticates with a local password.
-// All accounts are currently local; future external providers (Keycloak/LDAP) will return false.
 func (u User) IsLocal() bool {
-	return true
+	return u.AuthSource == "" || u.AuthSource == AuthSourceLocal
 }
 
 // NormalizePasswordMode maps empty or unknown mode values to the default policy mode.

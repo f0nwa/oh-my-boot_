@@ -107,6 +107,9 @@ type pageData struct {
 	Error                 string
 	PasswordPolicy        PasswordPolicy
 	FileServer            fileServerView
+	Integrations          IntegrationsView
+	LDAPEnabled           bool
+	KeycloakEnabled       bool
 	SystemTime            *systemTimeView
 	SystemTimeError       string
 	NowTime               time.Time

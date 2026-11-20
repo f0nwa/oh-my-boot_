@@ -7,6 +7,25 @@
   const submitBtn = form.querySelector('button.btn-primary, button[type="submit"], button');
   if (!userInput || !passInput || !submitBtn) return;
 
+  const authModeInput = form.querySelector('#login-auth-mode');
+  const userLabel = form.querySelector('label[for="login-username"]');
+  const modeButtons = form.querySelectorAll('[data-login-mode]');
+  if (authModeInput && modeButtons.length > 0) {
+    modeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-login-mode') || 'local';
+        authModeInput.value = mode;
+        modeButtons.forEach(b => b.classList.toggle('is-active', b === btn));
+        if (userLabel && btn.getAttribute('data-label-user')) {
+          userLabel.textContent = btn.getAttribute('data-label-user');
+        }
+        if (btn.getAttribute('data-label-submit')) {
+          submitBtn.textContent = btn.getAttribute('data-label-submit');
+        }
+      });
+    });
+  }
+
   const userWrapper = userInput.closest('.field-float');
   const passWrapper = passInput.closest('.field-float');
 

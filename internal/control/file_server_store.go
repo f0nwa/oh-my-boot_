@@ -250,28 +250,45 @@ func (s Store) AuthenticateFSUser(ctx context.Context, username, password string
 	if username == "" || password == "" {
 		return User{}, fmt.Errorf("invalid credentials")
 	}
-	var u User
-	var hash string
-	var fsHash string
-	err := s.Pool.QueryRow(ctx, `SELECT id, username, role, enabled, language, theme, password_changed_at, must_change_password, password_policy_mode, coalesce(password_max_age_days,0), password_hash, fs_access_mode, fs_password_hash, fs_password_changed_at FROM users WHERE lower(username)=lower($1)`, username).
-		Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &hash, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return User{}, fmt.Errorf("invalid credentials")
-	}
+	rows, err := s.Pool.Query(ctx, `SELECT id, username, auth_source, coalesce(external_id,''), display_name, role, enabled, language, theme, password_changed_at, must_change_password, password_policy_mode, coalesce(password_max_age_days,0), fs_access_mode, fs_password_hash, fs_password_changed_at FROM users WHERE lower(username)=lower($1) ORDER BY id`, username)
 	if err != nil {
 		return User{}, err
 	}
-	if !u.Enabled {
-		return User{}, fmt.Errorf("user disabled")
+	defer rows.Close()
+	var sawAny, sawEnabled, sawFS bool
+	for rows.Next() {
+		sawAny = true
+		var u User
+		var fsHash string
+		if err := rows.Scan(&u.ID, &u.Username, &u.AuthSource, &u.ExternalID, &u.DisplayName, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt); err != nil {
+			return User{}, err
+		}
+		if !u.Enabled {
+			continue
+		}
+		sawEnabled = true
+		if u.FSAccessMode != FSAccessRO && u.FSAccessMode != FSAccessRW {
+			continue
+		}
+		sawFS = true
+		if fsHash != "" && verifyFSPassword(fsHash, password) {
+			u.HasFSPassword = true
+			return u, nil
+		}
 	}
-	if u.FSAccessMode != FSAccessRO && u.FSAccessMode != FSAccessRW {
-		return User{}, errFSNotEnabled
+	if err := rows.Err(); err != nil {
+		return User{}, err
 	}
-	if fsHash == "" || !verifyFSPassword(fsHash, password) {
+	if !sawAny {
 		return User{}, fmt.Errorf("invalid credentials")
 	}
-	u.HasFSPassword = true
-	return u, nil
+	if !sawEnabled {
+		return User{}, fmt.Errorf("user disabled")
+	}
+	if !sawFS {
+		return User{}, errFSNotEnabled
+	}
+	return User{}, fmt.Errorf("invalid credentials")
 }
 
 func (s Store) FileServerUsers(ctx context.Context) ([]FileServerUser, error) {

@@ -23,6 +23,7 @@
 <thead>
 <tr>
 <th>{{t "Пользователь"}}</th>
+<th>{{t "Источник"}}</th>
 <th>{{t "Роль"}}</th>
 <th>{{t "Статус"}}</th>
 <th>{{t "Пароль"}}</th>
@@ -33,18 +34,26 @@
 <tbody>
 {{range .Users}}
 {{$self := eq .ID $.Info.User.ID}}
+{{$local := .IsLocal}}
 {{$pw := passwordState . $.PasswordPolicy $.NowTime}}
 <tr data-user-row data-user-id="{{.ID}}" data-user-login="{{.Username}}" data-user-role="{{.Role}}" data-user-enabled="{{if .Enabled}}true{{else}}false{{end}}">
 <td>
-{{if not $self}}<form id="user-change-{{.ID}}" method="post" action="/users/change"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"></form>{{end}}
-<span class="user-name"><strong>{{.Username}}</strong></span> <small class="mono faint">#{{.ID}}</small>{{if $self}} <span class="chip">{{t "вы"}}</span>{{end}}
+{{if not $self}}<form id="user-change-{{.ID}}" method="post" action="/users/change"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}">{{if not $local}}<input type="hidden" name="role" value="{{.Role}}">{{end}}</form>{{end}}
+<span class="user-name"><strong>{{.Username}}</strong></span> <small class="mono faint">#{{.ID}}</small>{{if $self}} <span class="chip">{{t "вы"}}</span>{{end}}{{if .DisplayName}}<br><small class="muted">{{.DisplayName}}</small>{{end}}
 </td>
 <td>
+{{if eq .AuthSource "ldap"}}<span class="chip-src chip-src-ldap">LDAP</span>{{else if eq .AuthSource "keycloak"}}<span class="chip-src chip-src-kc">Keycloak</span>{{else}}<span class="chip-src">{{t "Локальный"}}</span>{{end}}
+</td>
+<td>
+{{if $local}}
 <select name="role"{{if $self}} disabled title="{{t "Вы не можете отключить свою учётную запись или понизить собственную роль"}}"{{else}} form="user-change-{{.ID}}"{{end}}>
 <option value="observer"{{if eq .Role "observer"}} selected{{end}}>{{t "Наблюдатель"}}</option>
 <option value="operator"{{if eq .Role "operator"}} selected{{end}}>{{t "Оператор"}}</option>
 <option value="admin"{{if eq .Role "admin"}} selected{{end}}>{{t "Администратор"}}</option>
 </select>
+{{else}}
+<span class="role-locked">{{t (roleLabel .Role)}} <small class="muted">{{if eq .AuthSource "ldap"}}{{t "из AD"}}{{else}}{{t "из Keycloak"}}{{end}}</small></span>
+{{end}}
 </td>
 <td>
 <label class="check"{{if $self}} title="{{t "Вы не можете отключить свою учётную запись или понизить собственную роль"}}"{{end}}>
@@ -53,6 +62,7 @@
 </label>
 </td>
 <td>
+{{if $local}}
 <div class="pw-cell">
 <div class="pw-status-line">
 <span class="dot {{if $pw.Expired}}dot-error{{else if or $pw.MustChange $pw.ExpiringSoon}}dot-accent{{else}}dot-ok{{end}}"></span>
@@ -60,6 +70,9 @@
 </div>
 <div class="pw-sub">{{t "изменён"}} {{formatLocalDate .PasswordChangedAt}} · {{passwordRuleLabel . $.PasswordPolicy}}</div>
 </div>
+{{else}}
+<span class="muted">—</span>
+{{end}}
 </td>
 <td class="user-fs-cell">
 <button type="button" class="chip {{if eq .FSAccessMode "rw"}}chip-ok{{else if eq .FSAccessMode "ro"}}chip-ro{{else}}chip-off{{end}} user-fs-chip-btn" data-user-fs-id="{{.ID}}" data-user-fs-name="{{.Username}}" data-user-fs-mode="{{.FSAccessMode}}" data-user-fs-has-pw="{{if .HasFSPassword}}true{{else}}false{{end}}">{{if eq .FSAccessMode "rw"}}{{t "Чтение и запись"}}{{else if eq .FSAccessMode "ro"}}{{t "Только чтение"}}{{else}}{{t "Отключён"}}{{end}}</button>{{if and (not .Enabled) (ne .FSAccessMode "none")}}<br><small class="muted">{{t "приостановлен (аккаунт отключён)"}}</small>{{else if .HasFSPassword}}{{if .FSPasswordChangedAt}}<br><small class="muted">{{t "пароль задан"}} {{formatLocalDate .FSPasswordChangedAt}}</small>{{end}}{{end}}
@@ -69,17 +82,19 @@
 {{if not $self}}<button form="user-change-{{.ID}}" class="btn" data-user-save="{{.ID}}" disabled>{{t "Сохранить"}}</button>{{end}}
 <button type="button" class="secondary row-menu-btn" data-row-menu popovertarget="user-menu-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-label="{{t "Дополнительные действия"}}">{{template "row_menu_icon"}}</button>
 <div id="user-menu-{{.ID}}" popover class="row-menu-popover" role="menu">
+{{if $local}}
 <button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-pw-id="{{.ID}}" data-user-pw-name="{{.Username}}" data-user-self="{{if $self}}true{{else}}false{{end}}">{{t "Сменить пароль…"}}</button>
 <button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-expiry-id="{{.ID}}" data-user-expiry-name="{{.Username}}" data-user-expiry-mode="{{if .PasswordPolicyMode}}{{.PasswordPolicyMode}}{{else}}policy{{end}}" data-user-expiry-days="{{if gt .PasswordMaxAgeDays 0}}{{.PasswordMaxAgeDays}}{{else}}30{{end}}" data-user-expiry-must-change="{{if .MustChangePassword}}true{{else}}false{{end}}" data-user-expiry-changed="{{formatLocalDate .PasswordChangedAt}}" data-user-self="{{if $self}}true{{else}}false{{end}}">{{t "Срок действия пароля…"}}</button>
+{{end}}
 <button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-fs-id="{{.ID}}" data-user-fs-name="{{.Username}}" data-user-fs-mode="{{.FSAccessMode}}" data-user-fs-has-pw="{{if .HasFSPassword}}true{{else}}false{{end}}">{{t "Доступ SMB / SFTP…"}}</button>
-{{if not $self}}<hr class="row-menu-sep"><button type="button" class="row-menu-item row-menu-danger" role="menuitem" data-close-popover data-user-delete-id="{{.ID}}" data-user-delete-name="{{.Username}}">{{t "Удалить"}}</button>{{end}}
+{{if and $local (not $self)}}<hr class="row-menu-sep"><button type="button" class="row-menu-item row-menu-danger" role="menuitem" data-close-popover data-user-delete-id="{{.ID}}" data-user-delete-name="{{.Username}}">{{t "Удалить"}}</button>{{end}}
 </div>
 </div>
 </td>
 </tr>
 {{end}}
 <tr id="users-empty-row" hidden>
-<td colspan="6" class="muted text-center">{{t "Пользователи не найдены"}}</td>
+<td colspan="7" class="muted text-center">{{t "Пользователи не найдены"}}</td>
 </tr>
 </tbody>
 </table>

@@ -9,7 +9,7 @@ User=omb-control
 Group=omb-control
 SupplementaryGroups=omb-images
 EnvironmentFile=/etc/omb/control.env
-ExecStart=/usr/local/bin/omb-control -listen ${OMB_CONTROL_LISTEN} -tls-cert /var/lib/omb-control/control.crt -tls-key /var/lib/omb-control/control.key -boot-socket /run/omb-boot/control.sock -agent-socket /run/omb/agent.sock -allowed-interfaces ${OMB_CONTROL_INTERFACES}
+ExecStart=/usr/local/bin/omb-control -listen ${OMB_CONTROL_LISTEN} -tls-cert /var/lib/omb-control/control.crt -tls-key /var/lib/omb-control/control.key -secrets-key /etc/omb/secrets.key -boot-socket /run/omb-boot/control.sock -agent-socket /run/omb/agent.sock -allowed-interfaces ${OMB_CONTROL_INTERFACES}
 Restart=on-failure
 StateDirectory=omb-control
 StateDirectoryMode=0700
@@ -18,7 +18,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=-/var/lib/omb-images/iso
-RestrictAddressFamilies=AF_INET AF_UNIX AF_NETLINK
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target

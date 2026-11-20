@@ -1074,3 +1074,40 @@ button.user-fs-chip-btn:hover{filter:brightness(1.08);border-color:var(--line-st
 .fs-radio-cards{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
 #user-fs-pw-box{transition:opacity .15s ease}
 .account-fs-addrs{display:flex;flex-direction:column;gap:8px;margin-top:auto;padding-top:14px}
+
+/* External auth: login mode switch, source chips, /integrations cards & dialogs */
+.login-mode-seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:var(--chip);border:1px solid var(--line);border-radius:8px;margin-bottom:14px}
+.login-mode-seg button{appearance:none;border:0;background:transparent;color:var(--text-2);padding:7px 10px;border-radius:6px;font:inherit;font-size:12px;font-weight:500;cursor:pointer;min-height:30px;margin:0}
+.login-mode-seg button.is-active{background:var(--panel);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.login-or-sep{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:12px}
+.login-or-sep::before,.login-or-sep::after{content:"";flex:1;height:1px;background:var(--line)}
+.btn-kc{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:38px;background:var(--panel);border:1px solid var(--line-strong);color:var(--text);text-decoration:none}
+.btn-kc:hover{background:var(--chip);color:var(--text)}
+.chip-src{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--line);background:var(--bg);color:var(--text-2);white-space:nowrap}
+.chip-src-ldap{border-color:color-mix(in srgb,var(--focus) 35%,transparent);color:var(--focus);background:color-mix(in srgb,var(--focus) 8%,transparent)}
+.chip-src-kc{border-color:color-mix(in srgb,var(--accent) 50%,transparent);color:var(--accent-ink);background:var(--draft-bg)}
+.role-locked{display:inline-flex;align-items:center;gap:6px;color:var(--text-2)}
+.account-external-note{margin:10px 0;padding:10px 12px;border-radius:6px;background:var(--bg);border:1px solid var(--line)}
+.integrations-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;align-items:stretch}
+.integration-card{display:flex;flex-direction:column;gap:12px}
+.integration-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.integration-head h2{margin:0 0 4px}
+.integration-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);white-space:nowrap}
+.integration-meta{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;margin:0;padding:12px;border-radius:6px;background:var(--bg);border:1px solid var(--line);font-size:12px}
+.integration-meta dt{color:var(--muted)}
+.integration-meta dd{margin:0;font-family:var(--mono);font-size:11.5px;word-break:break-all}
+.integration-foot{margin-top:auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding-top:10px;border-top:1px solid var(--line)}
+.integration-actions{display:flex;gap:8px;align-items:center}
+.integration-actions form{margin:0}
+.integration-dialog{width:min(640px,calc(100vw - 32px));max-height:90vh}
+.integration-dialog-body{max-height:60vh;overflow-y:auto;padding-right:4px}
+.integration-section{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.integration-section:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+.integration-section h3{margin:0 0 8px;font-size:12.5px;font-weight:600}
+.integration-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.integration-test-row{display:flex;gap:8px;align-items:flex-end}
+.integration-test-row label{flex:1;margin:0}
+.integration-test-result{margin-top:10px;padding:10px 12px;border-radius:6px;font-size:12px;border:1px solid var(--line);background:var(--bg);word-break:break-word}
+.integration-test-result.is-ok{border-color:color-mix(in srgb,var(--ok) 35%,transparent);background:color-mix(in srgb,var(--ok) 8%,transparent)}
+.integration-test-result.is-error{border-color:var(--bad-line);background:var(--bad-bg);color:var(--bad-text)}
+@media (max-width:640px){.integrations-grid,.integration-row{grid-template-columns:1fr}}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
@@ -24,6 +25,7 @@ func main() {
 	agentSocket := flag.String("agent-socket", "/run/omb/agent.sock", "Agent local API socket")
 	imagesSocket := flag.String("images-socket", "/run/omb-images/images.sock", "Images local API socket")
 	allowed := flag.String("allowed-interfaces", "", "comma-separated PXE interface allowlist")
+	secretsKey := flag.String("secrets-key", "/etc/omb/secrets.key", "32-byte key file for integration secrets")
 	flag.Parse()
 	if *listen == "" || *cert == "" || *key == "" || *allowed == "" {
 		log.Fatal("listen, TLS certificate/key and PXE interface allowlist are required")
@@ -54,6 +56,20 @@ func main() {
 		log.Fatal("no allowed PXE interfaces")
 	}
 	store := control.Store{Pool: pool}
+	var secretBox *control.SecretBox
+	if *secretsKey != "" {
+		box, err := control.LoadSecretBox(*secretsKey)
+		if errors.Is(err, control.ErrSecretsKeyMissing) {
+			hasEnc, checkErr := store.HasEncryptedIntegrations(pingCtx)
+			if checkErr == nil && hasEnc {
+				log.Fatalf("secrets key %s is missing, but encrypted integration settings exist in database", *secretsKey)
+			}
+		} else if err != nil {
+			log.Fatalf("load secrets key: %v", err)
+		} else {
+			secretBox = box
+		}
+	}
 	agentClient := control.NewAgentClient(*agentSocket)
 	bootClient := control.NewBootClient(*bootSocket)
 	var server *control.Server
@@ -104,6 +120,8 @@ func main() {
 		UEFICAUSB:         agentClient,
 		LocalSMB:          agentClient,
 		SFTPServer:        sftpServer,
+		Secrets:           secretBox,
+		SecretsKeyPath:    *secretsKey,
 		ListenAddr:        *listen,
 		Images:            control.NewImagesClient(*imagesSocket),
 		AllowedInterfaces: allowlist,

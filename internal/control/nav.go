@@ -42,7 +42,7 @@ var navLayout = []struct {
 	{"Меню", []navEntry{{label: "Меню загрузки", path: "/menu", action: "view"}}},
 	{"Библиотека", []navEntry{{label: "Загрузки", path: "/installations", action: "view"}, {label: "Образы ISO", path: "/images", action: "view"}, {label: "Драйверы", path: "/drivers", action: "view"}, {label: "Скрипты установки", path: "/answers", action: "view", also: []string{"/ubuntu-autoinstall"}}, {label: "USB-носители", path: "/usb", action: "view"}}},
 	{"Журнал", []navEntry{{label: "Журнал", path: "/events", action: "view"}}},
-	{"Система", []navEntry{{label: "Обзор", path: "/system", action: "view"}, {label: "Машины", path: "/machines", action: "view"}, {label: "Хранилища", path: "/storages", action: "view"}, {label: "Сеть", path: "/network", action: "view"}, {label: "Пользователи", path: "/users", action: "users"}, {label: "Аудит", path: "/audit", action: "users"}, {label: "Личный кабинет", path: "/account", action: "view"}}},
+	{"Система", []navEntry{{label: "Обзор", path: "/system", action: "view"}, {label: "Машины", path: "/machines", action: "view"}, {label: "Хранилища", path: "/storages", action: "view"}, {label: "Сеть", path: "/network", action: "view"}, {label: "Пользователи", path: "/users", action: "users"}, {label: "Интеграции", path: "/integrations", action: "admin"}, {label: "Аудит", path: "/audit", action: "users"}, {label: "Личный кабинет", path: "/account", action: "view"}}},
 }
 
 func navMatches(path, prefix string) bool {

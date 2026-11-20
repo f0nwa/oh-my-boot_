@@ -18,6 +18,9 @@ import (
 type User struct {
 	ID                  int64
 	Username            string
+	AuthSource          string
+	ExternalID          string
+	DisplayName         string
 	Role                string
 	Enabled             bool
 	Language            string
@@ -88,13 +91,13 @@ func (s Store) CreateInitialAdmin(ctx context.Context, username, password string
 		return err
 	}
 	var count int
-	if err := tx.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&count); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT count(*) FROM users WHERE auth_source='local'").Scan(&count); err != nil {
 		return err
 	}
 	if count != 0 {
 		return fmt.Errorf("initial admin already exists")
 	}
-	if _, err := tx.Exec(ctx, "INSERT INTO users (username,password_hash,role) VALUES ($1,$2,'admin')", username, hash); err != nil {
+	if _, err := tx.Exec(ctx, "INSERT INTO users (username,auth_source,password_hash,role) VALUES ($1,'local',$2,'admin')", username, hash); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -104,8 +107,8 @@ func (s Store) Login(ctx context.Context, username, password string) (User, stri
 	var u User
 	var hash string
 	var fsHash string
-	err := s.Pool.QueryRow(ctx, `SELECT id,username,role,enabled,language,theme,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),password_hash,fs_access_mode,fs_password_hash,fs_password_changed_at FROM users WHERE lower(username)=lower($1)`, username).
-		Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &hash, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt)
+	err := s.Pool.QueryRow(ctx, `SELECT id,username,auth_source,coalesce(external_id,''),display_name,role,enabled,language,theme,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),coalesce(password_hash,''),fs_access_mode,fs_password_hash,fs_password_changed_at FROM users WHERE auth_source='local' AND lower(username)=lower($1)`, username).
+		Scan(&u.ID, &u.Username, &u.AuthSource, &u.ExternalID, &u.DisplayName, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &hash, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt)
 	if err != nil || !u.Enabled || !VerifyPassword(hash, password) {
 		return User{}, "", fmt.Errorf("invalid credentials")
 	}
@@ -114,7 +117,7 @@ func (s Store) Login(ctx context.Context, username, password string) (User, stri
 	if err != nil {
 		return User{}, "", err
 	}
-	_, err = s.Pool.Exec(ctx, "INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,$3)", tokenHash(token), u.ID, time.Now().Add(sessionLifetime))
+	_, err = s.Pool.Exec(ctx, "INSERT INTO sessions (token_hash,user_id,auth_source,expires_at) VALUES ($1,$2,'local',$3)", tokenHash(token), u.ID, time.Now().Add(sessionLifetime))
 	return u, token, err
 }
 
@@ -125,8 +128,8 @@ func (s Store) Session(ctx context.Context, token string) (User, error) {
 	var u User
 	var expiry time.Time
 	var fsHash string
-	err := s.Pool.QueryRow(ctx, `SELECT u.id,u.username,u.role,u.enabled,u.language,u.theme,u.password_changed_at,u.must_change_password,u.password_policy_mode,coalesce(u.password_max_age_days,0),s.expires_at,u.fs_access_mode,u.fs_password_hash,u.fs_password_changed_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1`, tokenHash(token)).
-		Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &expiry, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt)
+	err := s.Pool.QueryRow(ctx, `SELECT u.id,u.username,u.auth_source,coalesce(u.external_id,''),u.display_name,u.role,u.enabled,u.language,u.theme,u.password_changed_at,u.must_change_password,u.password_policy_mode,coalesce(u.password_max_age_days,0),s.expires_at,u.fs_access_mode,u.fs_password_hash,u.fs_password_changed_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1`, tokenHash(token)).
+		Scan(&u.ID, &u.Username, &u.AuthSource, &u.ExternalID, &u.DisplayName, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &expiry, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt)
 	if err != nil {
 		return User{}, err
 	}
@@ -143,12 +146,12 @@ func (s Store) Logout(ctx context.Context, token string) error {
 }
 
 func (s Store) Audit(ctx context.Context, actorID int64, action, result, detail string) error {
-	_, err := s.Pool.Exec(ctx, "INSERT INTO audit_events (actor_id,action,result,detail) VALUES ($1,$2,$3,$4)", actorID, action, result, detail)
+	_, err := s.Pool.Exec(ctx, "INSERT INTO audit_events (actor_id,actor_name,action,result,detail) VALUES ($1,coalesce((SELECT username FROM users WHERE id=$1),''),$2,$3,$4)", actorID, action, result, detail)
 	return err
 }
 
 func (s Store) AuditList(ctx context.Context) ([]AuditEvent, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT a.id, a.occurred_at, coalesce(u.username,'system'), a.action, a.result, a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 100")
+	rows, err := s.Pool.Query(ctx, "SELECT a.id, a.occurred_at, coalesce(u.username,NULLIF(a.actor_name,''),'system'), a.action, a.result, a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 100")
 	if err != nil {
 		return nil, err
 	}
@@ -172,10 +175,10 @@ func (s Store) AuditPaged(ctx context.Context, limit int, beforeID int64) ([]Aud
 	var query string
 	var args []any
 	if beforeID > 0 {
-		query = "SELECT a.id, a.occurred_at, coalesce(u.username,'system'), a.action, a.result, a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id WHERE a.id < $1 ORDER BY a.id DESC LIMIT $2"
+		query = "SELECT a.id, a.occurred_at, coalesce(u.username,NULLIF(a.actor_name,''),'system'), a.action, a.result, a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id WHERE a.id < $1 ORDER BY a.id DESC LIMIT $2"
 		args = []any{beforeID, fetchLimit}
 	} else {
-		query = "SELECT a.id, a.occurred_at, coalesce(u.username,'system'), a.action, a.result, a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT $1"
+		query = "SELECT a.id, a.occurred_at, coalesce(u.username,NULLIF(a.actor_name,''),'system'), a.action, a.result, a.detail FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT $1"
 		args = []any{fetchLimit}
 	}
 	rows, err := s.Pool.Query(ctx, query, args...)
@@ -202,7 +205,7 @@ func (s Store) AuditPaged(ctx context.Context, limit int, beforeID int64) ([]Aud
 }
 
 func (s Store) Users(ctx context.Context) ([]User, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT id,username,role,enabled,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),fs_access_mode,(fs_password_hash <> ''),fs_password_changed_at FROM users ORDER BY username")
+	rows, err := s.Pool.Query(ctx, "SELECT id,username,auth_source,coalesce(external_id,''),display_name,role,enabled,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),fs_access_mode,(fs_password_hash <> ''),fs_password_changed_at FROM users ORDER BY username, id")
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +213,7 @@ func (s Store) Users(ctx context.Context) ([]User, error) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.Enabled, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &u.FSAccessMode, &u.HasFSPassword, &u.FSPasswordChangedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.AuthSource, &u.ExternalID, &u.DisplayName, &u.Role, &u.Enabled, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &u.FSAccessMode, &u.HasFSPassword, &u.FSPasswordChangedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -267,12 +270,22 @@ func (s Store) SetUserPasswordPolicy(ctx context.Context, id, actorID int64, mod
 	if err := ValidateUserPasswordRule(mode, customDays); err != nil {
 		return err
 	}
+	var authSource string
+	if err := s.Pool.QueryRow(ctx, "SELECT auth_source FROM users WHERE id=$1", id).Scan(&authSource); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errUserNotFound
+		}
+		return err
+	}
+	if authSource != AuthSourceLocal {
+		return errExternalUserAction
+	}
 	var maxAge any
 	if mode == PasswordModeCustom {
 		maxAge = customDays
 	}
 	if mustChange != nil && id != actorID {
-		res, err := s.Pool.Exec(ctx, "UPDATE users SET password_policy_mode=$2, password_max_age_days=$3, must_change_password=$4 WHERE id=$1",
+		res, err := s.Pool.Exec(ctx, "UPDATE users SET password_policy_mode=$2, password_max_age_days=$3, must_change_password=$4 WHERE id=$1 AND auth_source='local'",
 			id, mode, maxAge, *mustChange)
 		if err != nil {
 			return err
@@ -282,7 +295,7 @@ func (s Store) SetUserPasswordPolicy(ctx context.Context, id, actorID int64, mod
 		}
 		return nil
 	}
-	res, err := s.Pool.Exec(ctx, "UPDATE users SET password_policy_mode=$2, password_max_age_days=$3 WHERE id=$1",
+	res, err := s.Pool.Exec(ctx, "UPDATE users SET password_policy_mode=$2, password_max_age_days=$3 WHERE id=$1 AND auth_source='local'",
 		id, mode, maxAge)
 	if err != nil {
 		return err
@@ -294,10 +307,11 @@ func (s Store) SetUserPasswordPolicy(ctx context.Context, id, actorID int64, mod
 }
 
 var (
-	errSelfDemote   = errors.New("cannot remove your own administrator access")
-	errSelfDelete   = errors.New("cannot delete your own account")
-	errLastAdmin    = errors.New("cannot disable the last administrator")
-	errUserNotFound = errors.New("user not found")
+	errSelfDemote         = errors.New("cannot remove your own administrator access")
+	errSelfDelete         = errors.New("cannot delete your own account")
+	errLastAdmin          = errors.New("cannot disable the last administrator")
+	errUserNotFound       = errors.New("user not found")
+	errExternalUserAction = errors.New("operation is only allowed for local users")
 )
 
 func (s Store) DeleteUser(ctx context.Context, id, actorID int64) (string, error) {
@@ -315,17 +329,20 @@ func (s Store) DeleteUser(ctx context.Context, id, actorID int64) (string, error
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(724312)"); err != nil {
 		return "", err
 	}
-	var username, role string
+	var username, authSource, role string
 	var enabled bool
-	if err := tx.QueryRow(ctx, "SELECT username,role,enabled FROM users WHERE id=$1 FOR UPDATE", id).Scan(&username, &role, &enabled); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT username,auth_source,role,enabled FROM users WHERE id=$1 FOR UPDATE", id).Scan(&username, &authSource, &role, &enabled); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", errUserNotFound
 		}
 		return "", err
 	}
+	if authSource != AuthSourceLocal {
+		return "", errExternalUserAction
+	}
 	if role == "admin" && enabled {
 		var count int
-		if err := tx.QueryRow(ctx, "SELECT count(*) FROM users WHERE role='admin' AND enabled").Scan(&count); err != nil {
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM users WHERE auth_source='local' AND role='admin' AND enabled").Scan(&count); err != nil {
 			return "", err
 		}
 		if count <= 1 {
@@ -356,14 +373,28 @@ func (s Store) ChangeUser(ctx context.Context, id, actorID int64, role string, e
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(724312)"); err != nil {
 		return err
 	}
-	var oldRole string
+	var authSource, oldRole string
 	var oldEnabled bool
-	if err := tx.QueryRow(ctx, "SELECT role,enabled FROM users WHERE id=$1 FOR UPDATE", id).Scan(&oldRole, &oldEnabled); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT auth_source,role,enabled FROM users WHERE id=$1 FOR UPDATE", id).Scan(&authSource, &oldRole, &oldEnabled); err != nil {
 		return err
+	}
+	if authSource != AuthSourceLocal {
+		if role != oldRole {
+			return errExternalUserAction
+		}
+		if _, err := tx.Exec(ctx, "UPDATE users SET enabled=$2 WHERE id=$1", id, enabled); err != nil {
+			return err
+		}
+		if !enabled {
+			if _, err := tx.Exec(ctx, "DELETE FROM sessions WHERE user_id=$1", id); err != nil {
+				return err
+			}
+		}
+		return tx.Commit(ctx)
 	}
 	if oldRole == "admin" && oldEnabled && (role != "admin" || !enabled) {
 		var count int
-		if err := tx.QueryRow(ctx, "SELECT count(*) FROM users WHERE role='admin' AND enabled").Scan(&count); err != nil {
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM users WHERE auth_source='local' AND role='admin' AND enabled").Scan(&count); err != nil {
 			return err
 		}
 		if count <= 1 {
@@ -390,8 +421,15 @@ func (s Store) ResetPasswordWithOptions(ctx context.Context, id int64, password 
 		return err
 	}
 	defer tx.Rollback(ctx)
+	var authSource string
+	if err := tx.QueryRow(ctx, "SELECT auth_source FROM users WHERE id=$1 FOR UPDATE", id).Scan(&authSource); err != nil {
+		return err
+	}
+	if authSource != AuthSourceLocal {
+		return errExternalUserAction
+	}
 	var updated int64
-	if err := tx.QueryRow(ctx, "UPDATE users SET password_hash=$2, password_changed_at=now(), must_change_password=$3 WHERE id=$1 RETURNING id", id, hash, mustChange).Scan(&updated); err != nil {
+	if err := tx.QueryRow(ctx, "UPDATE users SET password_hash=$2, password_changed_at=now(), must_change_password=$3 WHERE id=$1 AND auth_source='local' RETURNING id", id, hash, mustChange).Scan(&updated); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, "DELETE FROM sessions WHERE user_id=$1", id); err != nil {
@@ -402,7 +440,7 @@ func (s Store) ResetPasswordWithOptions(ctx context.Context, id int64, password 
 
 func (s Store) UserID(ctx context.Context, username string) (int64, error) {
 	var id int64
-	err := s.Pool.QueryRow(ctx, "SELECT id FROM users WHERE lower(username)=lower($1)", username).Scan(&id)
+	err := s.Pool.QueryRow(ctx, "SELECT id FROM users WHERE auth_source='local' AND lower(username)=lower($1)", username).Scan(&id)
 	return id, err
 }
 
@@ -412,7 +450,7 @@ func (s Store) AuditSystem(ctx context.Context, action, result, detail string) e
 }
 
 // menuVersionSelect reads metadata and placements in a single snapshot.
-const menuVersionSelect = `SELECT m.id,m.created_at,coalesce(u.username,'system'),m.title,m.diagnostic_label,m.diagnostic_message,m.script,m.sha256,m.active,
+const menuVersionSelect = `SELECT m.id,m.created_at,coalesce(u.username,NULLIF(m.author_name,''),'system'),m.title,m.diagnostic_label,m.diagnostic_message,m.script,m.sha256,m.active,
  NOT m.diagnostics_on,m.local_timeout,NOT m.local_timer,m.look,m.default_installation_id,COALESCE(m.legacy_ubuntu_source_id,0),
  i.installation_id,i.position,i.title,i.folder,i.components FROM `
 
@@ -481,8 +519,8 @@ func (s Store) SaveActiveMenu(ctx context.Context, authorID int64, m MenuVersion
 		timeout = defaultLocalTimeout
 	}
 	var versionID int64
-	if err := tx.QueryRow(ctx, `INSERT INTO menu_versions (author_id,title,diagnostic_label,diagnostic_message,script,sha256,active,diagnostics_on,local_timeout,local_timer,look,default_installation_id,legacy_ubuntu_source_id)
- VALUES (NULLIF($1,0),$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11,NULLIF($12,0)) RETURNING id`, authorID, m.Title, m.Label, m.Message, m.Script, m.SHA256, !m.NoDiagnostics, timeout, !m.NoLocalTimer, m.Look, m.DefaultInstallationID, m.LegacyUbuntuSourceID).Scan(&versionID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO menu_versions (author_id,author_name,title,diagnostic_label,diagnostic_message,script,sha256,active,diagnostics_on,local_timeout,local_timer,look,default_installation_id,legacy_ubuntu_source_id)
+ VALUES (NULLIF($1,0),coalesce((SELECT username FROM users WHERE id=NULLIF($1,0)),''),$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11,NULLIF($12,0)) RETURNING id`, authorID, m.Title, m.Label, m.Message, m.Script, m.SHA256, !m.NoDiagnostics, timeout, !m.NoLocalTimer, m.Look, m.DefaultInstallationID, m.LegacyUbuntuSourceID).Scan(&versionID); err != nil {
 		return err
 	}
 	for _, item := range m.Items {
@@ -540,9 +578,13 @@ func (s Store) ChangeOwnPassword(ctx context.Context, id int64, sessionToken, cu
 		return err
 	}
 	defer tx.Rollback(ctx)
+	var authSource string
 	var hash string
-	if err := tx.QueryRow(ctx, "SELECT password_hash FROM users WHERE id=$1 AND enabled FOR UPDATE", id).Scan(&hash); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT auth_source, coalesce(password_hash,'') FROM users WHERE id=$1 AND enabled FOR UPDATE", id).Scan(&authSource, &hash); err != nil {
 		return err
+	}
+	if authSource != AuthSourceLocal {
+		return errExternalUserAction
 	}
 	if !VerifyPassword(hash, current) {
 		return errWrongPassword

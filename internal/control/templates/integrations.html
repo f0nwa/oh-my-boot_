@@ -1,0 +1,207 @@
+{{define "integrations"}}{{template "top" .}}
+<div class="page-head">
+  <div>
+    <h1>{{t "Интеграции входа"}}</h1>
+    <p class="hint">{{t "Внешние источники авторизации. Локальный вход и аварийный локальный администратор остаются активны всегда."}}</p>
+  </div>
+</div>
+
+{{if .Message}}<p class="notice">{{.Message}}</p>{{end}}
+{{if .Error}}<p class="notice notice-error">{{.Error}}</p>{{end}}
+
+<div class="integrations-grid">
+  <section class="card integration-card">
+    <div class="integration-head">
+      <div>
+        <h2>Active Directory / LDAP</h2>
+        <p class="hint">{{t "Прямая проверка пароля и членства в группах AD по LDAPS / StartTLS"}}</p>
+      </div>
+      <span class="integration-status">
+        {{if .Integrations.LDAP.Enabled}}<span class="dot dot-ok"></span> {{t "Активна"}}{{else}}<span class="dot dot-off"></span> {{t "Выключена"}}{{end}}
+      </span>
+    </div>
+    <dl class="integration-meta">
+      <dt>{{t "Контроллер"}}</dt>
+      <dd>{{if .Integrations.LDAP.Config.ServerURL}}{{.Integrations.LDAP.Config.ServerURL}}{{else}}—{{end}}</dd>
+      <dt>{{t "База поиска"}}</dt>
+      <dd>{{if .Integrations.LDAP.Config.BaseDN}}{{.Integrations.LDAP.Config.BaseDN}}{{else}}—{{end}}</dd>
+      <dt>{{t "Вложенные группы"}}</dt>
+      <dd>{{if .Integrations.LDAP.Config.NestedGroups}}{{t "Включены (AD IN_CHAIN)"}}{{else}}{{t "Только прямое членство"}}{{end}}</dd>
+      <dt>{{t "Группа admin"}}</dt>
+      <dd>{{if .Integrations.LDAP.Config.GroupAdminDN}}{{.Integrations.LDAP.Config.GroupAdminDN}}{{else}}—{{end}}</dd>
+      <dt>{{t "Группа operator"}}</dt>
+      <dd>{{if .Integrations.LDAP.Config.GroupOperatorDN}}{{.Integrations.LDAP.Config.GroupOperatorDN}}{{else}}—{{end}}</dd>
+      <dt>{{t "Группа observer"}}</dt>
+      <dd>{{if .Integrations.LDAP.Config.GroupObserverDN}}{{.Integrations.LDAP.Config.GroupObserverDN}}{{else}}—{{end}}</dd>
+      <dt>{{t "Последняя проверка"}}</dt>
+      <dd>{{if .Integrations.LDAP.LastTestDetail}}{{.Integrations.LDAP.LastTestDetail}}{{else}}{{t "Не выполнялась"}}{{end}}</dd>
+    </dl>
+    <div class="integration-foot">
+      <span class="hint">{{t "Активных сессий LDAP"}}: {{.Integrations.LDAP.ActiveSessions}}</span>
+      <div class="integration-actions">
+        <button type="button" class="btn" data-ldap-config-open>{{t "Настроить…"}}</button>
+        {{if .Integrations.LDAP.Enabled}}
+        <form method="post" action="/integrations/ldap/toggle">
+          <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+          <input type="hidden" name="enabled" value="0">
+          <button type="submit" class="btn btn-danger">{{t "Отключить"}}</button>
+        </form>
+        {{else if .Integrations.LDAP.Config.ServerURL}}
+        <form method="post" action="/integrations/ldap/toggle">
+          <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+          <input type="hidden" name="enabled" value="1">
+          <button type="submit" class="btn btn-primary">{{t "Включить"}}</button>
+        </form>
+        {{end}}
+      </div>
+    </div>
+  </section>
+
+  <section class="card integration-card">
+    <div class="integration-head">
+      <div>
+        <h2>Keycloak (OIDC)</h2>
+        <p class="hint">{{t "Единый вход по OpenID Connect (Authorization Code + PKCE S256)"}}</p>
+      </div>
+      <span class="integration-status">
+        {{if .Integrations.Keycloak.Enabled}}<span class="dot dot-ok"></span> {{t "Активна"}}{{else}}<span class="dot dot-off"></span> {{t "Выключена"}}{{end}}
+      </span>
+    </div>
+    <dl class="integration-meta">
+      <dt>Issuer URL</dt>
+      <dd>{{if .Integrations.Keycloak.Config.IssuerURL}}{{.Integrations.Keycloak.Config.IssuerURL}}{{else}}—{{end}}</dd>
+      <dt>Client ID</dt>
+      <dd>{{if .Integrations.Keycloak.Config.ClientID}}{{.Integrations.Keycloak.Config.ClientID}}{{else}}—{{end}}</dd>
+      <dt>{{t "Публичный адрес OMB"}}</dt>
+      <dd>{{if .Integrations.Keycloak.Config.PublicBaseURL}}{{.Integrations.Keycloak.Config.PublicBaseURL}}{{else}}—{{end}}</dd>
+      <dt>Callback URL</dt>
+      <dd>{{if .Integrations.Keycloak.CallbackURL}}{{.Integrations.Keycloak.CallbackURL}}{{else}}—{{end}}</dd>
+      <dt>Back-channel logout</dt>
+      <dd>{{if .Integrations.Keycloak.BackChannelURL}}{{.Integrations.Keycloak.BackChannelURL}}{{else}}—{{end}}</dd>
+      <dt>{{t "Последняя проверка"}}</dt>
+      <dd>{{if .Integrations.Keycloak.LastTestDetail}}{{.Integrations.Keycloak.LastTestDetail}}{{else}}{{t "Не выполнялась"}}{{end}}</dd>
+    </dl>
+    <div class="integration-foot">
+      <span class="hint">{{t "Активных сессий Keycloak"}}: {{.Integrations.Keycloak.ActiveSessions}}</span>
+      <div class="integration-actions">
+        <button type="button" class="btn" data-keycloak-config-open>{{t "Настроить…"}}</button>
+        {{if .Integrations.Keycloak.Enabled}}
+        <form method="post" action="/integrations/keycloak/toggle">
+          <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+          <input type="hidden" name="enabled" value="0">
+          <button type="submit" class="btn btn-danger">{{t "Отключить"}}</button>
+        </form>
+        {{else if .Integrations.Keycloak.Config.IssuerURL}}
+        <form method="post" action="/integrations/keycloak/toggle">
+          <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+          <input type="hidden" name="enabled" value="1">
+          <button type="submit" class="btn btn-primary">{{t "Включить"}}</button>
+        </form>
+        {{end}}
+      </div>
+    </div>
+  </section>
+</div>
+
+<dialog id="ldap-config-dialog" class="user-dialog integration-dialog">
+  <form id="ldap-config-form" method="post" action="/integrations/ldap/save">
+    <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+    <div class="dialog-head">
+      <h2>{{t "Настройка Active Directory / LDAP"}}</h2>
+      <p class="hint">{{t "Подключение только по LDAPS или StartTLS с проверкой сертификата CA."}}</p>
+    </div>
+    <div class="integration-dialog-body">
+      <div class="integration-section">
+        <h3>{{t "1. Сервер и TLS"}}</h3>
+        <div class="integration-row">
+          <label>{{t "Адрес каталога"}}<input name="server_url" value="{{.Integrations.LDAP.Config.ServerURL}}" placeholder="ldaps://dc01.corp.local:636" required></label>
+          <label>{{t "Режим TLS"}}
+            <select name="tls_mode">
+              <option value="ldaps"{{if ne .Integrations.LDAP.Config.TLSMode "starttls"}} selected{{end}}>LDAPS (636)</option>
+              <option value="starttls"{{if eq .Integrations.LDAP.Config.TLSMode "starttls"}} selected{{end}}>StartTLS (389)</option>
+            </select>
+          </label>
+        </div>
+        <label>{{t "Доверенный сертификат CA (PEM, опционально)"}}<textarea name="ca_pem" rows="3" placeholder="-----BEGIN CERTIFICATE-----">{{.Integrations.LDAP.Config.CAPEM}}</textarea></label>
+      </div>
+      <div class="integration-section">
+        <h3>{{t "2. Служебная учётная запись (только чтение)"}}</h3>
+        <div class="integration-row">
+          <label>{{t "Bind DN или UPN"}}<input name="bind_dn" value="{{.Integrations.LDAP.Config.BindDN}}" placeholder="svc-omb-ldap@corp.local" required></label>
+          <label>{{t "Пароль служебной учётки"}}<input type="password" name="bind_password" placeholder="{{if .Integrations.LDAP.HasBindPassword}}{{t "•••• сохранён (оставьте пустым)"}}{{else}}{{t "Введите пароль"}}{{end}}" autocomplete="new-password"></label>
+        </div>
+        <div class="integration-row">
+          <label>{{t "База поиска (Base DN)"}}<input name="base_dn" value="{{.Integrations.LDAP.Config.BaseDN}}" placeholder="OU=IT,DC=corp,DC=local" required></label>
+          <label>{{t "Атрибут логина"}}<input name="login_attr" value="{{.Integrations.LDAP.Config.LoginAttr}}" placeholder="sAMAccountName"></label>
+        </div>
+        <input type="hidden" name="id_attr" value="{{.Integrations.LDAP.Config.IDAttr}}">
+      </div>
+      <div class="integration-section">
+        <h3>{{t "3. Группы ролей (admin > operator > observer)"}}</h3>
+        <label>{{t "Администраторы (DN группы)"}}<input name="group_admin_dn" value="{{.Integrations.LDAP.Config.GroupAdminDN}}" placeholder="CN=OMB-Admins,OU=Groups,DC=corp,DC=local"></label>
+        <label>{{t "Операторы (DN группы)"}}<input name="group_operator_dn" value="{{.Integrations.LDAP.Config.GroupOperatorDN}}" placeholder="CN=OMB-Operators,OU=Groups,DC=corp,DC=local"></label>
+        <label>{{t "Наблюдатели (DN группы)"}}<input name="group_observer_dn" value="{{.Integrations.LDAP.Config.GroupObserverDN}}" placeholder="CN=OMB-Observers,OU=Groups,DC=corp,DC=local"></label>
+        <label class="storage-task-title"><input type="checkbox" name="nested_groups"{{if .Integrations.LDAP.Config.NestedGroups}} checked{{end}}> {{t "Учитывать вложенные группы AD (LDAP_MATCHING_RULE_IN_CHAIN)"}}</label>
+      </div>
+      <div class="integration-section">
+        <h3>{{t "4. Проверка подключения"}}</h3>
+        <div class="integration-test-row">
+          <label>{{t "Тестовый логин AD (опционально)"}}<input name="test_username" placeholder="i.petrov"></label>
+          <button type="button" class="btn" id="ldap-test-btn" data-testing-label="{{t "Проверка…"}}">{{t "Проверить"}}</button>
+        </div>
+        <div id="ldap-test-result" class="integration-test-result" hidden></div>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-dialog-close>{{t "Закрыть"}}</button>
+      <div class="integration-actions">
+        <button type="submit" class="btn" name="enable_now" value="0">{{t "Сохранить"}}</button>
+        <button type="submit" class="btn btn-primary" name="enable_now" value="1">{{t "Сохранить и включить"}}</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="keycloak-config-dialog" class="user-dialog integration-dialog">
+  <form id="keycloak-config-form" method="post" action="/integrations/keycloak/save">
+    <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+    <div class="dialog-head">
+      <h2>{{t "Настройка Keycloak (OIDC)"}}</h2>
+      <p class="hint">{{t "Confidential client (Standard Flow + PKCE S256). Клиентские роли: admin, operator, observer."}}</p>
+    </div>
+    <div class="integration-dialog-body">
+      <div class="integration-section">
+        <h3>{{t "1. Адреса и OIDC-клиент"}}</h3>
+        <label>{{t "Публичный HTTPS-адрес OMB"}}<input name="public_base_url" value="{{.Integrations.Keycloak.Config.PublicBaseURL}}" placeholder="https://pxe.corp.local:8443" required></label>
+        <label>Issuer URL (Realm)<input name="issuer_url" value="{{.Integrations.Keycloak.Config.IssuerURL}}" placeholder="https://sso.corp.local/realms/corp" required></label>
+        <div class="integration-row">
+          <label>Client ID<input name="client_id" value="{{.Integrations.Keycloak.Config.ClientID}}" placeholder="omb-control" required></label>
+          <label>Client Secret<input type="password" name="client_secret" placeholder="{{if .Integrations.Keycloak.HasClientSecret}}{{t "•••• сохранён (оставьте пустым)"}}{{else}}{{t "Введите секрет"}}{{end}}" autocomplete="new-password"></label>
+        </div>
+        <label>{{t "Доверенный сертификат CA (PEM, опционально)"}}<textarea name="ca_pem" rows="3" placeholder="-----BEGIN CERTIFICATE-----">{{.Integrations.Keycloak.Config.CAPEM}}</textarea></label>
+      </div>
+      <div class="integration-section">
+        <h3>{{t "2. Сервисный клиент (проверка статуса и ролей)"}}</h3>
+        <div class="integration-row">
+          <label>Service Client ID<input name="service_client_id" value="{{.Integrations.Keycloak.Config.ServiceClientID}}" placeholder="omb-control-reader" required></label>
+          <label>Service Client Secret<input type="password" name="service_client_secret" placeholder="{{if .Integrations.Keycloak.HasServiceSecret}}{{t "•••• сохранён (оставьте пустым)"}}{{else}}{{t "Введите секрет"}}{{end}}" autocomplete="new-password"></label>
+        </div>
+      </div>
+      <div class="integration-section">
+        <h3>{{t "3. Проверка подключения"}}</h3>
+        <button type="button" class="btn" id="keycloak-test-btn" data-testing-label="{{t "Проверка…"}}">{{t "Проверить OIDC Discovery и Admin API"}}</button>
+        <div id="keycloak-test-result" class="integration-test-result" hidden></div>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-dialog-close>{{t "Закрыть"}}</button>
+      <div class="integration-actions">
+        <button type="submit" class="btn" name="enable_now" value="0">{{t "Сохранить"}}</button>
+        <button type="submit" class="btn btn-primary" name="enable_now" value="1">{{t "Сохранить и включить"}}</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<script defer src="/assets/integrations.js"></script>
+{{template "bottom" .}}{{end}}

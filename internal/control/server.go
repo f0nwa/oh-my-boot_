@@ -198,6 +198,11 @@ type Server struct {
 	UEFICAUSB         UEFICAUSBAPI
 	LocalSMB          LocalSMBAPI
 	SFTPServer        *LocalSFTPServer
+	Secrets           *SecretBox
+	SecretsKeyPath    string
+	ExternalChecker   ExternalAuthChecker
+	secretsMu         sync.Mutex
+	extAuthCache      externalAuthCache
 	ListenAddr        string
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
@@ -241,6 +246,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /answers/{kind}/{id}/checks", s.protect("images", s.answerCheckRecord))
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
+	mux.HandleFunc("GET /auth/oidc/login", s.oidcLogin)
+	mux.HandleFunc("GET /auth/oidc/callback", s.oidcCallback)
+	mux.HandleFunc("POST /auth/oidc/backchannel-logout", s.oidcBackChannelLogout)
 	mux.HandleFunc("POST /logout", s.protect("view", s.logout))
 	mux.HandleFunc("POST /settings/language", s.protect("view", s.setLanguage))
 	mux.HandleFunc("POST /settings/theme", s.protect("view", s.setTheme))
@@ -268,6 +276,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/now.js", nowScript)
 	mux.HandleFunc("GET /assets/network.js", networkScript)
 	mux.HandleFunc("GET /assets/users.js", usersScript)
+	mux.HandleFunc("GET /assets/integrations.js", integrationsScript)
 	mux.HandleFunc("GET /assets/storages.js", storagesScript)
 	mux.HandleFunc("GET /assets/answers.js", answersScript)
 	mux.HandleFunc("GET /assets/events.js", eventsScript)
@@ -338,6 +347,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /users/password-policy", s.protect("users", withPageErrors(s.usersPage, s.usersPasswordPolicy)))
 	mux.HandleFunc("POST /users/user-password-policy", s.protect("users", withPageErrors(s.usersPage, s.userPasswordPolicy)))
 	mux.HandleFunc("POST /users/file-access", s.protect("admin", withPageErrors(s.usersPage, s.userFileAccessSave)))
+	mux.HandleFunc("GET /integrations", s.protect("admin", s.integrationsPage))
+	mux.HandleFunc("POST /integrations/ldap/save", s.protect("admin", s.integrationLDAPSave))
+	mux.HandleFunc("POST /integrations/ldap/test", s.protect("admin", s.integrationLDAPTest))
+	mux.HandleFunc("POST /integrations/ldap/toggle", s.protect("admin", s.integrationLDAPToggle))
+	mux.HandleFunc("POST /integrations/keycloak/save", s.protect("admin", s.integrationKeycloakSave))
+	mux.HandleFunc("POST /integrations/keycloak/test", s.protect("admin", s.integrationKeycloakTest))
+	mux.HandleFunc("POST /integrations/keycloak/toggle", s.protect("admin", s.integrationKeycloakToggle))
 	mux.HandleFunc("GET /audit", s.protect("users", s.auditPage))
 	mux.HandleFunc("GET /images", s.protect("view", s.imagesPage))
 	mux.HandleFunc("GET /usb", s.protect("view", s.usbPage))
@@ -414,6 +430,18 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 		if err != nil {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
+		}
+		if !user.IsLocal() {
+			var statusCode int
+			var errMsg string
+			user, statusCode, errMsg = s.verifyExternalSession(r.Context(), user, r.Method)
+			if statusCode != 0 {
+				if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
+					http.SetCookie(w, &http.Cookie{Name: "omb_session", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+				}
+				http.Error(w, errMsg, statusCode)
+				return
+			}
 		}
 		if !Allowed(user.Role, action) {
 			if r.Method == http.MethodPost {
@@ -555,8 +583,23 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ошибка", 500)
 		return
 	}
+	var ldapEnabled, kcEnabled bool
+	if es := s.externalAuthStore(); es != nil {
+		if rec, err := es.GetAuthIntegration(r.Context(), AuthSourceLDAP); err == nil {
+			ldapEnabled = rec.Enabled
+		}
+		if rec, err := es.GetAuthIntegration(r.Context(), AuthSourceKeycloak); err == nil {
+			kcEnabled = rec.Enabled
+		}
+	}
 	http.SetCookie(w, &http.Cookie{Name: "omb_login_csrf", Value: token, Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 600})
-	render(w, "login", pageData{Lang: languageFromRequest(r), CSRF: token, Message: r.URL.Query().Get("error")})
+	render(w, "login", pageData{
+		Lang:            languageFromRequest(r),
+		CSRF:            token,
+		Message:         r.URL.Query().Get("error"),
+		LDAPEnabled:     ldapEnabled,
+		KeycloakEnabled: kcEnabled,
+	})
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -568,6 +611,39 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("omb_login_csrf")
 	if err != nil || cookie.Value == "" || !constantEqual(cookie.Value, r.FormValue("csrf")) {
 		http.Error(w, translate(languageFromRequest(r), "Недействительный токен формы"), 403)
+		return
+	}
+	if r.FormValue("auth_mode") == AuthSourceLDAP {
+		es := s.externalAuthStore()
+		if es == nil {
+			http.Redirect(w, r, "/login?error="+url.QueryEscape("Неверное имя или пароль"), http.StatusSeeOther)
+			return
+		}
+		ident, err := s.authenticateLDAP(r.Context(), r.FormValue("username"), r.FormValue("password"))
+		if err != nil {
+			http.Redirect(w, r, "/login?error="+url.QueryEscape("Неверное имя или пароль"), http.StatusSeeOther)
+			return
+		}
+		user, err := es.UpsertExternalUser(r.Context(), AuthSourceLDAP, ident.ExternalID, ident.Username, ident.DisplayName, ident.Role)
+		if err != nil || !user.Enabled {
+			http.Redirect(w, r, "/login?error="+url.QueryEscape("Неверное имя или пароль"), http.StatusSeeOther)
+			return
+		}
+		token, err := es.CreateExternalSession(r.Context(), user.ID, AuthSourceLDAP, "")
+		if err != nil {
+			http.Error(w, "Ошибка", http.StatusInternalServerError)
+			return
+		}
+		s.extAuthCache.set(AuthSourceLDAP, ident.ExternalID, ExternalUserStatus{
+			Active:      true,
+			Role:        ident.Role,
+			Username:    ident.Username,
+			DisplayName: ident.DisplayName,
+		}, time.Now())
+		http.SetCookie(w, &http.Cookie{Name: "omb_session", Value: token, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Expires: time.Now().Add(externalSessionLifetime)})
+		http.SetCookie(w, &http.Cookie{Name: "omb_login_csrf", Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+		_ = s.Store.Audit(r.Context(), user.ID, "login.ldap", "ok", "role="+ident.Role)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 	user, token, err := s.Store.Login(r.Context(), r.FormValue("username"), r.FormValue("password"))
@@ -594,8 +670,17 @@ func constantEqual(a, b string) bool {
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	info := requestInfo(r)
 	_ = s.Store.Logout(r.Context(), info.Token)
+	if !info.User.IsLocal() {
+		s.invalidateExternalUserCache(info.User.AuthSource, info.User.ExternalID)
+	}
 	_ = s.Store.Audit(r.Context(), info.User.ID, "logout", "ok", "")
 	http.SetCookie(w, &http.Cookie{Name: "omb_session", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	if info.User.AuthSource == AuthSourceKeycloak {
+		if target := s.oidcLogoutRedirectURL(r.Context()); target != "" {
+			http.Redirect(w, r, target, http.StatusSeeOther)
+			return
+		}
+	}
 	http.Redirect(w, r, "/login", 303)
 }
 
@@ -822,6 +907,9 @@ func (s *Server) userPasswordPolicy(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, errUserNotFound):
 		http.Error(w, "Пользователь не найден", http.StatusNotFound)
 		return
+	case errors.Is(err, errExternalUserAction):
+		http.Error(w, "Действие доступно только для локальных учётных записей", http.StatusBadRequest)
+		return
 	case err != nil:
 		http.Error(w, "Не удалось обновить настройки пароля", http.StatusBadRequest)
 		return
@@ -874,6 +962,9 @@ func (s *Server) userChange(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, errLastAdmin):
 		http.Error(w, "Нельзя отключить или понизить последнего администратора", 400)
 		return
+	case errors.Is(err, errExternalUserAction):
+		http.Error(w, "Роль внешней учётной записи задаётся источником входа", 400)
+		return
 	case err != nil:
 		http.Error(w, "Не удалось изменить пользователя: "+err.Error(), 400)
 		return
@@ -923,6 +1014,9 @@ func (s *Server) userDelete(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, errLastAdmin):
 		http.Error(w, "Нельзя удалить последнего администратора", http.StatusBadRequest)
 		return
+	case errors.Is(err, errExternalUserAction):
+		http.Error(w, "Нельзя удалить внешнюю учётную запись", http.StatusBadRequest)
+		return
 	case errors.Is(err, errUserNotFound):
 		http.Error(w, "Пользователь не найден", http.StatusNotFound)
 		return
@@ -953,6 +1047,10 @@ func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
 		result = "error"
 	}
 	_ = s.Store.Audit(r.Context(), info.User.ID, "user.reset-password", result, fmt.Sprintf("id=%d", id))
+	if errors.Is(err, errExternalUserAction) {
+		http.Error(w, "Сброс локального пароля недоступен для внешней учётной записи", 400)
+		return
+	}
 	if err != nil {
 		http.Error(w, "Не удалось сменить пароль: "+err.Error(), 400)
 		return

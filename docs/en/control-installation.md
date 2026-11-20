@@ -268,3 +268,21 @@ Rollback of the technical migration has its own [procedure](../recovery.md). It 
 The server passed file/database restoration, WinPE rebuild, TFTP, SMB/NAS and reboot checks. The user confirmed UEFI Secure Boot loading with XML and drivers. The full client regression pass is deferred until the main development work is finished; see the [migration report](../research/2026-10-31-omb-technical-migration.md).
 
 Past deployment dates, previous rollback commands and rollout checksums are in the [project history](../project-history.md).
+
+## External authentication: Active Directory / LDAP and Keycloak (OIDC)
+
+The control dashboard supports two independent external authentication providers configured by an administrator under `System → Integrations`:
+
+1. **Active Directory / LDAP** — direct connection over LDAPS (636) or StartTLS (389) with strict CA verification, a read-only service account, immutable `objectGUID` binding, and three AD role groups (`admin > operator > observer`, with optional nested groups via `LDAP_MATCHING_RULE_IN_CHAIN`).
+2. **Keycloak (OIDC)** — integration with an existing external Keycloak server (Authorization Code Flow + PKCE S256), client roles `admin`, `operator`, `observer`, a service client with `view-users` to query live status and effective roles via the Admin REST API, RP-Initiated Logout, and Back-Channel Logout (`/auth/oidc/backchannel-logout`).
+
+Integration secrets are encrypted with AES-256-GCM before storage in PostgreSQL using `/etc/omb/secrets.key` (32 bytes / 64 hex chars, mode `0600`, owned by `omb-control:omb-control`). Create the key before configuring integrations:
+
+```bash
+install -d -m 755 /etc/omb
+openssl rand -hex 32 | tee /etc/omb/secrets.key >/dev/null
+chown omb-control:omb-control /etc/omb/secrets.key
+chmod 600 /etc/omb/secrets.key
+```
+
+Local sign-in and the last active local administrator always remain available even when AD or Keycloak is unreachable. To upgrade an existing database, apply `deploy/sql/2026-11-20-external-auth.sql`.

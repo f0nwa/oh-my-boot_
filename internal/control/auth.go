@@ -14,7 +14,14 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-const sessionLifetime = 12 * time.Hour
+const (
+	sessionLifetime         = 12 * time.Hour
+	externalSessionLifetime = 30 * time.Minute
+
+	AuthSourceLocal    = "local"
+	AuthSourceLDAP     = "ldap"
+	AuthSourceKeycloak = "keycloak"
+)
 
 func randomToken() (string, error) {
 	raw := make([]byte, 32)

@@ -114,6 +114,8 @@ func systemEventLinkLabel(link string) string {
 		return "Машина →"
 	case strings.HasPrefix(link, "/machines"):
 		return "Машины →"
+	case strings.HasPrefix(link, "/integrations"):
+		return "Интеграции →"
 	case strings.HasPrefix(link, "/system"):
 		return "Система →"
 	case link == "/":
@@ -134,6 +136,7 @@ type SystemEventMonitor struct {
 	storageName  map[int64]string
 	lastAlert    map[string]time.Time
 	lastPrune    time.Time
+	lastExtFSChk time.Time
 }
 
 // NewSystemEventMonitor creates a background monitor attached to Server.
@@ -194,6 +197,10 @@ func (m *SystemEventMonitor) CheckOnce(ctx context.Context, now time.Time) {
 	if m.lastPrune.IsZero() || now.Sub(m.lastPrune) >= 12*time.Hour {
 		_ = store.PruneSystemEvents(ctx, now.UTC().Add(-systemEventRetention))
 		m.lastPrune = now
+	}
+	if m.lastExtFSChk.IsZero() || now.Sub(m.lastExtFSChk) >= 15*time.Minute {
+		m.server.RevalidateExternalFSUsers(ctx)
+		m.lastExtFSChk = now
 	}
 
 	// 1. Check omb-boot availability

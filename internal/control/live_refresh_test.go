@@ -71,6 +71,8 @@ const documentMock = {
     if (sel.includes(':popover-open')) return currentPopovers.length ? currentPopovers[0] : null;
     if (sel === '#target-table') return domNodes['#target-table'];
     if (sel === '#target-filters') return domNodes['#target-filters'];
+    if (sel === '#topnav') return domNodes['#topnav'];
+    if (sel === '#subnav') return domNodes['#subnav'];
     return null;
   },
   querySelectorAll: (sel) => {
@@ -88,6 +90,16 @@ const domNodes = {
   '#target-filters': {
     id: 'target-filters',
     childNodes: ['old-filters-content'],
+    replaceChildren: function(...args) { this.childNodes = args; }
+  },
+  '#topnav': {
+    id: 'topnav',
+    childNodes: ['old-topnav'],
+    replaceChildren: function(...args) { this.childNodes = args; }
+  },
+  '#subnav': {
+    id: 'subnav',
+    childNodes: ['old-subnav'],
     replaceChildren: function(...args) { this.childNodes = args; }
   }
 };
@@ -122,6 +134,8 @@ const windowMock = {
         querySelector: (sel) => {
           if (sel === '#target-table') return { childNodes: ['new-table-content'] };
           if (sel === '#target-filters') return { childNodes: ['new-filters-content'] };
+          if (sel === '#topnav') return { childNodes: ['new-topnav-with-badge'] };
+          if (sel === '#subnav') return { childNodes: ['new-subnav-with-badge'] };
           return null;
         }
       };
@@ -154,6 +168,8 @@ assert.strictEqual(fetchCalls[0].url, 'https://192.168.10.135:8443/images?show=a
 setTimeout(() => {
   assert.deepStrictEqual(domNodes['#target-table'].childNodes, ['new-table-content'], 'target-table should be updated');
   assert.deepStrictEqual(domNodes['#target-filters'].childNodes, ['new-filters-content'], 'target-filters should be updated');
+  assert.deepStrictEqual(domNodes['#topnav'].childNodes, ['new-topnav-with-badge'], 'topnav should be updated');
+  assert.deepStrictEqual(domNodes['#subnav'].childNodes, ['new-subnav-with-badge'], 'subnav should be updated');
 
   // Test 2: Gating on open dialog
   currentDialogs = [{ open: true }];

@@ -321,6 +321,7 @@ func (s *Server) systemEventsClear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), info.User.ID, "system_events.clear", "ok", fmt.Sprintf("scope=%s deleted=%d", scope, deleted))
+	s.RefreshNavBadges(r.Context())
 	msg := "Исправленные события удалены"
 	if scope == "all" {
 		msg = "Журнал системных событий очищен"

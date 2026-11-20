@@ -150,12 +150,25 @@ func NewSystemEventMonitor(s *Server) *SystemEventMonitor {
 // Start runs the periodic monitor loop until ctx is cancelled.
 func (m *SystemEventMonitor) Start(ctx context.Context) {
 	go func() {
+		if m.server != nil {
+			initCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			m.server.RefreshNavBadges(initCtx)
+			cancel()
+		}
 		timer := time.NewTimer(5 * time.Second)
 		defer timer.Stop()
+		badgeTicker := time.NewTicker(15 * time.Second)
+		defer badgeTicker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-badgeTicker.C:
+				if m.server != nil {
+					bCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					m.server.RefreshNavBadges(bCtx)
+					cancel()
+				}
 			case <-timer.C:
 				tickCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 				m.CheckOnce(tickCtx, time.Now())
@@ -191,6 +204,8 @@ func (m *SystemEventMonitor) CheckOnce(ctx context.Context, now time.Time) {
 	m.checkImagesAndStorages(ctx, store, now)
 	// 4. Check DHCP flood and stalled SMB/HTTP sessions
 	m.checkNetworkAndSessions(ctx, store, bootEvents, bootOK, now)
+	// 5. Refresh navigation badges snapshot after state transitions
+	m.server.RefreshNavBadges(ctx)
 }
 
 func (m *SystemEventMonitor) recordServiceTransition(ctx context.Context, store SystemEventStore, key, displayName string, up bool, errText string, now time.Time) {

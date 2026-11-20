@@ -5,10 +5,17 @@ import (
 	"strings"
 )
 
+type navBadge struct {
+	Level string // "", "bad", "accent"
+	Count int
+	Hint  string
+}
+
 type navItem struct {
 	Label  string
 	Path   string
 	Active bool
+	Badge  navBadge
 }
 
 // navGroup is one top-level section of the header. Items are its pages;
@@ -17,6 +24,7 @@ type navGroup struct {
 	Title  string
 	Path   string
 	Active bool
+	Badge  navBadge
 	Items  []navItem
 }
 
@@ -45,9 +53,17 @@ func navMatches(path, prefix string) bool {
 // section and the page that hold the current path. A section links to its
 // first allowed page.
 func navigation(role, path string) []navGroup {
+	return navigationWithBadges(role, path, nil)
+}
+
+// navigationWithBadges builds the header sections with optional active-problem
+// badges attached to pages and aggregated up to their parent sections.
+func navigationWithBadges(role, path string, badges map[string]navBadge) []navGroup {
 	var groups []navGroup
 	for _, layout := range navLayout {
 		group := navGroup{Title: layout.title}
+		var badCount, accentCount int
+		var badHints, accentHints []string
 		for _, entry := range layout.entries {
 			if !Allowed(role, entry.action) {
 				continue
@@ -56,11 +72,42 @@ func navigation(role, path string) []navGroup {
 			for _, prefix := range entry.also {
 				active = active || navMatches(path, prefix)
 			}
-			group.Items = append(group.Items, navItem{Label: entry.label, Path: entry.path, Active: active})
+			var badge navBadge
+			if badges != nil {
+				if b, ok := badges[entry.path]; ok && b.Level != "" && b.Count > 0 {
+					badge = b
+					switch b.Level {
+					case "bad":
+						badCount += b.Count
+						if b.Hint != "" {
+							badHints = append(badHints, b.Hint)
+						}
+					case "accent":
+						accentCount += b.Count
+						if b.Hint != "" {
+							accentHints = append(accentHints, b.Hint)
+						}
+					}
+				}
+			}
+			group.Items = append(group.Items, navItem{Label: entry.label, Path: entry.path, Active: active, Badge: badge})
 			group.Active = group.Active || active
 		}
 		if len(group.Items) > 0 {
 			group.Path = group.Items[0].Path
+			if badCount > 0 {
+				group.Badge = navBadge{
+					Level: "bad",
+					Count: badCount,
+					Hint:  strings.Join(append(badHints, accentHints...), "; "),
+				}
+			} else if accentCount > 0 {
+				group.Badge = navBadge{
+					Level: "accent",
+					Count: accentCount,
+					Hint:  strings.Join(accentHints, "; "),
+				}
+			}
 			groups = append(groups, group)
 		}
 	}

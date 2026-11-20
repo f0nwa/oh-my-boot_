@@ -237,7 +237,7 @@ func parsePages(lang string) *template.Template {
 		"t":                  func(text string) string { return translate(lang, text) },
 		"lang":               func() string { return lang },
 		"theme":              normalizeTheme,
-		"nav":                navigation,
+		"nav":                navigationWithBadges,
 		"subnav":             subnav,
 		"formHas": func(form url.Values, key, value string) bool {
 			for _, v := range form[key] {

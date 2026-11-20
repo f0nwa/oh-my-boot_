@@ -214,6 +214,7 @@ type Server struct {
 	ubuntuCacheMu     sync.Mutex
 	ubuntuCache       *ubuntuReadinessCache
 	authorsCache      resourceAuthorsCache
+	navBadgesCache    navBadgeCache
 }
 
 type requestContext struct {
@@ -222,6 +223,7 @@ type requestContext struct {
 	CSRF           string
 	Path           string
 	Draft          draftSummary
+	NavBadges      map[string]navBadge
 	PasswordPolicy PasswordPolicy
 	PasswordState  PasswordState
 }
@@ -522,6 +524,7 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 		}
 		if r.Method == http.MethodGet && needsDraftSummary(r) && !pwState.RequiresChange() {
 			info.Draft = s.draftStatus(r.Context())
+			info.NavBadges = s.navBadges(normalizeLanguage(user.Language))
 		}
 		ctx := context.WithValue(r.Context(), ctxKey{}, info)
 		translateErrors(normalizeLanguage(user.Language), next)(w, r.WithContext(ctx))

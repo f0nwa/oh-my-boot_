@@ -62,6 +62,18 @@
 
         var parsed = new win.DOMParser().parseFromString(html, 'text/html');
         var nodes = doc.querySelectorAll('[data-live-refresh]');
+        function syncTarget(sel) {
+          var currentEl = doc.querySelector(sel);
+          var freshEl = parsed.querySelector(sel);
+          if (currentEl && freshEl) {
+            if (typeof currentEl.replaceChildren === 'function') {
+              currentEl.replaceChildren.apply(currentEl, Array.from(freshEl.childNodes));
+            } else {
+              currentEl.innerHTML = freshEl.innerHTML;
+            }
+          }
+        }
+
         for (var n = 0; n < nodes.length; n++) {
           var node = nodes[n];
           var targetsAttr = node.getAttribute('data-live-targets');
@@ -72,18 +84,11 @@
           }
 
           for (var t = 0; t < targets.length; t++) {
-            var sel = targets[t];
-            var currentEl = doc.querySelector(sel);
-            var freshEl = parsed.querySelector(sel);
-            if (currentEl && freshEl) {
-              if (typeof currentEl.replaceChildren === 'function') {
-                currentEl.replaceChildren.apply(currentEl, Array.from(freshEl.childNodes));
-              } else {
-                currentEl.innerHTML = freshEl.innerHTML;
-              }
-            }
+            syncTarget(targets[t]);
           }
         }
+        syncTarget('#topnav');
+        syncTarget('#subnav');
       })
       .catch(function () {
         isFetching = false;

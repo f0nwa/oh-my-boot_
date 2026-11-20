@@ -10,8 +10,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"omb/internal/drivers"
 )
@@ -172,7 +175,7 @@ func TestDriversPageOperatorShowsBothImportMethods(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
 	res := httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
-	for _, required := range []string{`webkitdirectory`, `name="zip"`, `name="csrf"`, `/assets/driver-upload.js`} {
+	for _, required := range []string{`webkitdirectory`, `name="zip"`, `name="csrf"`, `/assets/driver-upload.js`, `<button type="submit" disabled>`} {
 		if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), required) {
 			t.Fatalf("missing %q in page: %d", required, res.Code)
 		}
@@ -235,5 +238,166 @@ func TestFilterAndSortDriverConfigs(t *testing.T) {
 	sortDriverConfigs(s3, usage, "uses", "desc")
 	if s3[0].ID != 2 || s3[1].ID != 1 || s3[2].ID != 3 {
 		t.Fatalf("unexpected sort uses desc: %+v", s3)
+	}
+}
+
+func TestDriverUploadSubmitGate(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	scriptBytes, err := os.ReadFile("driver_upload.js")
+	if err != nil {
+		t.Fatalf("failed to read driver_upload.js: %v", err)
+	}
+
+	jsTest := fmt.Sprintf(`
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+
+const code = %q;
+
+let docListeners = {};
+
+// Folder form elements
+let folderFormListeners = {};
+let folderInputListeners = {};
+const folderFileInput = {
+  files: [],
+  disabled: false,
+  addEventListener(type, fn) { folderInputListeners[type] = fn; },
+};
+const folderSubmitBtn = { disabled: true };
+const folderCancelBtn = { hidden: true, addEventListener(type, fn) {} };
+const folderProgress = { parentElement: { hidden: true }, value: 0 };
+const folderStatus = { textContent: '' };
+const folderForm = {
+  dataset: { driverUpload: 'folder', csrf: 'test-csrf' },
+  reset() { folderFileInput.files = []; },
+  addEventListener(type, fn) { folderFormListeners[type] = fn; },
+  querySelector(sel) {
+    if (sel === 'input[type="file"]') return folderFileInput;
+    if (sel === '[type="submit"]') return folderSubmitBtn;
+    if (sel === '[data-cancel]') return folderCancelBtn;
+    if (sel === 'progress') return folderProgress;
+    if (sel === '[role="status"]') return folderStatus;
+    return null;
+  },
+};
+
+// Zip form elements
+let zipFormListeners = {};
+let zipInputListeners = {};
+const zipFileInput = {
+  files: [],
+  disabled: false,
+  addEventListener(type, fn) { zipInputListeners[type] = fn; },
+};
+const zipSubmitBtn = { disabled: true };
+const zipCancelBtn = { hidden: true, addEventListener(type, fn) {} };
+const zipProgress = { parentElement: { hidden: true }, value: 0 };
+const zipStatus = { textContent: '' };
+const zipForm = {
+  dataset: { driverUpload: 'zip', csrf: 'test-csrf' },
+  reset() { zipFileInput.files = []; },
+  addEventListener(type, fn) { zipFormListeners[type] = fn; },
+  querySelector(sel) {
+    if (sel === 'input[type="file"]') return zipFileInput;
+    if (sel === '[type="submit"]') return zipSubmitBtn;
+    if (sel === '[data-cancel]') return zipCancelBtn;
+    if (sel === 'progress') return zipProgress;
+    if (sel === '[role="status"]') return zipStatus;
+    return null;
+  },
+};
+
+const forms = [folderForm, zipForm];
+
+let dialogShown = false;
+const uploadDialog = {
+  shown: false,
+  showModal() { this.shown = true; dialogShown = true; },
+  close() { this.shown = false; dialogShown = false; },
+  querySelector(sel) { return null; },
+};
+
+const sandbox = {
+  document: {
+    documentElement: { lang: 'ru' },
+    addEventListener(type, fn) { docListeners[type] = fn; },
+    querySelectorAll(sel) {
+      if (sel === '[data-driver-upload]') return forms;
+      if (sel === '[data-driver-config-form]') return [];
+      if (typeof sel === 'string' && sel.includes('.driver-config-table')) return [];
+      return [];
+    },
+    getElementById(id) {
+      if (id === 'driver-upload-dialog') return uploadDialog;
+      if (id === 'driver-q') return null;
+      return null;
+    },
+  },
+  console,
+  setTimeout,
+  clearTimeout,
+  URL,
+};
+
+vm.createContext(sandbox);
+vm.runInContext(code, sandbox);
+
+// 1. Initial state: both buttons disabled
+assert.equal(folderSubmitBtn.disabled, true, 'folder submit should be initially disabled');
+assert.equal(zipSubmitBtn.disabled, true, 'zip submit should be initially disabled');
+
+// 2. Select folder
+folderFileInput.files = [{ name: 'driver.inf' }];
+assert.ok(folderInputListeners['change'], 'change listener on folder input');
+folderInputListeners['change']();
+assert.equal(folderSubmitBtn.disabled, false, 'folder submit should be enabled after files selected');
+assert.equal(zipSubmitBtn.disabled, true, 'zip submit should still be disabled');
+
+// 3. Clear folder files
+folderFileInput.files = [];
+folderInputListeners['change']();
+assert.equal(folderSubmitBtn.disabled, true, 'folder submit should be disabled when empty');
+
+// 4. Select ZIP file
+zipFileInput.files = [{ name: 'network.zip' }];
+assert.ok(zipInputListeners['change'], 'change listener on zip input');
+zipInputListeners['change']();
+assert.equal(zipSubmitBtn.disabled, false, 'zip submit should be enabled after zip selected');
+assert.equal(folderSubmitBtn.disabled, true, 'folder submit should still be disabled');
+
+// 5. Submit event when disabled prevents default
+let prevented = false;
+folderFileInput.files = [];
+folderInputListeners['input']();
+folderFormListeners['submit']({
+  preventDefault() { prevented = true; },
+});
+assert.equal(prevented, true, 'empty folder submission should be prevented');
+
+// 6. Opening upload dialog resets forms and disables buttons
+zipFileInput.files = [{ name: 'test.zip' }];
+zipInputListeners['change']();
+assert.equal(zipSubmitBtn.disabled, false);
+
+assert.ok(docListeners['click'], 'document click listener should exist');
+const uploadBtnEl = {
+  closest(sel) {
+    if (sel === '[data-driver-upload-open]') return this;
+    return null;
+  },
+};
+docListeners['click']({ target: uploadBtnEl });
+assert.equal(uploadDialog.shown, true, 'upload dialog should be opened');
+assert.equal(zipSubmitBtn.disabled, true, 'zip submit should be disabled on dialog open');
+assert.equal(folderSubmitBtn.disabled, true, 'folder submit should be disabled on dialog open');
+`, scriptBytes)
+
+	cmd := exec.CommandContext(ctx, "node", "-e", jsTest)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Node.js test failed: %v\nOutput: %s", err, string(out))
 	}
 }

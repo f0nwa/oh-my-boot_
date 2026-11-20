@@ -12,6 +12,19 @@
     for (const arg of args) result = result.replace('%s', arg);
     return result;
   };
+  const forms = document.querySelectorAll('[data-driver-upload]');
+  const resetUploadForms = () => {
+    forms.forEach(form => {
+      if (!form.dataset.uploading) {
+        form.reset();
+        const submit = form.querySelector('[type="submit"]');
+        if (submit) submit.disabled = true;
+        const status = form.querySelector('[role="status"]');
+        if (status) status.textContent = '';
+      }
+    });
+  };
+
   document.addEventListener('click', event => {
     const uploadButton = event.target.closest('[data-driver-upload-open]');
     const packageButton = event.target.closest('[data-driver-package-open]');
@@ -32,6 +45,9 @@
     if (dialogID) {
       const dialog = document.getElementById(dialogID);
       if (dialog && typeof dialog.showModal === 'function') {
+        if (dialogID === 'driver-upload-dialog') {
+          resetUploadForms();
+        }
         const cfgForm = dialog.querySelector('[data-driver-config-form]');
         if (cfgForm) {
           const titleInput = cfgForm.querySelector('input[name="title"]');
@@ -75,22 +91,49 @@
     });
     sync();
   });
-  const forms = document.querySelectorAll('[data-driver-upload]');
   forms.forEach(form => {
     const status = form.querySelector('[role="status"]');
     const progress = form.querySelector('progress');
     const submit = form.querySelector('[type="submit"]');
     const cancel = form.querySelector('[data-cancel]');
+    const fileInput = form.querySelector('input[type="file"]');
     let request = null;
+
+    const syncSubmit = () => {
+      if (request) return;
+      const files = Array.from(fileInput && fileInput.files ? fileInput.files : []);
+      if (submit) submit.disabled = files.length === 0;
+    };
+
+    if (fileInput) {
+      fileInput.addEventListener('change', syncSubmit);
+      fileInput.addEventListener('input', syncSubmit);
+    }
+    syncSubmit();
+
     // Cancel and the progress bar only make sense while a transfer runs.
-    const busy = on => { submit.disabled = on; cancel.hidden = !on; progress.parentElement.hidden = !on; };
-    cancel.addEventListener('click', () => { if (request) request.abort(); });
+    const busy = on => {
+      if (on) {
+        form.dataset.uploading = 'true';
+        if (submit) submit.disabled = true;
+        if (cancel) cancel.hidden = false;
+        if (progress) progress.parentElement.hidden = false;
+        if (fileInput) fileInput.disabled = true;
+      } else {
+        delete form.dataset.uploading;
+        if (cancel) cancel.hidden = true;
+        if (progress) progress.parentElement.hidden = true;
+        if (fileInput) fileInput.disabled = false;
+        syncSubmit();
+      }
+    };
+    if (cancel) cancel.addEventListener('click', () => { if (request) request.abort(); });
     form.addEventListener('submit', event => {
       event.preventDefault();
-      if (request) return;
-      const input = form.querySelector('[type="file"]');
-      const files = Array.from(input.files || []);
-      if (!files.length) { status.textContent = tr('Выберите пакет драйвера.'); return; }
+      syncSubmit();
+      if ((submit && submit.disabled) || request) return;
+      const files = Array.from(fileInput && fileInput.files ? fileInput.files : []);
+      if (!files.length) { if (status) status.textContent = tr('Выберите пакет драйвера.'); return; }
       const data = new FormData();
       data.append('csrf', form.dataset.csrf);
       if (form.dataset.driverUpload === 'folder') {

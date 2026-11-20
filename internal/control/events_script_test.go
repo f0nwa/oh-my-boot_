@@ -21,7 +21,7 @@ func TestEventsScriptEndpoint(t *testing.T) {
 		t.Fatalf("unexpected Content-Type: %q", ct)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"journal-clear-dialog", "data-journal-clear-open", "data-close-dialog", "journal-days", "btn-primary"} {
+	for _, want := range []string{"journal-settings-dialog", "data-journal-clear-open", "data-close-dialog", "journal-days", "btn-primary"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("events.js lacks %q", want)
 		}

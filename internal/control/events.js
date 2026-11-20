@@ -1,34 +1,64 @@
 // Oh My Boot — журнал сетевой загрузки (/events)
 (() => {
-  function initJournal() {
-    // 1. Управление модальным окном настроек журнала
-    const dialog = document.getElementById('journal-settings-dialog') || document.getElementById('journal-clear-dialog');
-    if (dialog && !dialog.dataset.initialized) {
-      dialog.dataset.initialized = "true";
-      document.querySelectorAll('[data-journal-settings-open], [data-journal-clear-open]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          if (typeof dialog.showModal === 'function') {
-            dialog.showModal();
-          } else {
-            dialog.setAttribute('open', '');
-          }
-        });
-      });
+  function setupModalBackdrop(dlg) {
+    if (!dlg || dlg.dataset.backdropInitialized) return;
+    dlg.dataset.backdropInitialized = "true";
 
-      dialog.querySelectorAll('[data-close-dialog]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          if (typeof dialog.close === 'function') {
-            dialog.close();
-          } else {
-            dialog.removeAttribute('open');
-          }
-        });
-      });
-
-      dialog.addEventListener('click', (e) => {
-        if (e.target === dialog && typeof dialog.close === 'function') {
-          dialog.close();
+    dlg.querySelectorAll('[data-close-dialog]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (typeof dlg.close === 'function') {
+          dlg.close();
+        } else {
+          dlg.removeAttribute('open');
         }
+      });
+    });
+
+    dlg.addEventListener('click', (e) => {
+      if (e.target !== dlg) return;
+      const rect = dlg.getBoundingClientRect();
+      const isInDialog = (
+        rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+        rect.left <= e.clientX && e.clientX <= rect.left + rect.width
+      );
+      if (!isInDialog && typeof dlg.close === 'function') {
+        dlg.close();
+      }
+    });
+  }
+
+  function initJournal() {
+    // 1. Управление модальными окнами настроек и подтверждения очистки
+    const settingsDialog = document.getElementById('journal-settings-dialog');
+    const confirmDialog = document.getElementById('journal-clear-confirm-dialog') || document.getElementById('journal-clear-dialog');
+
+    if (settingsDialog && !settingsDialog.dataset.initialized) {
+      settingsDialog.dataset.initialized = "true";
+      setupModalBackdrop(settingsDialog);
+
+      document.querySelectorAll('[data-journal-settings-open]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (typeof settingsDialog.showModal === 'function') {
+            settingsDialog.showModal();
+          } else {
+            settingsDialog.setAttribute('open', '');
+          }
+        });
+      });
+    }
+
+    if (confirmDialog && !confirmDialog.dataset.initialized) {
+      confirmDialog.dataset.initialized = "true";
+      setupModalBackdrop(confirmDialog);
+
+      document.querySelectorAll('[data-journal-clear-open]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (typeof confirmDialog.showModal === 'function') {
+            confirmDialog.showModal();
+          } else {
+            confirmDialog.setAttribute('open', '');
+          }
+        });
       });
     }
 

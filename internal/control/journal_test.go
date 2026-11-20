@@ -107,15 +107,19 @@ func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *test
 		t.Fatal("could not find <main class=\"content\"> in page")
 	}
 
-	// Must contain the service strip, settings dialog, and exactly 1 settings button in header
+	// Must contain the service strip, settings dialog, confirm dialog with section list, and exactly 1 settings button in header
 	for _, want := range []string{
 		"service-strip events-strip",
 		"journal-settings-dialog",
+		"journal-clear-confirm-dialog",
 		"data-journal-settings-open",
+		"data-journal-clear-open",
 		"Настройки журнала",
+		"clear-sections-box",
 		"/assets/events.js",
 		"btn-danger-outline",
-		"danger-section",
+		"journal-clear-row",
+		"Очистка журнала",
 		"page-head-title",
 		`action="/events/retention"`,
 		`<button class="btn" disabled>`,
@@ -127,6 +131,10 @@ func TestEventsPageRedesignHasNoDetailsAndUsesModalDialogAndServiceStrip(t *test
 	}
 	if cnt := strings.Count(pageAdmin, "data-journal-settings-open"); cnt != 1 {
 		t.Errorf("expected exactly 1 data-journal-settings-open button, got %d", cnt)
+	}
+	// Check that close button in header (cross icon) is removed and only bottom button exists
+	if strings.Contains(pageAdmin, `<button type="button" class="btn btn-ghost" data-close-dialog aria-label="Закрыть">×`) {
+		t.Errorf("expected duplicate cross close button to be removed")
 	}
 
 	// Observer view

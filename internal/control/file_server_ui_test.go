@@ -79,10 +79,22 @@ func TestFileServerUI_Storages(t *testing.T) {
 			`SHA256:4X7xMockSFTPHostKeyFingerprintBase64`,
 			`Настроить доступы в «Пользователях» →`,
 			`action="/images/file-server"`,
+			`proto-status is-on`,
+			`dot dot-ok`,
+			`Активен`,
+			`Стандартный порт 445.`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("dialog missing %q", want)
 			}
+		}
+
+		// Ensure old bulky chips are removed from the dialog
+		fsDlgIdx := strings.Index(body, `id="file-server-dialog"`)
+		fsDlgEnd := strings.Index(body[fsDlgIdx:], `</dialog>`)
+		fsDlgBody := body[fsDlgIdx : fsDlgIdx+fsDlgEnd]
+		if strings.Contains(fsDlgBody, `chip-ok`) || strings.Contains(fsDlgBody, "Активен · порт") {
+			t.Fatalf("dialog must not contain old chip-ok or 'Активен · порт': %s", fsDlgBody)
 		}
 	})
 
@@ -97,6 +109,11 @@ func TestFileServerUI_Storages(t *testing.T) {
 		}
 		if !strings.Contains(body, "Приём по SMB/SFTP выключен") {
 			t.Fatalf("expected 'Приём по SMB/SFTP выключен' when disabled")
+		}
+
+		// Modal dialog rendered with disabled status
+		if !strings.Contains(body, `proto-status is-off`) || !strings.Contains(body, "Выключен") {
+			t.Fatalf("dialog should show disabled status when services off")
 		}
 	})
 
@@ -404,11 +421,17 @@ smbCheck.checked = true;
 elements['file-server-form'].dispatchEvent({ type: 'change' });
 assert.equal(fsSave.disabled, false, 'fsSave should be enabled after toggling smb_enabled');
 assert.equal(protoCardSmb.classList.contains('is-on'), true, 'proto-card-smb should have is-on class');
+assert.equal(smbChip.className, 'proto-status is-on', 'smbChip should have proto-status is-on class');
+assert.equal(smbChip.innerHTML.includes('dot-ok'), true, 'smbChip should contain dot-ok');
+assert.equal(smbChip.innerHTML.includes('Активен'), true, 'smbChip should contain Активен');
 
 // 3. Revert SMB: save button disabled again
 smbCheck.checked = false;
 elements['file-server-form'].dispatchEvent({ type: 'change' });
 assert.equal(fsSave.disabled, true, 'fsSave should be disabled when smb_enabled reverted to default');
+assert.equal(smbChip.className, 'proto-status is-off', 'smbChip should have proto-status is-off class');
+assert.equal(smbChip.innerHTML.includes('dot-off'), true, 'smbChip should contain dot-off');
+assert.equal(smbChip.innerHTML.includes('Выключен'), true, 'smbChip should contain Выключен');
 
 // 4. Toggle SFTP: becomes dirty and valid -> save button enabled
 sftpCheck.checked = true;

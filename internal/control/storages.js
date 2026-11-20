@@ -92,13 +92,12 @@
     if (sftpCard) sftpCard.classList.toggle('is-on', sftpCur);
     var isEn = document.documentElement && document.documentElement.lang === 'en';
     if (smbChip) {
-      smbChip.className = 'chip ' + (smbCur ? 'chip-ok' : 'chip-off');
-      smbChip.textContent = smbCur ? (isEn ? 'Active · port 445' : 'Активен · порт 445') : (isEn ? 'Disabled' : 'Выключен');
+      smbChip.className = 'proto-status ' + (smbCur ? 'is-on' : 'is-off');
+      smbChip.innerHTML = '<span class="dot ' + (smbCur ? 'dot-ok' : 'dot-off') + '"></span>' + (smbCur ? (isEn ? 'Active' : 'Активен') : (isEn ? 'Disabled' : 'Выключен'));
     }
     if (sftpChip) {
-      sftpChip.className = 'chip ' + (sftpCur ? 'chip-ok' : 'chip-off');
-      var portDisplay = isValid ? portCur : (portInit || 2022);
-      sftpChip.textContent = sftpCur ? ((isEn ? 'Active · port ' : 'Активен · порт ') + portDisplay) : (isEn ? 'Disabled' : 'Выключен');
+      sftpChip.className = 'proto-status ' + (sftpCur ? 'is-on' : 'is-off');
+      sftpChip.innerHTML = '<span class="dot ' + (sftpCur ? 'dot-ok' : 'dot-off') + '"></span>' + (sftpCur ? (isEn ? 'Active' : 'Активен') : (isEn ? 'Disabled' : 'Выключен'));
     }
     if (sftpAddr && isValid && sftpAddr.dataset && sftpAddr.dataset.baseHost) {
       sftpAddr.textContent = 'sftp://' + sftpAddr.dataset.baseHost + ':' + portCur + '/';

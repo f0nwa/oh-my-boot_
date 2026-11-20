@@ -41,15 +41,14 @@ func TestFileServerUI_Storages(t *testing.T) {
 			t.Fatalf("storages page must not contain <details> or <summary>")
 		}
 
-		// Header button with dot-ok
-		if !strings.Contains(body, `data-file-server-open`) {
-			t.Fatalf("missing data-file-server-open in storages page")
-		}
-		if !strings.Contains(body, `dot-ok`) {
-			t.Fatalf("expected dot-ok for enabled file server")
-		}
-		if !strings.Contains(body, "Файловый сервер (SMB / SFTP)") {
-			t.Fatalf("missing header button text")
+		// Header actions should not contain the file server button
+		if strings.Contains(body, `class="storage-page-actions"`) {
+			spaIdx := strings.Index(body, `class="storage-page-actions"`)
+			spaEnd := strings.Index(body[spaIdx:], `</div>`)
+			spaBody := body[spaIdx : spaIdx+spaEnd]
+			if strings.Contains(spaBody, `data-file-server-open`) {
+				t.Fatalf("storage-page-actions must not contain data-file-server-open: %s", spaBody)
+			}
 		}
 
 		// Local row chips
@@ -60,9 +59,12 @@ func TestFileServerUI_Storages(t *testing.T) {
 			t.Fatalf("missing SFTP address chip in Local row: %s", body)
 		}
 
-		// Row menu item in Local row
+		// Row menu item in Local row (the only place where file server dialog is opened from)
 		if !strings.Contains(body, "Файловый сервер (SMB / SFTP)…") {
 			t.Fatalf("missing Local row menu item 'Файловый сервер (SMB / SFTP)…'")
+		}
+		if !strings.Contains(body, `data-file-server-open`) {
+			t.Fatalf("missing data-file-server-open in Local row menu")
 		}
 
 		// Modal dialog #file-server-dialog

@@ -678,8 +678,8 @@ func TestStoragesPageRendersLiveRefresh(t *testing.T) {
 	if !strings.Contains(body, `data-live-refresh="15"`) {
 		t.Errorf("expected data-live-refresh=\"15\" in /storages")
 	}
-	if !strings.Contains(body, `data-live-targets="#storages-live,.storage-page-actions"`) {
-		t.Errorf("expected data-live-targets=\"#storages-live,.storage-page-actions\" in /storages")
+	if !strings.Contains(body, `data-live-targets="#storages-live"`) {
+		t.Errorf("expected data-live-targets=\"#storages-live\" in /storages")
 	}
 	if !strings.Contains(body, `<script defer src="/assets/live-refresh.js"></script>`) {
 		t.Errorf("expected script /assets/live-refresh.js in /storages")

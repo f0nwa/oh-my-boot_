@@ -67,7 +67,7 @@ func TestAccountPageShowsProfileLanguageAndPasswordForm(t *testing.T) {
 		t.Fatalf("status=%d body=%s", res.Code, body)
 	}
 	for _, want := range []string{
-		`class="card account-card"`, `class="account-card-head"`, `data-account-password-open`,
+		`class="account-grid"`, `class="card account-card"`, `class="account-card-head"`, `data-account-password-open`,
 		`class="kv account-kv"`, `class="account-lang-block"`, `class="account-lang-row"`,
 		`id="account-password-dialog"`, `class="user-dialog"`,
 		"viewer", "Observer", "View state, catalog and logs only",

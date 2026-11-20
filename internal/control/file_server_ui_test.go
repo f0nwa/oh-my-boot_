@@ -235,10 +235,16 @@ func TestFileServerUI_Account(t *testing.T) {
 		render(rec, "account", data)
 		body := rec.Body.String()
 
-		if strings.Contains(body, "<details") || strings.Contains(body, "<summary") {
-			t.Fatalf("account page must not contain <details> or <summary>")
+		if strings.Contains(body, "<details") || strings.Contains(body, "<summary") || strings.Contains(body, `<hr class="sep">`) {
+			t.Fatalf("account page must not contain <details>, <summary> or <hr class=\"sep\">")
 		}
 
+		if !strings.Contains(body, `class="account-grid"`) {
+			t.Fatalf("account page must contain .account-grid container")
+		}
+		if !strings.Contains(body, `class="card account-card account-fs-card"`) {
+			t.Fatalf("account page must render separate .account-fs-card card")
+		}
 		if !strings.Contains(body, "Доступ к хранилищу ISO (SMB / SFTP)") {
 			t.Fatalf("missing 'Доступ к хранилищу ISO (SMB / SFTP)' section in account page")
 		}

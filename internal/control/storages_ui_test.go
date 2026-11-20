@@ -671,3 +671,17 @@ console.log('STORAGE_SUBMIT_GATE_TESTS_PASS');
 		t.Fatalf("missing success marker: %s", string(out))
 	}
 }
+
+func TestStoragesPageRendersLiveRefresh(t *testing.T) {
+	s := sampleSpaceTestServer("admin", langRU, fakeDiskUsageAPI{})
+	body := libraryGet(t, s, "/storages")
+	if !strings.Contains(body, `data-live-refresh="15"`) {
+		t.Errorf("expected data-live-refresh=\"15\" in /storages")
+	}
+	if !strings.Contains(body, `data-live-targets="#storages-live,.storage-page-actions"`) {
+		t.Errorf("expected data-live-targets=\"#storages-live,.storage-page-actions\" in /storages")
+	}
+	if !strings.Contains(body, `<script defer src="/assets/live-refresh.js"></script>`) {
+		t.Errorf("expected script /assets/live-refresh.js in /storages")
+	}
+}

@@ -343,3 +343,18 @@ func TestSortInstallations(t *testing.T) {
 		t.Fatalf("expected sorted table header, got:\n%s", body)
 	}
 }
+
+func TestInstallationsPageRendersLiveRefresh(t *testing.T) {
+	store := newDraftStore(t, "operator", nil)
+	s, _ := draftServer(t, store)
+	body := libraryGet(t, s, "/installations")
+	if !strings.Contains(body, `data-live-refresh="15"`) {
+		t.Errorf("expected data-live-refresh=\"15\" in /installations")
+	}
+	if !strings.Contains(body, `data-live-targets="#download-results,#download-filters"`) {
+		t.Errorf("expected data-live-targets=\"#download-results,#download-filters\" in /installations")
+	}
+	if !strings.Contains(body, `<script defer src="/assets/live-refresh.js"></script>`) {
+		t.Errorf("expected script /assets/live-refresh.js in /installations")
+	}
+}

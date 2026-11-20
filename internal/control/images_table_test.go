@@ -317,3 +317,17 @@ func TestImagesUploadTargetShowsStorageKind(t *testing.T) {
 		t.Fatalf("/images should not include read-only storage in upload targets")
 	}
 }
+
+func TestImagesPageRendersLiveRefresh(t *testing.T) {
+	s, _ := setupImagesTableServer(t, "admin", "ru")
+	body := libraryGet(t, s, "/images")
+	if !strings.Contains(body, `data-live-refresh="15"`) {
+		t.Errorf("expected data-live-refresh=\"15\" in /images")
+	}
+	if !strings.Contains(body, `data-live-targets="#image-results,#image-filters"`) {
+		t.Errorf("expected data-live-targets=\"#image-results,#image-filters\" in /images")
+	}
+	if !strings.Contains(body, `<script defer src="/assets/live-refresh.js"></script>`) {
+		t.Errorf("expected script /assets/live-refresh.js in /images")
+	}
+}

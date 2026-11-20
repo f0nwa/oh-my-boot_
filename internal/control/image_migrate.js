@@ -200,14 +200,26 @@
           if (job.state === 'completed') {
             reloading = true;
             stopPolling();
-            window.location.reload();
+            if (typeof CustomEvent === 'function' && typeof document.dispatchEvent === 'function') {
+              document.dispatchEvent(new CustomEvent('omb:refresh'));
+            } else if (window.OMB && typeof window.OMB.refresh === 'function') {
+              window.OMB.refresh();
+            } else if (typeof window.location.reload === 'function') {
+              window.location.reload();
+            }
             return;
           }
           if (job.state === 'failed' || job.state === 'canceled') {
             reloading = true;
             stopPolling();
             if (job.error) alert(job.error);
-            window.location.reload();
+            if (typeof CustomEvent === 'function' && typeof document.dispatchEvent === 'function') {
+              document.dispatchEvent(new CustomEvent('omb:refresh'));
+            } else if (window.OMB && typeof window.OMB.refresh === 'function') {
+              window.OMB.refresh();
+            } else if (typeof window.location.reload === 'function') {
+              window.location.reload();
+            }
             return;
           }
         }

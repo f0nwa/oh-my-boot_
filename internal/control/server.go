@@ -250,6 +250,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
 	mux.HandleFunc("GET /assets/login.js", loginScript)
 	mux.HandleFunc("GET /assets/infinite-scroll.js", infiniteScrollScript)
+	mux.HandleFunc("GET /assets/live-refresh.js", liveRefreshScript)
 	mux.HandleFunc("GET /assets/async-block.js", asyncBlockScript)
 	mux.HandleFunc("GET /assets/account.js", accountScript)
 	mux.HandleFunc("GET /assets/sha-chip.js", shaChipScript)

@@ -2,7 +2,9 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,7 +45,7 @@ func eventsRequest(r *http.Request) pageData {
 	if data.Tab != "requests" && data.Tab != "dhcp" && data.Tab != "system" {
 		data.Tab = "machines"
 	}
-	if data.SystemSev != "error" && data.SystemSev != "warning" && data.SystemSev != "info" {
+	if data.SystemSev != "error" && data.SystemSev != "warning" && data.SystemSev != "info" && data.SystemSev != "active" {
 		data.SystemSev = "all"
 	}
 	if data.SystemCat != "storage" && data.SystemCat != "service" && data.SystemCat != "network" && data.SystemCat != "task" {
@@ -135,6 +137,7 @@ func (s *Server) eventsJournal(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) eventsTableData(r *http.Request) pageData {
 	data := eventsRequest(r)
+	data.SystemErrorCount = s.recentSystemErrorCount(r.Context())
 
 	if data.Tab == "system" {
 		store, ok := s.Store.(SystemEventStore)
@@ -293,4 +296,34 @@ func (s *Server) eventsTableData(r *http.Request) pageData {
 		}
 	}
 	return data
+}
+
+// systemEventsClear handles pruning or wiping system events from the database.
+func (s *Server) systemEventsClear(w http.ResponseWriter, r *http.Request) {
+	info := requestInfo(r)
+	store, ok := s.Store.(SystemEventStore)
+	if !ok {
+		http.Error(w, "Хранилище системных событий недоступно", http.StatusServiceUnavailable)
+		return
+	}
+	scope := strings.TrimSpace(r.FormValue("scope"))
+	var deleted int64
+	var err error
+	if scope == "all" {
+		deleted, err = store.ClearAllSystemEvents(r.Context())
+	} else {
+		scope = "resolved"
+		deleted, err = store.PruneResolvedSystemEvents(r.Context())
+	}
+	if err != nil {
+		_ = s.Store.Audit(r.Context(), info.User.ID, "system_events.clear", "error", scope)
+		http.Error(w, "Не удалось очистить системные события", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), info.User.ID, "system_events.clear", "ok", fmt.Sprintf("scope=%s deleted=%d", scope, deleted))
+	msg := "Исправленные события удалены"
+	if scope == "all" {
+		msg = "Журнал системных событий очищен"
+	}
+	http.Redirect(w, r, "/events?tab=system&message="+url.QueryEscape(msg), http.StatusSeeOther)
 }

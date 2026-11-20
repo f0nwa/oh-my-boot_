@@ -108,6 +108,30 @@
     initJournal();
     document.querySelectorAll('[data-events-url]').forEach(loadBlock);
     document.addEventListener('click', (event) => {
+      const openBtn = event.target.closest('[data-system-events-clear-open]');
+      if (openBtn) {
+        const dlg = document.getElementById('system-events-clear-dialog');
+        if (dlg) {
+          if (typeof dlg.showModal === 'function') dlg.showModal();
+          else dlg.setAttribute('open', '');
+        }
+        return;
+      }
+      const closeBtn = event.target.closest('#system-events-clear-dialog [data-close-dialog]');
+      if (closeBtn) {
+        const dlg = document.getElementById('system-events-clear-dialog');
+        if (dlg) {
+          if (typeof dlg.close === 'function') dlg.close();
+          else dlg.removeAttribute('open');
+        }
+        return;
+      }
+      const dlg = document.getElementById('system-events-clear-dialog');
+      if (dlg && event.target === dlg && typeof dlg.close === 'function') {
+        dlg.close();
+        return;
+      }
+
       const retry = event.target.closest('[data-events-retry]');
       if (!retry) return;
       const area = retry.closest('[data-events-url]');

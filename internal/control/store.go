@@ -789,8 +789,8 @@ func (s Store) RecordSystemEvent(ctx context.Context, ev SystemEvent) error {
 	if at.IsZero() {
 		at = time.Now().UTC()
 	}
-	_, err := s.Pool.Exec(ctx, `INSERT INTO system_events (occurred_at,severity,category,source_key,title,detail,link) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		at, ev.Severity, ev.Category, ev.SourceKey, ev.Title, ev.Detail, ev.Link)
+	_, err := s.Pool.Exec(ctx, `INSERT INTO system_events (occurred_at,severity,category,source_key,title,detail,link,resolved_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		at, ev.Severity, ev.Category, ev.SourceKey, ev.Title, ev.Detail, ev.Link, ev.ResolvedAt)
 	return err
 }
 
@@ -805,7 +805,9 @@ func (s Store) SystemEventsPaged(ctx context.Context, filter SystemEventFilter, 
 		args = append(args, val)
 		return fmt.Sprintf("$%d", len(args))
 	}
-	if filter.Severity != "" && filter.Severity != "all" {
+	if filter.Severity == "active" {
+		conds = append(conds, "resolved_at IS NULL AND severity = 'error'")
+	} else if filter.Severity != "" && filter.Severity != "all" {
 		conds = append(conds, "severity = "+add(filter.Severity))
 	}
 	if filter.Category != "" && filter.Category != "all" {
@@ -825,7 +827,7 @@ func (s Store) SystemEventsPaged(ctx context.Context, filter SystemEventFilter, 
 			conds = append(conds, "occurred_at < "+pTime)
 		}
 	}
-	query := `SELECT id,occurred_at,severity,category,source_key,title,detail,link FROM system_events`
+	query := `SELECT id,occurred_at,severity,category,source_key,title,detail,link,resolved_at FROM system_events`
 	if len(conds) > 0 {
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
@@ -838,7 +840,7 @@ func (s Store) SystemEventsPaged(ctx context.Context, filter SystemEventFilter, 
 	var out []SystemEvent
 	for rows.Next() {
 		var ev SystemEvent
-		if err := rows.Scan(&ev.ID, &ev.OccurredAt, &ev.Severity, &ev.Category, &ev.SourceKey, &ev.Title, &ev.Detail, &ev.Link); err != nil {
+		if err := rows.Scan(&ev.ID, &ev.OccurredAt, &ev.Severity, &ev.Category, &ev.SourceKey, &ev.Title, &ev.Detail, &ev.Link, &ev.ResolvedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, ev)
@@ -853,8 +855,45 @@ func (s Store) CountRecentSystemErrors(ctx context.Context, since time.Time) (in
 	return count, err
 }
 
+// CountActiveSystemErrors returns how many unresolved error-level system events exist.
+func (s Store) CountActiveSystemErrors(ctx context.Context) (int, error) {
+	var count int
+	err := s.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM system_events WHERE severity='error' AND resolved_at IS NULL`).Scan(&count)
+	return count, err
+}
+
+// ResolveSystemEvents marks active error and warning events matching the source key as resolved.
+func (s Store) ResolveSystemEvents(ctx context.Context, sourceKey string, resolvedAt time.Time) error {
+	if strings.TrimSpace(sourceKey) == "" {
+		return nil
+	}
+	if resolvedAt.IsZero() {
+		resolvedAt = time.Now().UTC()
+	}
+	_, err := s.Pool.Exec(ctx, `UPDATE system_events SET resolved_at = $1 WHERE source_key = $2 AND resolved_at IS NULL AND severity IN ('error', 'warning')`, resolvedAt, sourceKey)
+	return err
+}
+
 // PruneSystemEvents removes system events older than the given cutoff.
 func (s Store) PruneSystemEvents(ctx context.Context, olderThan time.Time) error {
 	_, err := s.Pool.Exec(ctx, `DELETE FROM system_events WHERE occurred_at < $1`, olderThan)
 	return err
+}
+
+// PruneResolvedSystemEvents deletes all events that have been marked resolved.
+func (s Store) PruneResolvedSystemEvents(ctx context.Context) (int64, error) {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM system_events WHERE resolved_at IS NOT NULL`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ClearAllSystemEvents deletes all system events.
+func (s Store) ClearAllSystemEvents(ctx context.Context) (int64, error) {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM system_events`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }

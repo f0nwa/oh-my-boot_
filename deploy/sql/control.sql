@@ -331,10 +331,12 @@ CREATE TABLE IF NOT EXISTS system_events (
  source_key TEXT NOT NULL DEFAULT '',
  title TEXT NOT NULL,
  detail TEXT NOT NULL DEFAULT '',
- link TEXT NOT NULL DEFAULT ''
+ link TEXT NOT NULL DEFAULT '',
+ resolved_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS system_events_occurred_idx ON system_events (occurred_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS system_events_severity_idx ON system_events (severity, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS system_events_active_idx ON system_events (severity, occurred_at DESC) WHERE resolved_at IS NULL;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS fs_access_mode TEXT NOT NULL DEFAULT 'none'
 	CHECK (fs_access_mode IN ('none', 'ro', 'rw'));

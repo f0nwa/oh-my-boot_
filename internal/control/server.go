@@ -297,6 +297,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /maintenance/disable", s.protect("network", withPageErrors(s.storagesPage, s.maintenanceDisable)))
 	mux.HandleFunc("POST /events/retention", s.protect("delete", withPageErrors(s.eventsPage, s.journalRetention)))
 	mux.HandleFunc("POST /events/clear", s.protect("delete", withPageErrors(s.eventsPage, s.journalClear)))
+	mux.HandleFunc("POST /events/system/clear", s.protect("delete", withPageErrors(s.eventsPage, s.systemEventsClear)))
 	mux.HandleFunc("GET /machines", s.protect("view", s.machinesPage))
 	mux.HandleFunc("POST /machines", s.protect("images", withPageErrors(s.machinesPage, s.machineAdd)))
 	mux.HandleFunc("POST /machines/{mac}", s.protect("images", withPageErrors(s.machinesPage, s.machineTableEdit)))

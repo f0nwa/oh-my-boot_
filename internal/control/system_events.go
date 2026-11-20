@@ -25,6 +25,7 @@ type SystemEvent struct {
 	Title      string
 	Detail     string
 	Link       string
+	ResolvedAt *time.Time
 }
 
 // SystemEventFilter narrows the /events?tab=system feed.
@@ -41,7 +42,11 @@ type SystemEventStore interface {
 	RecordSystemEvent(ctx context.Context, ev SystemEvent) error
 	SystemEventsPaged(ctx context.Context, filter SystemEventFilter, limit int) ([]SystemEvent, error)
 	CountRecentSystemErrors(ctx context.Context, since time.Time) (int, error)
+	CountActiveSystemErrors(ctx context.Context) (int, error)
+	ResolveSystemEvents(ctx context.Context, sourceKey string, resolvedAt time.Time) error
 	PruneSystemEvents(ctx context.Context, olderThan time.Time) error
+	PruneResolvedSystemEvents(ctx context.Context) (int64, error)
+	ClearAllSystemEvents(ctx context.Context) (int64, error)
 }
 
 func (s *Server) recordSystemEvent(ctx context.Context, ev SystemEvent) {
@@ -55,16 +60,20 @@ func (s *Server) recordSystemEvent(ctx context.Context, ev SystemEvent) {
 	_ = store.RecordSystemEvent(ctx, ev)
 }
 
-func (s *Server) recentSystemErrorCount(ctx context.Context) int {
+func (s *Server) activeSystemErrorCount(ctx context.Context) int {
 	store, ok := s.Store.(SystemEventStore)
 	if !ok {
 		return 0
 	}
-	n, err := store.CountRecentSystemErrors(ctx, time.Now().UTC().Add(-24*time.Hour))
+	n, err := store.CountActiveSystemErrors(ctx)
 	if err != nil {
 		return 0
 	}
 	return n
+}
+
+func (s *Server) recentSystemErrorCount(ctx context.Context) int {
+	return s.activeSystemErrorCount(ctx)
 }
 
 func systemEventSeverityLabel(sev string) string {
@@ -212,6 +221,7 @@ func (m *SystemEventMonitor) recordServiceTransition(ctx context.Context, store 
 			Link:       "/system",
 		})
 	} else if !prev && up {
+		_ = store.ResolveSystemEvents(ctx, "service:"+key, now.UTC())
 		_ = store.RecordSystemEvent(ctx, SystemEvent{
 			OccurredAt: now.UTC(),
 			Severity:   "info",
@@ -281,6 +291,8 @@ func (m *SystemEventMonitor) checkImagesAndStorages(ctx context.Context, store S
 					Detail:     detail,
 					Link:       "/storages",
 				})
+			} else if st.State == "ready" {
+				_ = store.ResolveSystemEvents(ctx, fmt.Sprintf("storage:%d", st.ID), now.UTC())
 			}
 			continue
 		}
@@ -299,6 +311,7 @@ func (m *SystemEventMonitor) checkImagesAndStorages(ctx context.Context, store S
 				Link:       "/storages",
 			})
 		} else if prev == "unavailable" && st.State == "ready" {
+			_ = store.ResolveSystemEvents(ctx, fmt.Sprintf("storage:%d", st.ID), now.UTC())
 			_ = store.RecordSystemEvent(ctx, SystemEvent{
 				OccurredAt: now.UTC(),
 				Severity:   "info",

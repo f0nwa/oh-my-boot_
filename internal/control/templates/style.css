@@ -909,18 +909,21 @@ tr.is-migrating td{background:var(--draft-bg)}
 .storage-recovery-dialog .user-dialog-head h2{font-size:18px;line-height:1.35}
 .storage-recovery-dialog .user-dialog-head>button{flex-shrink:0;min-width:28px;padding:0 6px;margin:0}
 .storage-recovery-dialog>p.hint{margin:0 0 20px;font-size:13px}
-.storage-tasks-section{display:flex;flex-direction:column;gap:10px}
-.storage-tasks-head h3{font-size:13px;font-weight:600;margin:0;color:var(--text);text-transform:uppercase;letter-spacing:.04em}
-.storage-tasks-sep{border:0;border-top:1px solid var(--line);margin:16px 0}
-.storage-tasks-section p.hint{margin:2px 0 0;font-size:12px;color:var(--text-2)}
-.storage-recovery-dialog label.storage-recovery-enabled{flex-direction:row;align-items:center;gap:8px;margin:0;font-weight:400}
-.storage-recovery-enabled input[type=checkbox]{width:16px;flex-shrink:0;margin:0}
-.storage-recovery-interval{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
-.storage-recovery-interval label{margin:0;color:var(--text-2);font-weight:400}
-.storage-recovery-interval input{width:88px;flex-shrink:0}
-.storage-recovery-status{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
-.storage-recovery-status p{margin:0 0 4px}
-.storage-recovery-status time{display:block;font-variant-numeric:tabular-nums}
+.storage-task-row{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-bottom:1px solid var(--line)}
+.storage-task-row:first-of-type{padding-top:4px}
+.storage-task-main{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:12px}
+@media(max-width:480px){.storage-task-main{flex-wrap:wrap;gap:8px}.storage-task-controls{margin-left:24px}}
+.storage-task-title,
+.user-dialog label.storage-task-title{display:flex;flex-direction:row;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--text);cursor:pointer;margin:0}
+.user-dialog label.storage-task-title input[type=checkbox]{width:16px;height:16px;flex:none;margin:0;accent-color:var(--accent);cursor:pointer}
+.storage-task-controls{display:flex;flex-direction:row;align-items:center;gap:6px;font-size:12.5px;color:var(--text-2);white-space:nowrap}
+.user-dialog .storage-task-controls label{display:inline;color:var(--text-2);font-weight:normal;margin:0;font-size:12.5px}
+.user-dialog .storage-task-controls input{width:68px;height:28px;background:var(--bg);border:1px solid var(--line-strong);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:12px;padding:0 6px;text-align:right;flex:none;box-sizing:border-box}
+.storage-task-controls .dot{margin-left:2px}
+.storage-task-row p.hint{margin:0 0 0 24px;font-size:12px;color:var(--muted);line-height:1.4}
+.storage-recovery-status{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:10px 12px;background:var(--bg);border:1px solid var(--line);border-radius:6px;font-size:12px}
+.storage-recovery-last-box{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.storage-recovery-last-label{color:var(--text-2)}
 .storage-recovery-status form{margin:0}
 .storage-recovery-results{padding-left:20px;overflow-wrap:anywhere}
 .storage-recovery-dialog>.error{overflow-wrap:anywhere}

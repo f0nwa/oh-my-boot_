@@ -68,10 +68,13 @@ func TestImagesPageShowsStorageRecovery(t *testing.T) {
 		res := httptest.NewRecorder()
 		s.Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/storages", nil))
 		body := res.Body.String()
-		for _, want := range []string{"Фоновые задачи хранилищ", "restarted omb-winiso@1.service", "mnt-x.mount: start failed", "каждые 2 мин"} {
+		for _, want := range []string{"Фоновые задачи хранилищ", "restarted omb-winiso@1.service", "mnt-x.mount: start failed"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: images page lacks %q", tc.role, want)
 			}
+		}
+		if !tc.editable && !strings.Contains(body, "каждые 2 мин") {
+			t.Errorf("%s: images page lacks read-only interval", tc.role)
 		}
 		hasForm := strings.Contains(body, `action="/images/storage-recovery"`) && strings.Contains(body, `name="interval_minutes" value="2"`) && strings.Contains(body, `action="/images/storage-recovery/run"`)
 		if hasForm != tc.editable {

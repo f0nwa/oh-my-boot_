@@ -145,6 +145,15 @@
     var rescanEnabled = recoveryForm.elements.rescan_enabled;
     var rescanInterval = recoveryForm.elements.rescan_interval_minutes;
 
+    var recDot = document.getElementById('storage-recovery-dot');
+    if (recDot && enabled) {
+      recDot.className = 'dot ' + (enabled.checked ? 'dot-ok' : 'dot-off');
+    }
+    var scanDot = document.getElementById('storage-rescan-dot');
+    if (scanDot && rescanEnabled) {
+      scanDot.className = 'dot ' + (rescanEnabled.checked ? 'dot-ok' : 'dot-off');
+    }
+
     var changed = (enabled && enabled.checked !== enabled.defaultChecked) ||
       (interval && interval.valueAsNumber !== Number(interval.defaultValue)) ||
       (rescanEnabled && rescanEnabled.checked !== rescanEnabled.defaultChecked) ||

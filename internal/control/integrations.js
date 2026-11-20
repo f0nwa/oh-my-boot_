@@ -1,11 +1,64 @@
 (function () {
   "use strict";
 
-  function wireDialog(openAttr, dialogId) {
+  function snapshotForm(form) {
+    var parts = [];
+    var fields = form.querySelectorAll("input, select, textarea");
+    for (var i = 0; i < fields.length; i++) {
+      var el = fields[i];
+      var name = el.getAttribute("name") || "";
+      if (!name || name === "csrf" || name === "test_username" || name === "enable_now") {
+        continue;
+      }
+      if (el.type === "checkbox" || el.type === "radio") {
+        parts.push(name + "=" + (el.checked ? "1" : "0"));
+      } else {
+        parts.push(name + "=" + (el.value || ""));
+      }
+    }
+    return parts.join("\x00");
+  }
+
+  function wireDirtySubmitGate(form) {
+    if (!form) return null;
+    var saveBtns = form.querySelectorAll("[data-integration-save]");
+    if (!saveBtns.length) return null;
+    var initial = snapshotForm(form);
+
+    function sync() {
+      var dirty = snapshotForm(form) !== initial;
+      for (var i = 0; i < saveBtns.length; i++) {
+        saveBtns[i].disabled = !dirty;
+      }
+    }
+
+    form.addEventListener("input", sync);
+    form.addEventListener("change", sync);
+    form.addEventListener("submit", function (ev) {
+      sync();
+      if (saveBtns[0].disabled) {
+        ev.preventDefault();
+      }
+    });
+
+    sync();
+    return {
+      reset: function () {
+        if (typeof form.reset === "function") {
+          form.reset();
+        }
+        initial = snapshotForm(form);
+        sync();
+      }
+    };
+  }
+
+  function wireDialog(openAttr, dialogId, gate) {
     var dialog = document.getElementById(dialogId);
     if (!dialog) return;
     document.querySelectorAll("[" + openAttr + "]").forEach(function (btn) {
       btn.addEventListener("click", function () {
+        if (gate) gate.reset();
         if (typeof dialog.showModal === "function") {
           dialog.showModal();
         } else {
@@ -78,8 +131,10 @@
     });
   }
 
-  wireDialog("data-ldap-config-open", "ldap-config-dialog");
-  wireDialog("data-keycloak-config-open", "keycloak-config-dialog");
+  var ldapGate = wireDirtySubmitGate(document.getElementById("ldap-config-form"));
+  var kcGate = wireDirtySubmitGate(document.getElementById("keycloak-config-form"));
+  wireDialog("data-ldap-config-open", "ldap-config-dialog", ldapGate);
+  wireDialog("data-keycloak-config-open", "keycloak-config-dialog", kcGate);
   wireTestButton("ldap-test-btn", "ldap-config-form", "/integrations/ldap/test", "ldap-test-result");
   wireTestButton("keycloak-test-btn", "keycloak-config-form", "/integrations/keycloak/test", "keycloak-test-result");
 })();

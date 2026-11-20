@@ -104,7 +104,7 @@
 </div>
 
 <dialog id="ldap-config-dialog" class="user-dialog integration-dialog">
-  <form id="ldap-config-form" method="post" action="/integrations/ldap/save">
+  <form id="ldap-config-form" method="post" action="/integrations/ldap/save" data-integration-form="ldap" data-has-bind-pw="{{if .Integrations.LDAP.HasBindPassword}}true{{else}}false{{end}}">
     <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
     <div class="dialog-head">
       <h2>{{t "Настройка Active Directory / LDAP"}}</h2>
@@ -155,15 +155,15 @@
     <div class="dialog-actions">
       <button type="button" class="btn" data-dialog-close>{{t "Закрыть"}}</button>
       <div class="integration-actions">
-        <button type="submit" class="btn" name="enable_now" value="0">{{t "Сохранить"}}</button>
-        <button type="submit" class="btn btn-primary" name="enable_now" value="1">{{t "Сохранить и включить"}}</button>
+        <button type="submit" class="btn" name="enable_now" value="0" data-integration-save disabled>{{t "Сохранить"}}</button>
+        <button type="submit" class="btn btn-primary" name="enable_now" value="1" data-integration-save disabled>{{t "Сохранить и включить"}}</button>
       </div>
     </div>
   </form>
 </dialog>
 
 <dialog id="keycloak-config-dialog" class="user-dialog integration-dialog">
-  <form id="keycloak-config-form" method="post" action="/integrations/keycloak/save">
+  <form id="keycloak-config-form" method="post" action="/integrations/keycloak/save" data-integration-form="keycloak" data-has-client-secret="{{if .Integrations.Keycloak.HasClientSecret}}true{{else}}false{{end}}" data-has-service-secret="{{if .Integrations.Keycloak.HasServiceSecret}}true{{else}}false{{end}}">
     <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
     <div class="dialog-head">
       <h2>{{t "Настройка Keycloak (OIDC)"}}</h2>
@@ -196,8 +196,8 @@
     <div class="dialog-actions">
       <button type="button" class="btn" data-dialog-close>{{t "Закрыть"}}</button>
       <div class="integration-actions">
-        <button type="submit" class="btn" name="enable_now" value="0">{{t "Сохранить"}}</button>
-        <button type="submit" class="btn btn-primary" name="enable_now" value="1">{{t "Сохранить и включить"}}</button>
+        <button type="submit" class="btn" name="enable_now" value="0" data-integration-save disabled>{{t "Сохранить"}}</button>
+        <button type="submit" class="btn btn-primary" name="enable_now" value="1" data-integration-save disabled>{{t "Сохранить и включить"}}</button>
       </div>
     </div>
   </form>

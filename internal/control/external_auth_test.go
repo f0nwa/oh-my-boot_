@@ -125,7 +125,7 @@ func TestRenderIntegrationsUsersAndAccountForExternalUsers(t *testing.T) {
 		},
 	})
 	body := rec.Body.String()
-	for _, want := range []string{"Active Directory / LDAP", "Keycloak (OIDC)", "id=\"ldap-config-dialog\"", "id=\"keycloak-config-dialog\"", "/assets/integrations.js"} {
+	for _, want := range []string{"Active Directory / LDAP", "Keycloak (OIDC)", "id=\"ldap-config-dialog\"", "id=\"keycloak-config-dialog\"", "/assets/integrations.js", "data-integration-save disabled"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/integrations missing %q", want)
 		}

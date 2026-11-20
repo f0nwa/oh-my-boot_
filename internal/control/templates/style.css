@@ -1100,6 +1100,8 @@ button.user-fs-chip-btn:hover{filter:brightness(1.08);border-color:var(--line-st
 .integration-actions{display:flex;gap:8px;align-items:center}
 .integration-actions form{margin:0}
 .integration-dialog{width:min(640px,calc(100vw - 32px));max-height:90vh}
+.integration-dialog .dialog-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.integration-dialog .dialog-actions button:disabled{opacity:.45;cursor:default;pointer-events:none}
 .integration-dialog-body{max-height:60vh;overflow-y:auto;padding-right:4px}
 .integration-section{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 .integration-section:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}

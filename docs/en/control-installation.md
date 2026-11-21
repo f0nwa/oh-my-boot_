@@ -285,4 +285,8 @@ chown omb-control:omb-control /etc/omb/secrets.key
 chmod 600 /etc/omb/secrets.key
 ```
 
-Local sign-in and the last active local administrator always remain available even when AD or Keycloak is unreachable. To upgrade an existing database, apply `deploy/sql/2026-11-20-external-auth.sql`.
+Local sign-in and the last active local administrator always remain available even when AD or Keycloak is unreachable.
+
+On an existing server, stop Control and back up the `omb_control` database, the previous binary, and the integrations key. If the [November 20 external authentication migration](../../deploy/sql/2026-11-20-external-auth.sql) has not been applied, apply it first. Then run the [OIDC logout hash migration](../../deploy/sql/2026-11-21-oidc-logout-jti-hash.sql) as the database owner with `psql -v ON_ERROR_STOP=1`, and start the new Control.
+
+The migration preserves existing hashes and expiration times. It hashes any identifiers stored in their original form. Unexpected table layouts cause the migration to stop. To roll back, stop Control and restore the previous binary together with its schema and data. Fresh installations use the correct schema from `deploy/sql/control.sql`.

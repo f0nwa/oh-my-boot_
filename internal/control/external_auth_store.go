@@ -322,12 +322,12 @@ RETURNING state, nonce, code_verifier, expires_at`, state).
 	return st, err
 }
 
-// RecordOIDCLogoutJTI records a logout token jti and returns false if it was already seen.
+// RecordOIDCLogoutJTI records a hash of the logout identifier and reports whether it is new.
 func (s Store) RecordOIDCLogoutJTI(ctx context.Context, jti string, expiresAt time.Time) (bool, error) {
 	_, _ = s.Pool.Exec(ctx, "DELETE FROM oidc_logout_jti WHERE expires_at <= now()")
 	res, err := s.Pool.Exec(ctx, `
-INSERT INTO oidc_logout_jti (jti, expires_at) VALUES ($1, $2)
-ON CONFLICT (jti) DO NOTHING`, jti, expiresAt)
+INSERT INTO oidc_logout_jti (jti_hash, expires_at) VALUES ($1, $2)
+ON CONFLICT (jti_hash) DO NOTHING`, tokenHash(jti), expiresAt)
 	if err != nil {
 		return false, err
 	}

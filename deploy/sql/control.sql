@@ -403,7 +403,7 @@ CREATE TABLE IF NOT EXISTS oidc_login_states (
 CREATE INDEX IF NOT EXISTS oidc_login_states_expires_idx ON oidc_login_states (expires_at);
 
 CREATE TABLE IF NOT EXISTS oidc_logout_jti (
-	jti TEXT PRIMARY KEY,
+	jti_hash TEXT PRIMARY KEY,
 	expires_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS oidc_logout_jti_expires_idx ON oidc_logout_jti (expires_at);

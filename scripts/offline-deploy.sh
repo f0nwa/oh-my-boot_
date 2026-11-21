@@ -237,7 +237,7 @@ cleanup() {
 usage() {
     cat >&2 <<'TEXT'
 offline-deploy.sh check-update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY
-offline-deploy.sh install INSTALL_ARCHIVE PUBLIC_KEY MANAGEMENT_IP PXE_INTERFACE
+offline-deploy.sh install INSTALL_ARCHIVE PUBLIC_KEY MANAGEMENT_IP [PXE_INTERFACE|none]
 offline-deploy.sh update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY MANAGEMENT_IP
 offline-deploy.sh rollback MANAGEMENT_IP
 TEXT
@@ -247,7 +247,7 @@ TEXT
 main() {
     local command=${1:-}
     case "$command:$#" in
-        check-update:4|install:5|update:5|rollback:2) ;;
+        check-update:4|install:4|install:5|update:5|rollback:2) ;;
         *) usage ;;
     esac
     shift
@@ -269,7 +269,7 @@ main() {
             check_address
             # shellcheck source=offline-install-lib.sh
             source "$script_dir/offline-install-lib.sh"
-            fresh_install "$1" "$2" "$4"
+            fresh_install "$1" "$2" "${4:-none}"
             ;;
         update)
             address=$4

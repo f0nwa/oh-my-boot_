@@ -45,4 +45,27 @@ test ! -e "$state/PENDING"
 test "$(cat "$state/COMMIT")" = "$prior_id"
 test "$(cat "$work/calls")" = 'start omb-control.service'
 
+source "$repo/scripts/offline-install-lib.sh"
+address=192.168.10.45
+ip() {
+    case "$*" in
+        'link show dev omb-pxe-off') test -e "$work/pxe-off-present" ;;
+        'link show dev ens18'|'link show dev ens19') return 0 ;;
+        '-o -4 addr show dev ens18') printf '2: ens18 inet 192.168.10.45/24 scope global ens18\n' ;;
+        '-o -4 addr show dev ens19') return 0 ;;
+        *) return 1 ;;
+    esac
+}
+test "$(resolve_pxe_interface none)" = omb-pxe-off
+test "$(resolve_pxe_interface ens19)" = ens19
+if (resolve_pxe_interface ens18); then
+    echo 'Accepted the management device for PXE' >&2
+    exit 1
+fi
+touch "$work/pxe-off-present"
+if (resolve_pxe_interface none); then
+    echo 'Accepted a real device with the reserved name for disabled PXE' >&2
+    exit 1
+fi
+
 echo 'Update scope and interrupted-run guards passed.'

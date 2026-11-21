@@ -39,17 +39,32 @@ APT
     apt_local -y --no-install-recommends --no-remove install "${packages[@]}"
 )
 
+resolve_pxe_interface() {
+    local pxe_iface=$1
+    if [[ "$pxe_iface" == none ]]; then
+        # The bundled Control requires a nonempty allowlist. Use a reserved
+        # name that cannot match a current interface in management-only mode.
+        if ip link show dev omb-pxe-off >/dev/null 2>&1; then
+            fail 'The reserved interface name omb-pxe-off is in use.'
+        fi
+        printf '%s\n' omb-pxe-off
+        return
+    fi
+    [[ "$pxe_iface" =~ ^[[:alnum:]_.-]+$ ]] || fail 'Invalid PXE interface name.'
+    ip link show dev "$pxe_iface" >/dev/null || fail "PXE interface $pxe_iface is unavailable."
+    if ip -o -4 addr show dev "$pxe_iface" | awk -v ip="$address" '{split($4,a,"/"); if (a[1]==ip) found=1} END {exit !found}'; then
+        fail 'Use a separate management interface.'
+    fi
+    printf '%s\n' "$pxe_iface"
+}
+
 fresh_install() {
-    local archive=$1 key=$2 pxe_iface=$3 release="$work/install" commit account svc path
+    local archive=$1 key=$2 pxe_iface release="$work/install" commit account svc path
     local password confirmation dbs steps db file iso_password boot_url="http://$address:8080"
     local boot_dsn='host=/var/run/postgresql dbname=omb_boot user=omb-boot'
     local control_dsn='host=/var/run/postgresql dbname=omb_control user=omb-control'
     local images_dsn='host=/var/run/postgresql dbname=omb_images user=omb-images'
-    [[ "$pxe_iface" =~ ^[[:alnum:]_.-]+$ ]] || fail 'Invalid PXE interface name.'
-    ip link show dev "$pxe_iface" >/dev/null
-    if ip -o -4 addr show dev "$pxe_iface" | awk -v ip="$address" '{split($4,a,"/"); if (a[1]==ip) found=1} END {exit !found}'; then
-        fail 'Use a separate management interface.'
-    fi
+    pxe_iface=$(resolve_pxe_interface "$3")
     assert_no_pending "$state"
     for path in /etc/omb /srv/omb/tftp "$state" /usr/local/bin/omb-control; do
         [[ ! -e "$path" && ! -L "$path" ]] || fail "Refusing to overwrite $path."

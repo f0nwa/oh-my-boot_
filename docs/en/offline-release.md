@@ -1,0 +1,16 @@
+# Portable OMB release for Ubuntu 26.04 amd64
+
+[Русская версия and complete runbook](../offline-release.md).
+
+The installation archive contains the OMB binaries, service units, templates, initial database schemas, boot assets, and a local APT repository. The separate A-to-B update contains two replacement binaries and the OIDC logout migration. The signed manifest lists the target, both commits for an update, the file hashes and sizes, and the ordered SQL steps.
+
+Use the release verifier from a trusted checkout and obtain the public key separately from the archives. An example on the target:
+
+```sh
+sudo python3 offline-release.py verify omb-update-a-to-b.tar.gz \
+  --public-key trusted-release-public.pem --check-host --extract /var/tmp/omb-update-b
+```
+
+The verifier checks the signature, payload, OS, architecture, and installed release marker before extracting to a new directory. It does not install packages, stop services, or apply SQL.
+
+For a fresh installation, follow the [offline installation guide](offline-installation.md), verify HTTPS and the boot menu, and record the installed commit in `/var/lib/omb-deployment/COMMIT`. For an update, stop Control and back up its database, binaries and keys. Test the restore before applying the manifest's migration and replacing the binaries. After a successful health check, record B. To roll back, stop Control, restore the previous database and binary files together, verify the result, and record A. See the [full runbook](../offline-release.md#обновление-a--b-и-откат).

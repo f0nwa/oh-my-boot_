@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Trusted launcher for the verified Ubuntu installation and Control-only update.
+# Trusted launcher for verified Ubuntu installation and application updates.
 set -euo pipefail
 umask 077
 
@@ -21,11 +21,24 @@ with open(sys.argv[1], encoding="utf-8") as f:
     data = json.load(f)
 steps = data["migrations"]
 bins = {name for name in data["files"] if name.startswith("bin/")}
-if (not data["from_commit"] or len(steps) != 1 or steps[0]["database"] != "omb_control"
-        or bins != {"bin/omb-control", "bin/omb-controlctl"}):
-    sys.exit("Unsupported update: expected one Control migration and two Control binaries.")
-print(steps[0]["path"])
+databases = {step["database"] for step in steps}
+control = {"bin/omb-control", "bin/omb-controlctl"}
+images = {"bin/omb-images", "bin/omb-imagesctl"}
+supported = {frozenset({"omb_control"}): control,
+             frozenset({"omb_control", "omb_images"}): control | images}
+if not data["from_commit"] or bins != supported.get(frozenset(databases)):
+    sys.exit("Unsupported update: expected Control or Control and Images migrations and their binaries.")
+for step in steps:
+    print(step["database"], step["path"], sep="\t")
 PY
+}
+
+select_scope() {
+    with_images=$1
+    binaries=(omb-control omb-controlctl)
+    if $with_images; then
+        binaries+=(omb-images omb-imagesctl)
+    fi
 }
 
 manifest_commit() {
@@ -48,7 +61,12 @@ prepare_update() {
     from=$(manifest_commit "$work/base")
     extract "$update_archive" "$work/update" "$key" --expect-from "$from" "$@"
     to=$(manifest_commit "$work/update")
-    migration=$(update_sql "$work/update/manifest.json")
+    update_sql "$work/update/manifest.json" > "$work/migrations"
+    if grep -q $'^omb_images\t' "$work/migrations"; then
+        select_scope true
+    else
+        select_scope false
+    fi
     local f
     for f in "$work/base"/bin/*; do
         cmp -s "$f" "/usr/local/bin/${f##*/}" || fail "Installed binary differs from the base archive: ${f##*/}."
@@ -71,12 +89,17 @@ health() {
     local try
     for try in {1..20}; do
         if curl --noproxy '*' -fsS --max-time 3 --cacert /var/lib/omb-control/control.crt \
-            -o /dev/null "https://$address:8443/login" 2>/dev/null; then
-            systemctl is-active --quiet omb-control.service && return 0
+            -o /dev/null "https://$address:8443/login" 2>/dev/null &&
+            systemctl is-active --quiet omb-control.service; then
+            if [[ ${with_images:-false} != true ]] || { systemctl is-active --quiet omb-images.service &&
+                curl --noproxy '*' -fsS --max-time 3 --unix-socket /run/omb-images/images.sock \
+                    -o /dev/null http://localhost/catalog 2>/dev/null; }; then
+                return 0
+            fi
         fi
         sleep 1
     done
-    echo 'Control HTTPS health check failed.' >&2
+    echo 'Control HTTPS or Images catalog health check failed.' >&2
     return 1
 }
 
@@ -91,19 +114,52 @@ PY
 
 install_binaries() {
     local src=$1 binary tmp
-    for binary in omb-control omb-controlctl; do
+    for binary in "${binaries[@]}"; do
         tmp=$(mktemp /usr/local/bin/.omb-replacement.XXXXXXXX) || return 1
         install -m 0755 "$src/$binary" "$tmp" && mv -T -- "$tmp" "/usr/local/bin/$binary" || return 1
     done
+}
+
+stop_services() {
+    systemctl stop omb-control.service || return 1
+    if $with_images; then
+        systemctl stop omb-images.service || return 1
+    fi
+}
+
+start_services() {
+    if $with_images; then
+        systemctl start omb-images.service || return 1
+    fi
+    systemctl start omb-control.service
 }
 
 snapshot_users() {
     sql -d "$1" -Atc "SELECT coalesce(jsonb_agg(to_jsonb(u) ORDER BY u.id),'[]'::jsonb) FROM public.users u"
 }
 
+snapshot_catalog() {
+    sql -d "$1" -At <<'SQL' | sha256sum
+SELECT to_jsonb(s) FROM public.storages s ORDER BY s.id;
+SELECT to_jsonb(i) FROM public.images i ORDER BY i.storage_id, i.path;
+SELECT to_regclass('public.catalog_settings') IS NOT NULL AS has_settings \gset
+\if :has_settings
+SELECT to_jsonb(c) FROM public.catalog_settings c ORDER BY c.id;
+\endif
+SQL
+}
+
+backup_database() {
+    local database=$1 owner=$2 recovery_db=$3 dump=$4
+    runuser -u postgres -- pg_dump --no-password -Fc -d "$database" > "$dump"
+    runuser -u postgres -- createdb --owner="$owner" "$recovery_db"
+    runuser -u postgres -- pg_restore --no-password --exit-on-error --single-transaction -d "$recovery_db" < "$dump"
+}
+
 check_backup_space() {
-    local db_kib free_db free_backup
-    db_kib=$(sql -d postgres -Atc "SELECT (pg_database_size('omb_control')+1023)/1024")
+    local db_kib free_db free_backup names="'omb_control'"
+    if $with_images; then names+=",'omb_images'"; fi
+    db_kib=$(sql -d postgres -Atc "SELECT (sum(pg_database_size(datname::text))::bigint+1023)/1024 FROM pg_database WHERE datname IN ($names)")
     free_db=$(df -Pk /var/lib/postgresql | awk 'NR==2 {print $4}')
     free_backup=$(df -Pk "$backups" | awk 'NR==2 {print $4}')
     [[ "$db_kib" =~ ^[0-9]+$ && "$free_db" =~ ^[0-9]+$ && "$free_backup" =~ ^[0-9]+$ ]] ||
@@ -116,23 +172,71 @@ check_backup_space() {
 }
 
 read_snapshot() {
+    local scope
     [[ "$backup" == "$backups"/offline.* && -d "$backup" && ! -L "$backup" ]] || return 1
-    read -r prior target restored retained < "$backup/metadata" || return 1
+    read -r prior target restored retained scope < "$backup/metadata" || return 1
     [[ "$prior" =~ ^[0-9a-f]{40}$ && "$target" =~ ^[0-9a-f]{40}$ &&
-       "$restored" =~ ^omb_restore_[0-9a-z]+$ && "$retained" =~ ^omb_retained_[0-9a-z]+$ ]]
+       "$restored" =~ ^omb_restore_[0-9a-z]+$ && "$retained" =~ ^omb_retained_[0-9a-z]+$ ]] || return 1
+    case "$scope" in
+        '') select_scope false ;;
+        images) select_scope true ;;
+        *) return 1 ;;
+    esac
+    restored_images="omb_restore_images_${restored#omb_restore_}"
+    retained_images="omb_retained_images_${retained#omb_retained_}"
+}
+
+verify_restored_data() {
+    snapshot_users "$restored" > "$work/users-restored" || return 1
+    cmp -s "$backup/users.json" "$work/users-restored" || return 1
+    if $with_images; then
+        snapshot_catalog "$restored_images" > "$work/catalog-restored" || return 1
+        cmp -s "$backup/catalog.sha256" "$work/catalog-restored" || return 1
+    fi
+}
+
+swap_databases() {
+    local existing names="'$restored','$retained'" expected=1
+    if $with_images; then
+        names+=",'$restored_images','$retained_images'"
+        expected=2
+    fi
+    existing=$(sql -d postgres -Atc "SELECT count(*) FILTER (WHERE left(datname,12)='omb_restore_'),
+        count(*) FILTER (WHERE left(datname,13)='omb_retained_' AND NOT datallowconn), count(*)
+        FROM pg_database WHERE datname IN ($names)") || return 1
+    if [[ "$existing" == "$expected|0|$expected" ]]; then
+        verify_restored_data || { echo 'Recovery databases differ from the backup.' >&2; return 1; }
+        sql -d postgres -v restored="$restored" -v retained="$retained" -v images="$with_images" \
+            -v restored_images="$restored_images" -v retained_images="$retained_images" <<'SQL'
+BEGIN;
+ALTER DATABASE omb_control RENAME TO :"retained";
+ALTER DATABASE :"restored" RENAME TO omb_control;
+ALTER DATABASE :"retained" WITH ALLOW_CONNECTIONS false;
+\if :images
+ALTER DATABASE omb_images RENAME TO :"retained_images";
+ALTER DATABASE :"restored_images" RENAME TO omb_images;
+ALTER DATABASE :"retained_images" WITH ALLOW_CONNECTIONS false;
+\endif
+COMMIT;
+SQL
+    elif [[ "$existing" != "0|$expected|$expected" ]]; then
+        echo 'Recovery databases are missing or ambiguous.' >&2
+        return 1
+    fi
 }
 
 restore_snapshot() {
-    local installed existing
+    local installed binary
     read_snapshot || return 1
     installed=$(cat "$state/COMMIT") || return 1
     [[ "$installed" == "$prior" || "$installed" == "$target" ]] || return 1
     if [[ ! -e "$backup/READY" ]]; then
         # No migration or binary replacement is allowed until the restore has been verified.
         [[ "$installed" == "$prior" ]] || return 1
-        cmp -s "$backup/omb-control" /usr/local/bin/omb-control || return 1
-        cmp -s "$backup/omb-controlctl" /usr/local/bin/omb-controlctl || return 1
-        systemctl start omb-control.service && health || return 1
+        for binary in "${binaries[@]}"; do
+            cmp -s "$backup/$binary" "/usr/local/bin/$binary" || return 1
+        done
+        start_services && health || return 1
         unlink "$state/PENDING" || return 1
         printf 'Restarted %s. The interrupted backup had not reached the migration step.\n' "$prior"
         return 0
@@ -149,31 +253,23 @@ restore_snapshot() {
 
     # PENDING also covers an interrupted rollback. Restore can resume after the DB rename.
     write_state PENDING "$backup" || return 1
-    systemctl stop omb-control.service || return 1
-    existing=$(sql -d postgres -Atc "SELECT datname FROM pg_database WHERE datname IN ('$restored','$retained')") || return 1
-    if [[ "$existing" == "$restored" ]]; then
-        sql -d postgres -v restored="$restored" -v retained="$retained" <<'SQL' || return 1
-BEGIN;
-ALTER DATABASE omb_control RENAME TO :"retained";
-ALTER DATABASE :"restored" RENAME TO omb_control;
-ALTER DATABASE :"retained" WITH ALLOW_CONNECTIONS false;
-COMMIT;
-SQL
-    elif [[ "$existing" != "$retained" ]]; then
-        echo 'Recovery database is missing or ambiguous.' >&2
-        return 1
-    fi
-    snapshot_users omb_control > "$work/users-restored" || return 1
-    cmp -s "$backup/users.json" "$work/users-restored" || return 1
+    stop_services || return 1
+    swap_databases || return 1
     install_binaries "$backup" || return 1
     systemctl reset-failed omb-control.service || return 1
-    systemctl start omb-control.service || return 1
+    if $with_images; then
+        systemctl reset-failed omb-images.service || return 1
+    fi
+    start_services || return 1
     health || return 1
     boot_menu > "$work/menu-after-rollback" || return 1
     cmp -s "$backup/menu.ipxe" "$work/menu-after-rollback" || return 1
     write_state COMMIT "$prior" || return 1
     unlink "$state/PENDING" || return 1
     printf 'Restored %s. The later database was retained as %s with connections disabled.\n' "$prior" "$retained"
+    if $with_images; then
+        printf 'The later Images database was retained as %s with connections disabled.\n' "$retained_images"
+    fi
 }
 
 upgrade() {
@@ -183,29 +279,37 @@ upgrade() {
     if [[ ! -d "$backups" ]]; then install -d -m 0700 "$backups"; fi
     check_backup_space
     backup=$(mktemp -d "$backups/offline.XXXXXXXX")
-    local suffix
+    local suffix scope='' binary database migration
     suffix=$(printf '%s' "${backup##*.}" | tr '[:upper:]' '[:lower:]')
-    printf '%s %s %s %s\n' "$from" "$to" "omb_restore_$suffix" "omb_retained_$suffix" > "$backup/metadata"
+    if $with_images; then scope=' images'; fi
+    printf '%s %s %s %s%s\n' "$from" "$to" "omb_restore_$suffix" "omb_retained_$suffix" "$scope" > "$backup/metadata"
     read_snapshot
-    install -m 0700 /usr/local/bin/omb-control /usr/local/bin/omb-controlctl "$backup/"
-    install -m 0600 /etc/omb/control.env /etc/omb/secrets.key \
-        /var/lib/omb-control/control.crt /var/lib/omb-control/control.key "$backup/"
-    boot_menu > "$backup/menu.ipxe"
+    for binary in "${binaries[@]}"; do
+        install -m 0700 "/usr/local/bin/$binary" "$backup/"
+    done
     write_state PENDING "$backup"
     upgrade_paused=true
-    systemctl stop omb-control.service
+    stop_services
+    install -m 0600 /etc/omb/control.env /etc/omb/secrets.key \
+        /var/lib/omb-control/control.crt /var/lib/omb-control/control.key "$backup/"
+    if $with_images; then
+        install -m 0600 /etc/omb/images.env "$backup/"
+    fi
+    boot_menu > "$backup/menu.ipxe"
     snapshot_users omb_control > "$backup/users.json"
-    runuser -u postgres -- pg_dump --no-password -Fc -d omb_control > "$backup/control.dump"
-    runuser -u postgres -- createdb --owner=omb-control "$restored"
-    runuser -u postgres -- pg_restore --no-password --exit-on-error --single-transaction \
-        -d "$restored" < "$backup/control.dump"
-    snapshot_users "$restored" > "$work/users-restored"
-    cmp -s "$backup/users.json" "$work/users-restored" || fail 'Restored user rows differ from the backup source.'
+    backup_database omb_control omb-control "$restored" "$backup/control.dump"
+    if $with_images; then
+        snapshot_catalog omb_images > "$backup/catalog.sha256"
+        backup_database omb_images omb-images "$restored_images" "$backup/images.dump"
+    fi
+    verify_restored_data || fail 'Restored data differs from the backup source.'
     : > "$backup/READY"
 
-    runuser -u omb-control -- psql -Xw -v ON_ERROR_STOP=1 -d omb_control < "$work/update/$migration"
+    while IFS=$'\t' read -r database migration; do
+        runuser -u "${database/_/-}" -- psql -Xw -v ON_ERROR_STOP=1 -d "$database" < "$work/update/$migration"
+    done < "$work/migrations"
     install_binaries "$work/update/bin"
-    systemctl start omb-control.service
+    start_services
     health
     snapshot_users omb_control > "$work/users-after"
     cmp -s "$backup/users.json" "$work/users-after" || fail 'User rows changed during the update.'
@@ -227,7 +331,7 @@ cleanup() {
                 echo "Automatic rollback failed. Recovery data and PENDING were kept: $backup" >&2
             fi
         else
-            systemctl start omb-control.service || :
+            start_services || :
         fi
     fi
     rm -r -- "$work"

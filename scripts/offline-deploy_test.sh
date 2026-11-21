@@ -6,10 +6,28 @@ trap 'rm -r -- "$work"' EXIT
 # shellcheck source=offline-deploy.sh
 source "$repo/scripts/offline-deploy.sh"
 
+# The fresh installation does not select an update scope before its HTTPS check.
+(
+    unset with_images
+    address=127.0.0.1
+    curl() { [[ "$*" == *https://127.0.0.1:8443/login ]]; }
+    systemctl() { [[ "$*" == 'is-active --quiet omb-control.service' ]]; }
+    health
+)
+
 cat > "$work/manifest.json" <<'JSON'
 {"from_commit":"aaa","commit":"bbb","files":{"bin/omb-control":{},"bin/omb-controlctl":{},"deploy/sql/oidc.sql":{}},"migrations":[{"database":"omb_control","path":"deploy/sql/oidc.sql"}]}
 JSON
-test "$(update_sql "$work/manifest.json")" = deploy/sql/oidc.sql
+test "$(update_sql "$work/manifest.json")" = $'omb_control\tdeploy/sql/oidc.sql'
+cat > "$work/control-images.json" <<'JSON'
+{"from_commit":"aaa","commit":"bbb","files":{"bin/omb-control":{},"bin/omb-controlctl":{},"bin/omb-images":{},"bin/omb-imagesctl":{},"deploy/sql/oidc.sql":{},"deploy/sql/catalog.sql":{}},"migrations":[{"database":"omb_control","path":"deploy/sql/oidc.sql"},{"database":"omb_images","path":"deploy/sql/catalog.sql"}]}
+JSON
+test "$(update_sql "$work/control-images.json")" = $'omb_control\tdeploy/sql/oidc.sql\nomb_images\tdeploy/sql/catalog.sql'
+sed 's/"bin\/omb-imagesctl"/"bin\/omb-agent"/' "$work/control-images.json" > "$work/mismatched-images.json"
+if update_sql "$work/mismatched-images.json"; then
+    echo 'Accepted Images migrations without the corresponding binaries' >&2
+    exit 1
+fi
 sed 's/"omb_control"/"omb_boot"/' "$work/manifest.json" > "$work/wrong-db.json"
 if update_sql "$work/wrong-db.json"; then
     echo 'Accepted a change to another database' >&2
@@ -44,6 +62,17 @@ restore_snapshot
 test ! -e "$state/PENDING"
 test "$(cat "$state/COMMIT")" = "$prior_id"
 test "$(cat "$work/calls")" = 'start omb-control.service'
+
+# A rollback interrupted after the swap can be resumed after the services wrote to the restored databases.
+(
+    printf '%s %s %s %s images\n' "$prior_id" "$target_id" omb_restore_example omb_retained_example > "$backup/metadata"
+    read_snapshot
+    test "$restored_images" = omb_restore_images_example
+    test "$retained_images" = omb_retained_images_example
+    sql() { printf '%s\n' '0|2|2'; }
+    verify_restored_data() { return 1; }
+    swap_databases
+)
 
 source "$repo/scripts/offline-install-lib.sh"
 address=192.168.10.45

@@ -13,7 +13,11 @@ sudo python3 offline-release.py verify omb-update-a-to-b.tar.gz \
 
 The verifier checks the signature, payload, OS, architecture, and installed release marker before extracting to a new directory. It does not install packages, stop services, or apply SQL.
 
-For automatic application, copy `offline-deploy.sh`, `offline-install-lib.sh`, and `offline-release.py` from a trusted checkout into the same directory. Use `offline-deploy.sh install INSTALL_ARCHIVE PUBLIC_KEY MANAGEMENT_IP PXE_INTERFACE`, `offline-deploy.sh update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY MANAGEMENT_IP`, and `offline-deploy.sh rollback MANAGEMENT_IP` with sudo. The read-only `check-update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY` verifies the archives and installed binaries. Installation leaves DHCP and Samba off. The first update path is limited to the Control service and its database.
+For automatic application, copy `offline-deploy.sh`, `offline-install-lib.sh`, and `offline-release.py` from a trusted checkout into the same directory. Use `offline-deploy.sh install INSTALL_ARCHIVE PUBLIC_KEY MANAGEMENT_IP PXE_INTERFACE`, `offline-deploy.sh update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY MANAGEMENT_IP`, and `offline-deploy.sh rollback MANAGEMENT_IP` with sudo. The read-only `check-update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY` verifies the archives and installed binaries. Installation leaves DHCP and Samba off.
+
+An update can cover Control on its own or Control and Images together. Include `omb-control`, `omb-controlctl`, and migrations for `omb_control`. For a combined release, add `omb-images`, `omb-imagesctl`, and a `--migration omb_images=deploy/sql/FILENAME.sql` argument for each Images migration. The order of `--migration` arguments determines the execution order across databases. Complete any active ISO operations before the maintenance window. The installer stops both services and verifies both database backups before running the first migration. It checks HTTPS, the Images catalog API, and the Boot menu before recording the new release.
+
+If the installer is interrupted while `PENDING` exists, run `rollback`. A combined rollback switches both databases to their restored copies in one PostgreSQL transaction. It retains the later databases with connections disabled, then restores the previous binaries and verifies the services.
 
 For a management-only host, omit `PXE_INTERFACE` or pass `none`. To enable PXE later, configure the client subnet and set `OMB_CONTROL_INTERFACES` to the dedicated interface before restarting Control.
 

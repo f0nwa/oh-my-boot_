@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an Ubuntu APT repository from verified OMB release archives."""
+"""Build or verify a signed Ubuntu APT repository from OMB release archives."""
 
 import argparse
 import gzip
@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -14,9 +15,13 @@ import tempfile
 
 
 VERIFIER = Path(__file__).with_name("offline-release.py")
+REPO_ROOT = Path(__file__).resolve().parent.parent
 UBUNTU_HELPER = "/usr/lib/omb/omb-prepare-ubuntu-source"
 DEPENDENCIES = ("ca-certificates, cifs-utils, curl, dnsmasq-base, nfs-common, "
                 "openssl, postgresql, python3, samba, wimtools")
+TARGET = {"os": "ubuntu", "version_id": "26.04", "architecture": "amd64"}
+REPO_MANIFEST = "repo-manifest.json"
+REPO_SIGNATURE = "repo-manifest.sig"
 ALLOWED_UPDATE_UNITS = frozenset(
     f"deploy/systemd/{name}.service"
     for name in ("omb-agent", "omb-boot", "omb-control", "omb-dnsmasq", "omb-images", "omb-winiso@")
@@ -25,6 +30,7 @@ ALLOWED_UPDATE_HELPERS = frozenset({
     "scripts/prepare-ubuntu-source.sh",
     "scripts/fetch-ipxe.sh",
 })
+BOOT_ASSETS = ("ipxeboot.tar.gz", "ipxe-shimx64.efi", "wimboot")
 
 
 def package_unit(name, content):
@@ -106,7 +112,7 @@ def stage_package_tree(package, base, base_manifest, version, license_path,
         path.write_text(package_unit(unit.name, source.read_text()))
     for template in sorted((base / "deploy/boot-assets/windows-profiles").iterdir()):
         stage_file(template, package, f"usr/share/omb/windows-profiles/{template.name}")
-    for name in ("ipxeboot.tar.gz", "ipxe-shimx64.efi", "wimboot"):
+    for name in BOOT_ASSETS:
         stage_file(base / "assets" / name, package, f"usr/share/omb/assets/{name}")
     stage_file(overlay_source(base, update, "scripts/prepare-ubuntu-source.sh"),
                package, UBUNTU_HELPER.lstrip("/"), 0o755)
@@ -127,7 +133,6 @@ def build_package(package, repository, base, base_manifest, version, license_pat
                   update=None, update_manifest=None):
     manifest = stage_package_tree(package, base, base_manifest, version, license_path,
                                   update=update, update_manifest=update_manifest)
-
     control = package / "DEBIAN"
     control.mkdir()
     (control / "control").write_text(
@@ -150,7 +155,16 @@ def build_package(package, repository, base, base_manifest, version, license_pat
     subprocess.run(["dpkg-deb", "--root-owner-group", "-Zgzip", "--build", package, deb],
                    env={"SOURCE_DATE_EPOCH": "0", **os.environ}, check=True)
     deb.chmod(0o644)
-    return deb
+    return {
+        "package": "omb",
+        "version": version,
+        "architecture": "amd64",
+        "commit": manifest["commit"],
+        "from_commit": manifest["from_commit"],
+        "filename": deb.name,
+        "size": deb.stat().st_size,
+        "sha256": file_digest(deb, "sha256"),
+    }, deb
 
 
 def file_digest(path, algorithm):
@@ -165,6 +179,135 @@ def package_record(deb):
     fields = subprocess.check_output(["dpkg-deb", "--field", deb], text=True).rstrip()
     return (f"{fields}\nFilename: ./{deb.name}\nSize: {deb.stat().st_size}\n"
             f"SHA256: {file_digest(deb, 'sha256')}\n")
+
+
+def parse_packages_index(index_bytes):
+    text = gzip.decompress(index_bytes).decode().strip()
+    entries = []
+    if not text:
+        return entries
+    for paragraph in text.split("\n\n"):
+        fields = dict(line.split(": ", 1) for line in paragraph.splitlines()
+                      if ": " in line and not line.startswith(" "))
+        filename = fields["Filename"]
+        if filename.startswith("./"):
+            filename = filename[2:]
+        if "/" in filename or not filename.endswith(".deb"):
+            raise ValueError(f"invalid package filename in APT index: {filename}")
+        entries.append({
+            "package": fields["Package"],
+            "version": fields["Version"],
+            "architecture": fields["Architecture"],
+            "filename": filename,
+            "size": int(fields["Size"]),
+            "sha256": fields["SHA256"],
+        })
+    entries.sort(key=lambda item: (item["package"], item["version"], item["filename"]))
+    return entries
+
+
+def parse_go_mod(path):
+    go_version = None
+    modules = []
+    in_require = False
+    for raw_line in Path(path).read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("//"):
+            continue
+        if line.startswith("go "):
+            go_version = line.split()[1]
+            continue
+        if line == "require (":
+            in_require = True
+            continue
+        if in_require and line == ")":
+            in_require = False
+            continue
+        if in_require or line.startswith("require "):
+            body = line[len("require "):].strip() if line.startswith("require ") else line
+            indirect = "// indirect" in body
+            parts = body.split("//", 1)[0].split()
+            if len(parts) >= 2:
+                modules.append({"path": parts[0], "version": parts[1], "indirect": indirect})
+    modules.sort(key=lambda item: item["path"])
+    return {"version": go_version, "modules": modules}
+
+
+def parse_unattend_upstream(path):
+    text = Path(path).read_text(encoding="utf-8")
+    match = re.search(r"\b([0-9a-f]{40})\b", text)
+    if not match:
+        raise ValueError(f"could not find upstream commit in {path}")
+    return {"repo": "cschneegans/unattend-generator", "commit": match.group(1)}
+
+
+def openssl_signature(command, data, key, sig=None):
+    with tempfile.TemporaryDirectory(prefix="omb-repo-sig-") as temp:
+        root = Path(temp)
+        manifest_file = root / REPO_MANIFEST
+        manifest_file.write_bytes(data)
+        sig_file = root / REPO_SIGNATURE
+        cmd = ["openssl", "dgst", "-sha256", command, str(key)]
+        if sig is None:
+            cmd += ["-out", str(sig_file)]
+        else:
+            sig_file.write_bytes(sig)
+            cmd += ["-signature", str(sig_file)]
+        result = subprocess.run([*cmd, str(manifest_file)], capture_output=True)
+        if result.returncode != 0:
+            raise ValueError("repository manifest signature operation failed")
+        if sig is None:
+            return sig_file.read_bytes()
+
+
+def check_repo_file(repo_dir, filename, expected_size, expected_sha256):
+    if "/" in filename or "\\" in filename or filename in {"", ".", ".."}:
+        raise ValueError(f"invalid repository filename: {filename}")
+    path = repo_dir / filename
+    if not path.is_file() or path.is_symlink():
+        raise ValueError(f"missing repository file: {filename}")
+    if path.stat().st_size != expected_size or file_digest(path, "sha256") != expected_sha256:
+        raise ValueError(f"checksum or size mismatch in repository: {filename}")
+
+
+def verify_repository(repo_dir, public_key, version=None):
+    repo_dir = Path(repo_dir)
+    manifest_path = repo_dir / REPO_MANIFEST
+    sig_path = repo_dir / REPO_SIGNATURE
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        raise ValueError(f"missing {REPO_MANIFEST}")
+    if not sig_path.is_file() or sig_path.is_symlink():
+        raise ValueError(f"missing {REPO_SIGNATURE}")
+    raw = manifest_path.read_bytes()
+    openssl_signature("-verify", raw, public_key, sig_path.read_bytes())
+    data = json.loads(raw)
+    if data.get("format") != 1 or data.get("target") != TARGET:
+        raise ValueError("unsupported repository manifest format or target")
+    apt_index = data["apt_index"]
+    check_repo_file(repo_dir, apt_index["filename"], apt_index["size"], apt_index["sha256"])
+    packages = data.get("packages")
+    if not isinstance(packages, list) or not packages:
+        raise ValueError("repository manifest has no OMB packages")
+    expected_debs = set()
+    for entry in packages:
+        if entry.get("package") != "omb" or entry.get("architecture") != "amd64":
+            raise ValueError("invalid OMB package entry in repository manifest")
+        check_repo_file(repo_dir, entry["filename"], entry["size"], entry["sha256"])
+        expected_debs.add(entry["filename"])
+    system_debs = data.get("dependencies", {}).get("system_debs", [])
+    for entry in system_debs:
+        check_repo_file(repo_dir, entry["filename"], entry["size"], entry["sha256"])
+        expected_debs.add(entry["filename"])
+    actual_debs = {p.name for p in repo_dir.iterdir() if p.name.endswith(".deb")}
+    if actual_debs != expected_debs:
+        extra = sorted(actual_debs - expected_debs)
+        raise ValueError(f"unexpected .deb files in repository: {', '.join(extra)}")
+    if version is not None:
+        for entry in packages:
+            if entry["version"] == version:
+                return entry
+        raise ValueError(f"package version not found in repository: {version}")
+    return data
 
 
 def build_repository(args):
@@ -186,19 +329,60 @@ def build_repository(args):
             raise ValueError("the base archive must be a full installation")
         repository = root / "repository"
         shutil.copytree(base / "debs", repository)
-        index = gzip.decompress((repository / "Packages.gz").read_bytes()).decode().strip()
+        base_index_bytes = (repository / "Packages.gz").read_bytes()
+        system_debs = parse_packages_index(base_index_bytes)
+        index = gzip.decompress(base_index_bytes).decode().strip()
         if "Package: omb" in index.splitlines():
             raise ValueError("the dependency repository already contains an OMB package")
-        packages = [build_package(root / "package-a", repository, base, base_manifest,
-                                  args.version, args.license)]
+        pkg_a_meta, pkg_a_deb = build_package(root / "package-a", repository, base, base_manifest,
+                                              args.version, args.license)
+        package_metas = [pkg_a_meta]
+        package_debs = [pkg_a_deb]
         if args.update_archive:
             update = root / "update"
             update_manifest = verify(args.update_archive, args.public_key, update,
                                      "--expect-from", base_manifest["commit"])
-            packages.append(build_package(root / "package-b", repository, base, base_manifest,
-                                          args.update_version, args.license, update, update_manifest))
-        index += "\n\n" + "\n".join(map(package_record, packages))
-        (repository / "Packages.gz").write_bytes(gzip.compress(index.encode(), mtime=0))
+            pkg_b_meta, pkg_b_deb = build_package(root / "package-b", repository, base, base_manifest,
+                                                  args.update_version, args.license, update, update_manifest)
+            package_metas.append(pkg_b_meta)
+            package_debs.append(pkg_b_deb)
+        index += "\n\n" + "\n".join(map(package_record, package_debs))
+        index_path = repository / "Packages.gz"
+        index_path.write_bytes(gzip.compress(index.encode(), mtime=0))
+
+        boot_assets = {
+            name: {
+                "size": (base / "assets" / name).stat().st_size,
+                "sha256": file_digest(base / "assets" / name, "sha256"),
+            }
+            for name in BOOT_ASSETS
+        }
+        dependencies = {
+            "system_debs": system_debs,
+            "boot_assets": boot_assets,
+        }
+        if args.go_mod and args.go_mod.is_file():
+            dependencies["go"] = parse_go_mod(args.go_mod)
+        if args.unattend_upstream and args.unattend_upstream.is_file():
+            dependencies["unattend_upstream"] = parse_unattend_upstream(args.unattend_upstream)
+
+        repo_manifest = {
+            "format": 1,
+            "target": TARGET,
+            "apt_index": {
+                "filename": "Packages.gz",
+                "size": index_path.stat().st_size,
+                "sha256": file_digest(index_path, "sha256"),
+            },
+            "packages": package_metas,
+            "dependencies": dependencies,
+        }
+        manifest_bytes = (json.dumps(repo_manifest, sort_keys=True, ensure_ascii=False, indent=2) + "\n").encode()
+        (repository / REPO_MANIFEST).write_bytes(manifest_bytes)
+        if args.sign_key:
+            sig_bytes = openssl_signature("-sign", manifest_bytes, args.sign_key)
+            (repository / REPO_SIGNATURE).write_bytes(sig_bytes)
+
         repository.chmod(0o755)
         for path in repository.iterdir():
             path.chmod(0o644)
@@ -206,6 +390,29 @@ def build_repository(args):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "verify-repo":
+        parser = argparse.ArgumentParser(prog="offline-deb.py verify-repo",
+                                         description="Verify a signed OMB APT repository.")
+        parser.add_argument("repository", type=Path)
+        parser.add_argument("--public-key", type=Path, required=True)
+        parser.add_argument("--version", help="print FILENAME, SHA256, COMMIT for a specific OMB version")
+        args = parser.parse_args(sys.argv[2:])
+        try:
+            result = verify_repository(args.repository, args.public_key, version=args.version)
+        except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
+            parser.exit(1, f"OMB repository verification failed: {error}\n")
+        if args.version:
+            print(result["filename"], result["sha256"], result["commit"], sep="\t")
+        else:
+            print(json.dumps({
+                "target": result["target"],
+                "packages": [p["version"] for p in result["packages"]],
+                "system_debs": len(result["dependencies"]["system_debs"]),
+            }, indent=2))
+        return
+
+    default_go_mod = REPO_ROOT / "go.mod"
+    default_unattend = REPO_ROOT / "internal/unattend/UPSTREAM.md"
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("base_archive", type=Path)
     parser.add_argument("repository", type=Path)
@@ -214,6 +421,10 @@ def main():
     parser.add_argument("--update-archive", type=Path)
     parser.add_argument("--update-version")
     parser.add_argument("--license", type=Path, required=True)
+    parser.add_argument("--sign-key", type=Path, help="OpenSSL private key to sign repo-manifest.json")
+    parser.add_argument("--go-mod", type=Path, default=default_go_mod if default_go_mod.is_file() else None)
+    parser.add_argument("--unattend-upstream", type=Path,
+                        default=default_unattend if default_unattend.is_file() else None)
     args = parser.parse_args()
     try:
         build_repository(args)

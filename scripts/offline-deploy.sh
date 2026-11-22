@@ -9,8 +9,19 @@ binary_dir=/usr/local/bin
 package_mode=false
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 verifier="$script_dir/offline-release.py"
+deb_tool="$script_dir/offline-deb.py"
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
+
+resolve_repo_package() {
+    local repo=$1 key=$2 version=$3 line fname digest commit
+    line=$(python3 "$deb_tool" verify-repo "$repo" --public-key "$key" --version "$version") ||
+        fail "Repository verification failed for version $version."
+    IFS=$'\t' read -r fname digest commit <<< "$line"
+    [[ -n "$fname" && "$digest" =~ ^[0-9a-f]{64}$ && -f "$repo/$fname" ]] ||
+        fail "Invalid package metadata from repository for version $version."
+    printf '%s\t%s\n' "$repo/$fname" "$digest"
+}
 
 assert_no_pending() {
     [[ ! -e "$1/PENDING" ]] || fail 'An update is pending. Run rollback before starting another operation.'
@@ -679,8 +690,10 @@ usage() {
 offline-deploy.sh check-update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY
 offline-deploy.sh install INSTALL_ARCHIVE PUBLIC_KEY MANAGEMENT_IP [PXE_INTERFACE|none]
 offline-deploy.sh install-deb INSTALL_ARCHIVE PUBLIC_KEY PACKAGE SHA256 MANAGEMENT_IP [PXE_INTERFACE|none]
+offline-deploy.sh install-deb-repo INSTALL_ARCHIVE PUBLIC_KEY APT_REPO VERSION MANAGEMENT_IP [PXE_INTERFACE|none]
 offline-deploy.sh update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY MANAGEMENT_IP
 offline-deploy.sh update-deb BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY OLD_PACKAGE OLD_SHA256 NEW_PACKAGE NEW_SHA256 MANAGEMENT_IP
+offline-deploy.sh update-deb-repo BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY APT_REPO OLD_VERSION NEW_VERSION MANAGEMENT_IP
 offline-deploy.sh rollback MANAGEMENT_IP
 TEXT
     exit 2
@@ -689,7 +702,7 @@ TEXT
 main() {
     local command=${1:-}
     case "$command:$#" in
-        check-update:4|install:4|install:5|install-deb:6|install-deb:7|update:5|update-deb:9|rollback:2) ;;
+        check-update:4|install:4|install:5|install-deb:6|install-deb:7|install-deb-repo:6|install-deb-repo:7|update:5|update-deb:9|update-deb-repo:8|rollback:2) ;;
         *) usage ;;
     esac
     shift
@@ -723,6 +736,15 @@ main() {
             check_address
             fresh_install "$1" "$2" "${6:-none}" "$3" "$4"
             ;;
+        install-deb-repo)
+            local pkg_path pkg_sha
+            IFS=$'\t' read -r pkg_path pkg_sha <<< "$(resolve_repo_package "$3" "$2" "$4")"
+            package_mode=true
+            binary_dir=/usr/bin
+            address=$5
+            check_address
+            fresh_install "$1" "$2" "${6:-none}" "$pkg_path" "$pkg_sha"
+            ;;
         update)
             [[ ! -e "$state/PACKAGE" ]] || fail 'Use update-deb on an APT-managed installation.'
             address=$4
@@ -734,6 +756,16 @@ main() {
             binary_dir=/usr/bin
             address=$8
             upgrade "${@:1:7}"
+            ;;
+        update-deb-repo)
+            [[ -f "$state/PACKAGE" ]] || fail 'This installation is not managed by APT.'
+            local old_pkg old_sha new_pkg new_sha
+            IFS=$'\t' read -r old_pkg old_sha <<< "$(resolve_repo_package "$4" "$3" "$5")"
+            IFS=$'\t' read -r new_pkg new_sha <<< "$(resolve_repo_package "$4" "$3" "$6")"
+            package_mode=true
+            binary_dir=/usr/bin
+            address=$7
+            upgrade "$1" "$2" "$3" "$old_pkg" "$old_sha" "$new_pkg" "$new_sha"
             ;;
         rollback)
             address=$1

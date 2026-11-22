@@ -158,4 +158,15 @@ if (resolve_pxe_interface none); then
     exit 1
 fi
 
+# resolve_repo_package extracts verified package path and SHA-256 from offline-deb.py verify-repo.
+(
+    fake_repo="$work/fake-repo"
+    mkdir -p "$fake_repo"
+    touch "$fake_repo/omb_0.1~test1_amd64.deb"
+    expected_sha=1111111111111111111111111111111111111111111111111111111111111111
+    python3() { printf '%s\t%s\t%s\n' omb_0.1~test1_amd64.deb "$expected_sha" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; }
+    res=$(resolve_repo_package "$fake_repo" /dev/null 0.1~test1)
+    test "$res" = "$fake_repo/omb_0.1~test1_amd64.deb"$'\t'"$expected_sha"
+)
+
 echo 'Update scope, multi-service health, and interrupted-run guards passed.'

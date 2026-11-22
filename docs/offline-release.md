@@ -66,7 +66,31 @@ sudo bash offline-deploy.sh rollback MANAGEMENT_IP
 
 ## Установка из `.deb`
 
-Понадобятся те же подписанные архивы и публичный ключ, а также соответствующие пакеты `omb` и их SHA-256, полученные от сборщика по доверенному каналу. Установщик сверяет хеш всего `.deb`, Git-коммит и бинарники с подписанным выпуском. APT получает системные зависимости из локального индекса исходного архива и устанавливает переданный `.deb` по его точной версии. Аргумент `none` включает режим без отдельного PXE-интерфейса в настройках OMB.
+На машине выпуска `scripts/offline-deb.py` собирает пакет `omb` для каждой версии, добавляет его в локальный индекс `Packages.gz` и формирует манифест зависимостей `repo-manifest.json` (версии и SHA-256 всех системных `.deb`, загрузочных файлов iPXE/shim/wimboot, Go и модулей из `go.mod`, закреплённого коммита `internal/unattend/UPSTREAM.md`). При передаче `--sign-key` манифест подписывается тем же OpenSSL-ключом в `repo-manifest.sig`:
+
+```sh
+python3 scripts/offline-deb.py omb-install-a.tar.gz apt-repo \
+  --public-key trusted-release-public.pem --version 0.1~rehearsal1 \
+  --update-archive omb-update-a-to-b.tar.gz --update-version 0.1~rehearsal2 \
+  --license LICENSE --sign-key signing-private.pem
+
+python3 scripts/offline-deb.py verify-repo apt-repo --public-key trusted-release-public.pem
+```
+
+Для работы с подписанным каталогом `apt-repo` скопируйте `offline-deb.py` рядом с `offline-deploy.sh`, `offline-install-lib.sh` и `offline-release.py`. Команды `install-deb-repo` и `update-deb-repo` сами проверяют `repo-manifest.sig`, `Packages.gz` и все `.deb` по `PUBLIC_KEY` и не требуют ручной передачи 64-символьных хешей:
+
+```sh
+sudo bash offline-deploy.sh install-deb-repo omb-install-a.tar.gz trusted-release-public.pem \
+  apt-repo 0.1~rehearsal1 MANAGEMENT_IP none
+
+sudo bash offline-deploy.sh update-deb-repo omb-install-a.tar.gz omb-update-a-to-b.tar.gz \
+  trusted-release-public.pem apt-repo 0.1~rehearsal1 0.1~rehearsal2 MANAGEMENT_IP
+
+sudo bash offline-deploy.sh rollback MANAGEMENT_IP
+dpkg-query -W -f='${Version}\n' omb
+```
+
+Также сохраняется ручной вариант с явной передачей пути `.deb` и SHA-256 (`install-deb` и `update-deb`):
 
 ```sh
 sudo bash offline-deploy.sh install-deb omb-install-a.tar.gz trusted-release-public.pem \
@@ -75,12 +99,9 @@ sudo bash offline-deploy.sh install-deb omb-install-a.tar.gz trusted-release-pub
 sudo bash offline-deploy.sh update-deb omb-install-a.tar.gz omb-update-a-to-b.tar.gz \
   trusted-release-public.pem "$OMB_PACKAGE_A" "$OMB_PACKAGE_A_SHA256" \
   "$OMB_PACKAGE_B" "$OMB_PACKAGE_B_SHA256" MANAGEMENT_IP
-
-sudo bash offline-deploy.sh rollback MANAGEMENT_IP
-dpkg-query -W -f='${Version}\n' omb
 ```
 
-При обновлении установщик сверяет предыдущий `.deb` с сохранённым SHA-256, копирует его в резервный каталог, автоматически определяет затронутые службы (`control`, `images`, `boot`, `agent`, опционально `dnsmasq`) и БД (`omb_control`, `omb_images`, `omb_boot` или `none`) по манифесту и применяет миграции в порядке манифеста. Поддерживаются совместные выпуски всех служб, обновления без SQL-миграций, а также обновление юнитов systemd (`/usr/lib/systemd/system/omb-*.service`) и помощников (`/usr/lib/omb/*`); `/srv/omb/tftp`, `/usr/share/omb` (кроме `release.json` и `upgrade/`) и `/etc/omb` при `update-deb` не перезаписываются. Останавливаются, копируются и проверяются только затронутые службы и БД; при откате APT восстанавливает сохранённый `.deb`, все затронутые БД переключаются обратно в одной транзакции PostgreSQL, а службы запускаются и проверяются заново. Хеш пакета, версия и коммит зафиксированы в `/var/lib/omb-deployment/`. Пакетную установку обновляйте через `update-deb`, чтобы смена файлов и схемы БД прошла в одной процедуре.
+При обновлении установщик сверяет предыдущий `.deb` с сохранённым SHA-256, копирует его в резервный каталог, автоматически определяет затронутые службы (`control`, `images`, `boot`, `agent`, опционально `dnsmasq`) и БД (`omb_control`, `omb_images`, `omb_boot` или `none`) по манифесту и применяет миграции в порядке манифеста. Поддерживаются совместные выпуски всех служб, обновления без SQL-миграций, а также обновление юнитов systemd (`/usr/lib/systemd/system/omb-*.service`) и помощников (`/usr/lib/omb/*`); `/srv/omb/tftp`, `/usr/share/omb` (кроме `release.json` и `upgrade/`) и `/etc/omb` при `update-deb` не перезаписываются. Останавливаются, копируются и проверяются только затронутые службы и БД; при откате APT восстанавливает сохранённый `.deb`, все затронутые БД переключаются обратно в одной транзакции PostgreSQL, а службы запускаются и проверяются заново. Хеш пакета, версия и коммит зафиксированы в `/var/lib/omb-deployment/`. Пакетную установку обновляйте через `update-deb-repo` или `update-deb`, чтобы смена файлов и схемы БД прошла в одной процедуре.
 
 ## Первичная установка
 

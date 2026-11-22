@@ -5,6 +5,8 @@ umask 077
 
 state=/var/lib/omb-deployment
 backups=/var/backups/omb
+binary_dir=/usr/local/bin
+package_mode=false
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 verifier="$script_dir/offline-release.py"
 
@@ -12,6 +14,40 @@ fail() { printf '%s\n' "$*" >&2; exit 1; }
 
 assert_no_pending() {
     [[ ! -e "$1/PENDING" ]] || fail 'An update is pending. Run rollback before starting another operation.'
+}
+
+stage_deb() {
+    local source=$1 digest=$2 dest=$3
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || fail 'Expected a lowercase SHA-256 for the package.'
+    cp -- "$source" "$dest"
+    printf '%s  %s\n' "$digest" "$dest" | sha256sum --check --status || fail 'Package checksum differs.'
+}
+
+package_identity() {
+    local deb=$1 commit=$2
+    [[ $(dpkg-deb -f "$deb" Package) == omb && $(dpkg-deb -f "$deb" Architecture) == amd64 &&
+       $(dpkg-deb -f "$deb" X-OMB-Commit) == "$commit" ]] || fail 'The package does not match the release.'
+    dpkg-deb -f "$deb" Version
+}
+
+match_package_binaries() {
+    local deb=$1 root=$2 base=$3 update=${4:-} original name expected
+    dpkg-deb -x "$deb" "$root"
+    for original in "$base"/bin/omb-*; do
+        name=${original##*/}
+        expected=$original
+        if [[ -n "$update" && -f "$update/bin/$name" ]]; then expected="$update/bin/$name"; fi
+        cmp -s "$expected" "$root/usr/bin/$name" || fail "Package binary differs from the signed archive: $name."
+    done
+}
+
+installed_package_matches() {
+    local record verification
+    record=$(dpkg-query -W -f='${db:Status-Status} ${Version} ${X-OMB-Commit}' omb) || return 1
+    [[ "$record" == "installed $1 $2" ]] || return 1
+    dpkg-deb -I "$3" md5sums | cmp -s - /var/lib/dpkg/info/omb.md5sums || return 1
+    verification=$(dpkg --verify omb) || return 1
+    [[ -z "$verification" ]]
 }
 
 update_sql() {
@@ -69,7 +105,7 @@ prepare_update() {
     fi
     local f
     for f in "$work/base"/bin/*; do
-        cmp -s "$f" "/usr/local/bin/${f##*/}" || fail "Installed binary differs from the base archive: ${f##*/}."
+        cmp -s "$f" "$binary_dir/${f##*/}" || fail "Installed binary differs from the base archive: ${f##*/}."
     done
     printf 'Verified installed binaries and signed update %s -> %s.\n' "$from" "$to"
 }
@@ -184,6 +220,12 @@ read_snapshot() {
     esac
     restored_images="omb_restore_images_${restored#omb_restore_}"
     retained_images="omb_retained_images_${retained#omb_retained_}"
+    if [[ -f "$backup/omb.deb" ]]; then
+        package_mode=true
+        binary_dir=/usr/bin
+    elif [[ -e "$state/PACKAGE" ]]; then
+        return 1
+    fi
 }
 
 verify_restored_data() {
@@ -226,7 +268,7 @@ SQL
 }
 
 restore_snapshot() {
-    local installed binary
+    local installed binary previous_version
     read_snapshot || return 1
     installed=$(cat "$state/COMMIT") || return 1
     [[ "$installed" == "$prior" || "$installed" == "$target" ]] || return 1
@@ -234,7 +276,7 @@ restore_snapshot() {
         # No migration or binary replacement is allowed until the restore has been verified.
         [[ "$installed" == "$prior" ]] || return 1
         for binary in "${binaries[@]}"; do
-            cmp -s "$backup/$binary" "/usr/local/bin/$binary" || return 1
+            cmp -s "$backup/$binary" "$binary_dir/$binary" || return 1
         done
         start_services && health || return 1
         unlink "$state/PENDING" || return 1
@@ -250,12 +292,23 @@ restore_snapshot() {
         echo 'The published menu changed. A coordinated menu and database restore is required.' >&2
         return 1
     }
+    if $package_mode; then
+        (cd "$backup" && sha256sum --check --status omb.deb.sha256) || return 1
+        previous_version=$(package_identity "$backup/omb.deb" "$prior") || return 1
+    fi
 
     # PENDING also covers an interrupted rollback. Restore can resume after the DB rename.
     write_state PENDING "$backup" || return 1
     stop_services || return 1
+    if $package_mode; then
+        if ! installed_package_matches "$previous_version" "$prior" "$backup/omb.deb"; then
+            install_packages '' "$backup/omb.deb" --allow-downgrades --reinstall || return 1
+            installed_package_matches "$previous_version" "$prior" "$backup/omb.deb" || return 1
+        fi
+        systemctl daemon-reload || return 1
+    fi
     swap_databases || return 1
-    install_binaries "$backup" || return 1
+    if ! $package_mode; then install_binaries "$backup" || return 1; fi
     systemctl reset-failed omb-control.service || return 1
     if $with_images; then
         systemctl reset-failed omb-images.service || return 1
@@ -264,6 +317,10 @@ restore_snapshot() {
     health || return 1
     boot_menu > "$work/menu-after-rollback" || return 1
     cmp -s "$backup/menu.ipxe" "$work/menu-after-rollback" || return 1
+    if $package_mode; then
+        write_state PACKAGE "$previous_version" || return 1
+        write_state PACKAGE_SHA256 "$(cut -d ' ' -f 1 "$backup/omb.deb.sha256")" || return 1
+    fi
     write_state COMMIT "$prior" || return 1
     unlink "$state/PENDING" || return 1
     printf 'Restored %s. The later database was retained as %s with connections disabled.\n' "$prior" "$retained"
@@ -276,6 +333,24 @@ upgrade() {
     prepare_update "$1" "$2" "$3" --check-host
     check_address
     health
+    local old_version new_version
+    if $package_mode; then
+        [[ -z $(dpkg --audit) ]] || fail 'The host package database needs attention before the update.'
+        stage_deb "$4" "$5" "$work/old.deb"
+        stage_deb "$6" "$7" "$work/new.deb"
+        old_version=$(package_identity "$work/old.deb" "$from")
+        new_version=$(package_identity "$work/new.deb" "$to")
+        dpkg --compare-versions "$new_version" gt "$old_version" || fail 'The new package version must be greater.'
+        [[ $(cat "$state/PACKAGE") == "$old_version" && $(cat "$state/PACKAGE_SHA256") == "$5" ]] &&
+            installed_package_matches "$old_version" "$from" "$work/old.deb" ||
+            fail 'The installed package does not match the base release.'
+        match_package_binaries "$work/old.deb" "$work/old-package" "$work/base"
+        match_package_binaries "$work/new.deb" "$work/new-package" "$work/base" "$work/update"
+        diff -qr "$work/old-package/usr/lib" "$work/new-package/usr/lib" >/dev/null &&
+            diff -qr --exclude=release.json --exclude=upgrade \
+                "$work/old-package/usr/share/omb" "$work/new-package/usr/share/omb" >/dev/null ||
+            fail 'The package update changes units, helpers, or provisioning inputs.'
+    fi
     if [[ ! -d "$backups" ]]; then install -d -m 0700 "$backups"; fi
     check_backup_space
     backup=$(mktemp -d "$backups/offline.XXXXXXXX")
@@ -283,9 +358,13 @@ upgrade() {
     suffix=$(printf '%s' "${backup##*.}" | tr '[:upper:]' '[:lower:]')
     if $with_images; then scope=' images'; fi
     printf '%s %s %s %s%s\n' "$from" "$to" "omb_restore_$suffix" "omb_retained_$suffix" "$scope" > "$backup/metadata"
+    if $package_mode; then
+        install -m 0600 "$work/old.deb" "$backup/omb.deb"
+        (cd "$backup" && sha256sum omb.deb > omb.deb.sha256)
+    fi
     read_snapshot
     for binary in "${binaries[@]}"; do
-        install -m 0700 "/usr/local/bin/$binary" "$backup/"
+        install -m 0700 "$binary_dir/$binary" "$backup/"
     done
     write_state PENDING "$backup"
     upgrade_paused=true
@@ -308,13 +387,23 @@ upgrade() {
     while IFS=$'\t' read -r database migration; do
         runuser -u "${database/_/-}" -- psql -Xw -v ON_ERROR_STOP=1 -d "$database" < "$work/update/$migration"
     done < "$work/migrations"
-    install_binaries "$work/update/bin"
+    if $package_mode; then
+        install_packages '' "$work/new.deb"
+        installed_package_matches "$new_version" "$to" "$work/new.deb" || fail 'The updated package failed verification.'
+        systemctl daemon-reload
+    else
+        install_binaries "$work/update/bin"
+    fi
     start_services
     health
     snapshot_users omb_control > "$work/users-after"
     cmp -s "$backup/users.json" "$work/users-after" || fail 'User rows changed during the update.'
     boot_menu > "$work/menu-after"
     cmp -s "$backup/menu.ipxe" "$work/menu-after" || fail 'Published PXE menu changed during the update.'
+    if $package_mode; then
+        write_state PACKAGE "$new_version"
+        write_state PACKAGE_SHA256 "$7"
+    fi
     write_state COMMIT "$to"
     write_state LAST "$backup"
     unlink "$state/PENDING"
@@ -342,7 +431,9 @@ usage() {
     cat >&2 <<'TEXT'
 offline-deploy.sh check-update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY
 offline-deploy.sh install INSTALL_ARCHIVE PUBLIC_KEY MANAGEMENT_IP [PXE_INTERFACE|none]
+offline-deploy.sh install-deb INSTALL_ARCHIVE PUBLIC_KEY PACKAGE SHA256 MANAGEMENT_IP [PXE_INTERFACE|none]
 offline-deploy.sh update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY MANAGEMENT_IP
+offline-deploy.sh update-deb BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY OLD_PACKAGE OLD_SHA256 NEW_PACKAGE NEW_SHA256 MANAGEMENT_IP
 offline-deploy.sh rollback MANAGEMENT_IP
 TEXT
     exit 2
@@ -351,7 +442,7 @@ TEXT
 main() {
     local command=${1:-}
     case "$command:$#" in
-        check-update:4|install:4|install:5|update:5|rollback:2) ;;
+        check-update:4|install:4|install:5|install-deb:6|install-deb:7|update:5|update-deb:9|rollback:2) ;;
         *) usage ;;
     esac
     shift
@@ -366,18 +457,36 @@ main() {
     trap cleanup EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
+    # shellcheck source=offline-install-lib.sh
+    source "$script_dir/offline-install-lib.sh"
     case "$command" in
-        check-update) prepare_update "$1" "$2" "$3" ;;
+        check-update)
+            [[ ! -e "$state/PACKAGE" ]] || fail 'This host is managed by APT.'
+            prepare_update "$1" "$2" "$3"
+            ;;
         install)
             address=$3
             check_address
-            # shellcheck source=offline-install-lib.sh
-            source "$script_dir/offline-install-lib.sh"
             fresh_install "$1" "$2" "${4:-none}"
             ;;
+        install-deb)
+            package_mode=true
+            binary_dir=/usr/bin
+            address=$5
+            check_address
+            fresh_install "$1" "$2" "${6:-none}" "$3" "$4"
+            ;;
         update)
+            [[ ! -e "$state/PACKAGE" ]] || fail 'Use update-deb on an APT-managed installation.'
             address=$4
             upgrade "$1" "$2" "$3"
+            ;;
+        update-deb)
+            [[ -f "$state/PACKAGE" ]] || fail 'This installation is not managed by APT.'
+            package_mode=true
+            binary_dir=/usr/bin
+            address=$8
+            upgrade "${@:1:7}"
             ;;
         rollback)
             address=$1

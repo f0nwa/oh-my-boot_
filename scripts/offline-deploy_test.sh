@@ -6,6 +6,14 @@ trap 'rm -r -- "$work"' EXIT
 # shellcheck source=offline-deploy.sh
 source "$repo/scripts/offline-deploy.sh"
 
+printf '%s\n' 'not a deb' > "$work/artifact.deb"
+invalid_sum=0000000000000000000000000000000000000000000000000000000000000000
+if (stage_deb "$work/artifact.deb" "$invalid_sum" "$work/staged.deb") > "$work/deb-error" 2>&1; then
+    echo 'Accepted a package that failed its checksum' >&2
+    exit 1
+fi
+grep -Fq 'Package checksum differs' "$work/deb-error"
+
 # The fresh installation does not select an update scope before its HTTPS check.
 (
     unset with_images

@@ -4,7 +4,7 @@
 
 The installation archive contains the OMB binaries, service units, templates, initial database schemas, boot assets, and a local APT repository. The separate A-to-B update contains two replacement binaries and the OIDC logout migration. The signed manifest lists the target, both commits for an update, the file hashes and sizes, and the ordered SQL steps.
 
-On Ubuntu, `scripts/offline-deb.py` can build one `omb` package per release and add them to a local APT repository. The package provides binaries, units and provisioning inputs. Site configuration, service startup and database rollback belong to the deployment procedure. [Package build and APT rehearsal](../research/2026-11-22-deb-package-rehearsal.md).
+On Ubuntu, `scripts/offline-deb.py` can build one `omb` package per release and add them to a local APT repository. Use `offline-deploy.sh install-deb BASE_ARCHIVE PUBLIC_KEY PACKAGE SHA256 MANAGEMENT_IP [PXE_INTERFACE]` to set up an APT-managed server. Use `offline-deploy.sh update-deb BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY OLD_PACKAGE OLD_SHA256 NEW_PACKAGE NEW_SHA256 MANAGEMENT_IP` to migrate its database and update the package. Obtain package digests from the release builder through a trusted channel. The standard `rollback` command restores the saved package and its matching database backup. [Package build and APT rehearsal](../research/2026-11-22-deb-package-rehearsal.md), [commands and checks](../offline-release.md#установка-из-deb).
 
 Use the release verifier from a trusted checkout and obtain the public key separately from the archives. An example on the target:
 

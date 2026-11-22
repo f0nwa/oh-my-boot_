@@ -172,6 +172,19 @@ SELECT to_jsonb(c) FROM public.catalog_settings c ORDER BY c.id;
 SQL
 }
 
+snapshot_catalog_stable() {
+    sql -d "$1" -At <<'SQL' | sha256sum
+SELECT id, name, kind, root, coalesce(storage_key, ''), server, share, subpath, export_path, nfs_version, uploads_enabled
+FROM public.storages ORDER BY id;
+SELECT storage_id, path, size_bytes, present
+FROM public.images ORDER BY storage_id, path;
+SELECT to_regclass('public.catalog_settings') IS NOT NULL AS has_settings \gset
+\if :has_settings
+SELECT id, rescan_enabled, rescan_interval_minutes FROM public.catalog_settings ORDER BY id;
+\endif
+SQL
+}
+
 snapshot_boot() {
     sql -d "$1" -At <<'SQL' | sha256sum
 SELECT count(*), coalesce(max(id), 0) FROM public.boot_events;
@@ -362,6 +375,7 @@ run_adopt() {
     snapshot_users omb_control > "$backup/users.json"
     backup_database omb_control omb-control "$restored_control" "$backup/control.dump"
     snapshot_catalog omb_images > "$backup/catalog.sha256"
+    snapshot_catalog_stable omb_images > "$backup/catalog-stable.sha256"
     backup_database omb_images omb-images "$restored_images" "$backup/images.dump"
     snapshot_boot omb_boot > "$backup/boot.sha256"
     backup_database omb_boot omb-boot "$restored_boot" "$backup/boot.dump"
@@ -389,8 +403,8 @@ run_adopt() {
 
     snapshot_users omb_control > "$work/users-after"
     cmp -s "$backup/users.json" "$work/users-after" || fail 'Users changed during adoption.'
-    snapshot_catalog omb_images > "$work/catalog-after"
-    cmp -s "$backup/catalog.sha256" "$work/catalog-after" || fail 'Images catalog changed during adoption.'
+    snapshot_catalog_stable omb_images > "$work/catalog-after"
+    cmp -s "$backup/catalog-stable.sha256" "$work/catalog-after" || fail 'Images catalog changed during adoption.'
     boot_menu > "$work/menu-after"
     cmp -s "$backup/menu.ipxe" "$work/menu-after" || fail 'Published PXE menu changed during adoption.'
 

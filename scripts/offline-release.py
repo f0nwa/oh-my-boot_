@@ -24,6 +24,11 @@ BINARIES = (
     "omb-agent", "omb-agentctl", "omb-boot", "omb-control", "omb-controlctl",
     "omb-images", "omb-imagesctl", "omb-winiso-prepare",
 )
+UNITS = tuple(
+    "deploy/systemd/" + name + ".service"
+    for name in ("omb-agent", "omb-boot", "omb-control", "omb-dnsmasq", "omb-images", "omb-winiso@")
+)
+HELPERS = ("scripts/prepare-ubuntu-source.sh", "scripts/fetch-ipxe.sh")
 BOOTSTRAP = [
     {"database": "omb_boot", "path": "deploy/sql/boot.sql"},
     {"database": "omb_boot", "path": "deploy/sql/2026-10-23-boot-transfer.sql"},
@@ -33,10 +38,9 @@ BOOTSTRAP = [
 REQUIRED_INSTALL = {
     *("bin/" + name for name in BINARIES),
     "assets/ipxeboot.tar.gz", "assets/ipxe-shimx64.efi", "assets/wimboot",
-    "debs/Packages.gz", "deploy/samba/smb.conf", "scripts/fetch-ipxe.sh",
-    "scripts/prepare-ubuntu-source.sh", *(step["path"] for step in BOOTSTRAP),
-    *("deploy/systemd/" + name + ".service" for name in
-      ("omb-agent", "omb-boot", "omb-control", "omb-dnsmasq", "omb-images", "omb-winiso@")),
+    "debs/Packages.gz", "deploy/samba/smb.conf", *HELPERS,
+    *(step["path"] for step in BOOTSTRAP),
+    *UNITS,
     "deploy/boot-assets/windows-profiles/omb-setup.cmd.in",
     "deploy/boot-assets/windows-profiles/winpeshl.ini",
 }
@@ -86,12 +90,13 @@ def validate_manifest(data):
     if binaries - {"bin/" + name for name in BINARIES}:
         raise ValueError("unrecognized binary in payload")
     steps = data["migrations"]
+    updatable = binaries | (files.keys() & (set(UNITS) | set(HELPERS)))
     if base is None:
         if (steps != BOOTSTRAP or REQUIRED_INSTALL - files.keys()
                 or not any(n.startswith("debs/") and n.endswith(".deb") for n in files)):
             raise ValueError("incomplete installation payload")
-    elif commit_id(base) == commit or not steps or not binaries:
-        raise ValueError("update needs a distinct source commit, binaries and migrations")
+    elif commit_id(base) == commit or (not steps and not updatable):
+        raise ValueError("update needs a distinct source commit and at least one binary, unit, helper, or migration")
     seen = set()
     for step in steps:
         name = step["path"]

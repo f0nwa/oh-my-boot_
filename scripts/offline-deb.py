@@ -17,6 +17,14 @@ VERIFIER = Path(__file__).with_name("offline-release.py")
 UBUNTU_HELPER = "/usr/lib/omb/omb-prepare-ubuntu-source"
 DEPENDENCIES = ("ca-certificates, cifs-utils, curl, dnsmasq-base, nfs-common, "
                 "openssl, postgresql, python3, samba, wimtools")
+ALLOWED_UPDATE_UNITS = frozenset(
+    f"deploy/systemd/{name}.service"
+    for name in ("omb-agent", "omb-boot", "omb-control", "omb-dnsmasq", "omb-images", "omb-winiso@")
+)
+ALLOWED_UPDATE_HELPERS = frozenset({
+    "scripts/prepare-ubuntu-source.sh",
+    "scripts/fetch-ipxe.sh",
+})
 
 
 def package_unit(name, content):
@@ -61,33 +69,49 @@ def require_amd64_elf(binary):
         raise ValueError(f"expected an amd64 ELF binary: {binary.name}")
 
 
-def build_package(package, repository, base, base_manifest, version, license_path,
-                  update=None, update_manifest=None):
+def validate_update_payload(manifest):
+    allowed = {step["path"] for step in manifest["migrations"]}
+    allowed.update(name for name in manifest["files"] if name.startswith("bin/"))
+    allowed.update(ALLOWED_UPDATE_UNITS)
+    allowed.update(ALLOWED_UPDATE_HELPERS)
+    allowed.update({"README.md", "go.mod", "go.sum", "provenance.json"})
+    unsupported = manifest["files"].keys() - allowed
+    if unsupported:
+        raise ValueError(f"unsupported update payload: {', '.join(sorted(unsupported))}")
+
+
+def overlay_source(base, update, rel_path):
+    if update is not None:
+        candidate = update / rel_path
+        if candidate.is_file():
+            return candidate
+    return base / rel_path
+
+
+def stage_package_tree(package, base, base_manifest, version, license_path,
+                       update=None, update_manifest=None):
     manifest = update_manifest or base_manifest
     if update is not None:
-        allowed = {step["path"] for step in manifest["migrations"]}
-        allowed.update(name for name in manifest["files"] if name.startswith("bin/"))
-        allowed.update({"README.md", "go.mod", "go.sum", "provenance.json"})
-        unsupported = manifest["files"].keys() - allowed
-        if unsupported:
-            raise ValueError(f"unsupported update payload: {', '.join(sorted(unsupported))}")
+        validate_update_payload(manifest)
     for binary in sorted((base / "bin").glob("omb-*")):
-        target = update / "bin" / binary.name if update is not None else binary
-        source = target if target.is_file() else binary
+        source = overlay_source(base, update, f"bin/{binary.name}")
         require_amd64_elf(source)
         stage_file(source, package, f"usr/bin/{binary.name}", 0o755)
     if b"ubuntu-source-script" not in (package / "usr/bin/omb-agent").read_bytes():
         raise ValueError("omb-agent must support -ubuntu-source-script for the packaged helper")
     for unit in sorted((base / "deploy/systemd").glob("omb-*.service")):
+        source = overlay_source(base, update, f"deploy/systemd/{unit.name}")
         path = package / "usr/lib/systemd/system" / unit.name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(package_unit(unit.name, unit.read_text()))
+        path.write_text(package_unit(unit.name, source.read_text()))
     for template in sorted((base / "deploy/boot-assets/windows-profiles").iterdir()):
         stage_file(template, package, f"usr/share/omb/windows-profiles/{template.name}")
     for name in ("ipxeboot.tar.gz", "ipxe-shimx64.efi", "wimboot"):
         stage_file(base / "assets" / name, package, f"usr/share/omb/assets/{name}")
-    stage_file(base / "scripts/prepare-ubuntu-source.sh", package, UBUNTU_HELPER.lstrip("/"), 0o755)
-    stage_file(base / "scripts/fetch-ipxe.sh", package, "usr/lib/omb/fetch-ipxe", 0o755)
+    stage_file(overlay_source(base, update, "scripts/prepare-ubuntu-source.sh"),
+               package, UBUNTU_HELPER.lstrip("/"), 0o755)
+    stage_file(overlay_source(base, update, "scripts/fetch-ipxe.sh"),
+               package, "usr/lib/omb/fetch-ipxe", 0o755)
     stage_file(base / "deploy/samba/smb.conf", package, "usr/share/omb/samba/smb.conf")
     stage_file(license_path, package, "usr/share/doc/omb/copyright")
     stage_sql(package, base, base_manifest, "bootstrap")
@@ -96,6 +120,13 @@ def build_package(package, repository, base, base_manifest, version, license_pat
     (package / "usr/share/omb/release.json").write_text(json.dumps({
         "commit": manifest["commit"], "from_commit": manifest["from_commit"], "version": version,
     }, indent=2) + "\n")
+    return manifest
+
+
+def build_package(package, repository, base, base_manifest, version, license_path,
+                  update=None, update_manifest=None):
+    manifest = stage_package_tree(package, base, base_manifest, version, license_path,
+                                  update=update, update_manifest=update_manifest)
 
     control = package / "DEBIAN"
     control.mkdir()

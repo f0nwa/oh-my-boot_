@@ -30,15 +30,66 @@ package_identity() {
     dpkg-deb -f "$deb" Version
 }
 
-match_package_binaries() {
-    local deb=$1 root=$2 base=$3 update=${4:-} original name expected
+match_package_payload() {
+    local deb=$1 root=$2 base=$3 update=${4:-}
     dpkg-deb -x "$deb" "$root"
-    for original in "$base"/bin/omb-*; do
-        name=${original##*/}
-        expected=$original
-        if [[ -n "$update" && -f "$update/bin/$name" ]]; then expected="$update/bin/$name"; fi
-        cmp -s "$expected" "$root/usr/bin/$name" || fail "Package binary differs from the signed archive: $name."
-    done
+    python3 - "$root" "$base" "$update" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+base = Path(sys.argv[2])
+update = Path(sys.argv[3]) if sys.argv[3] else None
+ubuntu_helper = "/usr/lib/omb/omb-prepare-ubuntu-source"
+
+
+def overlay(rel):
+    if update is not None:
+        candidate = update / rel
+        if candidate.is_file():
+            return candidate
+    return base / rel
+
+
+def package_unit(name, content):
+    lines = []
+    for line in content.splitlines(keepends=True):
+        if line.startswith("ExecStart=/usr/local/bin/"):
+            line = line.replace("ExecStart=/usr/local/bin/", "ExecStart=/usr/bin/", 1)
+            if name == "omb-agent.service":
+                line = f"{line.rstrip()} -ubuntu-source-script {ubuntu_helper}\n"
+        lines.append(line)
+    return "".join(lines)
+
+
+expected_bins = sorted(p.name for p in (base / "bin").glob("omb-*"))
+actual_bins = sorted(p.name for p in (root / "usr/bin").glob("*"))
+if actual_bins != expected_bins:
+    sys.exit("Package binaries do not match the expected inventory.")
+for name in expected_bins:
+    if overlay(f"bin/{name}").read_bytes() != (root / "usr/bin" / name).read_bytes():
+        sys.exit(f"Package binary differs from the signed archive: {name}.")
+
+expected_units = sorted(p.name for p in (base / "deploy/systemd").glob("omb-*.service"))
+actual_units = sorted(p.name for p in (root / "usr/lib/systemd/system").glob("*"))
+if actual_units != expected_units:
+    sys.exit("Package systemd units do not match the expected inventory.")
+for name in expected_units:
+    expected = package_unit(name, overlay(f"deploy/systemd/{name}").read_text()).encode()
+    if expected != (root / "usr/lib/systemd/system" / name).read_bytes():
+        sys.exit(f"Package unit differs from the signed archive: {name}.")
+
+helpers = {
+    "omb-prepare-ubuntu-source": "scripts/prepare-ubuntu-source.sh",
+    "fetch-ipxe": "scripts/fetch-ipxe.sh",
+}
+actual_helpers = sorted(p.name for p in (root / "usr/lib/omb").glob("*"))
+if actual_helpers != sorted(helpers):
+    sys.exit("Package helpers do not match the expected inventory.")
+for dest_name, rel in helpers.items():
+    if overlay(rel).read_bytes() != (root / "usr/lib/omb" / dest_name).read_bytes():
+        sys.exit(f"Package helper differs from the signed archive: {dest_name}.")
+PY
 }
 
 installed_package_matches() {
@@ -50,32 +101,89 @@ installed_package_matches() {
     [[ -z "$verification" ]]
 }
 
-update_sql() {
+inspect_update() {
     python3 - "$1" <<'PY'
 import json, sys
+
+BINARY_TO_SVC = {
+    "bin/omb-control": "control",
+    "bin/omb-controlctl": "control",
+    "bin/omb-images": "images",
+    "bin/omb-imagesctl": "images",
+    "bin/omb-boot": "boot",
+    "bin/omb-agent": "agent",
+    "bin/omb-agentctl": "agent",
+    "bin/omb-winiso-prepare": "agent",
+}
+UNIT_TO_SVC = {
+    "deploy/systemd/omb-control.service": "control",
+    "deploy/systemd/omb-images.service": "images",
+    "deploy/systemd/omb-boot.service": "boot",
+    "deploy/systemd/omb-agent.service": "agent",
+    "deploy/systemd/omb-winiso@.service": "agent",
+    "deploy/systemd/omb-dnsmasq.service": "dnsmasq",
+}
+HELPER_TO_SVC = {
+    "scripts/prepare-ubuntu-source.sh": "agent",
+    "scripts/fetch-ipxe.sh": "agent",
+}
+DB_TO_SVC = {
+    "omb_control": "control",
+    "omb_images": "images",
+    "omb_boot": "boot",
+}
+METADATA_FILES = {"README.md", "go.mod", "go.sum", "provenance.json"}
+
 with open(sys.argv[1], encoding="utf-8") as f:
     data = json.load(f)
-steps = data["migrations"]
-bins = {name for name in data["files"] if name.startswith("bin/")}
-databases = {step["database"] for step in steps}
-control = {"bin/omb-control", "bin/omb-controlctl"}
-images = {"bin/omb-images", "bin/omb-imagesctl"}
-supported = {frozenset({"omb_control"}): control,
-             frozenset({"omb_control", "omb_images"}): control | images}
-if not data["from_commit"] or bins != supported.get(frozenset(databases)):
-    sys.exit("Unsupported update: expected Control or Control and Images migrations and their binaries.")
-for step in steps:
-    print(step["database"], step["path"], sep="\t")
+
+if not data.get("from_commit"):
+    sys.exit("Unsupported update: missing from_commit.")
+
+services = set()
+databases = set()
+binaries = set()
+package_only = False
+migration_paths = set()
+
+for step in data.get("migrations", []):
+    db = step["database"]
+    if db not in DB_TO_SVC:
+        sys.exit(f"Unsupported migration database: {db}.")
+    services.add(DB_TO_SVC[db])
+    databases.add(db)
+    migration_paths.add(step["path"])
+
+for name in data.get("files", {}):
+    if name in BINARY_TO_SVC:
+        services.add(BINARY_TO_SVC[name])
+        binaries.add(name.split("/", 1)[1])
+    elif name in UNIT_TO_SVC:
+        services.add(UNIT_TO_SVC[name])
+        package_only = True
+    elif name in HELPER_TO_SVC:
+        services.add(HELPER_TO_SVC[name])
+        package_only = True
+    elif name in migration_paths or name in METADATA_FILES:
+        continue
+    else:
+        sys.exit(f"Unsupported update file: {name}.")
+
+if not services:
+    sys.exit("Unsupported update: no OMB services or databases affected.")
+
+print("SERVICES", ",".join(sorted(services)), sep="\t")
+print("DATABASES", ",".join(sorted(databases)) if databases else "none", sep="\t")
+print("BINARIES", ",".join(sorted(binaries)) if binaries else "none", sep="\t")
+print("PACKAGE_ONLY", "1" if package_only else "0", sep="\t")
+for step in data.get("migrations", []):
+    print("MIGRATION", step["database"], step["path"], sep="\t")
 PY
 }
 
-select_scope() {
-    with_images=$1
-    binaries=(omb-control omb-controlctl)
-    if $with_images; then
-        binaries+=(omb-images omb-imagesctl)
-    fi
-}
+has_service() { [[ ",${scope_services:-}," == *",$1,"* ]]; }
+
+has_database() { [[ "${scope_databases:-none}" != none && ",${scope_databases}," == *",$1,"* ]]; }
 
 manifest_commit() {
     python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' "$1/manifest.json"
@@ -89,6 +197,7 @@ extract() {
 
 prepare_update() {
     local base_archive=$1 update_archive=$2 key=$3
+    local kind field1 field2 bin_list='' package_only=0
     shift 3
     assert_no_pending "$state"
     extract "$base_archive" "$work/base" "$key"
@@ -97,17 +206,32 @@ prepare_update() {
     from=$(manifest_commit "$work/base")
     extract "$update_archive" "$work/update" "$key" --expect-from "$from" "$@"
     to=$(manifest_commit "$work/update")
-    update_sql "$work/update/manifest.json" > "$work/migrations"
-    if grep -q $'^omb_images\t' "$work/migrations"; then
-        select_scope true
-    else
-        select_scope false
+    inspect_update "$work/update/manifest.json" > "$work/plan"
+    : > "$work/migrations"
+    scope_services=''
+    scope_databases=none
+    binaries=()
+    while IFS=$'\t' read -r kind field1 field2; do
+        case "$kind" in
+            SERVICES) scope_services=$field1 ;;
+            DATABASES) scope_databases=$field1 ;;
+            BINARIES) bin_list=$field1 ;;
+            PACKAGE_ONLY) package_only=$field1 ;;
+            MIGRATION) printf '%s\t%s\n' "$field1" "$field2" >> "$work/migrations" ;;
+        esac
+    done < "$work/plan"
+    if [[ "$bin_list" != none && -n "$bin_list" ]]; then
+        IFS=',' read -r -a binaries <<< "$bin_list"
+    fi
+    if ! $package_mode && [[ "$package_only" == 1 ]]; then
+        fail 'Updates that change systemd units or helpers require update-deb.'
     fi
     local f
     for f in "$work/base"/bin/*; do
         cmp -s "$f" "$binary_dir/${f##*/}" || fail "Installed binary differs from the base archive: ${f##*/}."
     done
-    printf 'Verified installed binaries and signed update %s -> %s.\n' "$from" "$to"
+    printf 'Verified installed binaries and signed update %s -> %s (services: %s; databases: %s).\n' \
+        "$from" "$to" "$scope_services" "$scope_databases"
 }
 
 write_state() {
@@ -122,20 +246,45 @@ sql() { runuser -u postgres -- psql -Xqw -v ON_ERROR_STOP=1 "$@"; }
 boot_menu() { curl --noproxy '*' -fsS --max-time 4 http://127.0.0.1:8080/boot/menu.ipxe; }
 
 health() {
-    local try
+    local try ok
     for try in {1..20}; do
-        if curl --noproxy '*' -fsS --max-time 3 --cacert /var/lib/omb-control/control.crt \
-            -o /dev/null "https://$address:8443/login" 2>/dev/null &&
-            systemctl is-active --quiet omb-control.service; then
-            if [[ ${with_images:-false} != true ]] || { systemctl is-active --quiet omb-images.service &&
-                curl --noproxy '*' -fsS --max-time 3 --unix-socket /run/omb-images/images.sock \
-                    -o /dev/null http://localhost/catalog 2>/dev/null; }; then
-                return 0
+        ok=true
+        if [[ -z ${scope_services:-} ]] || has_service control; then
+            if ! systemctl is-active --quiet omb-control.service ||
+                ! curl --noproxy '*' -fsS --max-time 3 --cacert /var/lib/omb-control/control.crt \
+                    -o /dev/null "https://$address:8443/login" 2>/dev/null; then
+                ok=false
             fi
         fi
+        if $ok && has_service images; then
+            if ! systemctl is-active --quiet omb-images.service ||
+                ! curl --noproxy '*' -fsS --max-time 3 --unix-socket /run/omb-images/images.sock \
+                    -o /dev/null http://localhost/catalog 2>/dev/null; then
+                ok=false
+            fi
+        fi
+        if $ok && has_service boot; then
+            if ! systemctl is-active --quiet omb-boot.service ||
+                ! boot_menu >/dev/null 2>&1; then
+                ok=false
+            fi
+        fi
+        if $ok && has_service agent; then
+            if ! systemctl is-active --quiet omb-agent.service ||
+                ! curl --noproxy '*' -fsS --max-time 3 --unix-socket /run/omb/agent.sock \
+                    -o /dev/null http://localhost/status 2>/dev/null; then
+                ok=false
+            fi
+        fi
+        if $ok && has_service dnsmasq && [[ ${dnsmasq_was_active:-0} == 1 ]]; then
+            if ! systemctl is-active --quiet omb-dnsmasq.service; then
+                ok=false
+            fi
+        fi
+        if $ok; then return 0; fi
         sleep 1
     done
-    echo 'Control HTTPS or Images catalog health check failed.' >&2
+    echo "Service health check failed (services: ${scope_services:-control})." >&2
     return 1
 }
 
@@ -157,17 +306,35 @@ install_binaries() {
 }
 
 stop_services() {
-    systemctl stop omb-control.service || return 1
-    if $with_images; then
-        systemctl stop omb-images.service || return 1
+    if has_service control; then systemctl stop omb-control.service || return 1; fi
+    if has_service images; then systemctl stop omb-images.service || return 1; fi
+    if has_service boot; then systemctl stop omb-boot.service || return 1; fi
+    if has_service agent; then systemctl stop omb-agent.service || return 1; fi
+    if has_service dnsmasq && [[ ${dnsmasq_was_active:-0} == 1 ]]; then
+        systemctl stop omb-dnsmasq.service || return 1
     fi
 }
 
 start_services() {
-    if $with_images; then
-        systemctl start omb-images.service || return 1
+    if has_service boot; then systemctl start omb-boot.service || return 1; fi
+    if has_service agent; then systemctl start omb-agent.service || return 1; fi
+    if has_service images; then systemctl start omb-images.service || return 1; fi
+    if has_service control; then systemctl start omb-control.service || return 1; fi
+    if has_service dnsmasq && [[ ${dnsmasq_was_active:-0} == 1 ]]; then
+        systemctl start omb-dnsmasq.service || return 1
     fi
-    systemctl start omb-control.service
+}
+
+reset_failed_services() {
+    local svc
+    for svc in control images boot agent; do
+        if has_service "$svc"; then
+            systemctl reset-failed "omb-$svc.service" || return 1
+        fi
+    done
+    if has_service dnsmasq && [[ ${dnsmasq_was_active:-0} == 1 ]]; then
+        systemctl reset-failed omb-dnsmasq.service || return 1
+    fi
 }
 
 snapshot_users() {
@@ -185,6 +352,16 @@ SELECT to_jsonb(c) FROM public.catalog_settings c ORDER BY c.id;
 SQL
 }
 
+snapshot_boot() {
+    sql -d "$1" -At <<'SQL' | sha256sum
+SELECT count(*), coalesce(max(id), 0) FROM public.boot_events;
+SELECT id, occurred_at, kind, path, remote_addr, mac FROM (
+    SELECT id, occurred_at, kind, path, remote_addr, mac
+    FROM public.boot_events ORDER BY id DESC LIMIT 100
+) recent ORDER BY id;
+SQL
+}
+
 backup_database() {
     local database=$1 owner=$2 recovery_db=$3 dump=$4
     runuser -u postgres -- pg_dump --no-password -Fc -d "$database" > "$dump"
@@ -193,8 +370,13 @@ backup_database() {
 }
 
 check_backup_space() {
-    local db_kib free_db free_backup names="'omb_control'"
-    if $with_images; then names+=",'omb_images'"; fi
+    if [[ "${scope_databases:-none}" == none ]]; then return 0; fi
+    local db_kib free_db free_backup names='' db
+    for db in omb_control omb_images omb_boot; do
+        if has_database "$db"; then
+            names+="${names:+,}'$db'"
+        fi
+    done
     db_kib=$(sql -d postgres -Atc "SELECT (sum(pg_database_size(datname::text))::bigint+1023)/1024 FROM pg_database WHERE datname IN ($names)")
     free_db=$(df -Pk /var/lib/postgresql | awk 'NR==2 {print $4}')
     free_backup=$(df -Pk "$backups" | awk 'NR==2 {print $4}')
@@ -208,18 +390,25 @@ check_backup_space() {
 }
 
 read_snapshot() {
-    local scope
+    local line
     [[ "$backup" == "$backups"/offline.* && -d "$backup" && ! -L "$backup" ]] || return 1
-    read -r prior target restored retained scope < "$backup/metadata" || return 1
-    [[ "$prior" =~ ^[0-9a-f]{40}$ && "$target" =~ ^[0-9a-f]{40}$ &&
-       "$restored" =~ ^omb_restore_[0-9a-z]+$ && "$retained" =~ ^omb_retained_[0-9a-z]+$ ]] || return 1
-    case "$scope" in
-        '') select_scope false ;;
-        images) select_scope true ;;
-        *) return 1 ;;
-    esac
-    restored_images="omb_restore_images_${restored#omb_restore_}"
-    retained_images="omb_retained_images_${retained#omb_retained_}"
+    read -r prior target suffix scope_services scope_databases dnsmasq_was_active < "$backup/metadata" || return 1
+    [[ "$prior" =~ ^[0-9a-f]{40}$ && "$target" =~ ^[0-9a-f]{40}$ && "$suffix" =~ ^[0-9a-z]+$ &&
+       "$scope_services" =~ ^(agent|boot|control|dnsmasq|images)(,(agent|boot|control|dnsmasq|images))*$ &&
+       "$scope_databases" =~ ^(none|(omb_boot|omb_control|omb_images)(,(omb_boot|omb_control|omb_images))*)$ &&
+       "$dnsmasq_was_active" =~ ^[01]$ ]] || return 1
+    restored_control="omb_restore_control_$suffix"
+    retained_control="omb_retained_control_$suffix"
+    restored_images="omb_restore_images_$suffix"
+    retained_images="omb_retained_images_$suffix"
+    restored_boot="omb_restore_boot_$suffix"
+    retained_boot="omb_retained_boot_$suffix"
+    binaries=()
+    if [[ -f "$backup/binaries" ]]; then
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && binaries+=("$line")
+        done < "$backup/binaries"
+    fi
     if [[ -f "$backup/omb.deb" ]]; then
         package_mode=true
         binary_dir=/usr/bin
@@ -229,35 +418,62 @@ read_snapshot() {
 }
 
 verify_restored_data() {
-    snapshot_users "$restored" > "$work/users-restored" || return 1
-    cmp -s "$backup/users.json" "$work/users-restored" || return 1
-    if $with_images; then
+    if has_database omb_control; then
+        snapshot_users "$restored_control" > "$work/users-restored" || return 1
+        cmp -s "$backup/users.json" "$work/users-restored" || return 1
+    fi
+    if has_database omb_images; then
         snapshot_catalog "$restored_images" > "$work/catalog-restored" || return 1
         cmp -s "$backup/catalog.sha256" "$work/catalog-restored" || return 1
+    fi
+    if has_database omb_boot; then
+        snapshot_boot "$restored_boot" > "$work/boot-restored" || return 1
+        cmp -s "$backup/boot.sha256" "$work/boot-restored" || return 1
     fi
 }
 
 swap_databases() {
-    local existing names="'$restored','$retained'" expected=1
-    if $with_images; then
-        names+=",'$restored_images','$retained_images'"
-        expected=2
+    if [[ "${scope_databases:-none}" == none ]]; then return 0; fi
+    local existing names='' expected=0 has_ctrl=false has_img=false has_bt=false
+    if has_database omb_control; then
+        names+="${names:+,}'$restored_control','$retained_control'"
+        ((expected += 1))
+        has_ctrl=true
+    fi
+    if has_database omb_images; then
+        names+="${names:+,}'$restored_images','$retained_images'"
+        ((expected += 1))
+        has_img=true
+    fi
+    if has_database omb_boot; then
+        names+="${names:+,}'$restored_boot','$retained_boot'"
+        ((expected += 1))
+        has_bt=true
     fi
     existing=$(sql -d postgres -Atc "SELECT count(*) FILTER (WHERE left(datname,12)='omb_restore_'),
         count(*) FILTER (WHERE left(datname,13)='omb_retained_' AND NOT datallowconn), count(*)
         FROM pg_database WHERE datname IN ($names)") || return 1
     if [[ "$existing" == "$expected|0|$expected" ]]; then
         verify_restored_data || { echo 'Recovery databases differ from the backup.' >&2; return 1; }
-        sql -d postgres -v restored="$restored" -v retained="$retained" -v images="$with_images" \
-            -v restored_images="$restored_images" -v retained_images="$retained_images" <<'SQL'
+        sql -d postgres \
+            -v has_control="$has_ctrl" -v restored_control="$restored_control" -v retained_control="$retained_control" \
+            -v has_images="$has_img" -v restored_images="$restored_images" -v retained_images="$retained_images" \
+            -v has_boot="$has_bt" -v restored_boot="$restored_boot" -v retained_boot="$retained_boot" <<'SQL'
 BEGIN;
-ALTER DATABASE omb_control RENAME TO :"retained";
-ALTER DATABASE :"restored" RENAME TO omb_control;
-ALTER DATABASE :"retained" WITH ALLOW_CONNECTIONS false;
-\if :images
+\if :has_control
+ALTER DATABASE omb_control RENAME TO :"retained_control";
+ALTER DATABASE :"restored_control" RENAME TO omb_control;
+ALTER DATABASE :"retained_control" WITH ALLOW_CONNECTIONS false;
+\endif
+\if :has_images
 ALTER DATABASE omb_images RENAME TO :"retained_images";
 ALTER DATABASE :"restored_images" RENAME TO omb_images;
 ALTER DATABASE :"retained_images" WITH ALLOW_CONNECTIONS false;
+\endif
+\if :has_boot
+ALTER DATABASE omb_boot RENAME TO :"retained_boot";
+ALTER DATABASE :"restored_boot" RENAME TO omb_boot;
+ALTER DATABASE :"retained_boot" WITH ALLOW_CONNECTIONS false;
 \endif
 COMMIT;
 SQL
@@ -283,15 +499,19 @@ restore_snapshot() {
         printf 'Restarted %s. The interrupted backup had not reached the migration step.\n' "$prior"
         return 0
     fi
-    cmp -s /etc/omb/secrets.key "$backup/secrets.key" || {
-        echo 'Integration key changed. Restore it deliberately before attempting rollback.' >&2
-        return 1
-    }
-    boot_menu > "$work/menu-before-rollback" || return 1
-    cmp -s "$work/menu-before-rollback" "$backup/menu.ipxe" || {
-        echo 'The published menu changed. A coordinated menu and database restore is required.' >&2
-        return 1
-    }
+    if [[ -f "$backup/secrets.key" ]]; then
+        cmp -s /etc/omb/secrets.key "$backup/secrets.key" || {
+            echo 'Integration key changed. Restore it deliberately before attempting rollback.' >&2
+            return 1
+        }
+    fi
+    if [[ -f "$backup/menu.ipxe" ]] && systemctl is-active --quiet omb-boot.service; then
+        boot_menu > "$work/menu-before-rollback" || return 1
+        cmp -s "$work/menu-before-rollback" "$backup/menu.ipxe" || {
+            echo 'The published menu changed. A coordinated menu and database restore is required.' >&2
+            return 1
+        }
+    fi
     if $package_mode; then
         (cd "$backup" && sha256sum --check --status omb.deb.sha256) || return 1
         previous_version=$(package_identity "$backup/omb.deb" "$prior") || return 1
@@ -308,30 +528,39 @@ restore_snapshot() {
         systemctl daemon-reload || return 1
     fi
     swap_databases || return 1
-    if ! $package_mode; then install_binaries "$backup" || return 1; fi
-    systemctl reset-failed omb-control.service || return 1
-    if $with_images; then
-        systemctl reset-failed omb-images.service || return 1
-    fi
+    if ! $package_mode && (( ${#binaries[@]} > 0 )); then install_binaries "$backup" || return 1; fi
+    reset_failed_services || return 1
     start_services || return 1
     health || return 1
-    boot_menu > "$work/menu-after-rollback" || return 1
-    cmp -s "$backup/menu.ipxe" "$work/menu-after-rollback" || return 1
+    if [[ -f "$backup/menu.ipxe" ]]; then
+        boot_menu > "$work/menu-after-rollback" || return 1
+        cmp -s "$backup/menu.ipxe" "$work/menu-after-rollback" || return 1
+    fi
     if $package_mode; then
         write_state PACKAGE "$previous_version" || return 1
         write_state PACKAGE_SHA256 "$(cut -d ' ' -f 1 "$backup/omb.deb.sha256")" || return 1
     fi
     write_state COMMIT "$prior" || return 1
     unlink "$state/PENDING" || return 1
-    printf 'Restored %s. The later database was retained as %s with connections disabled.\n' "$prior" "$retained"
-    if $with_images; then
+    printf 'Restored %s (services: %s; databases: %s).\n' "$prior" "$scope_services" "$scope_databases"
+    if has_database omb_control; then
+        printf 'The later Control database was retained as %s with connections disabled.\n' "$retained_control"
+    fi
+    if has_database omb_images; then
         printf 'The later Images database was retained as %s with connections disabled.\n' "$retained_images"
+    fi
+    if has_database omb_boot; then
+        printf 'The later Boot database was retained as %s with connections disabled.\n' "$retained_boot"
     fi
 }
 
 upgrade() {
     prepare_update "$1" "$2" "$3" --check-host
     check_address
+    dnsmasq_was_active=0
+    if has_service dnsmasq && systemctl is-active --quiet omb-dnsmasq.service; then
+        dnsmasq_was_active=1
+    fi
     health
     local old_version new_version
     if $package_mode; then
@@ -344,20 +573,22 @@ upgrade() {
         [[ $(cat "$state/PACKAGE") == "$old_version" && $(cat "$state/PACKAGE_SHA256") == "$5" ]] &&
             installed_package_matches "$old_version" "$from" "$work/old.deb" ||
             fail 'The installed package does not match the base release.'
-        match_package_binaries "$work/old.deb" "$work/old-package" "$work/base"
-        match_package_binaries "$work/new.deb" "$work/new-package" "$work/base" "$work/update"
-        diff -qr "$work/old-package/usr/lib" "$work/new-package/usr/lib" >/dev/null &&
-            diff -qr --exclude=release.json --exclude=upgrade \
-                "$work/old-package/usr/share/omb" "$work/new-package/usr/share/omb" >/dev/null ||
-            fail 'The package update changes units, helpers, or provisioning inputs.'
+        match_package_payload "$work/old.deb" "$work/old-package" "$work/base"
+        match_package_payload "$work/new.deb" "$work/new-package" "$work/base" "$work/update"
+        diff -qr --exclude=release.json --exclude=upgrade \
+            "$work/old-package/usr/share/omb" "$work/new-package/usr/share/omb" >/dev/null ||
+            fail 'The package update changes provisioning inputs under /usr/share/omb.'
     fi
     if [[ ! -d "$backups" ]]; then install -d -m 0700 "$backups"; fi
     check_backup_space
     backup=$(mktemp -d "$backups/offline.XXXXXXXX")
-    local suffix scope='' binary database migration
+    local suffix binary database migration
     suffix=$(printf '%s' "${backup##*.}" | tr '[:upper:]' '[:lower:]')
-    if $with_images; then scope=' images'; fi
-    printf '%s %s %s %s%s\n' "$from" "$to" "omb_restore_$suffix" "omb_retained_$suffix" "$scope" > "$backup/metadata"
+    printf '%s %s %s %s %s %s\n' "$from" "$to" "$suffix" "$scope_services" "$scope_databases" "$dnsmasq_was_active" \
+        > "$backup/metadata"
+    if (( ${#binaries[@]} > 0 )); then
+        printf '%s\n' "${binaries[@]}" > "$backup/binaries"
+    fi
     if $package_mode; then
         install -m 0600 "$work/old.deb" "$backup/omb.deb"
         (cd "$backup" && sha256sum omb.deb > omb.deb.sha256)
@@ -366,38 +597,53 @@ upgrade() {
     for binary in "${binaries[@]}"; do
         install -m 0700 "$binary_dir/$binary" "$backup/"
     done
+    # Capture published menu before stopping omb-boot if boot is in scope.
+    boot_menu > "$backup/menu.ipxe"
     write_state PENDING "$backup"
     upgrade_paused=true
     stop_services
-    install -m 0600 /etc/omb/control.env /etc/omb/secrets.key \
-        /var/lib/omb-control/control.crt /var/lib/omb-control/control.key "$backup/"
-    if $with_images; then
+    if has_service control; then
+        install -m 0600 /etc/omb/control.env /etc/omb/secrets.key \
+            /var/lib/omb-control/control.crt /var/lib/omb-control/control.key "$backup/"
+    fi
+    if has_service images; then
         install -m 0600 /etc/omb/images.env "$backup/"
     fi
-    boot_menu > "$backup/menu.ipxe"
-    snapshot_users omb_control > "$backup/users.json"
-    backup_database omb_control omb-control "$restored" "$backup/control.dump"
-    if $with_images; then
+    if has_service boot; then
+        install -m 0600 /etc/omb/boot.env "$backup/"
+    fi
+    if has_database omb_control; then
+        snapshot_users omb_control > "$backup/users.json"
+        backup_database omb_control omb-control "$restored_control" "$backup/control.dump"
+    fi
+    if has_database omb_images; then
         snapshot_catalog omb_images > "$backup/catalog.sha256"
         backup_database omb_images omb-images "$restored_images" "$backup/images.dump"
+    fi
+    if has_database omb_boot; then
+        snapshot_boot omb_boot > "$backup/boot.sha256"
+        backup_database omb_boot omb-boot "$restored_boot" "$backup/boot.dump"
     fi
     verify_restored_data || fail 'Restored data differs from the backup source.'
     : > "$backup/READY"
 
     while IFS=$'\t' read -r database migration; do
+        [[ -n "$database" ]] || continue
         runuser -u "${database/_/-}" -- psql -Xw -v ON_ERROR_STOP=1 -d "$database" < "$work/update/$migration"
     done < "$work/migrations"
     if $package_mode; then
         install_packages '' "$work/new.deb"
         installed_package_matches "$new_version" "$to" "$work/new.deb" || fail 'The updated package failed verification.'
         systemctl daemon-reload
-    else
+    elif (( ${#binaries[@]} > 0 )); then
         install_binaries "$work/update/bin"
     fi
     start_services
     health
-    snapshot_users omb_control > "$work/users-after"
-    cmp -s "$backup/users.json" "$work/users-after" || fail 'User rows changed during the update.'
+    if has_database omb_control; then
+        snapshot_users omb_control > "$work/users-after"
+        cmp -s "$backup/users.json" "$work/users-after" || fail 'User rows changed during the update.'
+    fi
     boot_menu > "$work/menu-after"
     cmp -s "$backup/menu.ipxe" "$work/menu-after" || fail 'Published PXE menu changed during the update.'
     if $package_mode; then
@@ -408,7 +654,8 @@ upgrade() {
     write_state LAST "$backup"
     unlink "$state/PENDING"
     upgrade_paused=false
-    printf 'Updated to %s. Verified rollback backup: %s\n' "$to" "$backup"
+    printf 'Updated to %s (services: %s; databases: %s). Verified rollback backup: %s\n' \
+        "$to" "$scope_services" "$scope_databases" "$backup"
 }
 
 cleanup() {

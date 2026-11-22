@@ -86,6 +86,37 @@ class OfflineReleaseTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "source commit"):
                         release.check_host({"from_commit": other})
 
+    def test_update_allows_binary_unit_or_helper_without_migrations_and_rejects_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = root / "private.pem"
+            public_key = root / "public.pem"
+            self.openssl("genpkey", "-algorithm", "RSA", "-out", key)
+            self.openssl("pkey", "-in", key, "-pubout", "-out", public_key)
+
+            bin_only = root / "bin-only"
+            (bin_only / "bin").mkdir(parents=True)
+            (bin_only / "bin/omb-boot").write_bytes(b"boot")
+            archive = root / "bin-only.tar.gz"
+            self.invoke("pack", bin_only, archive, "--commit", B, "--from-commit", A, "--sign-key", key)
+            self.invoke("verify", archive, "--public-key", public_key, "--expect-from", A)
+
+            unit_only = root / "unit-only"
+            (unit_only / "deploy/systemd").mkdir(parents=True)
+            (unit_only / "deploy/systemd/omb-agent.service").write_text("[Service]\nExecStart=/usr/local/bin/omb-agent\n")
+            (unit_only / "scripts").mkdir(parents=True)
+            (unit_only / "scripts/prepare-ubuntu-source.sh").write_text("#!/bin/sh\n")
+            unit_archive = root / "unit-only.tar.gz"
+            self.invoke("pack", unit_only, unit_archive, "--commit", B, "--from-commit", A, "--sign-key", key)
+            self.invoke("verify", unit_archive, "--public-key", public_key, "--expect-from", A)
+
+            readme_only = root / "readme-only"
+            readme_only.mkdir()
+            (readme_only / "README.md").write_text("notes\n")
+            self.invoke("pack", readme_only, root / "readme.tar.gz",
+                        "--commit", B, "--from-commit", A, "--sign-key", key,
+                        error="at least one binary, unit, helper, or migration")
+
     def openssl(self, *args):
         subprocess.run(["openssl", *map(str, args)], check=True, capture_output=True)
 

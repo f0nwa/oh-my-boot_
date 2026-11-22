@@ -100,7 +100,7 @@ fresh_install() {
         deb="$work/install.deb"
         stage_deb "$4" "$5" "$deb"
         package_version=$(package_identity "$deb" "$commit")
-        match_package_binaries "$deb" "$work/package" "$release"
+        match_package_payload "$deb" "$work/package" "$release"
     fi
     steps=$(python3 - "$release/manifest.json" <<'PY'
 import json, sys

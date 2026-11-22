@@ -5,7 +5,7 @@
 <p class="lead">{{t "Кто может входить в админку и что ему разрешено."}}</p>
 </div>
 <div class="page-head-actions">
-<button type="button" class="btn" data-password-policy-open>{{t "Политика паролей"}}</button>
+<button type="button" class="btn" data-password-policy-open>{{t "Политика безопасности"}}</button>
 <button type="button" class="btn btn-primary" data-user-add><span aria-hidden="true">+</span> {{t "Добавить пользователя"}}</button>
 </div>
 </div>
@@ -27,6 +27,7 @@
 <th>{{t "Роль"}}</th>
 <th>{{t "Статус"}}</th>
 <th>{{t "Пароль"}}</th>
+<th>{{t "2FA"}}</th>
 <th>{{t "SMB / SFTP"}}</th>
 <th class="user-actions-th"><span class="sr-only">{{t "Действия"}}</span></th>
 </tr>
@@ -74,6 +75,19 @@
 <span class="muted">—</span>
 {{end}}
 </td>
+<td>
+{{if $local}}
+{{if .TOTPEnabled}}
+<span class="user-2fa-status"><span class="dot dot-ok"></span><span>{{t "Вкл"}}</span></span>
+{{else if $.PasswordPolicy.RequiresTOTP .}}
+<span class="user-2fa-status"><span class="dot dot-accent"></span><span>{{t "Требуется"}}</span></span>
+{{else}}
+<span class="user-2fa-status"><span class="dot dot-off"></span><span class="muted">{{t "Выкл"}}</span></span>
+{{end}}
+{{else}}
+<span class="muted">—</span>
+{{end}}
+</td>
 <td class="user-fs-cell">
 <button type="button" class="chip {{if eq .FSAccessMode "rw"}}chip-ok{{else if eq .FSAccessMode "ro"}}chip-ro{{else}}chip-off{{end}} user-fs-chip-btn" data-user-fs-id="{{.ID}}" data-user-fs-name="{{.Username}}" data-user-fs-mode="{{.FSAccessMode}}" data-user-fs-has-pw="{{if .HasFSPassword}}true{{else}}false{{end}}">{{if eq .FSAccessMode "rw"}}{{t "Чтение и запись"}}{{else if eq .FSAccessMode "ro"}}{{t "Только чтение"}}{{else}}{{t "Отключён"}}{{end}}</button>{{if and (not .Enabled) (ne .FSAccessMode "none")}}<br><small class="muted">{{t "приостановлен (аккаунт отключён)"}}</small>{{else if .HasFSPassword}}{{if .FSPasswordChangedAt}}<br><small class="muted">{{t "пароль задан"}} {{formatLocalDate .FSPasswordChangedAt}}</small>{{end}}{{end}}
 </td>
@@ -85,6 +99,7 @@
 {{if $local}}
 <button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-pw-id="{{.ID}}" data-user-pw-name="{{.Username}}" data-user-self="{{if $self}}true{{else}}false{{end}}">{{t "Сменить пароль…"}}</button>
 <button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-expiry-id="{{.ID}}" data-user-expiry-name="{{.Username}}" data-user-expiry-mode="{{if .PasswordPolicyMode}}{{.PasswordPolicyMode}}{{else}}policy{{end}}" data-user-expiry-days="{{if gt .PasswordMaxAgeDays 0}}{{.PasswordMaxAgeDays}}{{else}}30{{end}}" data-user-expiry-must-change="{{if .MustChangePassword}}true{{else}}false{{end}}" data-user-expiry-changed="{{formatLocalDate .PasswordChangedAt}}" data-user-self="{{if $self}}true{{else}}false{{end}}">{{t "Срок действия пароля…"}}</button>
+{{if .TOTPEnabled}}<button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-reset-2fa-id="{{.ID}}" data-user-reset-2fa-name="{{.Username}}">{{t "Сбросить 2FA…"}}</button>{{end}}
 {{end}}
 <button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-fs-id="{{.ID}}" data-user-fs-name="{{.Username}}" data-user-fs-mode="{{.FSAccessMode}}" data-user-fs-has-pw="{{if .HasFSPassword}}true{{else}}false{{end}}">{{t "Доступ SMB / SFTP…"}}</button>
 {{if and $local (not $self)}}<hr class="row-menu-sep"><button type="button" class="row-menu-item row-menu-danger" role="menuitem" data-close-popover data-user-delete-id="{{.ID}}" data-user-delete-name="{{.Username}}">{{t "Удалить"}}</button>{{end}}
@@ -94,7 +109,7 @@
 </tr>
 {{end}}
 <tr id="users-empty-row" hidden>
-<td colspan="7" class="muted text-center">{{t "Пользователи не найдены"}}</td>
+<td colspan="8" class="muted text-center">{{t "Пользователи не найдены"}}</td>
 </tr>
 </tbody>
 </table>
@@ -102,12 +117,12 @@
 </section>
 
 <dialog id="password-policy-dialog" class="user-dialog" aria-labelledby="password-policy-title">
-<div class="user-dialog-head"><h2 id="password-policy-title">{{t "Общая политика паролей"}}</h2><button type="button" class="btn btn-ghost" data-close-dialog aria-label="{{t "Закрыть"}}">×</button></div>
-<p class="hint">{{t "Действует для всех локальных учётных записей с режимом «По политике». Индивидуальные правила задаются в меню ☰ строки."}}</p>
-<form method="post" action="/users/password-policy" data-initial-max="{{.PasswordPolicy.MaxAgeDays}}" data-initial-warn="{{.PasswordPolicy.WarnDays}}">
+<div class="user-dialog-head"><h2 id="password-policy-title">{{t "Политика безопасности"}}</h2><button type="button" class="btn btn-ghost" data-close-dialog aria-label="{{t "Закрыть"}}">×</button></div>
+<p class="hint">{{t "Действует для локальных учётных записей. Внешние учётные записи (AD / Keycloak) управляются на стороне провайдера."}}</p>
+<form method="post" action="/users/password-policy" data-initial-max="{{.PasswordPolicy.MaxAgeDays}}" data-initial-warn="{{.PasswordPolicy.WarnDays}}" data-initial-totp="{{if .PasswordPolicy.TOTPPolicy}}{{.PasswordPolicy.TOTPPolicy}}{{else}}off{{end}}">
 <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
-<div>
-<div class="policy-field-title">{{t "Максимальный срок действия"}}</div>
+<div class="policy-section">
+<div class="policy-field-title">{{t "Срок действия паролей"}}</div>
 <div class="preset-row">
 <button type="button" class="preset-btn" data-policy-preset="0">{{t "Бессрочно"}}</button>
 <button type="button" class="preset-btn" data-policy-preset="30">{{t "30 дн."}}</button>
@@ -116,11 +131,30 @@
 <button type="button" class="preset-btn" data-policy-preset="180">{{t "180 дн."}}</button>
 </div>
 <label>{{t "Срок в днях (0 = бессрочно, до 3650)"}}<input type="number" name="max_age_days" min="0" max="3650" value="{{.PasswordPolicy.MaxAgeDays}}" required></label>
-</div>
 <label data-policy-warn-wrap>{{t "Предупреждать до истечения, дней (0–90)"}}<input type="number" name="warn_days" min="0" max="90" value="{{.PasswordPolicy.WarnDays}}" required><small>{{t "За столько дней пользователь увидит уведомление в шапке и в личном кабинете (0 — не предупреждать)."}}</small></label>
+</div>
+<div class="policy-section">
+<div class="policy-field-title">{{t "Двухфакторная аутентификация (2FA)"}}</div>
+<label class="radio-card"><input type="radio" name="totp_policy" value="off"{{if or (eq .PasswordPolicy.TOTPPolicy "") (eq .PasswordPolicy.TOTPPolicy "off")}} checked{{end}}><span><strong>{{t "Не требовать"}}</strong><small>{{t "Пользователи включают 2FA добровольно в личном кабинете."}}</small></span></label>
+<label class="radio-card"><input type="radio" name="totp_policy" value="admins"{{if eq .PasswordPolicy.TOTPPolicy "admins"}} checked{{end}}><span><strong>{{t "Обязательно для администраторов"}}</strong><small>{{t "Локальные администраторы без 2FA перенаправляются на настройку при входе."}}</small></span></label>
+<label class="radio-card"><input type="radio" name="totp_policy" value="all"{{if eq .PasswordPolicy.TOTPPolicy "all"}} checked{{end}}><span><strong>{{t "Обязательно для всех локальных"}}</strong><small>{{t "Все локальные роли обязаны настроить 2FA."}}</small></span></label>
+</div>
 <div class="user-dialog-actions">
 <button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
 <button class="btn btn-primary" disabled>{{t "Сохранить"}}</button>
+</div>
+</form>
+</dialog>
+
+<dialog id="user-reset-2fa-dialog" class="user-dialog" aria-labelledby="user-reset-2fa-title">
+<div class="user-dialog-head"><h2 id="user-reset-2fa-title">{{t "Сбросить 2FA для"}} <span id="reset-2fa-modal-user" class="mono"></span>?</h2><button type="button" class="btn btn-ghost" data-close-dialog aria-label="{{t "Закрыть"}}">×</button></div>
+<p class="hint">{{t "Ключ TOTP и оставшиеся резервные коды будут удалены, активные сеансы пользователя завершены. Если политика требует 2FA, пользователь настроит её заново при следующем входе."}}</p>
+<form method="post" action="/users/reset-2fa">
+<input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+<input type="hidden" name="id" id="reset-2fa-modal-id">
+<div class="user-dialog-actions">
+<button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button>
+<button type="submit" class="btn btn-danger">{{t "Сбросить 2FA"}}</button>
 </div>
 </form>
 </dialog>

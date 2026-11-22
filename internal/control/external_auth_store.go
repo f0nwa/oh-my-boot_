@@ -145,6 +145,7 @@ func (s Store) SessionWithMeta(ctx context.Context, token string) (SessionRecord
 SELECT u.id, u.username, u.auth_source, coalesce(u.external_id,''), u.display_name, u.role, u.enabled,
        u.language, u.theme, u.password_changed_at, u.must_change_password, u.password_policy_mode,
        coalesce(u.password_max_age_days,0), u.fs_access_mode, u.fs_password_hash, u.fs_password_changed_at,
+       u.totp_enabled, u.totp_enabled_at, u.totp_last_step,
        s.auth_source, s.external_sid, s.expires_at
 FROM sessions s JOIN users u ON u.id = s.user_id
 WHERE s.token_hash = $1`, tokenHash(token)).
@@ -152,6 +153,7 @@ WHERE s.token_hash = $1`, tokenHash(token)).
 			&rec.User.Role, &rec.User.Enabled, &rec.User.Language, &rec.User.Theme, &rec.User.PasswordChangedAt,
 			&rec.User.MustChangePassword, &rec.User.PasswordPolicyMode, &rec.User.PasswordMaxAgeDays,
 			&rec.User.FSAccessMode, &fsHash, &rec.User.FSPasswordChangedAt,
+			&rec.User.TOTPEnabled, &rec.User.TOTPEnabledAt, &rec.User.TOTPLastStep,
 			&rec.AuthSource, &rec.ExternalSID, &rec.ExpiresAt)
 	if err != nil {
 		return SessionRecord{}, err

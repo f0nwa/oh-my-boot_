@@ -110,6 +110,10 @@ type pageData struct {
 	Integrations          IntegrationsView
 	LDAPEnabled           bool
 	KeycloakEnabled       bool
+	Username              string
+	TOTPUnusedCodes       int
+	TOTPRequired          bool
+	TOTPConfigured        bool
 	SystemTime            *systemTimeView
 	SystemTimeError       string
 	NowTime               time.Time

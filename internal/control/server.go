@@ -246,6 +246,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /answers/{kind}/{id}/checks", s.protect("images", s.answerCheckRecord))
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
+	mux.HandleFunc("GET /login/2fa", s.login2FAPage)
+	mux.HandleFunc("POST /login/2fa", s.login2FASubmit)
 	mux.HandleFunc("GET /auth/oidc/login", s.oidcLogin)
 	mux.HandleFunc("GET /auth/oidc/callback", s.oidcCallback)
 	mux.HandleFunc("POST /auth/oidc/backchannel-logout", s.oidcBackChannelLogout)
@@ -255,10 +257,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /account", s.protect("view", s.accountPage))
 	mux.HandleFunc("POST /account/password", s.protect("view", withPageErrors(s.accountPage, s.accountPassword)))
 	mux.HandleFunc("POST /account/file-password", s.protect("view", withPageErrors(s.accountPage, s.accountFilePassword)))
+	mux.HandleFunc("POST /account/2fa/begin", s.protect("view", s.account2FABegin))
+	mux.HandleFunc("POST /account/2fa/enable", s.protect("view", s.account2FAEnable))
+	mux.HandleFunc("POST /account/2fa/disable", s.protect("view", withPageErrors(s.accountPage, s.account2FADisable)))
+	mux.HandleFunc("POST /account/2fa/recovery-codes", s.protect("view", s.account2FARecoveryCodes))
+	mux.HandleFunc("GET /setup-2fa", s.protect("view", s.setup2FAPage))
 	mux.HandleFunc("GET /change-password", s.protect("view", s.changePasswordPage))
 	mux.HandleFunc("POST /change-password", s.protect("view", withPageErrors(s.changePasswordPage, s.changePasswordSubmit)))
 	mux.HandleFunc("GET /assets/password.js", s.passwordScript)
 	mux.HandleFunc("GET /assets/login.js", loginScript)
+	mux.HandleFunc("GET /assets/login-2fa.js", login2FAScript)
 	mux.HandleFunc("GET /assets/infinite-scroll.js", infiniteScrollScript)
 	mux.HandleFunc("GET /assets/live-refresh.js", liveRefreshScript)
 	mux.HandleFunc("GET /assets/async-block.js", asyncBlockScript)
@@ -344,6 +352,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /users/change", s.protect("users", withPageErrors(s.usersPage, s.userChange)))
 	mux.HandleFunc("POST /users/delete", s.protect("users", withPageErrors(s.usersPage, s.userDelete)))
 	mux.HandleFunc("POST /users/reset-password", s.protect("users", s.userResetPassword))
+	mux.HandleFunc("POST /users/reset-2fa", s.protect("users", withPageErrors(s.usersPage, s.usersReset2FA)))
 	mux.HandleFunc("POST /users/password-policy", s.protect("users", withPageErrors(s.usersPage, s.usersPasswordPolicy)))
 	mux.HandleFunc("POST /users/user-password-policy", s.protect("users", withPageErrors(s.usersPage, s.userPasswordPolicy)))
 	mux.HandleFunc("POST /users/file-access", s.protect("admin", withPageErrors(s.usersPage, s.userFileAccessSave)))
@@ -550,7 +559,22 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 			http.Error(w, msg, http.StatusForbidden)
 			return
 		}
-		if r.Method == http.MethodGet && needsDraftSummary(r) && !pwState.RequiresChange() {
+		if !pwState.RequiresChange() && user.NeedsTOTPSetup(policy) && !isForced2FAAllowed(r) {
+			if r.Method == http.MethodGet && !isForcedPasswordAPIRequest(r) {
+				http.Redirect(w, r, "/setup-2fa", http.StatusSeeOther)
+				return
+			}
+			msg := translate(normalizeLanguage(user.Language), "Требуется настройка двухфакторной аутентификации")
+			if isForcedPasswordAPIRequest(r) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+				return
+			}
+			http.Error(w, msg, http.StatusForbidden)
+			return
+		}
+		if r.Method == http.MethodGet && needsDraftSummary(r) && !pwState.RequiresChange() && !user.NeedsTOTPSetup(policy) {
 			info.Draft = s.draftStatus(r.Context())
 			info.NavBadges = s.navBadges(normalizeLanguage(user.Language))
 		}
@@ -646,10 +670,38 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	user, token, err := s.Store.Login(r.Context(), r.FormValue("username"), r.FormValue("password"))
-	if err != nil {
-		http.Redirect(w, r, "/login?error=Неверное+имя+или+пароль", 303)
-		return
+	var user User
+	var token string
+	if ts := s.totpStore(); ts != nil {
+		u, verr := ts.VerifyLocalCredentials(r.Context(), r.FormValue("username"), r.FormValue("password"))
+		if verr != nil {
+			http.Redirect(w, r, "/login?error=Неверное+имя+или+пароль", 303)
+			return
+		}
+		if u.TOTPEnabled {
+			chToken, cerr := ts.CreateLogin2FAChallenge(r.Context(), u.ID, login2FAChallengeTTL)
+			if cerr != nil {
+				http.Error(w, "Ошибка", http.StatusInternalServerError)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: login2FACookieName, Value: chToken, Path: "/login/2fa", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(login2FAChallengeTTL.Seconds())})
+			http.SetCookie(w, &http.Cookie{Name: "omb_login_csrf", Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+			http.Redirect(w, r, "/login/2fa", http.StatusSeeOther)
+			return
+		}
+		tok, serr := ts.CreateLocalSession(r.Context(), u.ID)
+		if serr != nil {
+			http.Error(w, "Ошибка", http.StatusInternalServerError)
+			return
+		}
+		user, token = u, tok
+	} else {
+		var lerr error
+		user, token, lerr = s.Store.Login(r.Context(), r.FormValue("username"), r.FormValue("password"))
+		if lerr != nil {
+			http.Redirect(w, r, "/login?error=Неверное+имя+или+пароль", 303)
+			return
+		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: "omb_session", Value: token, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Expires: time.Now().Add(sessionLifetime)})
 	http.SetCookie(w, &http.Cookie{Name: "omb_login_csrf", Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
@@ -657,6 +709,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if policy, err := s.Store.PasswordPolicy(r.Context()); err == nil {
 		if EvaluatePasswordState(user, policy, time.Now()).RequiresChange() {
 			http.Redirect(w, r, "/change-password", 303)
+			return
+		}
+		if user.NeedsTOTPSetup(policy) {
+			http.Redirect(w, r, "/setup-2fa", 303)
 			return
 		}
 	}
@@ -847,9 +903,13 @@ func (s *Server) usersPasswordPolicy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Укажите целые числа для срока действия и предупреждения", http.StatusBadRequest)
 		return
 	}
-	policy := PasswordPolicy{MaxAgeDays: maxAge, WarnDays: warnDays}
+	totpPolicy := strings.TrimSpace(r.FormValue("totp_policy"))
+	if totpPolicy == "" {
+		totpPolicy = NormalizeTOTPPolicy(info.PasswordPolicy.TOTPPolicy)
+	}
+	policy := PasswordPolicy{MaxAgeDays: maxAge, WarnDays: warnDays, TOTPPolicy: totpPolicy}
 	if err := ValidatePasswordPolicy(policy); err != nil {
-		http.Error(w, "Недопустимые значения политики паролей (срок 0–3650 дн., предупреждение 0–90 дн.)", http.StatusBadRequest)
+		http.Error(w, "Недопустимые значения политики безопасности (срок 0–3650 дн., предупреждение 0–90 дн.)", http.StatusBadRequest)
 		return
 	}
 	err := s.Store.SetPasswordPolicy(r.Context(), policy)
@@ -857,16 +917,16 @@ func (s *Server) usersPasswordPolicy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		result = "error"
 	}
-	_ = s.Store.Audit(r.Context(), info.User.ID, "users.password-policy", result, fmt.Sprintf("max_age_days=%d warn_days=%d", maxAge, warnDays))
+	_ = s.Store.Audit(r.Context(), info.User.ID, "users.security-policy", result, fmt.Sprintf("max_age_days=%d warn_days=%d totp_policy=%s", maxAge, warnDays, totpPolicy))
 	if err != nil {
-		http.Error(w, "Не удалось сохранить политику паролей", http.StatusServiceUnavailable)
+		http.Error(w, "Не удалось сохранить политику безопасности", http.StatusServiceUnavailable)
 		return
 	}
 	var msg string
 	if maxAge == 0 {
-		msg = "Политика паролей обновлена: бессрочно"
+		msg = fmt.Sprintf("Политика безопасности обновлена: пароли бессрочно, 2FA — %s", totpPolicyLabel(totpPolicy))
 	} else {
-		msg = fmt.Sprintf("Политика паролей обновлена: %d дн.", maxAge)
+		msg = fmt.Sprintf("Политика безопасности обновлена: пароли %d дн., 2FA — %s", maxAge, totpPolicyLabel(totpPolicy))
 	}
 	http.Redirect(w, r, "/users?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }

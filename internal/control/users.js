@@ -6,6 +6,7 @@
   var pwDialog = document.getElementById('user-password-dialog');
   var createDialog = document.getElementById('user-create-dialog');
   var deleteDialog = document.getElementById('user-delete-dialog');
+  var reset2FADialog = document.getElementById('user-reset-2fa-dialog');
   var policyDialog = document.getElementById('password-policy-dialog');
   var expiryDialog = document.getElementById('user-expiry-dialog');
   var userFsDialog = document.getElementById('user-fs-access-dialog');
@@ -147,17 +148,33 @@
       : (policyMaxInput ? parseStrictInt(policyMaxInput.value) : 0),
     warn: policyForm && policyForm.getAttribute('data-initial-warn') !== null
       ? parseStrictInt(policyForm.getAttribute('data-initial-warn'))
-      : (policyWarnInput ? parseStrictInt(policyWarnInput.value) : 7)
+      : (policyWarnInput ? parseStrictInt(policyWarnInput.value) : 7),
+    totp: (policyForm && policyForm.getAttribute('data-initial-totp')) || 'off'
   };
+
+  function currentPolicyTOTP() {
+    var val = 'off';
+    if (policyDialog) {
+      policyDialog.querySelectorAll('input[name="totp_policy"]').forEach(function (radio) {
+        if (radio.checked) val = radio.value;
+      });
+    }
+    return val;
+  }
 
   function syncPolicyDialog() {
     if (!policyDialog) return;
     var maxVal = policyMaxInput ? parseStrictInt(policyMaxInput.value) : NaN;
     var warnVal = policyWarnInput ? parseStrictInt(policyWarnInput.value) : NaN;
+    var totpVal = currentPolicyTOTP();
     var validMax = !isNaN(maxVal) && maxVal >= 0 && maxVal <= 3650;
     var disabled = validMax && maxVal === 0;
     policyDialog.querySelectorAll('[data-policy-preset]').forEach(function (btn) {
       btn.classList.toggle('is-on', validMax && Number(btn.getAttribute('data-policy-preset')) === maxVal);
+    });
+    policyDialog.querySelectorAll('input[name="totp_policy"]').forEach(function (radio) {
+      var card = radio.closest ? radio.closest('.radio-card') : null;
+      if (card) card.classList.toggle('is-selected', radio.checked);
     });
     if (policyWarnInput) {
       policyWarnInput.readOnly = disabled;
@@ -166,7 +183,7 @@
     if (policyWarnWrap && policyWarnWrap.style) policyWarnWrap.style.opacity = disabled ? '0.45' : '1';
     if (policySubmitBtn) {
       var validWarn = disabled || (!isNaN(warnVal) && warnVal >= 0 && warnVal <= 90);
-      var dirty = validMax && validWarn && (maxVal !== policyInitial.max || (!disabled && warnVal !== policyInitial.warn));
+      var dirty = validMax && validWarn && (maxVal !== policyInitial.max || (!disabled && warnVal !== policyInitial.warn) || totpVal !== policyInitial.totp);
       policySubmitBtn.disabled = !dirty;
     }
   }
@@ -448,12 +465,15 @@
       return;
     }
 
-    // Global password policy modal trigger
+    // Global security policy modal trigger
     var polOpenBtn = event.target.closest('[data-password-policy-open]');
     if (polOpenBtn && policyDialog && typeof policyDialog.showModal === 'function') {
       event.preventDefault();
       if (policyMaxInput) policyMaxInput.value = String(isNaN(policyInitial.max) ? 0 : policyInitial.max);
       if (policyWarnInput) policyWarnInput.value = String(isNaN(policyInitial.warn) ? 7 : policyInitial.warn);
+      policyDialog.querySelectorAll('input[name="totp_policy"]').forEach(function (radio) {
+        radio.checked = radio.value === policyInitial.totp;
+      });
       syncPolicyDialog();
       policyDialog.showModal();
       return;
@@ -594,6 +614,20 @@
       return;
     }
 
+    // Reset 2FA modal trigger
+    var reset2FABtn = event.target.closest('[data-user-reset-2fa-id]');
+    if (reset2FABtn && reset2FADialog && typeof reset2FADialog.showModal === 'function') {
+      event.preventDefault();
+      var r2Id = reset2FABtn.getAttribute('data-user-reset-2fa-id') || '';
+      var r2Name = reset2FABtn.getAttribute('data-user-reset-2fa-name') || '';
+      var r2Input = reset2FADialog.querySelector('#reset-2fa-modal-id');
+      if (r2Input) r2Input.value = r2Id;
+      var r2Span = reset2FADialog.querySelector('#reset-2fa-modal-user');
+      if (r2Span) r2Span.textContent = r2Name ? (r2Name + ' (#' + r2Id + ')') : ('#' + r2Id);
+      reset2FADialog.showModal();
+      return;
+    }
+
     // Delete user modal trigger
     var delBtn = event.target.closest('[data-user-delete-id]');
     if (delBtn && deleteDialog && typeof deleteDialog.showModal === 'function') {
@@ -630,7 +664,7 @@
   });
 
   // Direct click listener for dialog backdrop close
-  [pwDialog, createDialog, deleteDialog, policyDialog, expiryDialog, userFsDialog].forEach(function (dialog) {
+  [pwDialog, createDialog, deleteDialog, reset2FADialog, policyDialog, expiryDialog, userFsDialog].forEach(function (dialog) {
     if (!dialog) return;
     dialog.addEventListener('click', function (event) {
       if (event.target === dialog && typeof dialog.close === 'function') {

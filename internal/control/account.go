@@ -24,7 +24,24 @@ func (s *Server) passwordScript(w http.ResponseWriter, r *http.Request) {
 
 // accountPage shows the signed-in user's own settings.
 func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
-	render(w, "account", pageData{Info: requestInfo(r), Message: r.URL.Query().Get("message"), Error: pageError(r), FileServer: s.localFileServerState(r.Context(), r.Host)})
+	info := requestInfo(r)
+	unused := 0
+	if info.User.IsLocal() && info.User.TOTPEnabled {
+		if ts := s.totpStore(); ts != nil {
+			if n, err := ts.CountUnusedRecoveryCodes(r.Context(), info.User.ID); err == nil {
+				unused = n
+			}
+		}
+	}
+	render(w, "account", pageData{
+		Info:            info,
+		Message:         r.URL.Query().Get("message"),
+		Error:           pageError(r),
+		FileServer:      s.localFileServerState(r.Context(), r.Host),
+		TOTPUnusedCodes: unused,
+		TOTPRequired:    info.PasswordPolicy.RequiresTOTP(info.User),
+		TOTPConfigured:  s.Secrets != nil,
+	})
 }
 
 // changePasswordPage renders the isolated mandatory password change screen.

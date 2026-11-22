@@ -11,15 +11,50 @@ const (
 	PasswordModeNever  = "never"
 	PasswordModeCustom = "custom"
 
+	TOTPPolicyOff    = "off"
+	TOTPPolicyAdmins = "admins"
+	TOTPPolicyAll    = "all"
+
 	maxPasswordPolicyDays = 3650
 	maxPasswordWarnDays   = 90
 	defaultWarnDays       = 7
 )
 
-// PasswordPolicy defines server-wide expiration rules for local accounts.
+// PasswordPolicy defines server-wide expiration and 2FA rules for local accounts.
 type PasswordPolicy struct {
 	MaxAgeDays int
 	WarnDays   int
+	TOTPPolicy string
+}
+
+// NormalizeTOTPPolicy maps empty or unknown values to TOTPPolicyOff.
+func NormalizeTOTPPolicy(v string) string {
+	switch v {
+	case TOTPPolicyAdmins, TOTPPolicyAll:
+		return v
+	default:
+		return TOTPPolicyOff
+	}
+}
+
+// RequiresTOTP reports whether the policy requires 2FA for user u.
+func (p PasswordPolicy) RequiresTOTP(u User) bool {
+	if !u.IsLocal() {
+		return false
+	}
+	switch NormalizeTOTPPolicy(p.TOTPPolicy) {
+	case TOTPPolicyAdmins:
+		return u.Role == "admin"
+	case TOTPPolicyAll:
+		return true
+	default:
+		return false
+	}
+}
+
+// NeedsTOTPSetup reports whether a local user must configure 2FA before accessing OMB.
+func (u User) NeedsTOTPSetup(p PasswordPolicy) bool {
+	return p.RequiresTOTP(u) && !u.TOTPEnabled
 }
 
 // PasswordState summarizes the evaluated expiration and change status for one user.
@@ -62,6 +97,9 @@ func ValidatePasswordPolicy(p PasswordPolicy) error {
 	}
 	if p.WarnDays < 0 || p.WarnDays > maxPasswordWarnDays {
 		return fmt.Errorf("password warn threshold must be between 0 and %d days", maxPasswordWarnDays)
+	}
+	if p.TOTPPolicy != "" && p.TOTPPolicy != TOTPPolicyOff && p.TOTPPolicy != TOTPPolicyAdmins && p.TOTPPolicy != TOTPPolicyAll {
+		return fmt.Errorf("invalid 2fa policy: %q", p.TOTPPolicy)
 	}
 	return nil
 }

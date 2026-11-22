@@ -1,1 +1,183 @@
-{{define "account"}}{{template "top" .}}<div class="page-head"><div><h1>{{t "Личный кабинет"}}</h1></div></div><div class="account-grid"><section class="card account-card"><div class="account-card-head"><h2>{{t "Учётная запись"}}</h2>{{if .Info.User.IsLocal}}<button type="button" class="btn" data-account-password-open>{{t "Сменить пароль"}}</button>{{end}}</div>{{if and .Info.User.IsLocal .Info.PasswordState.ExpiringSoon}}<div class="account-warn-box" role="status"><span class="dot dot-accent"></span><span>{{passwordWarnMessage .Info.PasswordState}}</span></div>{{end}}<dl class="kv account-kv"><dt>{{t "Имя пользователя"}}</dt><dd><strong>{{.Info.User.Username}}</strong></dd><dt>{{t "Источник входа"}}</dt><dd>{{if eq .Info.User.AuthSource "ldap"}}<span class="chip-src chip-src-ldap">LDAP / Active Directory</span>{{else if eq .Info.User.AuthSource "keycloak"}}<span class="chip-src chip-src-kc">Keycloak (OIDC)</span>{{else}}<span class="chip-src">{{t "Локальный"}}</span>{{end}}</dd><dt>{{t "Роль"}}</dt><dd>{{t (roleLabel .Info.User.Role)}}{{if not .Info.User.IsLocal}} <span class="muted">({{t "задаётся источником входа"}})</span>{{end}}</dd><dt>{{t "Доступ"}}</dt><dd>{{t (roleDescription .Info.User.Role)}}</dd>{{if .Info.User.IsLocal}}<dt>{{t "Пароль изменён"}}</dt><dd class="mono">{{formatLocalDateTime .Info.User.PasswordChangedAt}}</dd><dt>{{t "Срок действия пароля"}}</dt><dd class="account-pw-status"><span class="dot {{if .Info.PasswordState.Expired}}dot-error{{else if or .Info.PasswordState.MustChange .Info.PasswordState.ExpiringSoon}}dot-accent{{else}}dot-ok{{end}}"></span><span>{{passwordStatusLabel .Info.PasswordState}}</span><span class="muted"> · {{passwordRuleLabel .Info.User .Info.PasswordPolicy}}</span></dd>{{else}}<dt>{{t "Сессия"}}</dt><dd class="muted">{{t "Внешняя · действует до 30 минут"}}</dd>{{end}}</dl>{{if not .Info.User.IsLocal}}<p class="hint account-external-note">{{t "Пароль для входа в Oh My Boot управляется внешним источником. Смена пароля в панели недоступна."}}</p>{{end}}<div class="account-lang-block"><form method="post" action="/settings/language"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><input type="hidden" name="return" value="/account"><label for="account-language" class="account-lang-label">{{t "Язык интерфейса"}}</label><div class="account-lang-row"><select id="account-language" name="language"><option value="ru"{{if eq lang "ru"}} selected{{end}}>Русский</option><option value="en"{{if eq lang "en"}} selected{{end}}>English</option></select><button class="btn">{{t "Сохранить"}}</button></div></form></div></section>{{if or (eq .Info.User.FSAccessMode "ro") (eq .Info.User.FSAccessMode "rw")}}<section class="card account-card account-fs-card"><div class="account-card-head"><div><h2>{{t "Доступ к хранилищу ISO (SMB / SFTP)"}}</h2><div class="muted">{{t "Отдельный пароль для загрузки образов на сервер"}}</div></div><button type="button" class="btn btn-sm" data-account-fs-password-open>{{t "Сменить пароль SMB/SFTP…"}}</button></div><dl class="kv account-kv"><dt>{{t "Режим доступа"}}</dt><dd><span class="chip {{if eq .Info.User.FSAccessMode "rw"}}chip-ok{{else}}chip-ro{{end}}">{{if eq .Info.User.FSAccessMode "rw"}}{{t "Чтение и запись"}}{{else}}{{t "Только чтение"}}{{end}}</span></dd><dt>{{t "Логин"}}</dt><dd class="mono">{{.Info.User.Username}}</dd><dt>{{t "Пароль SMB / SFTP"}}</dt><dd class="muted">{{if .Info.User.FSPasswordChangedAt}}{{t "Задан"}} {{formatLocalDate .Info.User.FSPasswordChangedAt}}{{else}}{{t "Не задан"}}{{end}}</dd></dl><div class="account-fs-addrs"><div class="addr-box"><span><span class="muted">SMB:</span> <span class="mono">{{.FileServer.SMBAddress}}</span>{{if not .FileServer.SMBEnabled}} <span class="chip chip-off">{{t "Выключен"}}</span>{{end}}</span><button type="button" class="btn btn-sm" data-copy="{{.FileServer.SMBAddress}}">{{t "Скопировать"}}</button></div><div class="addr-box"><span><span class="muted">SFTP:</span> <span class="mono">{{.FileServer.UserSFTPAddress .Info.User.Username}}</span>{{if not .FileServer.SFTPEnabled}} <span class="chip chip-off">{{t "Выключен"}}</span>{{end}}</span><button type="button" class="btn btn-sm" data-copy="{{.FileServer.UserSFTPAddress .Info.User.Username}}">{{t "Скопировать"}}</button></div></div></section>{{end}}</div>{{if .Info.User.IsLocal}}<dialog id="account-password-dialog" class="user-dialog"{{if and .Error (eq .Info.Path "/account/password")}} data-auto-open="true"{{end}}><h2>{{t "Сменить пароль"}}</h2><p class="hint">{{t "После смены пароля сеансы на других устройствах будут завершены."}}</p>{{if and .Error (eq .Info.Path "/account/password")}}<div class="notice error" role="alert" data-dialog-error>{{t .Error}}</div>{{end}}<form method="post" action="/account/password"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><label>{{t "Текущий пароль"}}<input type="password" name="current_password" autocomplete="current-password" required></label><label>{{t "Новый пароль, от 12 символов"}}<input type="password" name="new_password" minlength="12" autocomplete="new-password" required data-password-generator data-password-confirm="#account-confirm-password"></label><label>{{t "Повторите новый пароль"}}<input id="account-confirm-password" type="password" name="confirm_password" minlength="12" autocomplete="new-password" required></label><div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button class="btn btn-primary">{{t "Сменить пароль"}}</button></div></form></dialog>{{end}}{{if or (eq .Info.User.FSAccessMode "ro") (eq .Info.User.FSAccessMode "rw")}}<dialog id="account-fs-password-dialog" class="user-dialog"><h2>{{t "Сменить пароль SMB / SFTP"}}</h2><p class="hint">{{t "Отдельный пароль для подключения по протоколам SMB и SFTP. Не влияет на пароль для входа в веб-панель."}}</p><form method="post" action="/account/file-password"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><label>{{t "Новый пароль, от 12 символов"}}<input type="password" name="password" minlength="12" autocomplete="new-password" required data-password-generator data-password-confirm="#account-fs-confirm-password"></label><label>{{t "Повторите новый пароль"}}<input id="account-fs-confirm-password" type="password" name="confirm_password" minlength="12" autocomplete="new-password" required></label><div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button type="submit" class="btn btn-primary">{{t "Сменить пароль"}}</button></div></form></dialog>{{end}}<script defer src="/assets/account.js"></script>{{template "bottom" .}}{{end}}
+{{define "account"}}{{template "top" .}}
+<div class="page-head"><div><h1>{{t "Личный кабинет"}}</h1></div></div>
+<div class="account-grid">
+  <section class="card account-card">
+    <div class="account-card-head"><h2>{{t "Учётная запись"}}</h2>{{if .Info.User.IsLocal}}<button type="button" class="btn" data-account-password-open>{{t "Сменить пароль"}}</button>{{end}}</div>
+    {{if and .Info.User.IsLocal .Info.PasswordState.ExpiringSoon}}<div class="account-warn-box" role="status"><span class="dot dot-accent"></span><span>{{passwordWarnMessage .Info.PasswordState}}</span></div>{{end}}
+    <dl class="kv account-kv">
+      <dt>{{t "Имя пользователя"}}</dt><dd><strong>{{.Info.User.Username}}</strong></dd>
+      <dt>{{t "Источник входа"}}</dt><dd>{{if eq .Info.User.AuthSource "ldap"}}<span class="chip-src chip-src-ldap">LDAP / Active Directory</span>{{else if eq .Info.User.AuthSource "keycloak"}}<span class="chip-src chip-src-kc">Keycloak (OIDC)</span>{{else}}<span class="chip-src">{{t "Локальный"}}</span>{{end}}</dd>
+      <dt>{{t "Роль"}}</dt><dd>{{t (roleLabel .Info.User.Role)}}{{if not .Info.User.IsLocal}} <span class="muted">({{t "задаётся источником входа"}})</span>{{end}}</dd>
+      <dt>{{t "Доступ"}}</dt><dd>{{t (roleDescription .Info.User.Role)}}</dd>
+      {{if .Info.User.IsLocal}}
+        <dt>{{t "Пароль изменён"}}</dt><dd class="mono">{{formatLocalDateTime .Info.User.PasswordChangedAt}}</dd>
+        <dt>{{t "Срок действия пароля"}}</dt><dd class="account-pw-status"><span class="dot {{if .Info.PasswordState.Expired}}dot-error{{else if or .Info.PasswordState.MustChange .Info.PasswordState.ExpiringSoon}}dot-accent{{else}}dot-ok{{end}}"></span><span>{{passwordStatusLabel .Info.PasswordState}}</span><span class="muted"> · {{passwordRuleLabel .Info.User .Info.PasswordPolicy}}</span></dd>
+      {{else}}
+        <dt>{{t "Сессия"}}</dt><dd class="muted">{{t "Внешняя · действует до 30 минут"}}</dd>
+      {{end}}
+    </dl>
+    {{if not .Info.User.IsLocal}}<p class="hint account-external-note">{{t "Пароль для входа в Oh My Boot управляется внешним источником. Смена пароля в панели недоступна."}}</p>{{end}}
+    <div class="account-lang-block"><form method="post" action="/settings/language"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><input type="hidden" name="return" value="/account"><label for="account-language" class="account-lang-label">{{t "Язык интерфейса"}}</label><div class="account-lang-row"><select id="account-language" name="language"><option value="ru"{{if eq lang "ru"}} selected{{end}}>Русский</option><option value="en"{{if eq lang "en"}} selected{{end}}>English</option></select><button class="btn">{{t "Сохранить"}}</button></div></form></div>
+  </section>
+
+  {{if .Info.User.IsLocal}}
+  <section class="card account-card account-2fa-card" data-account-2fa-card data-csrf="{{.Info.CSRF}}" data-username="{{.Info.User.Username}}">
+    <div class="account-card-head">
+      <div>
+        <h2>{{t "Двухфакторная аутентификация (2FA)"}}</h2>
+        <div class="muted">{{t "Одноразовые коды TOTP для входа в веб-панель"}}</div>
+      </div>
+      {{if not .Info.User.TOTPEnabled}}
+        <button type="button" class="btn btn-primary btn-sm" data-2fa-setup-open{{if not .TOTPConfigured}} disabled title="{{t "Ключ шифрования секретов не настроен на сервере"}}"{{end}}>{{t "Включить 2FA"}}</button>
+      {{end}}
+    </div>
+    <dl class="kv account-kv">
+      <dt>{{t "Статус"}}</dt>
+      <dd>
+        {{if .Info.User.TOTPEnabled}}
+          <span class="dot dot-ok"></span><span>{{t "Включена"}}</span>
+          {{if .Info.User.TOTPEnabledAt}}<span class="muted">· {{formatLocalDate .Info.User.TOTPEnabledAt}}</span>{{end}}
+        {{else if .TOTPRequired}}
+          <span class="dot dot-accent"></span><span>{{t "Требуется по политике"}}</span>
+        {{else}}
+          <span class="dot dot-off"></span><span>{{t "Выключена"}}</span>
+        {{end}}
+      </dd>
+      <dt>{{t "Резервные коды"}}</dt>
+      <dd>
+        {{if .Info.User.TOTPEnabled}}
+          <span class="mono">{{.TOTPUnusedCodes}} / 8</span>
+          <span class="muted">{{t "неиспользованных"}}</span>
+        {{else}}
+          <span class="muted">{{t "Не созданы"}}</span>
+        {{end}}
+      </dd>
+    </dl>
+    {{if .Info.User.TOTPEnabled}}
+    <div class="account-2fa-actions">
+      <button type="button" class="btn btn-sm" data-2fa-regen-open>{{t "Перевыпустить коды…"}}</button>
+      {{if not .TOTPRequired}}
+        <button type="button" class="btn btn-sm btn-danger" data-2fa-disable-open>{{t "Выключить 2FA…"}}</button>
+      {{else}}
+        <span class="muted account-2fa-locked">{{t "Обязательна по политике безопасности"}}</span>
+      {{end}}
+    </div>
+    {{end}}
+  </section>
+  {{end}}
+
+  {{if or (eq .Info.User.FSAccessMode "ro") (eq .Info.User.FSAccessMode "rw")}}
+  <section class="card account-card account-fs-card">
+    <div class="account-card-head"><div><h2>{{t "Доступ к хранилищу ISO (SMB / SFTP)"}}</h2><div class="muted">{{t "Отдельный пароль для загрузки образов на сервер"}}</div></div><button type="button" class="btn btn-sm" data-account-fs-password-open>{{t "Сменить пароль SMB/SFTP…"}}</button></div>
+    <dl class="kv account-kv">
+      <dt>{{t "Режим доступа"}}</dt><dd><span class="chip {{if eq .Info.User.FSAccessMode "rw"}}chip-ok{{else}}chip-ro{{end}}">{{if eq .Info.User.FSAccessMode "rw"}}{{t "Чтение и запись"}}{{else}}{{t "Только чтение"}}{{end}}</span></dd>
+      <dt>{{t "Логин"}}</dt><dd class="mono">{{.Info.User.Username}}</dd>
+      <dt>{{t "Пароль SMB / SFTP"}}</dt><dd class="muted">{{if .Info.User.FSPasswordChangedAt}}{{t "Задан"}} {{formatLocalDate .Info.User.FSPasswordChangedAt}}{{else}}{{t "Не задан"}}{{end}}</dd>
+    </dl>
+    <div class="account-fs-addrs">
+      <div class="addr-box"><span><span class="muted">SMB:</span> <span class="mono">{{.FileServer.SMBAddress}}</span>{{if not .FileServer.SMBEnabled}} <span class="chip chip-off">{{t "Выключен"}}</span>{{end}}</span><button type="button" class="btn btn-sm" data-copy="{{.FileServer.SMBAddress}}">{{t "Скопировать"}}</button></div>
+      <div class="addr-box"><span><span class="muted">SFTP:</span> <span class="mono">{{.FileServer.UserSFTPAddress .Info.User.Username}}</span>{{if not .FileServer.SFTPEnabled}} <span class="chip chip-off">{{t "Выключен"}}</span>{{end}}</span><button type="button" class="btn btn-sm" data-copy="{{.FileServer.UserSFTPAddress .Info.User.Username}}">{{t "Скопировать"}}</button></div>
+    </div>
+  </section>
+  {{end}}
+</div>
+
+{{if .Info.User.IsLocal}}
+<dialog id="account-password-dialog" class="user-dialog"{{if and .Error (eq .Info.Path "/account/password")}} data-auto-open="true"{{end}}>
+  <h2>{{t "Сменить пароль"}}</h2>
+  <p class="hint">{{t "После смены пароля сеансы на других устройствах будут завершены."}}</p>
+  {{if and .Error (eq .Info.Path "/account/password")}}<div class="notice error" role="alert" data-dialog-error>{{t .Error}}</div>{{end}}
+  <form method="post" action="/account/password">
+    <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+    <label>{{t "Текущий пароль"}}<input type="password" name="current_password" autocomplete="current-password" required></label>
+    <label>{{t "Новый пароль, от 12 символов"}}<input type="password" name="new_password" minlength="12" autocomplete="new-password" required data-password-generator data-password-confirm="#account-confirm-password"></label>
+    <label>{{t "Повторите новый пароль"}}<input id="account-confirm-password" type="password" name="confirm_password" minlength="12" autocomplete="new-password" required></label>
+    <div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button class="btn btn-primary">{{t "Сменить пароль"}}</button></div>
+  </form>
+</dialog>
+
+<dialog id="account-2fa-setup-dialog" class="user-dialog" data-csrf="{{.Info.CSRF}}" data-username="{{.Info.User.Username}}">
+  <div class="notice error" role="alert" data-2fa-error hidden></div>
+  <div data-2fa-step1>
+    <h2>{{t "Подключение 2FA (шаг 1 из 2)"}}</h2>
+    <p class="hint">{{t "Отсканируйте QR-код в приложении-аутентификаторе и введите 6-значный код."}}</p>
+    <div class="qr-setup-row">
+      <div class="qr-box" data-2fa-qr></div>
+      <div class="qr-key-col">
+        <div class="muted qr-key-caption">{{t "Ключ для ручного ввода (SHA-1 · 30 с)"}}</div>
+        <div class="mono qr-key-val" data-2fa-secret>…</div>
+        <button type="button" class="btn btn-sm" data-2fa-copy-secret>{{t "Скопировать ключ"}}</button>
+      </div>
+    </div>
+    <form data-2fa-enable-form>
+      <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+      <input type="hidden" name="pending_token" data-2fa-pending>
+      <label>{{t "Код из приложения (6 цифр)"}}<input name="code" class="input-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" required></label>
+      <div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button type="submit" class="btn btn-primary">{{t "Подтвердить и включить"}}</button></div>
+    </form>
+  </div>
+  <div data-2fa-step2 hidden>
+    <h2>{{t "Резервные коды (шаг 2 из 2)"}}</h2>
+    <p class="hint">{{t "Эти 8 одноразовых кодов показываются только один раз. Сохраните их в надёжном месте — они позволят войти при утере телефона."}}</p>
+    <div class="recovery-codes-grid" data-2fa-codes></div>
+    <div class="user-dialog-actions recovery-actions">
+      <div class="recovery-export-btns">
+        <button type="button" class="btn btn-sm" data-2fa-copy-codes>{{t "Скопировать все"}}</button>
+        <button type="button" class="btn btn-sm" data-2fa-download-codes>{{t "Скачать .txt"}}</button>
+      </div>
+      <button type="button" class="btn btn-primary" data-2fa-done>{{t "Готово"}}</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="account-2fa-regen-dialog" class="user-dialog" data-csrf="{{.Info.CSRF}}" data-username="{{.Info.User.Username}}">
+  <div class="notice error" role="alert" data-2fa-error hidden></div>
+  <div data-2fa-regen-step1>
+    <h2>{{t "Перевыпустить резервные коды"}}</h2>
+    <p class="hint">{{t "Прежние неиспользованные резервные коды перестанут действовать. Подтвердите действие текущим паролем."}}</p>
+    <form data-2fa-regen-form>
+      <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+      <label>{{t "Текущий пароль"}}<input type="password" name="current_password" autocomplete="current-password" required></label>
+      <div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button type="submit" class="btn btn-primary">{{t "Перевыпустить коды"}}</button></div>
+    </form>
+  </div>
+  <div data-2fa-step2 hidden>
+    <h2>{{t "Новые резервные коды"}}</h2>
+    <p class="hint">{{t "Эти 8 одноразовых кодов показываются только один раз. Сохраните их в надёжном месте."}}</p>
+    <div class="recovery-codes-grid" data-2fa-codes></div>
+    <div class="user-dialog-actions recovery-actions">
+      <div class="recovery-export-btns">
+        <button type="button" class="btn btn-sm" data-2fa-copy-codes>{{t "Скопировать все"}}</button>
+        <button type="button" class="btn btn-sm" data-2fa-download-codes>{{t "Скачать .txt"}}</button>
+      </div>
+      <button type="button" class="btn btn-primary" data-2fa-done>{{t "Готово"}}</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="account-2fa-disable-dialog" class="user-dialog"{{if and .Error (eq .Info.Path "/account/2fa/disable")}} data-auto-open="true"{{end}}>
+  <h2>{{t "Выключить двухфакторную аутентификацию?"}}</h2>
+  <p class="hint">{{t "При следующем входе потребуется только пароль. Сохранённые резервные коды будут удалены."}}</p>
+  {{if and .Error (eq .Info.Path "/account/2fa/disable")}}<div class="notice error" role="alert" data-dialog-error>{{t .Error}}</div>{{end}}
+  <form method="post" action="/account/2fa/disable">
+    <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+    <label>{{t "Текущий пароль"}}<input type="password" name="current_password" autocomplete="current-password" required></label>
+    <div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button type="submit" class="btn btn-danger">{{t "Выключить 2FA"}}</button></div>
+  </form>
+</dialog>
+{{end}}
+
+{{if or (eq .Info.User.FSAccessMode "ro") (eq .Info.User.FSAccessMode "rw")}}
+<dialog id="account-fs-password-dialog" class="user-dialog">
+  <h2>{{t "Сменить пароль SMB / SFTP"}}</h2>
+  <p class="hint">{{t "Отдельный пароль для подключения по протоколам SMB и SFTP. Не влияет на пароль для входа в веб-панель."}}</p>
+  <form method="post" action="/account/file-password">
+    <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+    <label>{{t "Новый пароль, от 12 символов"}}<input type="password" name="password" minlength="12" autocomplete="new-password" required data-password-generator data-password-confirm="#account-fs-confirm-password"></label>
+    <label>{{t "Повторите новый пароль"}}<input id="account-fs-confirm-password" type="password" name="confirm_password" minlength="12" autocomplete="new-password" required></label>
+    <div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button type="submit" class="btn btn-primary">{{t "Сменить пароль"}}</button></div>
+  </form>
+</dialog>
+{{end}}
+<script defer src="/assets/account.js"></script>
+{{template "bottom" .}}{{end}}

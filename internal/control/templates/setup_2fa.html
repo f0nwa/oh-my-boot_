@@ -1,0 +1,47 @@
+{{define "setup_2fa"}}{{template "top" .}}
+<div class="narrow-head">
+  <span class="wordmark" aria-hidden="true">oh my boot<span class="wordmark-cursor"></span></span>
+  <div class="narrow-head-user">
+    <span class="muted">{{.Info.User.Username}}</span>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><button class="btn btn-ghost btn-sm">{{t "Выйти"}}</button></form>
+  </div>
+</div>
+<section class="change-pw-card setup-2fa-card" data-setup-2fa-inline data-csrf="{{.Info.CSRF}}" data-username="{{.Info.User.Username}}">
+  <div class="pw-reason-badge">
+    <span class="dot dot-accent"></span>
+    <span>{{t "Требуется настройка 2FA по политике безопасности"}}</span>
+  </div>
+  <h1>{{t "Подключите двухфакторную аутентификацию"}}</h1>
+  <p class="hint">{{t "Администратор включил обязательную двухфакторную защиту для вашей роли. Отсканируйте QR-код в приложении-аутентификаторе и введите 6-значный код."}}</p>
+  <div class="notice error" role="alert" data-2fa-error hidden></div>
+  <div data-2fa-step1>
+    <div class="qr-setup-row">
+      <div class="qr-box" data-2fa-qr></div>
+      <div class="qr-key-col">
+        <div class="muted qr-key-caption">{{t "Ключ для ручного ввода (SHA-1 · 30 с)"}}</div>
+        <div class="mono qr-key-val" data-2fa-secret>…</div>
+        <button type="button" class="btn btn-sm" data-2fa-copy-secret>{{t "Скопировать ключ"}}</button>
+      </div>
+    </div>
+    <form data-2fa-enable-form class="change-pw-form">
+      <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+      <input type="hidden" name="pending_token" data-2fa-pending>
+      <label>{{t "Код из приложения (6 цифр)"}}<input name="code" class="input-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" required></label>
+      <button type="submit" class="btn btn-primary">{{t "Подтвердить и включить 2FA"}}</button>
+    </form>
+  </div>
+  <div data-2fa-step2 hidden>
+    <h2>{{t "Сохраните резервные коды"}}</h2>
+    <p class="hint">{{t "Эти 8 одноразовых кодов показываются только один раз. Сохраните их в надёжном месте — они позволят войти при утере телефона."}}</p>
+    <div class="recovery-codes-grid" data-2fa-codes></div>
+    <div class="user-dialog-actions recovery-actions">
+      <div class="recovery-export-btns">
+        <button type="button" class="btn btn-sm" data-2fa-copy-codes>{{t "Скопировать все"}}</button>
+        <button type="button" class="btn btn-sm" data-2fa-download-codes>{{t "Скачать .txt"}}</button>
+      </div>
+      <a class="btn btn-primary" href="/">{{t "Продолжить"}}</a>
+    </div>
+  </div>
+</section>
+<script defer src="/assets/account.js"></script>
+{{template "bottom" .}}{{end}}

@@ -1113,3 +1113,31 @@ button.user-fs-chip-btn:hover{filter:brightness(1.08);border-color:var(--line-st
 .integration-test-result.is-ok{border-color:color-mix(in srgb,var(--ok) 35%,transparent);background:color-mix(in srgb,var(--ok) 8%,transparent)}
 .integration-test-result.is-error{border-color:var(--bad-line);background:var(--bad-bg);color:var(--bad-text)}
 @media (max-width:640px){.integrations-grid,.integration-row{grid-template-columns:1fr}}
+
+/* Local 2FA (TOTP) cards, QR setup, recovery codes, and login second step */
+.account-2fa-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:auto;padding-top:14px;border-top:1px solid var(--line)}
+.account-2fa-actions .btn{margin-top:0}
+.account-2fa-locked{font-size:12px}
+.qr-setup-row{display:flex;gap:16px;align-items:center;margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.qr-box{width:136px;height:136px;flex:none;background:#fff;padding:6px;border-radius:6px;display:flex;align-items:center;justify-content:center}
+.qr-box svg{width:100%;height:100%;display:block}
+.qr-key-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.qr-key-caption{font-size:11.5px}
+.qr-key-val{font-size:12.5px;padding:6px 8px;border-radius:4px;background:var(--chip);word-break:break-all;width:100%;box-sizing:border-box}
+.qr-key-col .btn{margin-top:0}
+.input-otp{font-family:var(--mono);font-size:18px;font-weight:600;letter-spacing:.26em;text-align:center;min-height:42px}
+.input-otp-recovery{letter-spacing:.14em;text-transform:uppercase}
+.recovery-codes-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.recovery-code-pill{padding:7px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--line);text-align:center;font-size:13px;font-weight:500}
+.recovery-actions{justify-content:space-between;align-items:center;flex-wrap:wrap}
+.recovery-export-btns{display:flex;gap:6px;flex-wrap:wrap}
+.login-2fa-user{margin:0 0 10px}
+.login-2fa-links{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px}
+.link-btn{background:none;border:0;padding:0;margin:0;min-height:0;color:var(--text-2);font-size:12px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.link-btn:hover{color:var(--text);background:none}
+.setup-2fa-card{max-width:520px}
+.user-2fa-status{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.user-2fa-status .dot{margin-right:0}
+.policy-section{display:flex;flex-direction:column;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.policy-section:last-of-type{border-bottom:0;padding-bottom:0}
+@media (max-width:480px){.qr-setup-row{flex-direction:column;align-items:flex-start}.recovery-codes-grid{grid-template-columns:1fr}}

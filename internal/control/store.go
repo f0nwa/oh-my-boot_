@@ -32,6 +32,9 @@ type User struct {
 	FSAccessMode        string
 	HasFSPassword       bool
 	FSPasswordChangedAt *time.Time
+	TOTPEnabled         bool
+	TOTPEnabledAt       *time.Time
+	TOTPLastStep        int64
 }
 type AuditEvent struct {
 	ID     int64
@@ -104,20 +107,11 @@ func (s Store) CreateInitialAdmin(ctx context.Context, username, password string
 }
 
 func (s Store) Login(ctx context.Context, username, password string) (User, string, error) {
-	var u User
-	var hash string
-	var fsHash string
-	err := s.Pool.QueryRow(ctx, `SELECT id,username,auth_source,coalesce(external_id,''),display_name,role,enabled,language,theme,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),coalesce(password_hash,''),fs_access_mode,fs_password_hash,fs_password_changed_at FROM users WHERE auth_source='local' AND lower(username)=lower($1)`, username).
-		Scan(&u.ID, &u.Username, &u.AuthSource, &u.ExternalID, &u.DisplayName, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &hash, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt)
-	if err != nil || !u.Enabled || !VerifyPassword(hash, password) {
-		return User{}, "", fmt.Errorf("invalid credentials")
-	}
-	u.HasFSPassword = fsHash != ""
-	token, err := randomToken()
+	u, err := s.VerifyLocalCredentials(ctx, username, password)
 	if err != nil {
 		return User{}, "", err
 	}
-	_, err = s.Pool.Exec(ctx, "INSERT INTO sessions (token_hash,user_id,auth_source,expires_at) VALUES ($1,$2,'local',$3)", tokenHash(token), u.ID, time.Now().Add(sessionLifetime))
+	token, err := s.CreateLocalSession(ctx, u.ID)
 	return u, token, err
 }
 
@@ -128,8 +122,8 @@ func (s Store) Session(ctx context.Context, token string) (User, error) {
 	var u User
 	var expiry time.Time
 	var fsHash string
-	err := s.Pool.QueryRow(ctx, `SELECT u.id,u.username,u.auth_source,coalesce(u.external_id,''),u.display_name,u.role,u.enabled,u.language,u.theme,u.password_changed_at,u.must_change_password,u.password_policy_mode,coalesce(u.password_max_age_days,0),s.expires_at,u.fs_access_mode,u.fs_password_hash,u.fs_password_changed_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1`, tokenHash(token)).
-		Scan(&u.ID, &u.Username, &u.AuthSource, &u.ExternalID, &u.DisplayName, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &expiry, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt)
+	err := s.Pool.QueryRow(ctx, `SELECT u.id,u.username,u.auth_source,coalesce(u.external_id,''),u.display_name,u.role,u.enabled,u.language,u.theme,u.password_changed_at,u.must_change_password,u.password_policy_mode,coalesce(u.password_max_age_days,0),s.expires_at,u.fs_access_mode,u.fs_password_hash,u.fs_password_changed_at,u.totp_enabled,u.totp_enabled_at,u.totp_last_step FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1`, tokenHash(token)).
+		Scan(&u.ID, &u.Username, &u.AuthSource, &u.ExternalID, &u.DisplayName, &u.Role, &u.Enabled, &u.Language, &u.Theme, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &expiry, &u.FSAccessMode, &fsHash, &u.FSPasswordChangedAt, &u.TOTPEnabled, &u.TOTPEnabledAt, &u.TOTPLastStep)
 	if err != nil {
 		return User{}, err
 	}
@@ -205,7 +199,7 @@ func (s Store) AuditPaged(ctx context.Context, limit int, beforeID int64) ([]Aud
 }
 
 func (s Store) Users(ctx context.Context) ([]User, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT id,username,auth_source,coalesce(external_id,''),display_name,role,enabled,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),fs_access_mode,(fs_password_hash <> ''),fs_password_changed_at FROM users ORDER BY username, id")
+	rows, err := s.Pool.Query(ctx, "SELECT id,username,auth_source,coalesce(external_id,''),display_name,role,enabled,password_changed_at,must_change_password,password_policy_mode,coalesce(password_max_age_days,0),fs_access_mode,(fs_password_hash <> ''),fs_password_changed_at,totp_enabled,totp_enabled_at,totp_last_step FROM users ORDER BY username, id")
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +207,7 @@ func (s Store) Users(ctx context.Context) ([]User, error) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.AuthSource, &u.ExternalID, &u.DisplayName, &u.Role, &u.Enabled, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &u.FSAccessMode, &u.HasFSPassword, &u.FSPasswordChangedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.AuthSource, &u.ExternalID, &u.DisplayName, &u.Role, &u.Enabled, &u.PasswordChangedAt, &u.MustChangePassword, &u.PasswordPolicyMode, &u.PasswordMaxAgeDays, &u.FSAccessMode, &u.HasFSPassword, &u.FSPasswordChangedAt, &u.TOTPEnabled, &u.TOTPEnabledAt, &u.TOTPLastStep); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -247,19 +241,21 @@ func (s Store) CreateUserWithPolicy(ctx context.Context, username, password, rol
 
 func (s Store) PasswordPolicy(ctx context.Context) (PasswordPolicy, error) {
 	var p PasswordPolicy
-	err := s.Pool.QueryRow(ctx, "SELECT max_age_days, warn_days FROM password_policy WHERE id=1").Scan(&p.MaxAgeDays, &p.WarnDays)
+	err := s.Pool.QueryRow(ctx, "SELECT max_age_days, warn_days, totp_policy FROM password_policy WHERE id=1").Scan(&p.MaxAgeDays, &p.WarnDays, &p.TOTPPolicy)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return PasswordPolicy{MaxAgeDays: 0, WarnDays: defaultWarnDays}, nil
+		return PasswordPolicy{MaxAgeDays: 0, WarnDays: defaultWarnDays, TOTPPolicy: TOTPPolicyOff}, nil
 	}
+	p.TOTPPolicy = NormalizeTOTPPolicy(p.TOTPPolicy)
 	return p, err
 }
 
 func (s Store) SetPasswordPolicy(ctx context.Context, p PasswordPolicy) error {
+	p.TOTPPolicy = NormalizeTOTPPolicy(p.TOTPPolicy)
 	if err := ValidatePasswordPolicy(p); err != nil {
 		return err
 	}
-	_, err := s.Pool.Exec(ctx, `INSERT INTO password_policy (id, max_age_days, warn_days, updated_at) VALUES (1, $1, $2, now())
-		ON CONFLICT (id) DO UPDATE SET max_age_days=$1, warn_days=$2, updated_at=now()`, p.MaxAgeDays, p.WarnDays)
+	_, err := s.Pool.Exec(ctx, `INSERT INTO password_policy (id, max_age_days, warn_days, totp_policy, updated_at) VALUES (1, $1, $2, $3, now())
+		ON CONFLICT (id) DO UPDATE SET max_age_days=$1, warn_days=$2, totp_policy=$3, updated_at=now()`, p.MaxAgeDays, p.WarnDays, p.TOTPPolicy)
 	return err
 }
 

@@ -23,6 +23,7 @@ func main() {
 	state := flag.String("state-path", "/var/lib/omb-agent/network.json", "last successful network config")
 	recoveryConfig := flag.String("storage-recovery-config", "/etc/omb/storage-recovery.json", "storage recovery settings")
 	hosts := flag.String("hosts-path", "/var/lib/omb-dhcp/hosts", "managed dnsmasq DHCP hosts")
+	ubuntuSourceScript := flag.String("ubuntu-source-script", "/usr/local/libexec/omb-prepare-ubuntu-source", "Ubuntu source preparation helper")
 	probeWrite := flag.String("probe-write", "", "probe directory writability and exit")
 	flag.Parse()
 	if *probeWrite != "" {
@@ -74,7 +75,7 @@ func main() {
 		ProfileRoot:         windows.AssetRoot,
 		DriverConfigRoot:    driverManager.ConfigRoot,
 	}
-	ubuntu := &agent.UbuntuISOManager{SourceRoots: []string{"/mnt/omb-smb", "/mnt/omb-nfs"}, LocalRoot: agent.LocalISORoot, AssetRoot: "/srv/omb/tftp", ScriptPath: "/usr/local/libexec/omb-prepare-ubuntu-source", RegistryRoot: boot.DefaultUbuntuRegistryRoot, LegacyConfigPath: "/etc/omb/boot.env", Runner: agent.ExecDriverCommandRunner{}}
+	ubuntu := &agent.UbuntuISOManager{SourceRoots: []string{"/mnt/omb-smb", "/mnt/omb-nfs"}, LocalRoot: agent.LocalISORoot, AssetRoot: "/srv/omb/tftp", ScriptPath: *ubuntuSourceScript, RegistryRoot: boot.DefaultUbuntuRegistryRoot, LegacyConfigPath: "/etc/omb/boot.env", Runner: agent.ExecDriverCommandRunner{}}
 	listener, err := agent.ListenUnix(*socket)
 	if err != nil {
 		log.Fatal(err)

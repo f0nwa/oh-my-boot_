@@ -349,7 +349,7 @@ reset_failed_services() {
 }
 
 snapshot_users() {
-    sql -d "$1" -Atc "SELECT coalesce(jsonb_agg(to_jsonb(u) ORDER BY u.id),'[]'::jsonb) FROM public.users u"
+    sql -d "$1" -Atc "SELECT coalesce(jsonb_agg(jsonb_build_object('id',u.id,'username',u.username,'role',u.role,'enabled',u.enabled,'password_hash',u.password_hash) ORDER BY u.id),'[]'::jsonb) FROM public.users u"
 }
 
 snapshot_catalog() {

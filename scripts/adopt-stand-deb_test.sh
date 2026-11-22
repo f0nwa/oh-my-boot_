@@ -41,12 +41,14 @@ source "$repo/scripts/adopt-stand-deb.sh"
 (
     systemctl() {
         local unit=${@: -1}
+        unit=${unit/@check.service/@.service}
         printf '/usr/lib/systemd/system/%s\n' "$unit"
     }
     verify_fragment_paths /usr/lib/systemd/system
 
     systemctl() {
         local unit=${@: -1}
+        unit=${unit/@check.service/@.service}
         if [[ "$unit" == omb-control.service ]]; then
             printf '/etc/systemd/system/%s\n' "$unit"
         else

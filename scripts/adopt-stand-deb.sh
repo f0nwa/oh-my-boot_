@@ -146,9 +146,10 @@ health_all() {
 }
 
 verify_fragment_paths() {
-    local expected_dir=$1 unit actual
+    local expected_dir=$1 unit query_unit actual
     for unit in "${OMB_UNITS[@]}"; do
-        actual=$(systemctl show -p FragmentPath --value "$unit") || return 1
+        query_unit=${unit/@.service/@check.service}
+        actual=$(systemctl show -p FragmentPath --value "$query_unit") || return 1
         [[ "$actual" == "$expected_dir/$unit" ]] || {
             echo "Unexpected FragmentPath for $unit: $actual (expected $expected_dir/$unit)" >&2
             return 1

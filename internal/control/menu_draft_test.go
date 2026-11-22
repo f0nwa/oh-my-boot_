@@ -228,3 +228,26 @@ func (s *draftStore) Installations(context.Context) ([]Installation, error) {
 func (s *draftStore) BootProfiles(context.Context) ([]BootProfile, error) {
 	return testInstallationSources(s.profiles, s.answers, s.configs).BootProfiles, nil
 }
+
+func TestFreshInstallHasNoPendingLookDraft(t *testing.T) {
+	store := &draftStore{}
+	srv := &Server{Store: store}
+	draft, active, err := srv.currentDraft(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changes := diffMenuDraft(active, draft); len(changes) != 0 {
+		t.Fatalf("expected no pending menu draft changes on fresh install, got %+v", changes)
+	}
+
+	// An existing active version with an older look still produces a look change.
+	store.versions = []MenuVersion{{ID: 1, Active: true, Title: productMenuTitle, Label: "Diagnostics", Message: defaultMenuMessage, Look: "pult-3"}}
+	draft, active, err = srv.currentDraft(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := diffMenuDraft(active, draft)
+	if len(changes) != 1 || changes[0].Kind != "look" {
+		t.Fatalf("expected single look change for older active version, got %+v", changes)
+	}
+}

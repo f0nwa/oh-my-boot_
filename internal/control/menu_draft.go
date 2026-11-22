@@ -456,7 +456,7 @@ func (s *Server) currentDraft(ctx context.Context) (MenuDraft, MenuDraft, error)
 }
 
 func (s *Server) currentDraftFromVersions(ctx context.Context, versions []MenuVersion) (MenuDraft, MenuDraft, error) {
-	active := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: defaultMenuMessage}
+	active := MenuDraft{Title: productMenuTitle, Label: "Diagnostics", Message: defaultMenuMessage, look: menuLook}
 	for _, version := range versions {
 		if version.Active {
 			active = draftFromVersion(version)

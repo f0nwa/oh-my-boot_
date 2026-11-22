@@ -273,7 +273,7 @@ func (m *SystemEventMonitor) checkAgent(ctx context.Context, store SystemEventSt
 	if m.server.Agent == nil {
 		return
 	}
-	if _, err := m.server.Agent.Config(ctx); err != nil {
+	if _, err := m.server.Agent.Status(ctx); err != nil {
 		m.recordServiceTransition(ctx, store, "omb-agent", "omb-agent", false, err.Error(), now)
 		return
 	}

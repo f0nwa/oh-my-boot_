@@ -339,3 +339,35 @@ func TestSystemEventsClearEndpoint(t *testing.T) {
 		t.Fatalf("expected 0 events after clear all, got %d", len(store.events))
 	}
 }
+
+type testAgentRT func(*http.Request) (*http.Response, error)
+
+func (f testAgentRT) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestSystemEventMonitorCheckAgentUsesStatusEndpoint(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"applied":false}`))
+	})
+	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	client := &http.Client{Transport: testAgentRT(func(req *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Result(), nil
+	})}
+
+	store := &sysEventTestStore{}
+	srv := &Server{
+		Store: store,
+		Agent: &AgentClient{http: client},
+	}
+	mon := NewSystemEventMonitor(srv)
+	mon.CheckOnce(context.Background(), time.Now())
+
+	if len(store.events) != 0 {
+		t.Fatalf("expected 0 errors when agent /status is 200 and /config is 404, got: %+v", store.events)
+	}
+}

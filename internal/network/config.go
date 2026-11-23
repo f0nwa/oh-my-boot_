@@ -24,7 +24,6 @@ type Config struct {
 	DHCPEnd              string `json:"dhcp_end"`
 	BootURL              string `json:"boot_url"`
 	TFTPRoot             string `json:"tftp_root"`
-	UEFILoader           string `json:"uefi_loader,omitempty"`
 	// WinPE wait for the installation share; zero means the default.
 	WinPETimeoutSeconds int    `json:"winpe_timeout_seconds,omitempty"`
 	WinPERetrySeconds   int    `json:"winpe_retry_seconds,omitempty"`
@@ -35,9 +34,6 @@ type Config struct {
 func Validate(c Config) error {
 	if c.DefaultDriver != "" && c.DefaultDriver != "ipxe" && c.DefaultDriver != "snp" {
 		return fmt.Errorf("default driver must be ipxe or snp")
-	}
-	if c.UEFILoader != "" && c.UEFILoader != "ipxe" && c.UEFILoader != "grub-test" {
-		return fmt.Errorf("UEFI loader must be ipxe or grub-test")
 	}
 	if err := validateWinPE(c); err != nil {
 		return err

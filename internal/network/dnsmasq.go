@@ -33,9 +33,6 @@ func RenderDnsmasqWithHosts(c Config, hostsPath string) (string, error) {
 	fmt.Fprintln(&b, "dhcp-match=set:efi64,option:client-arch,7")
 	fmt.Fprintln(&b, "dhcp-match=set:efi64,option:client-arch,9")
 	uefiBootFile := "ipxeboot/x86_64-sb/ipxe-shim.efi"
-	if c.UEFILoader == "grub-test" {
-		uefiBootFile = "debian-installer/amd64/bootnetx64.efi"
-	}
 	if c.Mode == "full" {
 		fmt.Fprintf(&b, "dhcp-range=%s,%s,12h\n", c.DHCPStart, c.DHCPEnd)
 		renderUEFIDriverOffers(&b, c, uefiBootFile)
@@ -65,10 +62,6 @@ func renderUEFIDriverOffers(b *strings.Builder, c Config, bootFile string) {
 				fmt.Fprintf(b, "pxe-service=tag:!ipxe,%s%s,PXE,%s,%s\n", tags, arch, file, c.ServerIP)
 			}
 		}
-	}
-	if c.UEFILoader == "grub-test" {
-		offer("", bootFile)
-		return
 	}
 	excluded := ""
 	for _, level := range []string{"machine", "p5", "p4", "p3"} {

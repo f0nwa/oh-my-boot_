@@ -31,7 +31,7 @@ func networkForm(r *http.Request) network.Config {
 	return network.Config{
 		Mode: r.FormValue("mode"), Interface: r.FormValue("interface"), ServerIP: r.FormValue("server_ip"), Subnet: r.FormValue("subnet"),
 		DHCPStart: r.FormValue("dhcp_start"), DHCPEnd: r.FormValue("dhcp_end"), BootURL: r.FormValue("boot_url"), TFTPRoot: r.FormValue("tftp_root"),
-		UEFILoader: r.FormValue("uefi_loader"), DefaultDriver: r.FormValue("default_driver"),
+		DefaultDriver:        r.FormValue("default_driver"),
 		ReuseFirmwareNetwork: r.FormValue("reuse_firmware_network") == "true",
 		WinPETimeoutSeconds:  parseWinPEFormInt(r.FormValue("winpe_timeout")),
 		WinPERetrySeconds:    parseWinPEFormInt(r.FormValue("winpe_retry")),
@@ -193,35 +193,13 @@ func (p pageData) NetworkChangedSubnet() bool {
 	return p.OldNetwork.Subnet != p.Network.Subnet
 }
 
-func (p pageData) NetworkChangedUEFILoader() bool {
-	oldGrub := p.OldNetwork.UEFILoader == "grub-test"
-	newGrub := p.Network.UEFILoader == "grub-test"
-	return oldGrub != newGrub
-}
-
 func (p pageData) NetworkChangedDefaultDriver() bool {
-	oldGrub := p.OldNetwork.UEFILoader == "grub-test"
-	newGrub := p.Network.UEFILoader == "grub-test"
-	if oldGrub != newGrub {
-		return true
-	}
-	if oldGrub {
-		return false
-	}
 	oldSNP := p.OldNetwork.DefaultDriver == "snp"
 	newSNP := p.Network.DefaultDriver == "snp"
 	return oldSNP != newSNP
 }
 
 func (p pageData) NetworkChangedReuseFirmware() bool {
-	oldGrub := p.OldNetwork.UEFILoader == "grub-test"
-	newGrub := p.Network.UEFILoader == "grub-test"
-	if oldGrub != newGrub {
-		return true
-	}
-	if oldGrub {
-		return false
-	}
 	return p.OldNetwork.ReuseFirmwareNetwork != p.Network.ReuseFirmwareNetwork
 }
 
@@ -263,16 +241,11 @@ func (p pageData) NetworkChangesCount() int {
 	if p.NetworkChangedSubnet() {
 		count++
 	}
-	if p.NetworkChangedUEFILoader() {
+	if p.NetworkChangedDefaultDriver() {
 		count++
 	}
-	if p.OldNetwork.UEFILoader != "grub-test" || p.Network.UEFILoader != "grub-test" {
-		if p.NetworkChangedDefaultDriver() {
-			count++
-		}
-		if p.NetworkChangedReuseFirmware() {
-			count++
-		}
+	if p.NetworkChangedReuseFirmware() {
+		count++
 	}
 	if p.NetworkChangedWinPETimeout() {
 		count++

@@ -15,7 +15,6 @@ func sampleNetworkConfig() network.Config {
 		Subnet:               "10.30.0.0/24",
 		DHCPStart:            "10.30.0.100",
 		DHCPEnd:              "10.30.0.120",
-		UEFILoader:           "ipxe",
 		DefaultDriver:        "snp",
 		ReuseFirmwareNetwork: true,
 		WinPETimeoutSeconds:  90,
@@ -44,9 +43,6 @@ func TestNetworkChangedMethodsWhenIdentical(t *testing.T) {
 	}
 	if data.NetworkChangedSubnet() {
 		t.Errorf("Subnet should not be marked changed")
-	}
-	if data.NetworkChangedUEFILoader() {
-		t.Errorf("UEFILoader should not be marked changed")
 	}
 	if data.NetworkChangedDefaultDriver() {
 		t.Errorf("DefaultDriver should not be marked changed")
@@ -91,7 +87,7 @@ func TestNetworkChangedSingleWinPEExitAction(t *testing.T) {
 		t.Errorf("WinPEExitAction should be marked changed")
 	}
 	if data.NetworkChangedMode() || data.NetworkChangedInterface() || data.NetworkChangedServerIP() ||
-		data.NetworkChangedSubnet() || data.NetworkChangedUEFILoader() || data.NetworkChangedDefaultDriver() ||
+		data.NetworkChangedSubnet() || data.NetworkChangedDefaultDriver() ||
 		data.NetworkChangedReuseFirmware() || data.NetworkChangedWinPETimeout() || data.NetworkChangedWinPERetry() ||
 		data.NetworkChangedDHCPPool() || data.NetworkChangedBootURL() || data.NetworkChangedTFTPRoot() {
 		t.Errorf("Other fields must not be marked changed")
@@ -121,49 +117,6 @@ func TestNetworkChangedSubnetAndPool(t *testing.T) {
 	}
 	if count := data.NetworkChangesCount(); count != 2 {
 		t.Errorf("NetworkChangesCount should be 2, got %d", count)
-	}
-}
-
-func TestNetworkChangedUEFILoaderAndDriverEffects(t *testing.T) {
-	// 1. Switching from iPXE to GRUB
-	oldCfg := sampleNetworkConfig()
-	newCfg := sampleNetworkConfig()
-	newCfg.UEFILoader = "grub-test"
-
-	data := pageData{
-		OldNetwork: oldCfg,
-		Network:    newCfg,
-	}
-
-	if !data.NetworkChangedUEFILoader() {
-		t.Errorf("UEFILoader should be marked changed")
-	}
-	// Driver and reuse firmware become "not used (GRUB)", which is a changed state from active
-	if !data.NetworkChangedDefaultDriver() {
-		t.Errorf("DefaultDriver should be marked changed when transitioning to GRUB")
-	}
-	if !data.NetworkChangedReuseFirmware() {
-		t.Errorf("ReuseFirmware should be marked changed when transitioning to GRUB")
-	}
-
-	// 2. Both already GRUB: driver and reuse firmware are not shown and not changed
-	oldGrub := sampleNetworkConfig()
-	oldGrub.UEFILoader = "grub-test"
-	newGrub := sampleNetworkConfig()
-	newGrub.UEFILoader = "grub-test"
-
-	dataGrub := pageData{
-		OldNetwork: oldGrub,
-		Network:    newGrub,
-	}
-	if dataGrub.NetworkChangedUEFILoader() {
-		t.Errorf("UEFILoader should not be marked changed if both are GRUB")
-	}
-	if dataGrub.NetworkChangedDefaultDriver() {
-		t.Errorf("DefaultDriver should not be marked changed if both are GRUB")
-	}
-	if dataGrub.NetworkChangedReuseFirmware() {
-		t.Errorf("ReuseFirmware should not be marked changed if both are GRUB")
 	}
 }
 

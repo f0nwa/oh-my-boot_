@@ -89,14 +89,14 @@ const path = require('node:path');
           await modeSelect.selectOption(origMode);
           assert.equal(await save.isDisabled(), true, 'reverted mode disables save');
 
-          // 4. Select: uefi_loader
-          const loaderSelect = form.locator('select[name="uefi_loader"]');
-          const origLoader = await loaderSelect.inputValue();
-          const newLoader = origLoader === 'grub-test' ? 'ipxe' : 'grub-test';
-          await loaderSelect.selectOption(newLoader);
-          assert.equal(await save.isEnabled(), true, 'changed uefi_loader enables save');
-          await loaderSelect.selectOption(origLoader);
-          assert.equal(await save.isDisabled(), true, 'reverted uefi_loader disables save');
+          // 4. Select: default_driver
+          const driverSelect = form.locator('select[name="default_driver"]');
+          const origDriver = await driverSelect.inputValue();
+          const newDriver = origDriver === 'snp' ? 'ipxe' : 'snp';
+          await driverSelect.selectOption(newDriver);
+          assert.equal(await save.isEnabled(), true, 'changed default_driver enables save');
+          await driverSelect.selectOption(origDriver);
+          assert.equal(await save.isDisabled(), true, 'reverted default_driver disables save');
 
           // 5. Checkbox: reuse_firmware_network
           const reuseCheck = form.locator('input[name="reuse_firmware_network"]');

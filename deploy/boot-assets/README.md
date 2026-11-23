@@ -23,5 +23,3 @@ sudo ./scripts/fetch-ipxe.sh \
 ```
 
 The script replaces only the archive's `x86_64-sb/shimx64.efi` before publishing the directory. Both `ipxe-shim.efi` and `snponly-shim.efi` remain links to that file. The signed `ipxe.efi` and `snponly.efi` from v2.0.0 are unchanged. `ipxeboot/x86_64/undionly.kpxe` is offered to BIOS clients. The shim loads the matching EFI binary from the same directory; keep the archive layout intact. See the [upstream Secure Boot instructions](https://ipxe.org/secboot). The new shim's signatures and TFTP transfer were verified on the test server; a VM boot with a 2023-only `db` remains to be checked.
-
-For the optional global Debian GRUB test path, stage a separate Debian netboot archive under `debian-installer/amd64` before selecting `grub-test`. The pinned archive, file checksums, menu and OVMF check are in [the GRUB Secure Boot test guide](../../docs/grub-secure-boot-test.md). BIOS and the default iPXE assets stay in place.

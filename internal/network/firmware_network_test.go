@@ -95,14 +95,11 @@ func matchingFirmwareOptions(config string, tags map[string]bool) []string {
 }
 
 func TestFirmwareNetworkInactiveModesKeepExistingBootFlow(t *testing.T) {
-	for _, mode := range []string{"disabled", "proxy", "grub"} {
+	for _, mode := range []string{"disabled", "proxy"} {
 		c := fullConfig()
 		c.DefaultDriver = "snp"
 		if mode == "proxy" {
 			c.Mode, c.DHCPStart, c.DHCPEnd = "proxy", "", ""
-		}
-		if mode == "grub" {
-			c.UEFILoader = "grub-test"
 		}
 		c = withFirmwareNetwork(t, c, mode != "disabled")
 		got, err := RenderDnsmasq(c)

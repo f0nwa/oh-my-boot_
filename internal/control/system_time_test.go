@@ -317,7 +317,7 @@ func TestSystemPageShowsTimeCardAndDialogForAdmin(t *testing.T) {
 		`data-time-browser-now`,
 		`class="btn btn-primary" disabled`,
 		`class="system-layout"`,
-		`class="grid grid-3"`,
+		`class="grid grid-4"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("GET /system (admin) missing %q", want)

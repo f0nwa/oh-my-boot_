@@ -5,6 +5,7 @@ import runpy
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 class OfflineDebTests(unittest.TestCase):
@@ -194,3 +195,76 @@ class OfflineDebTests(unittest.TestCase):
                            check=True, capture_output=True)
             with self.assertRaisesRegex(ValueError, "signature"):
                 builder["verify_repository"](repo, pub2)
+
+    def test_display_version_and_channel_resolution_and_release_json(self):
+        builder = runpy.run_path(str(Path(__file__).with_name("offline-deb.py")))
+        self.assertEqual(builder["display_version"]("0.1.4"), "v0.1.4")
+        self.assertEqual(builder["display_version"]("0.2.0~dev.1"), "v0.2.0-dev.1")
+        self.assertEqual(builder["display_version"]("1:0.2.0~dev.1"), "v0.2.0-dev.1")
+
+        self.assertEqual(builder["resolve_channel"]("0.2.0~dev.1"), "dev")
+        self.assertEqual(builder["resolve_channel"]("0.2.0", manifest_channel="stable"), "stable")
+        with self.assertRaisesRegex(ValueError, "~dev"):
+            builder["resolve_channel"]("0.2.0", explicit="dev")
+        with self.assertRaisesRegex(ValueError, "must not include ~dev"):
+            builder["resolve_channel"]("0.2.0~dev.1", explicit="stable")
+
+        amd64_elf = b"\x7fELF\x02\x01" + bytes(12) + (62).to_bytes(2, "little") + b"ubuntu-source-script"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base"
+            package = root / "pkg"
+            license_path = root / "LICENSE"
+            license_path.write_text("MIT\n")
+            for rel in (
+                "bin/omb-agent", "bin/omb-control",
+                "assets/ipxeboot.tar.gz", "assets/ipxe-shimx64.efi", "assets/wimboot",
+                "deploy/samba/smb.conf",
+                "deploy/boot-assets/windows-profiles/winpeshl.ini",
+                "deploy/sql/control.sql",
+            ):
+                p = base / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes(amd64_elf if rel.startswith("bin/") else b"base\n")
+            for svc in ("omb-agent", "omb-control"):
+                p = base / "deploy/systemd" / f"{svc}.service"
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(f"[Service]\nExecStart=/usr/local/bin/{svc}\n")
+            for helper in ("scripts/prepare-ubuntu-source.sh", "scripts/fetch-ipxe.sh"):
+                p = base / helper
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("#!/bin/sh\necho base\n")
+
+            base_manifest = {
+                "commit": "a" * 40,
+                "from_commit": None,
+                "channel": "dev",
+                "migrations": [{"database": "omb_control", "path": "deploy/sql/control.sql"}],
+                "files": {},
+            }
+            _, ch = builder["stage_package_tree"](package, base, base_manifest, "0.2.0~dev.1", license_path)
+            self.assertEqual(ch, "dev")
+            release_meta = json.loads((package / "usr/share/omb/release.json").read_text())
+            self.assertEqual(release_meta["channel"], "dev")
+            self.assertEqual(release_meta["display_version"], "v0.2.0-dev.1")
+            self.assertEqual(release_meta["package"], "omb 0.2.0~dev.1")
+            self.assertEqual(release_meta["version"], "0.2.0~dev.1")
+
+            base_deb = root / "omb_0.1.4_amd64.deb"
+            base_deb.write_bytes(b"deb-bytes")
+            repo_out = root / "repo-out"
+            repo_out.mkdir()
+            fields = {
+                "Package": "omb",
+                "Architecture": "amd64",
+                "Version": "0.1.4",
+                "X-OMB-Commit": "a" * 40,
+                "X-OMB-Channel": "",
+            }
+            with patch("subprocess.check_output", side_effect=lambda cmd, **kw: fields[cmd[-1]]):
+                meta, copied = builder["stage_existing_base_deb"](
+                    base_deb, repo_out, {"commit": "a" * 40, "from_commit": None}, "0.1.4", explicit_channel="stable"
+                )
+            self.assertEqual(meta["channel"], "stable")
+            self.assertEqual(meta["display_version"], "v0.1.4")
+            self.assertEqual(copied.read_bytes(), b"deb-bytes")

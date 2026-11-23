@@ -12,11 +12,12 @@
 
 ```sh
 python3 scripts/offline-release.py pack payload-a omb-install-a.tar.gz \
-  --commit e19d1f7b0a2624677593fa572654992dc30724cc --sign-key signing-private.pem
+  --commit e19d1f7b0a2624677593fa572654992dc30724cc --channel stable --sign-key signing-private.pem
 
 python3 scripts/offline-release.py pack payload-b omb-update-a-to-b.tar.gz \
   --commit 49de2af4b848362c91248c1ae302db0e77bf6424 \
   --from-commit e19d1f7b0a2624677593fa572654992dc30724cc \
+  --channel stable \
   --migration omb_control=deploy/sql/2026-11-21-oidc-logout-jti-hash.sql \
   --sign-key signing-private.pem
 ```
@@ -101,7 +102,21 @@ sudo bash offline-deploy.sh update-deb omb-install-a.tar.gz omb-update-a-to-b.ta
   "$OMB_PACKAGE_B" "$OMB_PACKAGE_B_SHA256" MANAGEMENT_IP
 ```
 
-При обновлении установщик сверяет предыдущий `.deb` с сохранённым SHA-256, копирует его в резервный каталог, автоматически определяет затронутые службы (`control`, `images`, `boot`, `agent`, опционально `dnsmasq`) и БД (`omb_control`, `omb_images`, `omb_boot` или `none`) по манифесту и применяет миграции в порядке манифеста. Поддерживаются совместные выпуски всех служб, обновления без SQL-миграций, а также обновление юнитов systemd (`/usr/lib/systemd/system/omb-*.service`) и помощников (`/usr/lib/omb/*`); `/srv/omb/tftp`, `/usr/share/omb` (кроме `release.json` и `upgrade/`) и `/etc/omb` при `update-deb` не перезаписываются. Останавливаются, копируются и проверяются только затронутые службы и БД; при откате APT восстанавливает сохранённый `.deb`, все затронутые БД переключаются обратно в одной транзакции PostgreSQL, а службы запускаются и проверяются заново. Хеш пакета, версия и коммит зафиксированы в `/var/lib/omb-deployment/`. Пакетную установку обновляйте через `update-deb-repo` или `update-deb`, чтобы смена файлов и схемы БД прошла в одной процедуре.
+При обновлении установщик сверяет предыдущий `.deb` с сохранённым SHA-256, копирует его в резервный каталог, автоматически определяет затронутые службы (`control`, `images`, `boot`, `agent`, опционально `dnsmasq`) и БД (`omb_control`, `omb_images`, `omb_boot` или `none`) по манифесту и применяет миграции в порядке манифеста. Поддерживаются совместные выпуски всех служб, обновления без SQL-миграций, а также обновление юнитов systemd (`/usr/lib/systemd/system/omb-*.service`) и помощников (`/usr/lib/omb/*`); `/srv/omb/tftp`, `/usr/share/omb` (кроме `release.json` и `upgrade/`) и `/etc/omb` при `update-deb` не перезаписываются. Останавливаются, копируются и проверяются только затронутые службы и БД; при откате APT восстанавливает сохранённый `.deb`, все затронутые БД переключаются обратно в одной транзакции PostgreSQL, а службы запускаются и проверяются заново. Хеш пакета, версия, канал (`stable` / `dev`) и коммит зафиксированы в `/var/lib/omb-deployment/` (`CHANNEL`, `PACKAGE`, `COMMIT`), а метаданные для веб-интерфейса — в `/usr/share/omb/release.json`. Пакетную установку обновляйте через `update-deb-repo` или `update-deb`, чтобы смена файлов и схемы БД прошла в одной процедуре.
+
+### Каналы обновлений (`stable` и `dev`)
+
+OMB поддерживает два параллельных канала выпусков:
+- **`stable` (ветка `main`):** теги `vX.Y.Z`, пакеты `.deb` с версиями `X.Y.Z` (например `0.2.0`).
+- **`dev` (ветка `dev`):** теги `vX.Y.Z-dev.N`, пакеты `.deb` с версиями `X.Y.Z~dev.N` (например `0.2.0~dev.1`, где тильда `~` гарантирует `0.2.0~dev.N < 0.2.0` в `dpkg`).
+
+При сборке архивов канал задаётся флагом `--channel stable|dev` (по умолчанию `stable`). В `scripts/offline-deb.py` для базового и обновляемого пакетов доступны `--channel`, `--update-channel` и `--base-deb PATH` (побайтовое переиспользование уже установленного базового `.deb` с сохранением `PACKAGE_SHA256`). По умолчанию `offline-deploy.sh` разрешает обновление только внутри текущего канала сервера; явный переход между каналами (например, со `stable` на `dev` или с `dev` на релиз `stable`) требует флага `--allow-channel-switch`:
+
+```sh
+sudo bash offline-deploy.sh update-deb-repo --allow-channel-switch \
+  omb-install-0.1.4.tar.gz omb-update-0.1.4-to-0.2.0-dev.1.tar.gz \
+  trusted-release-public.pem apt-repo 0.1.4 0.2.0~dev.1 MANAGEMENT_IP
+```
 
 ## Первичная установка
 

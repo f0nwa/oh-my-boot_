@@ -7,6 +7,7 @@ state=/var/lib/omb-deployment
 backups=/var/backups/omb
 binary_dir=/usr/local/bin
 package_mode=false
+allow_channel_switch=false
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 verifier="$script_dir/offline-release.py"
 deb_tool="$script_dir/offline-deb.py"
@@ -14,10 +15,10 @@ deb_tool="$script_dir/offline-deb.py"
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 
 resolve_repo_package() {
-    local repo=$1 key=$2 version=$3 line fname digest commit
+    local repo=$1 key=$2 version=$3 line fname digest commit channel
     line=$(python3 "$deb_tool" verify-repo "$repo" --public-key "$key" --version "$version") ||
         fail "Repository verification failed for version $version."
-    IFS=$'\t' read -r fname digest commit <<< "$line"
+    IFS=$'\t' read -r fname digest commit channel <<< "$line"
     [[ -n "$fname" && "$digest" =~ ^[0-9a-f]{64}$ && -f "$repo/$fname" ]] ||
         fail "Invalid package metadata from repository for version $version."
     printf '%s\t%s\n' "$repo/$fname" "$digest"
@@ -200,6 +201,43 @@ manifest_commit() {
     python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' "$1/manifest.json"
 }
 
+manifest_channel() {
+    python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("channel","stable"))' "$1/manifest.json"
+}
+
+package_channel() {
+    local ch ver
+    ch=$(dpkg-deb -f "$1" X-OMB-Channel 2>/dev/null || true)
+    if [[ -z "$ch" ]]; then
+        ver=$(dpkg-deb -f "$1" Version)
+        [[ "$ver" == *"~dev"* ]] && ch=dev || ch=stable
+    fi
+    [[ "$ch" == stable || "$ch" == dev ]] || fail "Unsupported package release channel: $ch."
+    printf '%s\n' "$ch"
+}
+
+installed_channel() {
+    local ch ver
+    if [[ -f "$state/CHANNEL" ]]; then
+        ch=$(cat "$state/CHANNEL")
+        [[ "$ch" == stable || "$ch" == dev ]] || fail "Invalid installed release channel: $ch."
+        printf '%s\n' "$ch"
+        return
+    fi
+    if [[ -f "$state/PACKAGE" ]]; then
+        ver=$(cat "$state/PACKAGE")
+        [[ "$ver" == *"~dev"* ]] && printf 'dev\n' || printf 'stable\n'
+        return
+    fi
+    printf 'stable\n'
+}
+
+check_channel_switch() {
+    if [[ "$prior_channel" != "$target_channel" ]] && ! $allow_channel_switch; then
+        fail "Release channel switch ($prior_channel -> $target_channel) requires --allow-channel-switch."
+    fi
+}
+
 extract() {
     local archive=$1 dest=$2 key=$3
     shift 3
@@ -217,6 +255,8 @@ prepare_update() {
     from=$(manifest_commit "$work/base")
     extract "$update_archive" "$work/update" "$key" --expect-from "$from" "$@"
     to=$(manifest_commit "$work/update")
+    prior_channel=$(installed_channel)
+    target_channel=$(manifest_channel "$work/update")
     inspect_update "$work/update/manifest.json" > "$work/plan"
     : > "$work/migrations"
     scope_services=''
@@ -502,7 +542,7 @@ restore_snapshot() {
     if [[ ! -e "$backup/READY" ]]; then
         # No migration or binary replacement is allowed until the restore has been verified.
         [[ "$installed" == "$prior" ]] || return 1
-        for binary in "${binaries[@]}"; do
+        for binary in ${binaries[@]+"${binaries[@]}"}; do
             cmp -s "$backup/$binary" "$binary_dir/$binary" || return 1
         done
         start_services && health || return 1
@@ -551,6 +591,9 @@ restore_snapshot() {
         write_state PACKAGE "$previous_version" || return 1
         write_state PACKAGE_SHA256 "$(cut -d ' ' -f 1 "$backup/omb.deb.sha256")" || return 1
     fi
+    if [[ -f "$backup/channel" ]]; then
+        write_state CHANNEL "$(cat "$backup/channel")" || return 1
+    fi
     write_state COMMIT "$prior" || return 1
     unlink "$state/PENDING" || return 1
     printf 'Restored %s (services: %s; databases: %s).\n' "$prior" "$scope_services" "$scope_databases"
@@ -589,7 +632,9 @@ upgrade() {
         diff -qr --exclude=release.json --exclude=upgrade \
             "$work/old-package/usr/share/omb" "$work/new-package/usr/share/omb" >/dev/null ||
             fail 'The package update changes provisioning inputs under /usr/share/omb.'
+        target_channel=$(package_channel "$work/new.deb")
     fi
+    check_channel_switch
     if [[ ! -d "$backups" ]]; then install -d -m 0700 "$backups"; fi
     check_backup_space
     backup=$(mktemp -d "$backups/offline.XXXXXXXX")
@@ -597,6 +642,7 @@ upgrade() {
     suffix=$(printf '%s' "${backup##*.}" | tr '[:upper:]' '[:lower:]')
     printf '%s %s %s %s %s %s\n' "$from" "$to" "$suffix" "$scope_services" "$scope_databases" "$dnsmasq_was_active" \
         > "$backup/metadata"
+    printf '%s\n' "$prior_channel" > "$backup/channel"
     if (( ${#binaries[@]} > 0 )); then
         printf '%s\n' "${binaries[@]}" > "$backup/binaries"
     fi
@@ -605,7 +651,7 @@ upgrade() {
         (cd "$backup" && sha256sum omb.deb > omb.deb.sha256)
     fi
     read_snapshot
-    for binary in "${binaries[@]}"; do
+    for binary in ${binaries[@]+"${binaries[@]}"}; do
         install -m 0700 "$binary_dir/$binary" "$backup/"
     done
     # Capture published menu before stopping omb-boot if boot is in scope.
@@ -661,6 +707,7 @@ upgrade() {
         write_state PACKAGE "$new_version"
         write_state PACKAGE_SHA256 "$7"
     fi
+    write_state CHANNEL "$target_channel"
     write_state COMMIT "$to"
     write_state LAST "$backup"
     unlink "$state/PENDING"
@@ -687,13 +734,13 @@ cleanup() {
 
 usage() {
     cat >&2 <<'TEXT'
-offline-deploy.sh check-update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY
+offline-deploy.sh check-update [--allow-channel-switch] BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY
 offline-deploy.sh install INSTALL_ARCHIVE PUBLIC_KEY MANAGEMENT_IP [PXE_INTERFACE|none]
 offline-deploy.sh install-deb INSTALL_ARCHIVE PUBLIC_KEY PACKAGE SHA256 MANAGEMENT_IP [PXE_INTERFACE|none]
 offline-deploy.sh install-deb-repo INSTALL_ARCHIVE PUBLIC_KEY APT_REPO VERSION MANAGEMENT_IP [PXE_INTERFACE|none]
-offline-deploy.sh update BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY MANAGEMENT_IP
-offline-deploy.sh update-deb BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY OLD_PACKAGE OLD_SHA256 NEW_PACKAGE NEW_SHA256 MANAGEMENT_IP
-offline-deploy.sh update-deb-repo BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY APT_REPO OLD_VERSION NEW_VERSION MANAGEMENT_IP
+offline-deploy.sh update [--allow-channel-switch] BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY MANAGEMENT_IP
+offline-deploy.sh update-deb [--allow-channel-switch] BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY OLD_PACKAGE OLD_SHA256 NEW_PACKAGE NEW_SHA256 MANAGEMENT_IP
+offline-deploy.sh update-deb-repo [--allow-channel-switch] BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY APT_REPO OLD_VERSION NEW_VERSION MANAGEMENT_IP
 offline-deploy.sh rollback MANAGEMENT_IP
 TEXT
     exit 2
@@ -701,6 +748,23 @@ TEXT
 
 main() {
     local command=${1:-}
+    local pos_args=()
+    local arg
+    if (( $# > 0 )); then shift; fi
+    for arg in "$@"; do
+        if [[ "$arg" == --allow-channel-switch ]]; then
+            allow_channel_switch=true
+        else
+            pos_args+=("$arg")
+        fi
+    done
+    if $allow_channel_switch; then
+        case "$command" in
+            check-update|update|update-deb|update-deb-repo) ;;
+            *) usage ;;
+        esac
+    fi
+    set -- "$command" "${pos_args[@]}"
     case "$command:$#" in
         check-update:4|install:4|install:5|install-deb:6|install-deb:7|install-deb-repo:6|install-deb-repo:7|update:5|update-deb:9|update-deb-repo:8|rollback:2) ;;
         *) usage ;;
@@ -723,6 +787,7 @@ main() {
         check-update)
             [[ ! -e "$state/PACKAGE" ]] || fail 'This host is managed by APT.'
             prepare_update "$1" "$2" "$3"
+            check_channel_switch
             ;;
         install)
             address=$3

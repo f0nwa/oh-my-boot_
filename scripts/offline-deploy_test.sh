@@ -169,4 +169,57 @@ fi
     test "$res" = "$fake_repo/omb_0.1~test1_amd64.deb"$'\t'"$expected_sha"
 )
 
+# Release channel checks block implicit switches, allow --allow-channel-switch, and restore CHANNEL on rollback.
+(
+    state="$work/ch-state"
+    backups="$work/ch-backups"
+    backup="$backups/offline.ch"
+    mkdir -p "$state" "$backup"
+    printf '0.1.4\n' > "$state/PACKAGE"
+    test "$(installed_channel)" = stable
+    printf '0.2.0~dev.1\n' > "$state/PACKAGE"
+    test "$(installed_channel)" = dev
+    rm -f "$state/PACKAGE"
+    printf 'dev\n' > "$state/CHANNEL"
+    test "$(installed_channel)" = dev
+
+    prior_channel=stable
+    target_channel=dev
+    allow_channel_switch=false
+    if (check_channel_switch) > "$work/ch-err" 2>&1; then
+        echo 'Allowed channel switch without --allow-channel-switch' >&2
+        exit 1
+    fi
+    grep -Fq -- '--allow-channel-switch' "$work/ch-err"
+    allow_channel_switch=true
+    check_channel_switch
+
+    printf '%s %s %s %s %s %s\n' "$prior_id" "$target_id" ch control none 0 > "$backup/metadata"
+    printf 'stable\n' > "$backup/channel"
+    : > "$backup/READY"
+    printf 'dev\n' > "$state/CHANNEL"
+    printf '%s\n' "$prior_id" > "$state/COMMIT"
+    printf '%s\n' "$backup" > "$state/PENDING"
+    health() { return 0; }
+    systemctl() { return 0; }
+    mv() { [[ "${1:-}" == -T ]] && shift; command mv "$@"; }
+    restore_snapshot >/dev/null
+    test "$(cat "$state/CHANNEL")" = stable
+)
+
+# Argument parsing strips --allow-channel-switch for update commands.
+(
+    cat > "$work/parse-test.sh" <<'SH'
+set -euo pipefail
+source "$1/scripts/offline-deploy.sh"
+check_channel_switch() {
+    $allow_channel_switch || fail 'missing flag'
+}
+prepare_update() { printf '%s|%s|%s\n' "$1" "$2" "$3"; }
+main check-update --allow-channel-switch a b c
+SH
+    out=$(bash "$work/parse-test.sh" "$repo")
+    test "$out" = 'a|b|c'
+)
+
 echo 'Update scope, multi-service health, and interrupted-run guards passed.'

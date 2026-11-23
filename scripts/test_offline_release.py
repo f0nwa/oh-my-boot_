@@ -37,6 +37,7 @@ class OfflineReleaseTests(unittest.TestCase):
                         "--extract", extracted)
             manifest = json.loads((extracted / "manifest.json").read_bytes())
             self.assertEqual(manifest["commit"], B)
+            self.assertEqual(manifest["channel"], "stable")
             self.assertEqual(manifest["migrations"], [{"database": "omb_control", "path": migration}])
             self.assertEqual((extracted / "bin/omb-control").read_bytes(), b"control")
             self.invoke("verify", archive, "--public-key", public_key,
@@ -116,6 +117,25 @@ class OfflineReleaseTests(unittest.TestCase):
             self.invoke("pack", readme_only, root / "readme.tar.gz",
                         "--commit", B, "--from-commit", A, "--sign-key", key,
                         error="at least one binary, unit, helper, or migration")
+
+    def test_pack_supports_dev_channel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload = root / "payload"
+            (payload / "bin").mkdir(parents=True)
+            (payload / "bin/omb-control").write_bytes(b"control")
+            key = root / "private.pem"
+            public_key = root / "public.pem"
+            self.openssl("genpkey", "-algorithm", "RSA", "-out", key)
+            self.openssl("pkey", "-in", key, "-pubout", "-out", public_key)
+            archive = root / "dev-update.tar.gz"
+            self.invoke("pack", payload, archive, "--commit", B, "--from-commit", A,
+                        "--channel", "dev", "--sign-key", key)
+            extracted = root / "out"
+            self.invoke("verify", archive, "--public-key", public_key, "--expect-from", A,
+                        "--extract", extracted)
+            manifest = json.loads((extracted / "manifest.json").read_bytes())
+            self.assertEqual(manifest["channel"], "dev")
 
     def openssl(self, *args):
         subprocess.run(["openssl", *map(str, args)], check=True, capture_output=True)

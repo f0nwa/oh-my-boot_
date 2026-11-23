@@ -20,6 +20,7 @@ UBUNTU_HELPER = "/usr/lib/omb/omb-prepare-ubuntu-source"
 DEPENDENCIES = ("ca-certificates, cifs-utils, curl, dnsmasq-base, nfs-common, "
                 "openssl, postgresql, python3, samba, wimtools")
 TARGET = {"os": "ubuntu", "version_id": "26.04", "architecture": "amd64"}
+CHANNELS = ("stable", "dev")
 REPO_MANIFEST = "repo-manifest.json"
 REPO_SIGNATURE = "repo-manifest.sig"
 ALLOWED_UPDATE_UNITS = frozenset(
@@ -94,9 +95,38 @@ def overlay_source(base, update, rel_path):
     return base / rel_path
 
 
+def display_version(version):
+    text = version.split(":", 1)[1] if ":" in version else version
+    text = text.replace("~", "-")
+    if text and not text.startswith("v"):
+        text = "v" + text
+    return text
+
+
+def resolve_channel(version, explicit=None, manifest_channel=None):
+    if explicit is not None:
+        if explicit not in CHANNELS:
+            raise ValueError(f"unsupported release channel: {explicit}")
+        channel = explicit
+    elif "~dev" in version:
+        channel = "dev"
+    elif manifest_channel is not None:
+        if manifest_channel not in CHANNELS:
+            raise ValueError(f"unsupported release channel: {manifest_channel}")
+        channel = manifest_channel
+    else:
+        channel = "stable"
+    if channel == "dev" and "~dev" not in version:
+        raise ValueError("dev channel package version must include ~dev (e.g. 0.2.0~dev.1)")
+    if channel == "stable" and "~dev" in version:
+        raise ValueError("stable channel package version must not include ~dev")
+    return channel
+
+
 def stage_package_tree(package, base, base_manifest, version, license_path,
-                       update=None, update_manifest=None):
+                       update=None, update_manifest=None, channel=None):
     manifest = update_manifest or base_manifest
+    resolved_channel = resolve_channel(version, explicit=channel, manifest_channel=manifest.get("channel"))
     if update is not None:
         validate_update_payload(manifest)
     for binary in sorted((base / "bin").glob("omb-*")):
@@ -124,21 +154,29 @@ def stage_package_tree(package, base, base_manifest, version, license_path,
     if update is not None:
         stage_sql(package, update, update_manifest, "upgrade")
     (package / "usr/share/omb/release.json").write_text(json.dumps({
-        "commit": manifest["commit"], "from_commit": manifest["from_commit"], "version": version,
+        "channel": resolved_channel,
+        "commit": manifest["commit"],
+        "display_version": display_version(version),
+        "from_commit": manifest["from_commit"],
+        "package": f"omb {version}",
+        "version": version,
     }, indent=2) + "\n")
-    return manifest
+    return manifest, resolved_channel
 
 
 def build_package(package, repository, base, base_manifest, version, license_path,
-                  update=None, update_manifest=None):
-    manifest = stage_package_tree(package, base, base_manifest, version, license_path,
-                                  update=update, update_manifest=update_manifest)
+                  update=None, update_manifest=None, channel=None):
+    manifest, resolved_channel = stage_package_tree(
+        package, base, base_manifest, version, license_path,
+        update=update, update_manifest=update_manifest, channel=channel,
+    )
     control = package / "DEBIAN"
     control.mkdir()
     (control / "control").write_text(
         f"Package: omb\nVersion: {version}\nArchitecture: amd64\nSection: admin\n"
         "Priority: optional\nMaintainer: OMB maintainers <omb@example.invalid>\n"
         f"Depends: {DEPENDENCIES}\nX-OMB-Commit: {manifest['commit']}\n"
+        f"X-OMB-Channel: {resolved_channel}\n"
         "Description: Oh My Boot network boot server\n"
         " Server binaries, systemd units and inputs for OMB site provisioning.\n"
     )
@@ -158,9 +196,49 @@ def build_package(package, repository, base, base_manifest, version, license_pat
     return {
         "package": "omb",
         "version": version,
+        "display_version": display_version(version),
+        "channel": resolved_channel,
         "architecture": "amd64",
         "commit": manifest["commit"],
         "from_commit": manifest["from_commit"],
+        "filename": deb.name,
+        "size": deb.stat().st_size,
+        "sha256": file_digest(deb, "sha256"),
+    }, deb
+
+
+def stage_existing_base_deb(base_deb, repository, base_manifest, version, explicit_channel=None):
+    base_deb = Path(base_deb)
+    if not base_deb.is_file():
+        raise ValueError(f"base package does not exist: {base_deb}")
+
+    def deb_field(name):
+        return subprocess.check_output(["dpkg-deb", "--field", base_deb, name], text=True).strip()
+
+    if (deb_field("Package") != "omb" or deb_field("Architecture") != "amd64"
+            or deb_field("Version") != version or deb_field("X-OMB-Commit") != base_manifest["commit"]):
+        raise ValueError("base package does not match the base release archive or version")
+    existing_channel = deb_field("X-OMB-Channel")
+    if existing_channel and existing_channel not in CHANNELS:
+        raise ValueError(f"unsupported channel in base package: {existing_channel}")
+    if explicit_channel is not None and existing_channel and existing_channel != explicit_channel:
+        raise ValueError(f"base package channel {existing_channel} differs from --channel {explicit_channel}")
+    resolved_channel = existing_channel or resolve_channel(
+        version, explicit=explicit_channel, manifest_channel=base_manifest.get("channel")
+    )
+    deb = repository / f"omb_{version.replace(':', '%3a')}_amd64.deb"
+    if deb.exists():
+        raise ValueError(f"package filename already exists in the repository: {deb.name}")
+    shutil.copyfile(base_deb, deb)
+    deb.chmod(0o644)
+    return {
+        "package": "omb",
+        "version": version,
+        "display_version": display_version(version),
+        "channel": resolved_channel,
+        "architecture": "amd64",
+        "commit": base_manifest["commit"],
+        "from_commit": base_manifest["from_commit"],
         "filename": deb.name,
         "size": deb.stat().st_size,
         "sha256": file_digest(deb, "sha256"),
@@ -292,6 +370,8 @@ def verify_repository(repo_dir, public_key, version=None):
     for entry in packages:
         if entry.get("package") != "omb" or entry.get("architecture") != "amd64":
             raise ValueError("invalid OMB package entry in repository manifest")
+        if "channel" in entry and entry["channel"] not in CHANNELS:
+            raise ValueError("invalid package channel in repository manifest")
         check_repo_file(repo_dir, entry["filename"], entry["size"], entry["sha256"])
         expected_debs.add(entry["filename"])
     system_debs = data.get("dependencies", {}).get("system_debs", [])
@@ -334,16 +414,26 @@ def build_repository(args):
         index = gzip.decompress(base_index_bytes).decode().strip()
         if "Package: omb" in index.splitlines():
             raise ValueError("the dependency repository already contains an OMB package")
-        pkg_a_meta, pkg_a_deb = build_package(root / "package-a", repository, base, base_manifest,
-                                              args.version, args.license)
+        if args.base_deb:
+            pkg_a_meta, pkg_a_deb = stage_existing_base_deb(
+                args.base_deb, repository, base_manifest, args.version, explicit_channel=args.channel
+            )
+        else:
+            pkg_a_meta, pkg_a_deb = build_package(
+                root / "package-a", repository, base, base_manifest,
+                args.version, args.license, channel=args.channel,
+            )
         package_metas = [pkg_a_meta]
         package_debs = [pkg_a_deb]
         if args.update_archive:
             update = root / "update"
             update_manifest = verify(args.update_archive, args.public_key, update,
                                      "--expect-from", base_manifest["commit"])
-            pkg_b_meta, pkg_b_deb = build_package(root / "package-b", repository, base, base_manifest,
-                                                  args.update_version, args.license, update, update_manifest)
+            pkg_b_meta, pkg_b_deb = build_package(
+                root / "package-b", repository, base, base_manifest,
+                args.update_version, args.license, update, update_manifest,
+                channel=args.update_channel,
+            )
             package_metas.append(pkg_b_meta)
             package_debs.append(pkg_b_deb)
         index += "\n\n" + "\n".join(map(package_record, package_debs))
@@ -402,11 +492,18 @@ def main():
         except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
             parser.exit(1, f"OMB repository verification failed: {error}\n")
         if args.version:
-            print(result["filename"], result["sha256"], result["commit"], sep="\t")
+            ch = result.get("channel") or ("dev" if "~dev" in result["version"] else "stable")
+            print(result["filename"], result["sha256"], result["commit"], ch, sep="\t")
         else:
             print(json.dumps({
                 "target": result["target"],
-                "packages": [p["version"] for p in result["packages"]],
+                "packages": [
+                    {
+                        "version": p["version"],
+                        "channel": p.get("channel") or ("dev" if "~dev" in p["version"] else "stable"),
+                    }
+                    for p in result["packages"]
+                ],
                 "system_debs": len(result["dependencies"]["system_debs"]),
             }, indent=2))
         return
@@ -418,8 +515,11 @@ def main():
     parser.add_argument("repository", type=Path)
     parser.add_argument("--public-key", type=Path, required=True)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--channel", choices=CHANNELS, help="release channel for base package")
+    parser.add_argument("--base-deb", type=Path, help="reuse an existing verified base .deb instead of rebuilding it")
     parser.add_argument("--update-archive", type=Path)
     parser.add_argument("--update-version")
+    parser.add_argument("--update-channel", choices=CHANNELS, help="release channel for update package")
     parser.add_argument("--license", type=Path, required=True)
     parser.add_argument("--sign-key", type=Path, help="OpenSSL private key to sign repo-manifest.json")
     parser.add_argument("--go-mod", type=Path, default=default_go_mod if default_go_mod.is_file() else None)

@@ -26,6 +26,7 @@ func main() {
 	imagesSocket := flag.String("images-socket", "/run/omb-images/images.sock", "Images local API socket")
 	allowed := flag.String("allowed-interfaces", "", "comma-separated PXE interface allowlist")
 	secretsKey := flag.String("secrets-key", "/etc/omb/secrets.key", "32-byte key file for integration secrets")
+	releaseInfo := flag.String("release-info", control.DefaultReleaseInfoPath, "path to release metadata JSON")
 	flag.Parse()
 	if *listen == "" || *cert == "" || *key == "" || *allowed == "" {
 		log.Fatal("listen, TLS certificate/key and PXE interface allowlist are required")
@@ -126,6 +127,7 @@ func main() {
 		Images:            control.NewImagesClient(*imagesSocket),
 		AllowedInterfaces: allowlist,
 		BootBaseURL:       os.Getenv("OMB_CONTROL_BOOT_BASE_URL"),
+		ReleaseInfoPath:   *releaseInfo,
 	}
 	if err := server.SyncBootDrivers(pingCtx); err != nil {
 		log.Printf("boot driver synchronization: %v", err)

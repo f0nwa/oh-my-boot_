@@ -51,7 +51,7 @@ func samplePageDataBase(lang string) pageData {
 	config := DriverConfig{ID: 4, ProfileID: 2, AnswerID: 3, Title: "VirtIO", Folder: "Windows/Tests", PackageINFs: []agent.SelectedINF{{PackageSHA256: "abc", INFPath: "netkvm.inf"}}, State: "error", Error: "Не удалось подготовить WinPE: недостаточно свободного места"}
 	return pageData{
 		Lang:       lang,
-		Info:       requestContext{User: User{ID: 1, Username: "admin", Role: "admin", Language: lang, FSAccessMode: "rw", HasFSPassword: true, FSPasswordChangedAt: &now}, CSRF: "token", Path: "/menu"},
+		Info:       requestContext{User: User{ID: 1, Username: "admin", Role: "admin", Language: lang, FSAccessMode: "rw", HasFSPassword: true, FSPasswordChangedAt: &now}, CSRF: "token", Path: "/menu", Release: ReleaseInfo{Version: "0.2.0~dev.1", DisplayVersion: "v0.2.0-dev.1", Channel: ChannelDev, Commit: "b7f1cabfee6b7defbd7b132d70de42c537c20530", Package: "omb 0.2.0~dev.1"}},
 		FileServer: fileServerView{
 			SMBEnabled:         true,
 			SFTPEnabled:        true,

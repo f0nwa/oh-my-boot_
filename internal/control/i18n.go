@@ -2233,4 +2233,11 @@ var englishMessages = map[string]string{
 	"обязательно для администраторов":                                                                                                                   "required for administrators",
 	"обязательно для всех локальных":                                                                                                                    "required for all local users",
 	"не требовать":                                                                                                                                      "not required",
+	"Сервер работает на канале разработки dev":                                                                                                          "Server is running on the dev development channel",
+	"Выпуск OMB":                                                                                                                                        "OMB release",
+	"Версия":                                                                                                                                            "Version",
+	"Канал":                                                                                                                                             "Channel",
+	"Коммит":                                                                                                                                            "Commit",
+	"dev (разработка)":                                                                                                                                  "dev (development)",
+	"stable (стабильный)":                                                                                                                               "stable (stable)",
 }

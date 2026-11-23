@@ -10,10 +10,10 @@ Build archives on a connected release host with an OpenSSL private key (never co
 
 ```sh
 python3 scripts/offline-release.py pack payload-a omb-install-a.tar.gz \
-  --commit COMMIT_A --sign-key signing-private.pem
+  --commit COMMIT_A --channel stable --sign-key signing-private.pem
 
 python3 scripts/offline-release.py pack payload-b omb-update-a-to-b.tar.gz \
-  --commit COMMIT_B --from-commit COMMIT_A \
+  --commit COMMIT_B --from-commit COMMIT_A --channel stable \
   --migration omb_control=deploy/sql/2026-11-21-oidc-logout-jti-hash.sql \
   --sign-key signing-private.pem
 ```
@@ -77,5 +77,19 @@ sudo bash offline-deploy.sh update-deb omb-install-a.tar.gz omb-update-a-to-b.ta
 - **Units and helpers:** Package updates may update `/usr/lib/systemd/system/omb-*.service` and `/usr/lib/omb/*` helpers, while `/srv/omb/tftp`, `/usr/share/omb` provisioning inputs, and `/etc/omb` site configuration are never overwritten during `update-deb` / `update-deb-repo`.
 - **Atomic database rollback:** Before running any migration, every affected database is dumped with `pg_dump -Fc`, test-restored into a verified recovery database, and checked against pre-update snapshots. On failure or manual `rollback`, APT downgrades `omb` to the saved `.deb` and all affected databases are swapped back in a single PostgreSQL transaction, retaining the newer databases with connections disabled.
 - **Management-only mode:** Omit `PXE_INTERFACE` or pass `none` during installation to keep DHCP and Samba disabled until the dedicated PXE interface is configured.
+
+### Release channels (`stable` and `dev`)
+
+OMB maintains two parallel release channels tracked in `/var/lib/omb-deployment/CHANNEL` and displayed in `/usr/share/omb/release.json` (and the web UI):
+- **`stable` (`main` branch):** Git tags `vX.Y.Z`, Debian versions `X.Y.Z` (for example `0.2.0`).
+- **`dev` (`dev` branch):** Git tags `vX.Y.Z-dev.N`, Debian versions `X.Y.Z~dev.N` (for example `0.2.0~dev.1`, where `~` ensures `0.2.0~dev.N < 0.2.0` in `dpkg`).
+
+Use `--channel stable|dev` on `offline-release.py pack` and `--channel`, `--update-channel`, and `--base-deb PATH` (to preserve an already-installed base `.deb`'s exact `SHA256`) on `offline-deb.py`. Updates stay within the installed channel by default; pass `--allow-channel-switch` to `offline-deploy.sh` when intentionally switching channels (`stable` ↔ `dev`):
+
+```sh
+sudo bash offline-deploy.sh update-deb-repo --allow-channel-switch \
+  omb-install-0.1.4.tar.gz omb-update-0.1.4-to-0.2.0-dev.1.tar.gz \
+  trusted-release-public.pem apt-repo 0.1.4 0.2.0~dev.1 MANAGEMENT_IP
+```
 
 For manual archive-only commands (`install`, `check-update`, `update`, `rollback`) and rehearsal reports, see [docs/offline-release.md](../offline-release.md) and [docs/research/2026-11-22-deb-package-rehearsal.md](../research/2026-11-22-deb-package-rehearsal.md).

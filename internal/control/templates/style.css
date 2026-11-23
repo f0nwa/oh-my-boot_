@@ -1140,4 +1140,11 @@ button.user-fs-chip-btn:hover{filter:brightness(1.08);border-color:var(--line-st
 .user-2fa-status .dot{margin-right:0}
 .policy-section{display:flex;flex-direction:column;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 .policy-section:last-of-type{border-bottom:0;padding-bottom:0}
+.chan-pill{display:inline-flex;align-items:center;gap:5px;font:600 10.5px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;padding:3px 7px;border-radius:99px;border:1px solid var(--line);text-decoration:none}
+.chan-pill.is-dev{background:rgba(245,166,35,.14);border-color:rgba(245,166,35,.36);color:var(--accent)}
+.chan-pill.is-stable{background:rgba(52,211,153,.13);border-color:rgba(52,211,153,.32);color:var(--ok)}
+html[data-theme="light"] .chan-pill.is-dev{background:rgba(201,122,8,.10);border-color:rgba(201,122,8,.35)}
+html[data-theme="light"] .chan-pill.is-stable{background:rgba(13,148,104,.10);border-color:rgba(13,148,104,.30)}
+.topbar-chan-pill{margin-left:-8px}
+.topbar-chan-pill:hover{filter:brightness(1.1)}
 @media (max-width:480px){.qr-setup-row{flex-direction:column;align-items:flex-start}.recovery-codes-grid{grid-template-columns:1fr}}

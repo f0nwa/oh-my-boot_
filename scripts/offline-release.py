@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 
 
 TARGET = {"os": "ubuntu", "version_id": "26.04", "architecture": "amd64"}
+CHANNELS = ("stable", "dev")
 STATE = Path("/var/lib/omb-deployment/COMMIT")
 MANIFEST = "manifest.json"
 SIGNATURE = "manifest.sig"
@@ -74,6 +75,8 @@ def hash_file(stream, output=None):
 def validate_manifest(data):
     if data["format"] != 1 or data["target"] != TARGET:
         raise ValueError("unsupported release format or target")
+    if data.get("channel", "stable") not in CHANNELS:
+        raise ValueError("unsupported release channel")
     commit = commit_id(data["commit"])
     base = data["from_commit"]
     files = data["files"]
@@ -173,7 +176,7 @@ def pack(args):
             files[name] = hash_file(stream)
     steps = [dict(zip(("database", "path"), value.split("=", 1))) for value in args.migration]
     data = {
-        "format": 1, "target": TARGET, "commit": args.commit,
+        "format": 1, "target": TARGET, "channel": args.channel, "commit": args.commit,
         "from_commit": args.from_commit, "files": files,
         "migrations": steps if args.from_commit is not None or steps else BOOTSTRAP,
     }
@@ -278,6 +281,7 @@ def main():
     create.add_argument("archive", type=Path)
     create.add_argument("--commit", required=True)
     create.add_argument("--from-commit", help="required installed commit for an update")
+    create.add_argument("--channel", choices=CHANNELS, default="stable", help="release channel")
     create.add_argument("--migration", action="append", default=[], metavar="DATABASE=PATH")
     create.add_argument("--sign-key", required=True, type=Path)
     check = sub.add_parser("verify", help="verify a signed release before using its files")
@@ -291,8 +295,9 @@ def main():
         data = pack(args) if args.command == "pack" else verify(args)
     except (OSError, ValueError, EOFError, KeyError, TypeError, tarfile.TarError) as exc:
         cli.exit(1, f"error: {exc}\n")
-    print(json.dumps({key: data[key] for key in ("commit", "from_commit", "target", "migrations")},
-                     ensure_ascii=False, indent=2))
+    summary = {key: data[key] for key in ("commit", "from_commit", "target", "migrations")}
+    summary["channel"] = data.get("channel", "stable")
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

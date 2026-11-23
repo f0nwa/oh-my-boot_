@@ -206,6 +206,10 @@ type Server struct {
 	ListenAddr        string
 	AllowedInterfaces map[string]bool
 	BootBaseURL       string
+	ReleaseInfoPath   string
+	Release           *ReleaseInfo
+	releaseOnce       sync.Once
+	releaseCached     ReleaseInfo
 	SysMon            *SystemMonitor
 	menuMu            sync.Mutex
 	draftMu           sync.Mutex
@@ -231,6 +235,17 @@ type requestContext struct {
 	NavBadges      map[string]navBadge
 	PasswordPolicy PasswordPolicy
 	PasswordState  PasswordState
+	Release        ReleaseInfo
+}
+
+func (s *Server) releaseInfo() ReleaseInfo {
+	if s.Release != nil {
+		return NormalizeReleaseInfo(*s.Release)
+	}
+	s.releaseOnce.Do(func() {
+		s.releaseCached = LoadReleaseInfo(s.ReleaseInfoPath)
+	})
+	return s.releaseCached
 }
 type ctxKey struct{}
 
@@ -535,7 +550,7 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 				return
 			}
 		}
-		info := requestContext{User: user, Token: cookie.Value, CSRF: CSRFToken(cookie.Value), Path: r.URL.Path}
+		info := requestContext{User: user, Token: cookie.Value, CSRF: CSRFToken(cookie.Value), Path: r.URL.Path, Release: s.releaseInfo()}
 		policy, err := s.Store.PasswordPolicy(r.Context())
 		if err != nil {
 			http.Error(w, translate(normalizeLanguage(user.Language), "Не удалось проверить политику паролей"), http.StatusServiceUnavailable)

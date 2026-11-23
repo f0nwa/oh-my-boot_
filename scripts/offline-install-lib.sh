@@ -79,7 +79,7 @@ resolve_pxe_interface() {
 
 fresh_install() {
     local archive=$1 key=$2 pxe_iface release="$work/install" commit account svc path
-    local password confirmation dbs steps db file iso_password boot_url="http://$address:8080" deb='' package_version=''
+    local password confirmation dbs steps db file iso_password boot_url="http://$address:8080" deb='' package_version='' install_channel='stable'
     local boot_dsn='host=/var/run/postgresql dbname=omb_boot user=omb-boot'
     local control_dsn='host=/var/run/postgresql dbname=omb_control user=omb-control'
     local images_dsn='host=/var/run/postgresql dbname=omb_images user=omb-images'
@@ -96,10 +96,12 @@ fresh_install() {
     done
     extract "$archive" "$release" "$key" --check-host
     commit=$(manifest_commit "$release")
+    install_channel=$(manifest_channel "$release")
     if $package_mode; then
         deb="$work/install.deb"
         stage_deb "$4" "$5" "$deb"
         package_version=$(package_identity "$deb" "$commit")
+        install_channel=$(package_channel "$deb")
         match_package_payload "$deb" "$work/package" "$release"
     fi
     steps=$(python3 - "$release/manifest.json" <<'PY'
@@ -203,6 +205,7 @@ PY
         write_state PACKAGE "$package_version"
         write_state PACKAGE_SHA256 "$5"
     fi
+    write_state CHANNEL "$install_channel"
     write_state COMMIT "$commit"
     printf 'Installed %s. Control: https://%s:8443/login.\n' "$commit" "$address"
 }

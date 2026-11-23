@@ -21,7 +21,7 @@ const (
 	SecretBytes        = 20
 	RecoveryCodeCount  = 8
 	recoveryAlphabet   = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // 32 unambiguous chars (5 bits each)
-	DefaultIssuer      = "Oh My Boot"
+	DefaultIssuer      = "oh my boot_"
 	allowedSkewSteps   = 1
 )
 

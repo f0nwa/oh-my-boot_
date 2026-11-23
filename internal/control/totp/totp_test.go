@@ -86,7 +86,7 @@ func TestRecoveryCodesAndKeyURIAndQRSVG(t *testing.T) {
 		t.Fatal(err)
 	}
 	uri := KeyURI(DefaultIssuer, "admin", b32Secret)
-	if !strings.HasPrefix(uri, "otpauth://totp/Oh%20My%20Boot:admin?") || !strings.Contains(uri, "secret="+b32Secret) {
+	if !strings.HasPrefix(uri, "otpauth://totp/oh%20my%20boot_:admin?") || !strings.Contains(uri, "secret="+b32Secret) {
 		t.Fatalf("unexpected KeyURI: %s", uri)
 	}
 	svg, err := RenderQRSVG(uri)

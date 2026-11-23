@@ -1452,6 +1452,7 @@ var englishMessages = map[string]string{
 	"Нельзя отключить свою учётную запись или понизить свою роль администратора": "You cannot disable your own account or lower your administrator role",
 	"Нельзя отключить или понизить последнего администратора":                    "You cannot disable or demote the last administrator",
 	"отключён": "disabled",
+	"Откуда берутся образы и как раздаются адреса.":                   "Where images come from and how addresses are handed out.",
 	"Откуда берутся образы, как раздаются адреса и кто имеет доступ.": "Where images come from, how addresses are handed out and who has access.",
 	"Загрузчик не получен":                 "Loader not received",
 	"Дальше DHCP не видно":                 "Nothing visible after DHCP",

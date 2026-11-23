@@ -316,11 +316,15 @@ func TestSystemPageShowsTimeCardAndDialogForAdmin(t *testing.T) {
 		`name="manual_time"`,
 		`data-time-browser-now`,
 		`class="btn btn-primary" disabled`,
-		`<section class="card card-wide"><div class="page-head"><h2>Пользователи</h2>`,
+		`class="system-layout"`,
+		`class="grid grid-3"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("GET /system (admin) missing %q", want)
 		}
+	}
+	if strings.Contains(body, `<h2>Пользователи</h2>`) {
+		t.Fatalf("GET /system (admin) should not contain Пользователи card")
 	}
 	_, mainBody, _ := strings.Cut(body, "<main")
 	if strings.Contains(mainBody, "<details") || strings.Contains(mainBody, "<summary") {

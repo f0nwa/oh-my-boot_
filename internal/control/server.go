@@ -1152,7 +1152,7 @@ func (s *Server) userResetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // systemPage is the overview of the System section: services, storages,
-// the PXE network and, for administrators, users.
+// the PXE network, release info and server time.
 func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
 	data := s.storageLibraryData(r)
 	s.loadStorageSpace(r.Context(), &data, data.catalogCache)
@@ -1166,11 +1166,6 @@ func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.loadSystemTime(r.Context(), &data)
-	if Allowed(data.Info.User.Role, "users") {
-		if users, err := s.Store.Users(r.Context()); err == nil {
-			data.Users = users
-		}
-	}
 	render(w, "system", data)
 }
 

@@ -1,0 +1,114 @@
+{{define "wiki"}}{{template "top" .}}
+{{if eq lang "en"}}<div class="notice wiki-lang-note" role="status"><span class="notice-text">{{t "Статьи встроенной базы знаний пока доступны на русском языке."}}</span></div>{{end}}
+{{with .Wiki}}
+{{if .NotFound}}
+<section class="card wiki-empty">
+  <h1>{{t "Статья не найдена"}}</h1>
+  <p class="muted">{{t "Запрошенной статьи нет во встроенной базе знаний этой версии OMB."}}</p>
+  <p><a class="btn btn-primary" href="/wiki">{{t "Перейти в базу знаний"}}</a></p>
+</section>
+{{else if .Article}}
+{{$cur := .Article}}
+<div class="wiki-layout">
+  <aside class="wiki-side" aria-label="{{t "Разделы Wiki"}}">
+    <form method="get" action="/wiki" class="wiki-side-search">
+      <input type="search" name="q" class="wiki-filter" data-wiki-filter placeholder="{{t "Фильтр или поиск…"}}" aria-label="{{t "Поиск по Wiki"}}" autocomplete="off">
+    </form>
+    <div class="wiki-tree">
+      {{range .Sections}}
+      <div class="wiki-sec-group" data-wiki-section>
+        <div class="wiki-sec-title">{{.Title}}</div>
+        <ul class="wiki-nav-list">
+          {{range .Articles}}
+          <li data-wiki-item data-wiki-search="{{.Title}} {{.Summary}}"><a href="/wiki/{{.Slug}}"{{if eq .Slug $cur.Slug}} class="active" aria-current="page"{{end}}>{{.Title}}</a></li>
+          {{end}}
+        </ul>
+      </div>
+      {{end}}
+    </div>
+  </aside>
+
+  <article class="wiki-article">
+    <nav class="wiki-crumbs" aria-label="{{t "Навигация"}}">
+      <a href="/wiki">Wiki</a><span aria-hidden="true">/</span><span>{{$cur.SectionTitle}}</span>
+    </nav>
+    <h1>{{$cur.Title}}</h1>
+    {{if $cur.Summary}}<p class="wiki-lead">{{$cur.Summary}}</p>{{end}}
+    <div class="wiki-body">{{$cur.HTML}}</div>
+    {{if or $cur.Prev $cur.Next}}
+    <nav class="wiki-pager" aria-label="{{t "Переход между статьями"}}">
+      <div>{{with $cur.Prev}}<a href="/wiki/{{.Slug}}"><small>← {{t "Предыдущая"}}</small><strong>{{.Title}}</strong></a>{{end}}</div>
+      <div>{{with $cur.Next}}<a class="next" href="/wiki/{{.Slug}}"><small>{{t "Следующая"}} →</small><strong>{{.Title}}</strong></a>{{end}}</div>
+    </nav>
+    {{end}}
+  </article>
+
+  {{if $cur.TOC}}
+  <aside class="wiki-toc" aria-label="{{t "На этой странице"}}">
+    <div class="wiki-toc-title">{{t "На этой странице"}}</div>
+    <ul>
+      {{range $cur.TOC}}
+      <li{{if eq .Level 3}} class="lvl3"{{end}}><a href="#{{.ID}}">{{.Text}}</a></li>
+      {{end}}
+    </ul>
+  </aside>
+  {{end}}
+</div>
+{{else}}
+<div class="wiki-home">
+  <div class="wiki-home-head">
+    <h1>{{t "База знаний Oh My Boot"}}</h1>
+    <p class="muted">{{t "Локальная документация сервера: устройство, сценарии установки, безопасность и эксплуатация в закрытом контуре."}}</p>
+    <form method="get" action="/wiki" class="wiki-search-form">
+      <input type="search" name="q" value="{{.Query}}" placeholder="{{t "Найти по статьям: Secure Boot, WinPE, LDAP, откат…"}}" aria-label="{{t "Поиск по Wiki"}}">
+      <button type="submit" class="btn btn-primary">{{t "Найти"}}</button>
+      {{if .Query}}<a class="btn" href="/wiki">{{t "Сбросить"}}</a>{{end}}
+    </form>
+  </div>
+
+  {{if .Query}}
+    {{if .Hits}}
+    <section class="wiki-hits">
+      <p class="muted wiki-hits-count">{{t "Найдено статей"}}: <span class="mono">{{len .Hits}}</span></p>
+      <ul class="wiki-hit-list">
+        {{range .Hits}}
+        <li>
+          <a href="/wiki/{{.Article.Slug}}" class="wiki-hit-card">
+            <div class="wiki-hit-head">
+              <strong>{{.Article.Title}}</strong>
+              <span class="wiki-card-cnt">{{.Article.SectionTitle}}</span>
+            </div>
+            <p>{{.Snippet}}</p>
+          </a>
+        </li>
+        {{end}}
+      </ul>
+    </section>
+    {{else}}
+    <section class="card wiki-empty">
+      <p class="muted">{{t "По запросу ничего не найдено. Попробуйте другие ключевые слова."}}</p>
+    </section>
+    {{end}}
+  {{else}}
+  <div class="wiki-cards">
+    {{range .Sections}}
+    <section class="wiki-card">
+      <div class="wiki-card-head">
+        <h2>{{.Title}}</h2>
+        <span class="wiki-card-cnt mono">{{len .Articles}}</span>
+      </div>
+      <p>{{.Description}}</p>
+      <ul>
+        {{range .Articles}}
+        <li><a href="/wiki/{{.Slug}}">{{.Title}}</a></li>
+        {{end}}
+      </ul>
+    </section>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+<script defer src="/assets/wiki.js"></script>
+{{template "bottom" .}}{{end}}

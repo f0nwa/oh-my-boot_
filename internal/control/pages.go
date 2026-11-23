@@ -97,6 +97,7 @@ type pageData struct {
 	Editor                *editorView
 	USB                   *usbView
 	Journal               *journalView
+	Wiki                  *wikiView
 	Machine               *machineCard
 	MachineList           *machineList
 	MachineImport         *machineImportPlan
@@ -324,6 +325,9 @@ func parsePages(lang string) *template.Template {
 				return "—"
 			}
 			return t.In(serverLocation()).Format("02.01.2006 15:04")
+		},
+		"isWikiPath": func(p string) bool {
+			return p == "/wiki" || strings.HasPrefix(p, "/wiki/")
 		},
 	}).ParseFS(templateFS, "templates/*.html"))
 }

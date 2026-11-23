@@ -1,0 +1,24 @@
+- id: start
+  order: 10
+  title: Начало работы
+  description: Назначение Oh My Boot, ключевые понятия, роли доступа и быстрый путь до первой сетевой загрузки.
+- id: architecture
+  order: 20
+  title: Устройство и архитектура
+  description: Службы systemd, Unix-сокеты, три базы PostgreSQL, конвейер сетевой загрузки и карта путей сервера.
+- id: panel
+  order: 30
+  title: Работа с веб-панелью
+  description: Черновик и публикация меню, экран «Сейчас», справочник машин, журналы событий и глобальный поиск.
+- id: os-scenarios
+  order: 40
+  title: Сценарии установки ОС
+  description: Windows 10 и 11 через WinPE, конструктор файлов ответов, драйверы, Strelec и Ubuntu Desktop.
+- id: infra
+  order: 50
+  title: Secure Boot, сеть и хранилища
+  description: Подписанный iPXE shim 16.1, настройка PXE-сети и драйверов UEFI, SMB/NFS, локальный файловый сервер и режим обслуживания.
+- id: operations
+  order: 60
+  title: Безопасность, обновления и история
+  description: Пользователи, AD/LDAP, Keycloak, 2FA, офлайн-пакеты .deb, каналы обновлений, восстановление и хроника развития OMB.

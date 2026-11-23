@@ -6,6 +6,8 @@
   var selMode = form.querySelector('select[name="mode"]');
   var selDriver = form.querySelector('select[name="default_driver"]');
   var chkReuse = form.querySelector('input[name="reuse_firmware_network"]');
+  var poolRow = form.querySelector('[data-pool-row]');
+  var poolInputs = poolRow ? poolRow.querySelectorAll('input') : [];
   var saveBtn = form.querySelector('.form-actions button');
 
   var dynFile = document.getElementById('dyn-file');
@@ -51,6 +53,13 @@
     var isFull = selMode.value === 'full';
     var isSnp = selDriver.value === 'snp';
     var isReuse = chkReuse.checked;
+
+    if (poolRow) {
+      poolRow.classList.toggle('net-pool-disabled', !isFull);
+      for (var i = 0; i < poolInputs.length; i++) {
+        poolInputs[i].disabled = !isFull;
+      }
+    }
 
     dynFile.textContent = isSnp ? card.dataset.txtSnpFile : card.dataset.txtIpxeFile;
     dynDriver.textContent = isSnp ? card.dataset.txtSnpDriver : card.dataset.txtIpxeDriver;

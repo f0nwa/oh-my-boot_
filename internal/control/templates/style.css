@@ -1159,4 +1159,32 @@ html[data-theme="light"] .chan-pill.is-dev{background:rgba(201,122,8,.10);border
 html[data-theme="light"] .chan-pill.is-stable{background:rgba(13,148,104,.10);border-color:rgba(13,148,104,.30)}
 .topbar-chan-pill{margin-left:-8px}
 .topbar-chan-pill:hover{filter:brightness(1.1)}
+/* PXE network sectioned card (Variant 1) */
+.net-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.95fr);gap:20px;align-items:start}
+.net-card{padding:0;overflow:hidden}
+.net-section{padding:18px 20px;border-bottom:1px solid var(--line)}
+.net-section:last-of-type{border-bottom:0}
+.net-section-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin:0 0 14px}
+.net-section-title{margin:0;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.net-section-desc{font-size:12px;color:var(--muted)}
+.net-field{margin-bottom:14px}
+.net-field:last-child{margin-bottom:0}
+.net-field label{margin-top:0}
+.net-field input:not([type=checkbox]),.net-field select{max-width:none;width:100%}
+.net-field .hint{margin:5px 0 0}
+.net-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.net-row-2:last-child{margin-bottom:0}
+.net-row-2 .net-field{margin-bottom:0}
+.net-hint-after-row{margin:-8px 0 14px}
+.net-pool-disabled{opacity:.45}
+.net-card-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;background:var(--bg);border-top:1px solid var(--line)}
+.net-card-footer .form-actions{margin-top:0}
+.net-footer-note{font-size:12px}
+.net-scenario-card{position:sticky;top:116px}
+.net-cond-box{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.net-cond-title{font-size:12px;font-weight:600;margin:0 0 8px}
+.net-cond-list{list-style:none;padding:0;margin:0 0 10px;font-size:12px;display:flex;flex-direction:column;gap:6px}
+.net-summary{margin:0}
+@media (max-width:900px){.net-layout{grid-template-columns:1fr}.net-scenario-card{position:static}}
+@media (max-width:640px){.net-row-2{grid-template-columns:1fr}}
 @media (max-width:480px){.qr-setup-row{flex-direction:column;align-items:flex-start}.recovery-codes-grid{grid-template-columns:1fr}}

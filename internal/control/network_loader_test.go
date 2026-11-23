@@ -30,6 +30,11 @@ func TestNetworkPageRendersSettingsAndPreview(t *testing.T) {
 	if strings.Contains(body, `name="uefi_loader"`) || strings.Contains(body, "grub-test") {
 		t.Fatalf("page RU should not contain removed GRUB loader selector: %s", body)
 	}
+	for _, sec := range []string{"Сеть и DHCP", "Загрузчик iPXE", "WinPE (Windows Setup)", "Точки выдачи (HTTP и TFTP)"} {
+		if !strings.Contains(body, sec) {
+			t.Fatalf("page RU missing network section %q: %s", sec, body)
+		}
+	}
 	if !strings.Contains(body, "Proxy DHCP (только PXE, адреса выдаёт внешний DHCP)") ||
 		!strings.Contains(body, "Полный DHCP (OMB выдаёт IP-адреса и опции PXE)") {
 		t.Fatalf("page RU should display updated DHCP mode labels: %s", body)

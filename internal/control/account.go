@@ -26,21 +26,33 @@ func (s *Server) passwordScript(w http.ResponseWriter, r *http.Request) {
 func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
 	info := requestInfo(r)
 	unused := 0
+	trustedCount := 0
+	thisBrowserTrusted := false
 	if info.User.IsLocal() && info.User.TOTPEnabled {
 		if ts := s.totpStore(); ts != nil {
 			if n, err := ts.CountUnusedRecoveryCodes(r.Context(), info.User.ID); err == nil {
 				unused = n
 			}
+			if cnt, err := ts.CountUserTrustedBrowsers(r.Context(), info.User.ID); err == nil {
+				trustedCount = cnt
+			}
+			if trustCookie, err := r.Cookie(trustedBrowserCookieName); err == nil && trustCookie.Value != "" {
+				if ok, _ := ts.ValidateTrustedBrowser(r.Context(), info.User.ID, trustCookie.Value, r.UserAgent(), trustedBrowserLifetime); ok {
+					thisBrowserTrusted = true
+				}
+			}
 		}
 	}
 	render(w, "account", pageData{
-		Info:            info,
-		Message:         r.URL.Query().Get("message"),
-		Error:           pageError(r),
-		FileServer:      s.localFileServerState(r.Context(), r.Host),
-		TOTPUnusedCodes: unused,
-		TOTPRequired:    info.PasswordPolicy.RequiresTOTP(info.User),
-		TOTPConfigured:  s.Secrets != nil,
+		Info:                info,
+		Message:             r.URL.Query().Get("message"),
+		Error:               pageError(r),
+		FileServer:          s.localFileServerState(r.Context(), r.Host),
+		TOTPUnusedCodes:     unused,
+		TOTPRequired:        info.PasswordPolicy.RequiresTOTP(info.User),
+		TOTPConfigured:      s.Secrets != nil,
+		TOTPTrustedBrowsers: trustedCount,
+		TOTPThisBrowser:     thisBrowserTrusted,
 	})
 }
 

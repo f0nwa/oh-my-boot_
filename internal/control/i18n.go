@@ -2241,4 +2241,10 @@ var englishMessages = map[string]string{
 	"Коммит":                                                                                                                                            "Commit",
 	"dev (разработка)":                                                                                                                                  "dev (development)",
 	"stable (стабильный)":                                                                                                                               "stable (stable)",
+	"Доверять этому браузеру":                                                                                                                            "Trust this browser",
+	"Доверенные браузеры":                                                                                                                                "Trusted browsers",
+	"включая этот браузер":                                                                                                                               "including this browser",
+	"Нет доверенных браузеров":                                                                                                                           "No trusted browsers",
+	"Сбросить доверенные браузеры":                                                                                                                       "Reset trusted browsers",
+	"Доверие браузерам сброшено":                                                                                                                         "Trusted browsers reset",
 }

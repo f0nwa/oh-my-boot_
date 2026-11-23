@@ -52,10 +52,27 @@
           <span class="muted">{{t "Не созданы"}}</span>
         {{end}}
       </dd>
+      {{if .Info.User.TOTPEnabled}}
+      <dt>{{t "Доверенные браузеры"}}</dt>
+      <dd>
+        {{if gt .TOTPTrustedBrowsers 0}}
+          <span>{{.TOTPTrustedBrowsers}}</span>
+          {{if .TOTPThisBrowser}}<span class="muted">· {{t "включая этот браузер"}}</span>{{end}}
+        {{else}}
+          <span class="muted">{{t "Нет доверенных браузеров"}}</span>
+        {{end}}
+      </dd>
+      {{end}}
     </dl>
     {{if .Info.User.TOTPEnabled}}
     <div class="account-2fa-actions">
       <button type="button" class="btn btn-sm" data-2fa-regen-open>{{t "Перевыпустить коды…"}}</button>
+      {{if gt .TOTPTrustedBrowsers 0}}
+      <form method="post" action="/account/2fa/revoke-trusted" class="inline-form">
+        <input type="hidden" name="csrf" value="{{$.Info.CSRF}}">
+        <button type="submit" class="btn btn-sm btn-danger">{{t "Сбросить доверенные браузеры"}}</button>
+      </form>
+      {{end}}
       {{if not .TOTPRequired}}
         <button type="button" class="btn btn-sm btn-danger" data-2fa-disable-open>{{t "Выключить 2FA…"}}</button>
       {{else}}

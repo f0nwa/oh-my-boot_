@@ -114,6 +114,8 @@ type pageData struct {
 	TOTPUnusedCodes       int
 	TOTPRequired          bool
 	TOTPConfigured        bool
+	TOTPTrustedBrowsers   int
+	TOTPThisBrowser       bool
 	SystemTime            *systemTimeView
 	SystemTimeError       string
 	NowTime               time.Time

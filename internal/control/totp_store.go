@@ -34,6 +34,11 @@ type TOTPStore interface {
 	GetLogin2FAChallenge(ctx context.Context, token string) (Login2FAChallenge, error)
 	IncrementLogin2FAAttempts(ctx context.Context, token string) (int, error)
 	DeleteLogin2FAChallenge(ctx context.Context, token string) error
+
+	CreateTrustedBrowser(ctx context.Context, userID int64, userAgent string, ttl time.Duration) (string, error)
+	ValidateTrustedBrowser(ctx context.Context, userID int64, token string, userAgent string, ttl time.Duration) (bool, error)
+	RevokeUserTrustedBrowsers(ctx context.Context, userID int64) error
+	CountUserTrustedBrowsers(ctx context.Context, userID int64) (int, error)
 }
 
 func (s Store) VerifyLocalCredentials(ctx context.Context, username, password string) (User, error) {
@@ -117,6 +122,9 @@ func (s Store) DisableUserTOTP(ctx context.Context, userID int64) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM login_2fa_challenges WHERE user_id=$1`, userID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM user_trusted_browsers WHERE user_id=$1`, userID); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -137,6 +145,9 @@ func (s Store) ResetUserTOTP(ctx context.Context, userID int64) error {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM login_2fa_challenges WHERE user_id=$1`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM user_trusted_browsers WHERE user_id=$1`, userID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID); err != nil {
@@ -246,4 +257,40 @@ func (s Store) IncrementLogin2FAAttempts(ctx context.Context, token string) (int
 func (s Store) DeleteLogin2FAChallenge(ctx context.Context, token string) error {
 	_, err := s.Pool.Exec(ctx, `DELETE FROM login_2fa_challenges WHERE token_hash=$1`, tokenHash(token))
 	return err
+}
+
+func (s Store) CreateTrustedBrowser(ctx context.Context, userID int64, userAgent string, ttl time.Duration) (string, error) {
+	_, _ = s.Pool.Exec(ctx, `DELETE FROM user_trusted_browsers WHERE expires_at < now()`)
+	token, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	expiresAt := time.Now().Add(ttl)
+	_, err = s.Pool.Exec(ctx, `INSERT INTO user_trusted_browsers (user_id, token_hash, user_agent, created_at, last_used_at, expires_at) VALUES ($1, $2, $3, now(), now(), $4)`,
+		userID, tokenHash(token), userAgent, expiresAt)
+	return token, err
+}
+
+func (s Store) ValidateTrustedBrowser(ctx context.Context, userID int64, token string, userAgent string, ttl time.Duration) (bool, error) {
+	if token == "" {
+		return false, nil
+	}
+	expiresAt := time.Now().Add(ttl)
+	tag, err := s.Pool.Exec(ctx, `UPDATE user_trusted_browsers SET last_used_at=now(), expires_at=$1 WHERE user_id=$2 AND token_hash=$3 AND expires_at > now()`,
+		expiresAt, userID, tokenHash(token))
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+func (s Store) RevokeUserTrustedBrowsers(ctx context.Context, userID int64) error {
+	_, err := s.Pool.Exec(ctx, `DELETE FROM user_trusted_browsers WHERE user_id=$1`, userID)
+	return err
+}
+
+func (s Store) CountUserTrustedBrowsers(ctx context.Context, userID int64) (int, error) {
+	var count int
+	err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM user_trusted_browsers WHERE user_id=$1 AND expires_at > now()`, userID).Scan(&count)
+	return count, err
 }

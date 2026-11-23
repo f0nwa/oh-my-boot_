@@ -10,6 +10,10 @@
       <label class="field-label" for="login-2fa-code">{{t "Код из приложения-аутентификатора (6 цифр)"}}</label>
       <input id="login-2fa-code" name="code" class="input-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="000000" required autofocus>
     </div>
+    <label class="check login-2fa-trust">
+      <input type="checkbox" name="trust_browser" value="true" checked>
+      <span>{{t "Доверять этому браузеру"}}</span>
+    </label>
     <button class="btn btn-primary" type="submit" id="login-2fa-submit" disabled>{{t "Подтвердить"}}</button>
     <div class="login-2fa-links">
       <button type="button" class="link-btn" id="login-2fa-toggle" data-label-recovery="{{t "Использовать резервный код"}}" data-label-totp="{{t "Ввести код из приложения"}}" data-title-recovery="{{t "Одноразовый резервный код (XXXX-XXXX)"}}" data-title-totp="{{t "Код из приложения-аутентификатора (6 цифр)"}}">{{t "Использовать резервный код"}}</button>

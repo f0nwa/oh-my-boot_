@@ -276,6 +276,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /account/2fa/enable", s.protect("view", s.account2FAEnable))
 	mux.HandleFunc("POST /account/2fa/disable", s.protect("view", withPageErrors(s.accountPage, s.account2FADisable)))
 	mux.HandleFunc("POST /account/2fa/recovery-codes", s.protect("view", s.account2FARecoveryCodes))
+	mux.HandleFunc("POST /account/2fa/revoke-trusted", s.protect("view", withPageErrors(s.accountPage, s.account2FARevokeTrusted)))
 	mux.HandleFunc("GET /setup-2fa", s.protect("view", s.setup2FAPage))
 	mux.HandleFunc("GET /change-password", s.protect("view", s.changePasswordPage))
 	mux.HandleFunc("POST /change-password", s.protect("view", withPageErrors(s.changePasswordPage, s.changePasswordSubmit)))
@@ -694,6 +695,27 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if u.TOTPEnabled {
+			if trustCookie, err := r.Cookie(trustedBrowserCookieName); err == nil && trustCookie.Value != "" {
+				if ok, _ := ts.ValidateTrustedBrowser(r.Context(), u.ID, trustCookie.Value, r.UserAgent(), trustedBrowserLifetime); ok {
+					tok, serr := ts.CreateLocalSession(r.Context(), u.ID)
+					if serr != nil {
+						http.Error(w, "Ошибка", http.StatusInternalServerError)
+						return
+					}
+					http.SetCookie(w, makeTrustedBrowserCookie(trustCookie.Value))
+					http.SetCookie(w, &http.Cookie{Name: "omb_session", Value: tok, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Expires: time.Now().Add(sessionLifetime)})
+					http.SetCookie(w, &http.Cookie{Name: "omb_login_csrf", Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+					_ = s.Store.Audit(r.Context(), u.ID, "login", "ok", "2fa=trusted_browser")
+					if policy, err := s.Store.PasswordPolicy(r.Context()); err == nil {
+						if EvaluatePasswordState(u, policy, time.Now()).RequiresChange() {
+							http.Redirect(w, r, "/change-password", 303)
+							return
+						}
+					}
+					http.Redirect(w, r, "/", 303)
+					return
+				}
+			}
 			chToken, cerr := ts.CreateLogin2FAChallenge(r.Context(), u.ID, login2FAChallengeTTL)
 			if cerr != nil {
 				http.Error(w, "Ошибка", http.StatusInternalServerError)

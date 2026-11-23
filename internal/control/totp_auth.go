@@ -15,11 +15,36 @@ import (
 )
 
 const (
-	login2FACookieName  = "omb_2fa"
-	login2FACSRFCookie  = "omb_2fa_csrf"
-	login2FAChallengeTTL = 5 * time.Minute
-	login2FAMaxAttempts  = 5
+	login2FACookieName       = "omb_2fa"
+	login2FACSRFCookie       = "omb_2fa_csrf"
+	trustedBrowserCookieName = "omb_2fa_trust"
+	trustedBrowserLifetime   = 365 * 24 * time.Hour
+	login2FAChallengeTTL     = 5 * time.Minute
+	login2FAMaxAttempts      = 5
 )
+
+func makeTrustedBrowserCookie(token string) *http.Cookie {
+	return &http.Cookie{
+		Name:     trustedBrowserCookieName,
+		Value:    token,
+		Path:     "/",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(trustedBrowserLifetime.Seconds()),
+	}
+}
+
+func clearTrustedBrowserCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     trustedBrowserCookieName,
+		Path:     "/",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+}
 
 func (s *Server) totpStore() TOTPStore {
 	ts, _ := s.Store.(TOTPStore)
@@ -142,6 +167,13 @@ func (s *Server) login2FASubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = ts.DeleteLogin2FAChallenge(r.Context(), c.Value)
 	clear2FACookies(w)
+	if r.FormValue("trust_browser") == "true" || r.FormValue("trust_browser") == "on" || r.FormValue("trust_browser") == "1" {
+		trustToken, terr := ts.CreateTrustedBrowser(r.Context(), ch.User.ID, r.UserAgent(), trustedBrowserLifetime)
+		if terr == nil {
+			http.SetCookie(w, makeTrustedBrowserCookie(trustToken))
+			method += "+trust"
+		}
+	}
 	sessionToken, err := ts.CreateLocalSession(r.Context(), ch.User.ID)
 	if err != nil {
 		http.Error(w, "Ошибка", http.StatusInternalServerError)
@@ -270,8 +302,22 @@ func (s *Server) account2FADisable(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось отключить 2FA", http.StatusServiceUnavailable)
 		return
 	}
+	clearTrustedBrowserCookie(w)
 	_ = s.Store.Audit(r.Context(), info.User.ID, "user.disable_2fa", "ok", "")
 	http.Redirect(w, r, "/account?message="+url.QueryEscape("Двухфакторная аутентификация отключена"), http.StatusSeeOther)
+}
+
+func (s *Server) account2FARevokeTrusted(w http.ResponseWriter, r *http.Request) {
+	info := requestInfo(r)
+	ts := s.totpStore()
+	if !info.User.IsLocal() || ts == nil {
+		http.Redirect(w, r, "/account", http.StatusSeeOther)
+		return
+	}
+	_ = ts.RevokeUserTrustedBrowsers(r.Context(), info.User.ID)
+	clearTrustedBrowserCookie(w)
+	_ = s.Store.Audit(r.Context(), info.User.ID, "user.revoke_trusted_browsers", "ok", "")
+	http.Redirect(w, r, "/account?message="+url.QueryEscape("Доверие браузерам сброшено"), http.StatusSeeOther)
 }
 
 func (s *Server) account2FARecoveryCodes(w http.ResponseWriter, r *http.Request) {

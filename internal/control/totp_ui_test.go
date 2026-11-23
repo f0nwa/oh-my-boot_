@@ -15,6 +15,12 @@ import (
 	"omb/internal/control/totp"
 )
 
+type fakeTrustedDevice struct {
+	userID    int64
+	userAgent string
+	expiresAt time.Time
+}
+
 type fakeTOTPStore struct {
 	authOnlyStore
 	user        User
@@ -24,6 +30,7 @@ type fakeTOTPStore struct {
 	challenges  map[string]*Login2FAChallenge
 	policy      PasswordPolicy
 	sessions    map[string]User
+	trusted     map[string]*fakeTrustedDevice
 	resetCalled bool
 }
 
@@ -35,6 +42,7 @@ func newFakeTOTPStore(u User, password string) *fakeTOTPStore {
 		challenges: map[string]*Login2FAChallenge{},
 		policy:     PasswordPolicy{WarnDays: 7, TOTPPolicy: TOTPPolicyOff},
 		sessions:   map[string]User{"tok-1": u},
+		trusted:    map[string]*fakeTrustedDevice{},
 	}
 }
 
@@ -94,6 +102,7 @@ func (f *fakeTOTPStore) DisableUserTOTP(_ context.Context, _ int64) error {
 	f.user.TOTPEnabledAt = nil
 	f.user.TOTPLastStep = 0
 	f.codes = map[string]bool{}
+	f.trusted = map[string]*fakeTrustedDevice{}
 	for k := range f.sessions {
 		f.sessions[k] = f.user
 	}
@@ -101,6 +110,7 @@ func (f *fakeTOTPStore) DisableUserTOTP(_ context.Context, _ int64) error {
 }
 func (f *fakeTOTPStore) ResetUserTOTP(ctx context.Context, userID int64) error {
 	f.resetCalled = true
+	f.trusted = map[string]*fakeTrustedDevice{}
 	return f.DisableUserTOTP(ctx, userID)
 }
 func (f *fakeTOTPStore) ReplaceRecoveryCodes(_ context.Context, _ int64, codeHashes []string) error {
@@ -160,6 +170,51 @@ func (f *fakeTOTPStore) IncrementLogin2FAAttempts(_ context.Context, token strin
 func (f *fakeTOTPStore) DeleteLogin2FAChallenge(_ context.Context, token string) error {
 	delete(f.challenges, token)
 	return nil
+}
+
+func (f *fakeTOTPStore) CreateTrustedBrowser(_ context.Context, userID int64, userAgent string, ttl time.Duration) (string, error) {
+	tok, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	f.trusted[tokenHash(tok)] = &fakeTrustedDevice{
+		userID:    userID,
+		userAgent: userAgent,
+		expiresAt: time.Now().Add(ttl),
+	}
+	return tok, nil
+}
+
+func (f *fakeTOTPStore) ValidateTrustedBrowser(_ context.Context, userID int64, token string, _ string, ttl time.Duration) (bool, error) {
+	if token == "" {
+		return false, nil
+	}
+	dev, ok := f.trusted[tokenHash(token)]
+	if !ok || dev.userID != userID || time.Now().After(dev.expiresAt) {
+		return false, nil
+	}
+	dev.expiresAt = time.Now().Add(ttl)
+	return true, nil
+}
+
+func (f *fakeTOTPStore) RevokeUserTrustedBrowsers(_ context.Context, userID int64) error {
+	for h, dev := range f.trusted {
+		if dev.userID == userID {
+			delete(f.trusted, h)
+		}
+	}
+	return nil
+}
+
+func (f *fakeTOTPStore) CountUserTrustedBrowsers(_ context.Context, userID int64) (int, error) {
+	var count int
+	now := time.Now()
+	for _, dev := range f.trusted {
+		if dev.userID == userID && now.Before(dev.expiresAt) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func TestLocal2FAEndToEndFlowAndPolicy(t *testing.T) {
@@ -360,6 +415,227 @@ func TestLogin2FAScriptEndpoint(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("login-2fa.js missing %q", want)
+		}
+	}
+}
+
+func TestTrustedBrowser2FAEndToEndFlow(t *testing.T) {
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	box, err := NewSecretBox(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawSecret, _, err := totp.GenerateSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encSecret, err := box.Encrypt(totpUserAAD(1), rawSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	u := User{
+		ID:                1,
+		Username:          "admin",
+		AuthSource:        AuthSourceLocal,
+		Role:              "admin",
+		Enabled:           true,
+		TOTPEnabled:       true,
+		TOTPEnabledAt:     &now,
+		Language:          "ru",
+		PasswordChangedAt: now,
+	}
+	store := newFakeTOTPStore(u, "StrongPass123!")
+	store.secretEnc = encSecret
+	srv := &Server{Store: store, Secrets: box}
+	h := srv.Handler()
+
+	// 1. Initial login without trust cookie -> redirect to /login/2fa
+	loginForm := url.Values{
+		"csrf":     {"test-csrf"},
+		"username": {"admin"},
+		"password": {"StrongPass123!"},
+	}
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(loginForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_login_csrf", Value: "test-csrf"})
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusSeeOther || res.Header().Get("Location") != "/login/2fa" {
+		t.Fatalf("expected redirect to /login/2fa, got %d loc=%s", res.Code, res.Header().Get("Location"))
+	}
+	var challengeCookie *http.Cookie
+	for _, c := range res.Result().Cookies() {
+		if c.Name == "omb_2fa" {
+			challengeCookie = c
+			break
+		}
+	}
+	if challengeCookie == nil || challengeCookie.Value == "" {
+		t.Fatal("expected omb_2fa challenge cookie")
+	}
+
+	// 2. GET /login/2fa -> page contains trust_browser checkbox
+	req = httptest.NewRequest("GET", "/login/2fa", nil)
+	req.AddCookie(challengeCookie)
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /login/2fa status=%d", res.Code)
+	}
+	body := res.Body.String()
+	if !strings.Contains(body, "trust_browser") || !strings.Contains(body, "Доверять этому браузеру") {
+		t.Fatalf("expected trust_browser checkbox on /login/2fa, body=%s", body)
+	}
+	// 3. POST /login/2fa with valid TOTP code and trust_browser=true
+	code := totp.GenerateCode(rawSecret, time.Now())
+	verifyForm := url.Values{
+		"csrf":          {"c-2fa"},
+		"mode":          {"totp"},
+		"code":          {code},
+		"trust_browser": {"true"},
+	}
+	req = httptest.NewRequest("POST", "/login/2fa", strings.NewReader(verifyForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(challengeCookie)
+	req.AddCookie(&http.Cookie{Name: login2FACSRFCookie, Value: "c-2fa"})
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusSeeOther || res.Header().Get("Location") != "/" {
+		t.Fatalf("POST /login/2fa status=%d loc=%s", res.Code, res.Header().Get("Location"))
+	}
+	var trustCookie, sessionCookie *http.Cookie
+	for _, c := range res.Result().Cookies() {
+		if c.Name == "omb_2fa_trust" {
+			trustCookie = c
+		}
+		if c.Name == "omb_session" {
+			sessionCookie = c
+		}
+	}
+	if trustCookie == nil || trustCookie.Value == "" {
+		t.Fatal("expected omb_2fa_trust cookie to be issued")
+	}
+	if sessionCookie == nil || sessionCookie.Value == "" {
+		t.Fatal("expected omb_session cookie to be issued")
+	}
+	cnt, _ := store.CountUserTrustedBrowsers(context.Background(), 1)
+	if cnt != 1 {
+		t.Fatalf("expected 1 trusted browser in store, got %d", cnt)
+	}
+
+	// 4. Subsequent login with trust cookie -> bypasses /login/2fa immediately!
+	req = httptest.NewRequest("POST", "/login", strings.NewReader(loginForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_login_csrf", Value: "test-csrf"})
+	req.AddCookie(trustCookie)
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusSeeOther || res.Header().Get("Location") != "/" {
+		t.Fatalf("expected direct redirect to /, got %d loc=%s", res.Code, res.Header().Get("Location"))
+	}
+	var refreshedTrustCookie, newSessionCookie *http.Cookie
+	for _, c := range res.Result().Cookies() {
+		if c.Name == "omb_2fa_trust" {
+			refreshedTrustCookie = c
+		}
+		if c.Name == "omb_session" {
+			newSessionCookie = c
+		}
+	}
+	if refreshedTrustCookie == nil || newSessionCookie == nil {
+		t.Fatal("expected refreshed trust cookie and new session cookie on bypass")
+	}
+
+	// 5. GET /account shows trusted browsers count and revoke button
+	req = httptest.NewRequest("GET", "/account", nil)
+	req.AddCookie(newSessionCookie)
+	req.AddCookie(trustCookie)
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /account status=%d", res.Code)
+	}
+	accBody := res.Body.String()
+	if !strings.Contains(accBody, "Доверенные браузеры") || !strings.Contains(accBody, "включая этот браузер") {
+		t.Fatalf("GET /account missing trusted browser info, body=%s", accBody)
+	}
+	if !strings.Contains(accBody, "/account/2fa/revoke-trusted") || !strings.Contains(accBody, "Сбросить доверенные браузеры") {
+		t.Fatalf("GET /account missing revoke button, body=%s", accBody)
+	}
+
+	// 6. POST /account/2fa/revoke-trusted revokes trusted devices
+	revokeForm := url.Values{"csrf": {CSRFToken(newSessionCookie.Value)}}
+	req = httptest.NewRequest("POST", "/account/2fa/revoke-trusted", strings.NewReader(revokeForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(newSessionCookie)
+	req.AddCookie(trustCookie)
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusSeeOther || res.Header().Get("Location") != "/account?message="+url.QueryEscape("Доверие браузерам сброшено") {
+		t.Fatalf("POST /account/2fa/revoke-trusted status=%d loc=%s", res.Code, res.Header().Get("Location"))
+	}
+	var clearedTrustCookie *http.Cookie
+	for _, c := range res.Result().Cookies() {
+		if c.Name == "omb_2fa_trust" {
+			clearedTrustCookie = c
+			break
+		}
+	}
+	if clearedTrustCookie == nil || clearedTrustCookie.MaxAge >= 0 {
+		t.Fatal("expected omb_2fa_trust cookie to be cleared with MaxAge < 0")
+	}
+	cnt, _ = store.CountUserTrustedBrowsers(context.Background(), 1)
+	if cnt != 0 {
+		t.Fatalf("expected 0 trusted browsers after revoke, got %d", cnt)
+	}
+
+	// 7. Login after revoke -> requires /login/2fa again!
+	req = httptest.NewRequest("POST", "/login", strings.NewReader(loginForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_login_csrf", Value: "test-csrf"})
+	req.AddCookie(trustCookie) // old/revoked token
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusSeeOther || res.Header().Get("Location") != "/login/2fa" {
+		t.Fatalf("expected redirect to /login/2fa after revocation, got %d loc=%s", res.Code, res.Header().Get("Location"))
+	}
+
+	// 8. Login without trust_browser checkbox -> does not issue trust cookie
+	store.user.TOTPLastStep = 0
+	req = httptest.NewRequest("POST", "/login", strings.NewReader(loginForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_login_csrf", Value: "test-csrf"})
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	var chCookie2 *http.Cookie
+	for _, c := range res.Result().Cookies() {
+		if c.Name == "omb_2fa" {
+			chCookie2 = c
+			break
+		}
+	}
+	noTrustForm := url.Values{
+		"csrf":          {"c-2fa-2"},
+		"mode":          {"totp"},
+		"code":          {totp.GenerateCode(rawSecret, time.Now())},
+		"trust_browser": {""}, // unchecked
+	}
+	req = httptest.NewRequest("POST", "/login/2fa", strings.NewReader(noTrustForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(chCookie2)
+	req.AddCookie(&http.Cookie{Name: login2FACSRFCookie, Value: "c-2fa-2"})
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusSeeOther || res.Header().Get("Location") != "/" {
+		t.Fatalf("POST /login/2fa status=%d loc=%s", res.Code, res.Header().Get("Location"))
+	}
+	for _, c := range res.Result().Cookies() {
+		if c.Name == "omb_2fa_trust" && c.MaxAge >= 0 {
+			t.Fatal("omb_2fa_trust should not be issued when trust_browser is unchecked")
 		}
 	}
 }

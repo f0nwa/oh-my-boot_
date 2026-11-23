@@ -48,6 +48,7 @@ Start with the [server installation guide](docs/installation.md) ([offline insta
 | Ubuntu Desktop PXE | [EN](docs/en/ubuntu-desktop-pxe.md) | [RU](docs/ubuntu-desktop-pxe.md) |
 | Windows 10 WinPE | [EN](docs/en/windows-winpe-pxe.md) | [RU](docs/windows-winpe-pxe.md) |
 | Windows 11 WinPE | [EN](docs/en/windows11-winpe-pxe.md) | [RU](docs/windows11-winpe-pxe.md) |
+| Architecture, services and boot pipeline | [EN](docs/en/architecture.md) | [RU](docs/architecture.md) |
 | Architecture and acceptance plan | [EN](docs/en/omb-design.md) | [RU](docs/superpowers/specs/2026-10-15-omb-design.md) |
 | Brand: mark, files and usage rules | — | [RU](docs/brand/README.md) |
 

@@ -251,6 +251,22 @@ func TestLocal2FAEndToEndFlowAndPolicy(t *testing.T) {
 		t.Fatal("missing omb_2fa challenge cookie")
 	}
 
+	// 4a. Verify GET /login/2fa renders SVG network animation and login-2fa.js script.
+	req = httptest.NewRequest("GET", "/login/2fa", nil)
+	req.AddCookie(chCookie)
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /login/2fa status=%d", res.Code)
+	}
+	body2fa := res.Body.String()
+	if !strings.Contains(body2fa, `<div class="login-net-bg" aria-hidden="true"><svg class="login-net"`) {
+		t.Errorf("GET /login/2fa missing login-net-bg SVG wrapper")
+	}
+	if !strings.Contains(body2fa, `<script defer src="/assets/login-2fa.js"></script>`) {
+		t.Errorf("GET /login/2fa missing script /assets/login-2fa.js")
+	}
+
 	// 5. Verify recovery code completes login, and reusing the same recovery code fails.
 	form = url.Values{"csrf": {"c2"}, "mode": {"recovery"}, "code": {enableResp.Codes[0]}}
 	req = httptest.NewRequest("POST", "/login/2fa", strings.NewReader(form.Encode()))
@@ -313,3 +329,38 @@ func TestUsersPageShowsCombinedSecurityPolicyAnd2FAColumn(t *testing.T) {
 		}
 	}
 }
+
+func TestLogin2FAScriptEndpoint(t *testing.T) {
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/assets/login-2fa.js", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/javascript") {
+		t.Fatalf("expected javascript content type, got %q", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("expected Cache-Control no-store, got %q", cc)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"login-2fa-mode",
+		"login-2fa-code",
+		"login-2fa-submit",
+		"login-net",
+		"DHCP DISCOVER",
+		"ipxe-shim.efi",
+		"snponly-shim.efi",
+		"undionly.kpxe",
+		"boot/menu.ipxe",
+		"menu ready",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("login-2fa.js missing %q", want)
+		}
+	}
+}
+

@@ -113,7 +113,7 @@
       <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
       <input type="hidden" name="pending_token" data-2fa-pending>
       <label>{{t "Код из приложения (6 цифр)"}}<input name="code" class="input-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" required></label>
-      <div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button type="submit" class="btn btn-primary">{{t "Подтвердить и включить"}}</button></div>
+      <div class="user-dialog-actions"><button type="button" class="btn" data-close-dialog>{{t "Отмена"}}</button><button type="submit" class="btn btn-primary" disabled>{{t "Подтвердить и включить"}}</button></div>
     </form>
   </div>
   <div data-2fa-step2 hidden>

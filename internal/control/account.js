@@ -244,6 +244,19 @@
     });
   }
 
+  function sync2FAEnableSubmit(container) {
+    if (!container) return;
+    var form = container.querySelector('[data-2fa-enable-form]');
+    if (!form) return;
+    var submit = form.querySelector('button[type="submit"]');
+    if (!submit) return;
+    var codeIn = form.querySelector('input[name="code"]');
+    var pend = form.querySelector('[data-2fa-pending]');
+    var digits = codeIn ? (codeIn.value || '').replace(/\s+/g, '') : '';
+    var hasPending = !pend || pend.value.trim() !== '';
+    submit.disabled = !(hasPending && /^\d{6}$/.test(digits));
+  }
+
   function begin2FA(container) {
     if (!container) return;
     var csrf = container.getAttribute('data-csrf') || '';
@@ -252,6 +265,11 @@
     if (step1) step1.hidden = false;
     if (step2) step2.hidden = true;
     show2FAError(container, '');
+    var pendInit = container.querySelector('[data-2fa-pending]');
+    if (pendInit) pendInit.value = '';
+    var codeInit = container.querySelector('input[name="code"]');
+    if (codeInit) codeInit.value = '';
+    sync2FAEnableSubmit(container);
     var body = new URLSearchParams();
     body.set('csrf', csrf);
     fetch('/account/2fa/begin', {
@@ -280,6 +298,7 @@
         codeIn.value = '';
         codeIn.focus();
       }
+      sync2FAEnableSubmit(container);
     }).catch(function () {
       show2FAError(container, document.documentElement.lang === 'en' ? 'Failed to start 2FA setup' : 'Не удалось начать настройку 2FA');
     });
@@ -289,9 +308,19 @@
     if (!container) return;
     var form = container.querySelector('[data-2fa-enable-form]');
     if (!form) return;
+    var codeIn = form.querySelector('input[name="code"]');
+    var submit = form.querySelector('button[type="submit"]');
+    if (codeIn) {
+      codeIn.addEventListener('input', function () { sync2FAEnableSubmit(container); });
+      codeIn.addEventListener('change', function () { sync2FAEnableSubmit(container); });
+    }
+    sync2FAEnableSubmit(container);
     form.addEventListener('submit', function (event) {
       event.preventDefault();
+      sync2FAEnableSubmit(container);
+      if (submit && submit.disabled) return;
       show2FAError(container, '');
+      if (submit) submit.disabled = true;
       var fd = new URLSearchParams(new FormData(form));
       fetch('/account/2fa/enable', {
         method: 'POST',
@@ -302,6 +331,7 @@
       }).then(function (res) {
         if (!res.ok) {
           show2FAError(container, res.data.error || 'Error');
+          sync2FAEnableSubmit(container);
           return;
         }
         var step1 = container.querySelector('[data-2fa-step1]');
@@ -311,6 +341,7 @@
         renderCodes(container, res.data.codes || []);
       }).catch(function () {
         show2FAError(container, document.documentElement.lang === 'en' ? 'Failed to enable 2FA' : 'Не удалось включить 2FA');
+        sync2FAEnableSubmit(container);
       });
     });
   }

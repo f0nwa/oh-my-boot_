@@ -192,6 +192,7 @@ FORBIDDEN_PREFIXES = (
     "usr/share/omb/windows-profiles/",
 )
 ALLOWED_EXACT = {
+    "usr/bin/omb-setup",
     "usr/share/omb/release.json",
     "usr/share/doc/omb/copyright",
 }
@@ -766,7 +767,7 @@ cleanup() {
 
 usage() {
     cat >&2 <<'TEXT'
-offline-deploy.sh install APT_REPO PUBLIC_KEY MANAGEMENT_IP [PXE_INTERFACE|none]
+offline-deploy.sh install APT_REPO PUBLIC_KEY [MANAGEMENT_IP [PXE_INTERFACE|none]]
 offline-deploy.sh update [--allow-channel-switch] APT_REPO PUBLIC_KEY MANAGEMENT_IP
 offline-deploy.sh rollback MANAGEMENT_IP
 TEXT
@@ -793,7 +794,7 @@ main() {
     fi
     set -- "$command" ${pos_args[@]+"${pos_args[@]}"}
     case "$command:$#" in
-        install:4|install:5|update:4|rollback:2) ;;
+        install:3|install:4|install:5|update:4|rollback:2) ;;
         *) usage ;;
     esac
     shift
@@ -810,9 +811,13 @@ main() {
     source "$script_dir/offline-install-lib.sh"
     case "$command" in
         install)
-            address=$3
-            check_address
-            fresh_install "$1" "$2" "${4:-none}"
+            if (( $# == 2 )); then
+                fresh_install "$1" "$2"
+            else
+                address=$3
+                check_address
+                fresh_install "$1" "$2" "$3" "${4:-none}"
+            fi
             ;;
         update)
             address=$3

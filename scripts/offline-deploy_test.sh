@@ -164,6 +164,14 @@ for forbidden_rel in usr/share/omb/assets/wimboot usr/share/omb/samba/smb.conf u
     rm -rf "$work/new-bad-combo"
 done
 
+# 5h. Adding or changing usr/bin/omb-setup is allowed without error.
+make_pkg_tree "$work/new-with-setup"
+printf 'setup-v1' > "$work/new-with-setup/usr/bin/omb-setup"
+test "$(compute_update_scope "$work/old-boot" "$work/new-with-setup" "$work/no-pending")" = $'SERVICES\tcontrol\nDATABASES\tnone'
+make_pkg_tree "$work/new-with-setup-v2"
+printf 'setup-v2' > "$work/new-with-setup-v2/usr/bin/omb-setup"
+test "$(compute_update_scope "$work/new-with-setup" "$work/new-with-setup-v2" "$work/no-pending")" = $'SERVICES\tcontrol\nDATABASES\tnone'
+
 # 6. plan_migrations tests.
 sha1=1111111111111111111111111111111111111111111111111111111111111111
 sha2=2222222222222222222222222222222222222222222222222222222222222222
@@ -274,36 +282,37 @@ fi
     fi
 )
 
-# 8. seed_schema_migrations handles empty, valid, and invalid manifests.
+# 8. fresh_install delegates initialization to omb-setup in interactive mode and records deployment state.
 (
     source "$repo/scripts/offline-install-lib.sh"
-    calls="$work/seed-calls"
-    sql_in="$work/seed-sql"
-    : > "$calls"
-    : > "$sql_in"
-    runuser() { printf '%s\n' "$*" >> "$calls"; cat >> "$sql_in"; }
-    seed_schema_migrations "$work/manifest-empty.json"
-    test ! -s "$calls"
-    seed_schema_migrations "$work/manifest-jump.json"
-    grep -Fq -- '-u omb-control -- psql -Xw -v ON_ERROR_STOP=1 -d omb_control -v mig_id=0001_first' "$calls"
-    grep -Fq -- '-u omb-boot -- psql -Xw -v ON_ERROR_STOP=1 -d omb_boot -v mig_id=0001_boot' "$calls"
-    grep -Fq "INSERT INTO public.schema_migrations (id, sha256)" "$sql_in"
+    state="$work/fresh-state"
+    binary_dir="$work/fresh-bin"
+    mkdir -p "$binary_dir" "$work/fresh-repo"
+    printf 'fake-deb-bytes' > "$work/fresh-repo/omb_0.3.0_amd64.deb"
+    fake_sha=$(sha256sum "$work/fresh-repo/omb_0.3.0_amd64.deb" | awk '{print $1}')
+    fake_commit=cccccccccccccccccccccccccccccccccccccccc
+    cat > "$binary_dir/omb-setup" <<'SETUP'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$OMB_SETUP_ARGS_FILE"
+SETUP
+    chmod +x "$binary_dir/omb-setup"
+    export OMB_SETUP_ARGS_FILE="$work/fresh-setup-args"
+    getent() { return 1; }
+    systemctl() { return 1; }
+    resolve_repo_package() { printf '%s\t%s\t%s\t%s\t%s\n' "$work/fresh-repo/omb_0.3.0_amd64.deb" "$fake_sha" 0.3.0 "$fake_commit" stable; }
+    package_identity() { printf '0.3.0\n'; }
+    package_channel() { printf 'stable\n'; }
+    install_packages() { return 0; }
+    installed_package_matches() { return 0; }
+    mv() { [[ "${1:-}" == -T ]] && shift; command mv "$@"; }
 
-    printf '{"format":1,"migrations":[{"database":"omb_other","id":"0001_x","path":"omb_other/0001_x.sql","sha256":"%s"}]}\n' "$sha1" > "$work/seed-bad-db.json"
-    if (seed_schema_migrations "$work/seed-bad-db.json") >/dev/null 2>&1; then
-        echo 'seed_schema_migrations accepted unsupported database' >&2
-        exit 1
-    fi
-    printf '{"format":1,"migrations":[{"database":"omb_control","id":"bad","path":"omb_control/bad.sql","sha256":"%s"}]}\n' "$sha1" > "$work/seed-bad-id.json"
-    if (seed_schema_migrations "$work/seed-bad-id.json") >/dev/null 2>&1; then
-        echo 'seed_schema_migrations accepted invalid id' >&2
-        exit 1
-    fi
-    printf '{"format":1,"migrations":[{"database":"omb_control","id":"0001_x","path":"omb_control/0001_x.sql","sha256":"notasha"}]}\n' > "$work/seed-bad-sha.json"
-    if (seed_schema_migrations "$work/seed-bad-sha.json") >/dev/null 2>&1; then
-        echo 'seed_schema_migrations accepted invalid sha256' >&2
-        exit 1
-    fi
+    fresh_install "$work/fresh-repo" /dev/null
+    cmp -s "$work/fresh-repo/omb_0.3.0_amd64.deb" "$state/current.deb"
+    test "$(cat "$state/PACKAGE")" = '0.3.0'
+    test "$(cat "$state/PACKAGE_SHA256")" = "$fake_sha"
+    test "$(cat "$state/CHANNEL")" = 'stable'
+    test "$(cat "$state/COMMIT")" = "$fake_commit"
+    test "$(cat "$OMB_SETUP_ARGS_FILE")" = "--install-mode offline --state-dir $state"
 )
 
 # 9. assert_no_pending guard.
@@ -439,33 +448,7 @@ target_id=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     swap_databases
 )
 
-# 12. resolve_pxe_interface tests.
-(
-    source "$repo/scripts/offline-install-lib.sh"
-    address=192.168.10.45
-    ip() {
-        case "$*" in
-            'link show dev omb-pxe-off') test -e "$work/pxe-off-present" ;;
-            'link show dev ens18'|'link show dev ens19') return 0 ;;
-            '-o -4 addr show dev ens18') printf '2: ens18 inet 192.168.10.45/24 scope global ens18\n' ;;
-            '-o -4 addr show dev ens19') return 0 ;;
-            *) return 1 ;;
-        esac
-    }
-    test "$(resolve_pxe_interface none)" = omb-pxe-off
-    test "$(resolve_pxe_interface ens19)" = ens19
-    if (resolve_pxe_interface ens18); then
-        echo 'Accepted the management device for PXE' >&2
-        exit 1
-    fi
-    touch "$work/pxe-off-present"
-    if (resolve_pxe_interface none); then
-        echo 'Accepted a real device with the reserved name for disabled PXE' >&2
-        exit 1
-    fi
-)
-
-# 13. resolve_repo_package parses 5-column TSV from offline-deb.py verify-repo --print-package.
+# 12. resolve_repo_package parses 5-column TSV from offline-deb.py verify-repo --print-package.
 (
     fake_repo="$work/fake-repo"
     mkdir -p "$fake_repo"
@@ -544,6 +527,40 @@ main update --allow-channel-switch /tmp/repo /tmp/key.pem 192.168.10.135
 SH
     out=$(bash "$work/parse-update.sh" "$repo" "$work")
     test "$out" = '/tmp/repo|/tmp/key.pem|192.168.10.135'
+
+    # install accepts 3 (interactive), 4 (management IP), and 5 (management IP + PXE interface) args.
+    mkdir -p "$work/stub-scripts"
+    cat > "$work/stub-scripts/offline-install-lib.sh" <<'LIB'
+fresh_install() { printf 'FRESH:%d:%s\n' "$#" "$*"; }
+LIB
+    cat > "$work/parse-install.sh" <<'SH'
+set -euo pipefail
+source "$1/scripts/offline-deploy.sh"
+script_dir="$2/stub-scripts"
+lock_file="$2/test-install.lock"
+id() { printf '0\n'; }
+flock() { return 0; }
+check_address() { printf 'CHECK_ADDR:%s\n' "$address"; }
+main install "${@:3}"
+SH
+    out3=$(bash "$work/parse-install.sh" "$repo" "$work" /tmp/repo /tmp/key.pem)
+    test "$out3" = 'FRESH:2:/tmp/repo /tmp/key.pem'
+
+    out4=$(bash "$work/parse-install.sh" "$repo" "$work" /tmp/repo /tmp/key.pem 192.168.10.135)
+    test "$out4" = $'CHECK_ADDR:192.168.10.135\nFRESH:4:/tmp/repo /tmp/key.pem 192.168.10.135 none'
+
+    out5=$(bash "$work/parse-install.sh" "$repo" "$work" /tmp/repo /tmp/key.pem 192.168.10.135 ens19)
+    test "$out5" = $'CHECK_ADDR:192.168.10.135\nFRESH:4:/tmp/repo /tmp/key.pem 192.168.10.135 ens19'
+
+    # Invalid install argument counts (too few / too many) exit with code 2.
+    for bad_install in "install /tmp/repo" "install /tmp/repo /tmp/key.pem 192.168.10.135 ens19 extra"; do
+        set +e
+        # shellcheck disable=SC2086
+        bash "$repo/scripts/offline-deploy.sh" $bad_install >/dev/null 2>&1
+        rc=$?
+        set -e
+        test "$rc" -eq 2
+    done
 )
 
 # 16. collect_applied_migrations propagates sql failures.

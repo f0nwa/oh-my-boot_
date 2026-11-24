@@ -35,6 +35,7 @@ BINARIES = (
     "omb-controlctl",
     "omb-images",
     "omb-imagesctl",
+    "omb-setup",
     "omb-winiso-prepare",
 )
 UNITS = (

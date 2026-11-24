@@ -10,6 +10,7 @@ BINARIES=(
     omb-controlctl
     omb-images
     omb-imagesctl
+    omb-setup
     omb-winiso-prepare
 )
 
@@ -141,7 +142,7 @@ stage_repo_payload() {
         "$payload/assets" \
         "$payload/debs"
 
-    printf 'Building 8 linux/amd64 binaries...\n'
+    printf 'Building %d linux/amd64 binaries...\n' "${#BINARIES[@]}"
     local bin
     for bin in "${BINARIES[@]}"; do
         (cd "$repo" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$payload/bin/$bin" "./cmd/$bin")
@@ -177,6 +178,19 @@ stage_repo_payload() {
             cp "$assets_dir/$asset" "$payload/assets/$asset"
         done
     fi
+}
+
+write_deb_checksums() {
+    local repo_dir=$1 sums_file=$2
+    local deb sha
+    deb=$(find "$repo_dir" -maxdepth 1 -type f -name 'omb_*_amd64.deb' | head -n 1)
+    [[ -n "$deb" ]] || fail "Built OMB .deb not found in $repo_dir"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha=$(sha256sum "$deb" | awk '{print $1}')
+    else
+        sha=$(shasum -a 256 "$deb" | awk '{print $1}')
+    fi
+    printf '%s  %s\n' "$sha" "$(basename "$deb")" > "$sums_file"
 }
 
 main() {
@@ -278,6 +292,13 @@ main() {
             --sign-key "$effective_key"
         python3 "$repo/scripts/offline-deb.py" verify-repo "$target_repo" --public-key "$work/pub.pem" --print-package
 
+        if [[ -n "$out_dir" ]]; then
+            local sums_file
+            sums_file="$(dirname "${out_dir%/}")/SHA256SUMS"
+            write_deb_checksums "$out_dir" "$sums_file"
+            printf 'Saved signed apt-repo to %s (checksums: %s)\n' "$out_dir" "$sums_file"
+        fi
+
         if [[ -n "$apply_ip" ]]; then
             local extra=()
             if $allow_channel_switch; then extra+=(--allow-channel-switch); fi
@@ -363,7 +384,10 @@ REMOTE
     if [[ -n "$out_dir" ]]; then
         mkdir -p "$out_dir"
         rsync -az "$remote:$remote_work/apt-repo/" "$out_dir/"
-        printf 'Saved signed apt-repo to %s\n' "$out_dir"
+        local sums_file
+        sums_file="$(dirname "${out_dir%/}")/SHA256SUMS"
+        write_deb_checksums "$out_dir" "$sums_file"
+        printf 'Saved signed apt-repo to %s (checksums: %s)\n' "$out_dir" "$sums_file"
     fi
 
     printf 'Release %s (%s, %s) complete.\n' "$version" "$channel" "${commit:0:7}"

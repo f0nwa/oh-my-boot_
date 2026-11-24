@@ -85,4 +85,24 @@ PY
 # 8. --help exits 0
 bash "$repo/scripts/build-release.sh" --help >/dev/null
 
+# 9. BINARIES includes omb-setup (9 binaries total)
+test "${#BINARIES[@]}" -eq 9
+found_setup=false
+for b in "${BINARIES[@]}"; do
+    if [[ "$b" == "omb-setup" ]]; then
+        found_setup=true
+    fi
+done
+$found_setup || { echo "omb-setup missing from BINARIES" >&2; exit 1; }
+
+# 10. Standalone .deb SHA256SUMS is written alongside apt-repo without modifying apt-repo
+mkdir -p "$work/release/apt-repo"
+printf 'fake-omb-deb-payload' > "$work/release/apt-repo/omb_0.2.0_amd64.deb"
+printf 'fake-dep' > "$work/release/apt-repo/curl_8.5.0_amd64.deb"
+write_deb_checksums "$work/release/apt-repo" "$work/release/SHA256SUMS"
+test -f "$work/release/SHA256SUMS"
+test ! -e "$work/release/apt-repo/SHA256SUMS"
+expected_deb_sha=$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$work/release/apt-repo/omb_0.2.0_amd64.deb")
+test "$(cat "$work/release/SHA256SUMS")" = "$expected_deb_sha  omb_0.2.0_amd64.deb"
+
 echo "build-release_test.sh: ALL PASS"

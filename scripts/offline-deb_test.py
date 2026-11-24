@@ -28,6 +28,7 @@ BINARIES = (
     "omb-controlctl",
     "omb-images",
     "omb-imagesctl",
+    "omb-setup",
     "omb-winiso-prepare",
 )
 UNITS = (
@@ -338,6 +339,10 @@ class OfflineDebTestCase(unittest.TestCase):
 
             extracted = root / "extracted"
             self.extract_deb(deb_path, extracted)
+
+            for binary in BINARIES:
+                self.assertTrue((extracted / "usr/bin" / binary).is_file(), msg=f"missing /usr/bin/{binary}")
+            self.assertTrue((extracted / "usr/bin/omb-setup").is_file())
 
             mig_manifest = json.loads(
                 (extracted / "usr/share/omb/migrations/manifest.json").read_text(encoding="utf-8")

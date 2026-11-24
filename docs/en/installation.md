@@ -9,6 +9,9 @@ This is the unified guide for a fresh, container-free installation of OMB on Ubu
 - **OS and architecture:**
   - **Ubuntu 26.04 LTS amd64** — primary target OS (required for offline releases, recommended for online installs).
   - **Ubuntu 24.04 LTS amd64** — supported for online installation (other versions can be overridden in `install.sh` with `--force-os`).
+- **Hardware resources:**
+  - **Minimum** *(ISOs stored on external SMB/NFS)*: 2 vCPU (`x86_64`), 2 GB RAM, 20 GB disk, 1 GbE.
+  - **Recommended** *(local ISO storage and concurrent installs)*: 4+ vCPU (faster `boot.wim` driver builds), 4–8 GB RAM (PostgreSQL + Linux page cache), 60–100+ GB SSD.
 - **Networking:** 1 or 2 network interfaces with a **static IPv4 address**:
   - **2 NICs (recommended):** one for management and the web panel, and a dedicated NIC for the PXE segment (**Full DHCP** or **Proxy DHCP**).
   - **1 NIC:** the web panel and PXE share one interface; use **Proxy DHCP** on shared networks to avoid conflicting with an existing DHCP server.

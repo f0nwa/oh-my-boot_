@@ -89,9 +89,19 @@ Full step-by-step setup, UFW firewall configuration, and `omb-setup` walkthrough
 
 ### Requirements & Ports
 
-- **OS:** **Ubuntu 26.04 LTS amd64** (primary target for online and offline installs) or **Ubuntu 24.04 LTS amd64** (online installs).
-- **Networking:** 1 or 2 network interfaces with static IPv4 addresses (2 NICs recommended: dedicated management and PXE segments; on 1-NIC hosts use **Proxy DHCP**).
-- **Core ports:**
+**Minimum and recommended server specifications:**
+
+| Resource | Minimum *(external SMB/NFS for ISOs)* | Recommended *(local ISOs / concurrent installs)* |
+| --- | --- | --- |
+| **OS & architecture** | Ubuntu 26.04 LTS or 24.04 LTS (`amd64`) | Ubuntu 26.04 LTS (`amd64`) |
+| **CPU** | 2 vCPU (`x86_64`) | 4+ vCPU *(faster `boot.wim` driver builds)* |
+| **Memory (RAM)** | 2 GB | 4–8 GB *(PostgreSQL + Linux page cache for images)* |
+| **Storage** | 20 GB *(OS, DBs, WinPE profiles)* | 60–100+ GB SSD *(headroom for local ISOs and artifacts)* |
+| **Network** | 1 × 1 GbE with static IPv4 *(Proxy DHCP)* | 2 × 1 GbE+ *(dedicated Management and PXE NICs)* |
+
+> **For PXE client machines:** 2–4 GB RAM is enough for WinPE and Windows Setup; Ubuntu Desktop PXE (`casper` loads the entire ISO into RAM) requires 8–16 GB RAM depending on the ISO size.
+
+**Core ports:**
 
 | Segment | Ports | Purpose |
 | --- | --- | --- |

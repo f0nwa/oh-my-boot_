@@ -22,7 +22,7 @@ This is the unified guide for a fresh, container-free installation of OMB on Ubu
 
 ## Method 1: Online one-line install
 
-Recommended for servers with internet access. `scripts/install.sh` checks the OS and architecture, downloads the `.deb` package and `SHA256SUMS` from GitHub Releases, verifies the SHA-256 digest, installs the package and system dependencies via `apt-get`, and launches the interactive `omb-setup` wizard.
+Recommended for servers with internet access. `scripts/install.sh` checks the OS and architecture, prompts to choose the release channel in interactive mode (`stable` or `dev`, default `stable`), downloads the `.deb` package and `SHA256SUMS` from GitHub Releases, verifies the SHA-256 digest, installs the package and system dependencies via `apt-get`, and launches the interactive `omb-setup` wizard.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
@@ -37,7 +37,7 @@ sudo bash scripts/install.sh
 Useful `install.sh` options:
 
 - `--version <ver>` — install a specific release or tag (for example `--version v0.2.0` or `--version v0.2.1-dev.1`);
-- `--channel <stable|dev>` — select the release channel when `--version` is not set (default: `stable`);
+- `--channel <stable|dev>` — set the release channel without an interactive prompt when `--version` is not set (default: `stable`);
 - `--deb <path>` — install from a local `.deb` file instead of downloading;
 - `-- <omb-setup args>` — forward extra flags directly to `omb-setup` (for example `sudo bash scripts/install.sh -- --lang en`).
 
@@ -132,6 +132,16 @@ Key non-interactive flags:
 2. **Verify services and network:** open **System → Overview** to confirm all services are active and system time is accurate. If you deferred PXE setup, configure it in **System → Network** — saving PXE settings automatically applies `omb-dnsmasq` and synchronizes Samba (`smbd`).
 3. **Add an ISO image:** upload an ISO in **Library → ISO Images** (or mount an SMB/NFS storage in **System → Storages**) and run **Inspect ISO** from the row menu.
 4. **Create a boot entry and publish the menu:** open **Library → Boots** to create an entry from the inspected ISO, add it to the menu draft under **Menu**, and click **Publish menu**. PXE clients will then see the new boot item.
+
+## Console administration (`omb`)
+
+After installation, day-2 server administration is available through the unified `omb` CLI:
+
+- `sudo omb status` — display the installed version, release channel (`stable`/`dev`), install mode (`online`/`offline`), and status of all 7 services (`omb-control`, `omb-images`, `omb-boot`, `omb-agent`, `omb-dnsmasq`, `postgresql`, `smbd`);
+- `sudo omb channel [stable|dev]` — view or switch the release channel at any time;
+- `sudo omb update` — run an online update from GitHub Releases with SHA-256 verification, PostgreSQL backup, and cumulative SQL migrations;
+- `sudo omb reset-password [username]` — recover a forgotten password for `admin` (default) or any local account;
+- `sudo omb reset-2fa [username]` — reset 2FA and revoke trusted browsers for any local account.
 
 ## Further reading
 

@@ -40,7 +40,7 @@ sudo apt update && sudo apt install ./omb_<version>_amd64.deb && sudo omb-setup
 sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key>
 ```
 
-After installation, open `https://<server-ip>:8443` and sign in as `admin`. See the full installation guide: [English](docs/en/installation.md) · [Русский](docs/installation.md).
+After installation, open `https://<server-ip>:8443` and sign in as `admin`. For day-2 console administration on the server, use `sudo omb status | channel | update | reset-password`. See the full installation guide: [English](docs/en/installation.md) · [Русский](docs/installation.md).
 
 ## Tested so far
 

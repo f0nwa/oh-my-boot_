@@ -4,7 +4,7 @@ section: operations
 order: 20
 title: Offline Installation, .deb Packages, Channels, and Recovery
 summary: How the signed local APT repository, stable and dev channels, routine updates, automatic rollback, and system time settings work.
-keywords: [update, offline, deb, apt, rollback, channels, stable, dev, recovery, ntp, time]
+keywords: [update, offline, deb, apt, rollback, channels, stable, dev, recovery, ntp, time, omb]
 ---
 
 OMB is designed for servers with no internet access. Every release ships as a self-contained signed local APT repository containing the `omb` package, system dependencies, and cumulative SQL migrations, verified before installation and capable of automatic rollback on any failure.
@@ -73,6 +73,23 @@ What `offline-deploy.sh update` does:
 3. Checks free disk space, creates a full backup in `/var/backups/omb/offline.<id>` (previous `omb.deb`, configs, snapshots, and restore-tested dumps of affected databases), and sets the `PENDING` marker.
 4. Installs the new `.deb`, applies pending SQL migrations recording them in `schema_migrations`, verifies user rows, service health, HTTPS response, and unchanged `omb-boot` menu. `/srv/omb/tftp` and `/etc/omb` are never overwritten.
 5. Updates `/var/lib/omb-deployment/current.deb` and state markers; if any step fails (or the process is killed with `SIGKILL`), automatic or manual `rollback` restores the previous `.deb` and databases, preserving the migrated databases as `omb_retained_<id>` with connections disabled for post-mortem analysis.
+
+## Console administration and online updates (`omb`)
+
+For servers with internet access and day-2 diagnostics, use the unified `omb` CLI:
+
+```bash
+# Inspect installed version, release channel, install mode, and all 7 services
+sudo omb status
+
+# View the current release channel or switch it (stable or dev)
+sudo omb channel [stable|dev]
+
+# Update online from GitHub Releases (SHA-256 verification, DB backup, cumulative migrations)
+sudo omb update
+```
+
+For air-gapped servers without internet access, use the signed local APT repository and `offline-deploy.sh` above (`sudo omb status` and `sudo omb channel` work in both modes).
 
 ## Integrity check and system time (NTP)
 

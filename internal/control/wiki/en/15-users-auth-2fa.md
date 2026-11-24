@@ -4,7 +4,7 @@ section: operations
 order: 10
 title: Users, External Auth (AD/LDAP, Keycloak), and 2FA
 summary: Local accounts, password policy, TOTP two-factor authentication with trusted browsers, and corporate sign-in via Active Directory and Keycloak.
-keywords: [users, passwords, 2fa, totp, ldap, active directory, keycloak, oidc, security, omb-controlctl]
+keywords: [users, passwords, 2fa, totp, ldap, active directory, keycloak, oidc, security, omb, omb-controlctl]
 ---
 
 Access control is managed across [System → Users](/users), [System → Integrations](/integrations), and [Account](/account). All authentication mechanisms (LDAPv3, OIDC/JWT, TOTP, SVG QR encoder) are implemented inside OMB with no external dependencies.
@@ -43,17 +43,27 @@ Configured by an administrator under [System → Integrations](/integrations). I
 - **Local SMB/SFTP for external users:** a background check runs every 15 min and revokes file server access if an external account is disabled or loses its role.
 - **Last local administrator protection:** password and 2FA policies apply to local accounts only, and the last active local `admin` cannot be deleted or disabled — emergency panel access remains available even during a directory outage.
 
-## Emergency `omb-controlctl` commands
+## Emergency CLI recovery (`omb` and `omb-controlctl`)
 
-If a password or 2FA device is lost, use the server CLI utility:
+If a password or 2FA device is lost, use the unified `omb` CLI on the server (defaults to `admin` when no username is given):
+
+```bash
+# Reset a local user's password (defaults to admin)
+sudo omb reset-password [username]
+
+# Reset 2FA and revoke all trusted browsers for a user
+sudo omb reset-2fa [username]
+```
+
+To create an additional local administrator or invoke low-level operations directly, `omb-controlctl` is also available:
 
 ```bash
 # Create a new local administrator (password is read from stdin)
 sudo -u omb-control omb-controlctl create-admin -username recovery-admin
 
-# Reset a local user's password
+# Reset a local user's password directly via omb-controlctl
 sudo -u omb-control omb-controlctl reset-password -username admin
 
-# Reset 2FA and revoke all trusted browsers for a user
+# Reset 2FA and revoke all trusted browsers directly via omb-controlctl
 sudo -u omb-control omb-controlctl reset-2fa -username admin
 ```

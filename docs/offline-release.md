@@ -8,7 +8,7 @@ OMB распространяется и обновляется через еди
 
 Подготовьте бинарники из зафиксированного Git-коммита по [офлайн-руководству](offline-installation.md) и соберите каталог входных файлов `payload`:
 
-- `bin/` — девять amd64 ELF-бинарников (`omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-winiso-prepare`);
+- `bin/` — десять amd64 ELF-бинарников (`omb`, `omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-winiso-prepare`);
 - `deploy/systemd/` — шесть юнитов (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-winiso@.service`);
 - `deploy/boot-assets/windows-profiles/` — профили WinPE (включая `omb-setup.cmd.in` и `winpeshl.ini`);
 - `assets/` — закреплённые загрузочные файлы (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`);
@@ -44,7 +44,7 @@ python3 scripts/offline-deb.py verify-repo <apt-repo> \
 
 ### Сборка релиза одной командой (`scripts/build-release.sh`)
 
-Для автоматической кросс-компиляции всех 9 бинарников, сборки `payload/`, запуска `offline-deb.py build` + `verify-repo` (и при необходимости сразу выката на стенд) используйте `scripts/build-release.sh`. Версия и канал определяются автоматически по тегу Git на `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) или задаются через `--version` / `--channel`:
+Для автоматической кросс-компиляции всех 10 бинарников, сборки `payload/`, запуска `offline-deb.py build` + `verify-repo` (и при необходимости сразу выката на стенд) используйте `scripts/build-release.sh`. Версия и канал определяются автоматически по тегу Git на `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) или задаются через `--version` / `--channel`:
 
 ```sh
 # 1. На Ubuntu-ВМ или в CI (локальный dpkg-deb)
@@ -142,7 +142,7 @@ OMB поддерживает два параллельных канала вып
 - **`stable` (ветка `main`):** теги `vX.Y.Z`, пакеты `.deb` с версиями `X.Y.Z` (например `0.2.0`).
 - **`dev` (ветка `dev`):** теги `vX.Y.Z-dev.N`, пакеты `.deb` с версиями `X.Y.Z~dev.N` (тильда `~` гарантирует `0.2.0~dev.N < 0.2.0` в `dpkg`).
 
-Текущий канал хранится в `/var/lib/omb-deployment/CHANNEL` и отражается в `/usr/share/omb/release.json` и в веб-интерфейсе. По умолчанию `offline-deploy.sh update` разрешает обновление только внутри текущего канала; для явного перехода (`stable` ↔ `dev`) передайте `--allow-channel-switch`:
+Текущий канал хранится в `/var/lib/omb-deployment/CHANNEL` и отражается в `/usr/share/omb/release.json` и в веб-интерфейсе. Проверить состояние и канал на сервере можно командой `sudo omb status`, а посмотреть или переключить канал — командой `sudo omb channel [stable|dev]`. По умолчанию `offline-deploy.sh update` разрешает обновление только внутри текущего канала; для явного перехода (`stable` ↔ `dev`) передайте `--allow-channel-switch`:
 
 ```sh
 sudo bash scripts/offline-deploy.sh update --allow-channel-switch \

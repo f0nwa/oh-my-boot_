@@ -10,7 +10,7 @@ Delta `tar.gz` archives and `from_commit` pinning are not used: any installed OM
 
 Prepare the compiled binaries from a committed Git revision as described in [the offline installation guide](../offline-installation.md) and stage a payload directory containing:
 
-- `bin/` — nine amd64 ELF binaries (`omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-winiso-prepare`);
+- `bin/` — ten amd64 ELF binaries (`omb`, `omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-winiso-prepare`);
 - `deploy/systemd/` — six systemd units (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-winiso@.service`);
 - `deploy/boot-assets/windows-profiles/` — WinPE profile templates (`omb-setup.cmd.in`, `winpeshl.ini`, and any additional templates);
 - `assets/` — pinned boot assets (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`);
@@ -46,7 +46,7 @@ Passing `--print-package` outputs the TSV tuple (`FILENAME`, `SHA256`, `VERSION`
 
 ### Single-command release build (`scripts/build-release.sh`)
 
-To cross-compile all 9 binaries, stage `payload/`, run `offline-deb.py build` + `verify-repo`, and optionally deploy to a stand in one command, use `scripts/build-release.sh`. Version and channel are inferred from the Git tag on `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) or passed explicitly via `--version` / `--channel`:
+To cross-compile all 10 binaries, stage `payload/`, run `offline-deb.py build` + `verify-repo`, and optionally deploy to a stand in one command, use `scripts/build-release.sh`. Version and channel are inferred from the Git tag on `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) or passed explicitly via `--version` / `--channel`:
 
 ```sh
 # 1. On an Ubuntu VM or in CI (local dpkg-deb)
@@ -129,7 +129,7 @@ OMB maintains two parallel release channels tracked in `/var/lib/omb-deployment/
 - **`stable` (`main` branch):** Git tags `vX.Y.Z`, `.deb` versions `X.Y.Z` (for example `0.2.0`).
 - **`dev` (`dev` branch):** Git tags `vX.Y.Z-dev.N`, `.deb` versions `X.Y.Z~dev.N` (where `~` ensures `0.2.0~dev.N < 0.2.0` in `dpkg`).
 
-By default, `offline-deploy.sh update` stays within the installed channel. Pass `--allow-channel-switch` to intentionally switch between `stable` and `dev`:
+Use `sudo omb status` to inspect the installed version and channel on the server, and `sudo omb channel [stable|dev]` to view or switch the configured channel. By default, `offline-deploy.sh update` stays within the installed channel. Pass `--allow-channel-switch` to intentionally switch between `stable` and `dev`:
 
 ```sh
 sudo bash scripts/offline-deploy.sh update --allow-channel-switch \

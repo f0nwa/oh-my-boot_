@@ -44,6 +44,30 @@ python3 scripts/offline-deb.py verify-repo <apt-repo> \
 
 Passing `--print-package` outputs the TSV tuple (`FILENAME`, `SHA256`, `VERSION`, `COMMIT`, `CHANNEL`) consumed by `offline-deploy.sh`.
 
+### Single-command release build (`scripts/build-release.sh`)
+
+To cross-compile all 8 binaries, stage `payload/`, run `offline-deb.py build` + `verify-repo`, and optionally deploy to a stand in one command, use `scripts/build-release.sh`. Version and channel are inferred from the Git tag on `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) or passed explicitly via `--version` / `--channel`:
+
+```sh
+# 1. On an Ubuntu VM or in CI (local dpkg-deb)
+bash scripts/build-release.sh \
+  --sysdebs-dir /path/to/sysdebs \
+  --assets-dir /path/to/assets \
+  --sign-key /path/to/signing-private.pem \
+  --out ./apt-repo
+
+# 2. From macOS: build on an Ubuntu stand and apply the update in one step
+bash scripts/build-release.sh \
+  --remote fonwa@192.168.10.135 \
+  --apply 192.168.10.135
+
+# 3. From macOS: build on an Ubuntu host and fetch the signed apt-repo locally
+bash scripts/build-release.sh \
+  --remote fonwa@192.168.10.135 \
+  --sign-key /path/to/signing-private.pem \
+  --out ./dist/apt-repo
+```
+
 ## Deployment, updates, and rollback (`offline-deploy.sh`)
 
 Copy `scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh`, and `scripts/offline-deb.py` together into the same directory on the target Ubuntu host alongside `<apt-repo>` and `<public-key>`:

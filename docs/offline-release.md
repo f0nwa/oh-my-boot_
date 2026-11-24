@@ -42,6 +42,30 @@ python3 scripts/offline-deb.py verify-repo <apt-repo> \
 
 С флагом `--print-package` утилита выводит строку TSV (`FILENAME`, `SHA256`, `VERSION`, `COMMIT`, `CHANNEL`), которую использует `offline-deploy.sh`.
 
+### Сборка релиза одной командой (`scripts/build-release.sh`)
+
+Для автоматической кросс-компиляции всех 8 бинарников, сборки `payload/`, запуска `offline-deb.py build` + `verify-repo` (и при необходимости сразу выката на стенд) используйте `scripts/build-release.sh`. Версия и канал определяются автоматически по тегу Git на `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) или задаются через `--version` / `--channel`:
+
+```sh
+# 1. На Ubuntu-ВМ или в CI (локальный dpkg-deb)
+bash scripts/build-release.sh \
+  --sysdebs-dir /path/to/sysdebs \
+  --assets-dir /path/to/assets \
+  --sign-key /path/to/signing-private.pem \
+  --out ./apt-repo
+
+# 2. С macOS: собрать на стенде и сразу обновить его одной командой
+bash scripts/build-release.sh \
+  --remote fonwa@192.168.10.135 \
+  --apply 192.168.10.135
+
+# 3. С macOS: собрать на Ubuntu-хосте и забрать готовый apt-repo локально
+bash scripts/build-release.sh \
+  --remote fonwa@192.168.10.135 \
+  --sign-key /path/to/signing-private.pem \
+  --out ./dist/apt-repo
+```
+
 ## Команды развёртывания, обновления и отката
 
 Скопируйте из доверенной копии репозитория три файла в один каталог на целевой машине: `scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh` и `scripts/offline-deb.py`. Передайте туда же проверенный каталог `<apt-repo>` и публичный ключ `<public-key>`.

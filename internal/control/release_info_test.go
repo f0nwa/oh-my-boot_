@@ -1,6 +1,7 @@
 package control
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,23 @@ func TestLoadReleaseInfoAndFormatting(t *testing.T) {
 	loaded := LoadReleaseInfo(path)
 	if loaded.Channel != ChannelDev || loaded.DisplayVersion != "v0.2.0-dev.1" || loaded.Package != "omb 0.2.0~dev.1" || loaded.ShortCommit() != "b7f1cab" {
 		t.Fatalf("unexpected loaded release info: %+v", loaded)
+	}
+
+	fullPath := filepath.Join(dir, "release-full.json")
+	fullPayload := `{"channel":"stable","commit":"b7f1cabfee6b7defbd7b132d70de42c537c20530","display_version":"v0.2.0","package":"omb 0.2.0","version":"0.2.0"}`
+	if err := os.WriteFile(fullPath, []byte(fullPayload), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fullLoaded := LoadReleaseInfo(fullPath)
+	if fullLoaded.Channel != ChannelStable || fullLoaded.DisplayVersion != "v0.2.0" || fullLoaded.Package != "omb 0.2.0" || fullLoaded.Version != "0.2.0" || fullLoaded.ShortCommit() != "b7f1cab" {
+		t.Fatalf("unexpected full release info: %+v", fullLoaded)
+	}
+	marshaled, err := json.Marshal(fullLoaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(marshaled), "from_commit") {
+		t.Fatalf("release metadata must not contain from_commit: %s", marshaled)
 	}
 }
 

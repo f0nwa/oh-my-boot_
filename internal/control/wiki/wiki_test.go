@@ -150,13 +150,25 @@ func TestOfflineUpdatesArticleCLISignatures(t *testing.T) {
 		t.Fatal("article offline-updates-and-recovery not found")
 	}
 	body := string(art.HTML)
-	if strings.Contains(body, "--repo-dir") {
-		t.Errorf("offline-updates-and-recovery must not reference nonexistent --repo-dir flag")
+	for _, forbidden := range []string{
+		"--repo-dir",
+		"offline-release.py",
+		"update-deb-repo",
+		"install-deb-repo",
+		"from_commit",
+	} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("offline-updates-and-recovery must not reference obsolete %q", forbidden)
+		}
 	}
 	for _, want := range []string{
 		"offline-deb.py verify-repo",
-		"offline-deploy.sh update-deb-repo",
+		"offline-deploy.sh install",
+		"offline-deploy.sh update",
+		"--allow-channel-switch",
 		"offline-deploy.sh rollback MANAGEMENT_IP",
+		"schema_migrations",
+		"/var/lib/omb-deployment/current.deb",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("offline-updates-and-recovery missing %q", want)

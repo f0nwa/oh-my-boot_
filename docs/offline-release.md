@@ -1,146 +1,123 @@
-# Переносимый выпуск OMB для Ubuntu 26.04 amd64
+# Самодостаточный офлайн-выпуск OMB для Ubuntu 26.04 amd64
 
-Первый проверяемый сценарий использует два архива. Установочный выпуск A содержит восемь бинарников, юниты, конфигурационные шаблоны, начальные схемы, iPXE, shim, wimboot и локальный набор `.deb`. Обновление B содержит `omb-control`, `omb-controlctl` и одну миграцию. Оно рассчитано на установленный A. [Прогон установки, обновления и отката](research/2026-11-21-ubuntu-offline-release-rehearsal.md).
+OMB распространяется и обновляется через единый самодостаточный подписанный локальный APT-репозиторий (`apt-repo`). Каждый выпуск содержит полный пакет `omb_<версия>_amd64.deb`, все транзитивные системные `.deb`-зависимости целевой Ubuntu, индекс `Packages.gz`, манифест зависимостей `repo-manifest.json` и криптографическую подпись `repo-manifest.sig` (OpenSSL).
 
-Из подписанных архивов также можно собрать один пакет `omb` для Ubuntu amd64 и локальный индекс APT. Для этого формата `offline-deploy.sh` выполняет первичную настройку и согласованный откат пакета и PostgreSQL. [Сборка пакетов и проверка APT](research/2026-11-22-deb-package-rehearsal.md).
+Промежуточные дельта-архивы и привязка к исходному коммиту (`from_commit`) не используются: обновлять можно с любой установленной версии сразу на целевую версию, включая переход через несколько промежуточных выпусков. Исторические отчёты по отработке форматов приведены в [первом прогоне](research/2026-11-21-ubuntu-offline-release-rehearsal.md) и [испытании пакетов `.deb`](research/2026-11-22-deb-package-rehearsal.md).
 
-## Сборка и проверка
+## Сборка и проверка `apt-repo`
 
-Подготовьте бинарники из зафиксированного Git-коммита, используя [офлайн-руководство](offline-installation.md). Положите готовые файлы в `bin/`, `deploy/`, `scripts/`, `assets/` и `debs/` установочного каталога. В каталоге `debs/` должен быть индекс `Packages.gz` с версиями и SHA-256. Для обновления соберите отдельный каталог с заменяемыми бинарниками и SQL-файлами.
+Подготовьте бинарники из зафиксированного Git-коммита по [офлайн-руководству](offline-installation.md) и соберите каталог входных файлов `payload`:
 
-Собирайте архивы на машине выпуска с уже подготовленным приватным ключом OpenSSL для подписи. Публичный ключ передайте администратору независимо от архива. Он нужен до проверки, приватный ключ не входит в комплект.
+- `bin/` — восемь amd64 ELF-бинарников (`omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-winiso-prepare`);
+- `deploy/systemd/` — шесть юнитов (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-winiso@.service`);
+- `deploy/boot-assets/windows-profiles/` — профили WinPE (включая `omb-setup.cmd.in` и `winpeshl.ini`);
+- `assets/` — закреплённые загрузочные файлы (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`);
+- `scripts/prepare-ubuntu-source.sh`, `scripts/fetch-ipxe.sh`, `deploy/samba/smb.conf`;
+- `deploy/sql/{boot.sql,images.sql,control.sql}` — начальные схемы трёх БД;
+- `deploy/sql/migrations/{omb_boot,omb_images,omb_control}/NNNN_name.sql` — кумулятивные SQL-миграции;
+- `debs/` — локальные системные `.deb`-пакеты и индекс `Packages.gz` с версиями и SHA-256.
 
-```sh
-python3 scripts/offline-release.py pack payload-a omb-install-a.tar.gz \
-  --commit e19d1f7b0a2624677593fa572654992dc30724cc --channel stable --sign-key signing-private.pem
-
-python3 scripts/offline-release.py pack payload-b omb-update-a-to-b.tar.gz \
-  --commit 49de2af4b848362c91248c1ae302db0e77bf6424 \
-  --from-commit e19d1f7b0a2624677593fa572654992dc30724cc \
-  --channel stable \
-  --migration omb_control=deploy/sql/2026-11-21-oidc-logout-jti-hash.sql \
-  --sign-key signing-private.pem
-```
-
-На сервере используйте проверяющую утилиту из доверенной копии репозитория. Команда проверяет подпись, хеш и размер каждого файла и создаёт новый каталог только после успешной проверки. `--check-host` дополнительно сверяет Ubuntu, архитектуру и файл `/var/lib/omb-deployment/COMMIT`. Чтение маркера существующей установки может требовать root. Для предварительной проверки архива на машине сборки опустите `--check-host`.
+На машине выпуска подпишите репозиторий приватным ключом OpenSSL (приватный ключ не переносится на целевые серверы, администратору отдельно передаётся публичный ключ):
 
 ```sh
-sudo python3 offline-release.py verify omb-install-a.tar.gz \
-  --public-key trusted-release-public.pem --check-host --extract /var/tmp/omb-install-a
-
-sudo python3 offline-release.py verify omb-update-a-to-b.tar.gz \
-  --public-key trusted-release-public.pem --check-host --extract /var/tmp/omb-update-b
+python3 scripts/offline-deb.py build <payload-dir> <apt-repo> \
+  --version 0.2.0 --channel stable \
+  --commit e19d1f7b0a2624677593fa572654992dc30724cc \
+  --license LICENSE --sign-key signing-private.pem \
+  [--go-mod go.mod] [--unattend-upstream internal/unattend/UPSTREAM.md]
 ```
 
-Проверка и распаковка не останавливают службы и не применяют SQL. Проверка свободного места относится к распаковке. Перед обновлением выделите место под резервную копию и пробное восстановление базы.
+Команда `build` формирует:
 
-## Команды применения
+- пакет `omb_<версия>_amd64.deb` (бинарники в `/usr/bin/`, юниты в `/usr/lib/systemd/system/`, помощники в `/usr/lib/omb/`, начальные схемы в `/usr/share/omb/bootstrap/`, миграции и `/usr/share/omb/migrations/manifest.json`, метаданные `/usr/share/omb/release.json` с полями `channel`, `commit`, `display_version`, `package`, `version`);
+- объединённый индекс `Packages.gz` с пакетом `omb` и системными зависимостями;
+- `repo-manifest.json` (формат `2`, целевая ОС `ubuntu 26.04 amd64`, метаданные пакета, контрольные суммы `Packages.gz`, системных `.deb`, загрузочных файлов, модулей из `go.mod` и закреплённого коммита `internal/unattend/UPSTREAM.md`) и подпись `repo-manifest.sig`.
 
-Перенесите из доверенной копии репозитория три файла вместе: `offline-deploy.sh`, `offline-install-lib.sh` и `offline-release.py`. Архивы и отдельно проверенный публичный ключ передайте на целевую Ubuntu. Запускайте команды из каталога с файлами. Используйте адрес управления и имя PXE-интерфейса своей машины.
+Проверить подпись и целостность всех файлов репозитория без изменения системы:
 
 ```sh
-# Новая Ubuntu. Команда запросит пароль первого администратора.
-sudo bash offline-deploy.sh install omb-install-a.tar.gz trusted-release-public.pem \
-  MANAGEMENT_IP PXE_INTERFACE
-
-# Проверка архивов и установленных бинарников без изменения служб.
-bash offline-deploy.sh check-update omb-install-a.tar.gz omb-update-a-to-b.tar.gz \
-  trusted-release-public.pem
-
-# В окно обслуживания на исходной версии A.
-sudo bash offline-deploy.sh update omb-install-a.tar.gz omb-update-a-to-b.tar.gz \
-  trusted-release-public.pem MANAGEMENT_IP
-
-# В окно обслуживания для проверки отката или прерванного обновления.
-sudo bash offline-deploy.sh rollback MANAGEMENT_IP
+python3 scripts/offline-deb.py verify-repo <apt-repo> \
+  --public-key trusted-release-public.pem [--print-package]
 ```
 
-Установка принимает только новую машину без существующей конфигурации OMB. Команда использует локальный APT-индекс и запускает установку пакетов без доступа к сети. Если локальный набор потребует обновить системный пакет, команда остановится. После первичной установки DHCP и Samba выключены. Настройку статического PXE-адреса, DHCP и клиентской шары выполняйте отдельно по [руководству сервера](installation.md). При сбое первичной установки проверьте последнее сообщение и верните ВМ к чистой точке перед повтором.
+С флагом `--print-package` утилита выводит строку TSV (`FILENAME`, `SHA256`, `VERSION`, `COMMIT`, `CHANNEL`), которую использует `offline-deploy.sh`.
 
-Для прогона с одним интерфейсом пропустите `PXE_INTERFACE` или укажите `none`. Control стартует с зарезервированным именем `omb-pxe-off`, которого не должно быть среди интерфейсов машины. Физический интерфейс PXE можно разрешить позднее через `OMB_CONTROL_INTERFACES` с перезапуском Control.
+## Команды развёртывания, обновления и отката
 
-Установщик принимает выпуски Control и совместные выпуски Control и Images. Для Control включите `omb-control`, `omb-controlctl` и миграции `omb_control`. Для совместного выпуска добавьте `omb-images`, `omb-imagesctl` и аргумент `--migration omb_images=deploy/sql/ИМЯ.sql` для каждого SQL-файла. Аргументы `--migration` задают порядок выполнения между базами.
-
-Выделите окно обслуживания для совместного обновления. Завершите операции с ISO до остановки Images. Команда проверяет подписи, исходный выпуск, установленные бинарники и запас места. Для совместного выпуска она останавливает Control и Images, делает и проверяет дампы обеих баз до первой миграции. После обновления проверяет HTTPS, API каталога Images и меню Boot. Маркер `PENDING` показывает, что операция ещё не завершена. При обрабатываемой ошибке команда пытается вернуть прежний выпуск. После прерывания процесса или незавершённого восстановления запустите `rollback`.
-
-При совместном откате обе базы возвращаются в одной транзакции PostgreSQL. Более поздние базы сохраняются под отдельными именами с отключёнными подключениями. Записи, сделанные после обновления, остаются в этих копиях. При изменении опубликованного меню или ключа интеграций нужно согласованно восстановить базы, меню и ключ.
-
-## Установка из `.deb`
-
-На машине выпуска `scripts/offline-deb.py` собирает пакет `omb` для каждой версии, добавляет его в локальный индекс `Packages.gz` и формирует манифест зависимостей `repo-manifest.json` (версии и SHA-256 всех системных `.deb`, загрузочных файлов iPXE/shim/wimboot, Go и модулей из `go.mod`, закреплённого коммита `internal/unattend/UPSTREAM.md`). При передаче `--sign-key` манифест подписывается тем же OpenSSL-ключом в `repo-manifest.sig`:
+Скопируйте из доверенной копии репозитория три файла в один каталог на целевой машине: `scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh` и `scripts/offline-deb.py`. Передайте туда же проверенный каталог `<apt-repo>` и публичный ключ `<public-key>`.
 
 ```sh
-python3 scripts/offline-deb.py omb-install-a.tar.gz apt-repo \
-  --public-key trusted-release-public.pem --version 0.1~rehearsal1 \
-  --update-archive omb-update-a-to-b.tar.gz --update-version 0.1~rehearsal2 \
-  --license LICENSE --sign-key signing-private.pem
+# 1. Первичная установка на чистую Ubuntu 26.04 amd64 (запросит пароль первого admin)
+sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key> <management-ip> [pxe-interface|none]
 
-python3 scripts/offline-deb.py verify-repo apt-repo --public-key trusted-release-public.pem
+# 2. Обновление (включая прыжок через несколько версий)
+sudo bash scripts/offline-deploy.sh update [--allow-channel-switch] <apt-repo> <public-key> <management-ip>
+
+# 3. Откат прерванного или последнего завершённого обновления
+sudo bash scripts/offline-deploy.sh rollback <management-ip>
 ```
 
-Для работы с подписанным каталогом `apt-repo` скопируйте `offline-deb.py` рядом с `offline-deploy.sh`, `offline-install-lib.sh` и `offline-release.py`. Команды `install-deb-repo` и `update-deb-repo` сами проверяют `repo-manifest.sig`, `Packages.gz` и все `.deb` по `PUBLIC_KEY` и не требуют ручной передачи 64-символьных хешей:
+### Первичная установка (`install`)
 
-```sh
-sudo bash offline-deploy.sh install-deb-repo omb-install-a.tar.gz trusted-release-public.pem \
-  apt-repo 0.1~rehearsal1 MANAGEMENT_IP none
+Установка принимает только новую машину без существующих `/etc/omb`, `/srv/omb/tftp`, `/var/lib/omb-deployment` и бинарника `omb-control`. Скрипт:
 
-sudo bash offline-deploy.sh update-deb-repo omb-install-a.tar.gz omb-update-a-to-b.tar.gz \
-  trusted-release-public.pem apt-repo 0.1~rehearsal1 0.1~rehearsal2 MANAGEMENT_IP
+1. Проверяет `apt-repo` и запускает `apt-get` в изолированном сетевом пространстве (`unshare --net`) с единственным локальным источником (если потребуется обновить уже установленный системный пакет, установка остановится).
+2. Запрашивает пароль первого администратора (не менее 12 символов), создаёт системных пользователей `omb-boot`, `omb-control`, `omb-images`, `omb-iso` и три базы PostgreSQL (`omb_boot`, `omb_images`, `omb_control`).
+3. Загружает начальные схемы из `/usr/share/omb/bootstrap/` и сразу регистрирует все миграции из `/usr/share/omb/migrations/manifest.json` в таблицах `schema_migrations`.
+4. Распаковывает закреплённые ассеты (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`), создаёт `/etc/omb/secrets.key` (`0600 omb-control:omb-control`) и TLS-сертификат `/var/lib/omb-control/control.{crt,key}`.
+5. Запускает `omb-boot`, `omb-agent`, `omb-images`, `omb-control` и сохраняет эталонный пакет и состояние в `/var/lib/omb-deployment/` (`current.deb`, `PACKAGE`, `PACKAGE_SHA256`, `CHANNEL`, `COMMIT`).
 
-sudo bash offline-deploy.sh rollback MANAGEMENT_IP
-dpkg-query -W -f='${Version}\n' omb
-```
+DHCP (`omb-dnsmasq`) и Samba после первичной установки выключены; настройку статического PXE-адреса, DHCP и шары выполняйте по [руководству сервера](installation.md). Если передать `none` (или опустить четвёртый аргумент), Control стартует с зарезервированным именем `omb-pxe-off`, которое можно позже заменить на физический интерфейс через `OMB_CONTROL_INTERFACES` и перезапуск `omb-control`.
 
-Также сохраняется ручной вариант с явной передачей пути `.deb` и SHA-256 (`install-deb` и `update-deb`):
+### Локальный кеш `current.deb` и вычисление области изменений
 
-```sh
-sudo bash offline-deploy.sh install-deb omb-install-a.tar.gz trusted-release-public.pem \
-  "$OMB_PACKAGE_A" "$OMB_PACKAGE_A_SHA256" MANAGEMENT_IP none
+При установке и каждом успешном обновлении копия текущего пакета сохраняется в `/var/lib/omb-deployment/current.deb` (рядом с `PACKAGE`, `PACKAGE_SHA256`, `CHANNEL`, `COMMIT` и `LAST`).
 
-sudo bash offline-deploy.sh update-deb omb-install-a.tar.gz omb-update-a-to-b.tar.gz \
-  trusted-release-public.pem "$OMB_PACKAGE_A" "$OMB_PACKAGE_A_SHA256" \
-  "$OMB_PACKAGE_B" "$OMB_PACKAGE_B_SHA256" MANAGEMENT_IP
-```
+Во время `offline-deploy.sh update`:
 
-При обновлении установщик сверяет предыдущий `.deb` с сохранённым SHA-256, копирует его в резервный каталог, автоматически определяет затронутые службы (`control`, `images`, `boot`, `agent`, опционально `dnsmasq`) и БД (`omb_control`, `omb_images`, `omb_boot` или `none`) по манифесту и применяет миграции в порядке манифеста. Поддерживаются совместные выпуски всех служб, обновления без SQL-миграций, а также обновление юнитов systemd (`/usr/lib/systemd/system/omb-*.service`) и помощников (`/usr/lib/omb/*`); `/srv/omb/tftp`, `/usr/share/omb` (кроме `release.json` и `upgrade/`) и `/etc/omb` при `update-deb` не перезаписываются. Останавливаются, копируются и проверяются только затронутые службы и БД; при откате APT восстанавливает сохранённый `.deb`, все затронутые БД переключаются обратно в одной транзакции PostgreSQL, а службы запускаются и проверяются заново. Хеш пакета, версия, канал (`stable` / `dev`) и коммит зафиксированы в `/var/lib/omb-deployment/` (`CHANNEL`, `PACKAGE`, `COMMIT`), а метаданные для веб-интерфейса — в `/usr/share/omb/release.json`. Пакетную установку обновляйте через `update-deb-repo` или `update-deb`, чтобы смена файлов и схемы БД прошла в одной процедуре.
+1. Проверяются подпись `apt-repo`, отсутствие маркера `PENDING`, версия (`dpkg --compare-versions new gt old`), совпадение канала и соответствие установленного в системе пакета файлу `current.deb` (`dpkg --verify omb` и `/var/lib/dpkg/info/omb.md5sums`).
+2. Содержимое `current.deb` сравнивается с новым `.deb`, а строки `schema_migrations` всех трёх БД сравниваются с `/usr/share/omb/migrations/manifest.json`.
+3. Автоматически вычисляется область изменений (`scope`): какие службы (`control` всегда включён; `images`, `boot`, `agent`, `dnsmasq` — при изменении их файлов или БД) и какие БД (`omb_boot`, `omb_images`, `omb_control` или `none`) затронуты. Незатронутые службы продолжают работать без перезапуска.
+4. Обновления не перезаписывают `/etc/omb/`, `/srv/omb/tftp/` и входные ресурсы развёртывания (`/usr/share/omb/{assets,samba,windows-profiles}/` — попытка изменить их через обновление отклоняется).
 
-### Каналы обновлений (`stable` и `dev`)
+### Кумулятивные миграции и `schema_migrations`
+
+Миграции хранятся в репозитории по пути `deploy/sql/migrations/<db>/NNNN_<name>.sql` для баз `omb_boot`, `omb_images`, `omb_control` и подчиняются правилам append-only:
+
+- имя файла должно соответствовать шаблону `NNNN_name.sql`, префиксы `NNNN` внутри одной БД уникальны;
+- внутри SQL-файла запрещены `BEGIN`, `COMMIT`, `ROLLBACK` и `VACUUM` — установщик оборачивает каждую миграцию в транзакцию и добавляет запись в `schema_migrations (id, sha256)`;
+- уже применённые на сервере миграции из `schema_migrations` обязаны присутствовать в новом пакете с тем же SHA-256, а неприменённые миграции не могут иметь `id` меньше уже применённой.
+
+Благодаря этому обновление работает кумулятивно даже при прыжке через несколько релизов подряд: применяются ровно те миграции (в порядке `omb_boot` → `omb_images` → `omb_control`), которых ещё нет в `schema_migrations`.
+
+### Безопасность обновления и откат (`rollback`)
+
+Перед изменением пакета и БД `offline-deploy.sh update`:
+
+1. Проверяет запас свободного места для дампов и тестовых копий БД.
+2. Снимает текущий опубликованный `menu.ipxe` и выставляет маркер `/var/lib/omb-deployment/PENDING`.
+3. Останавливает только затронутые службы, сохраняет предыдущий `omb.deb`, конфиги из `/etc/omb/`, контрольные слепки пользователей/каталога/журнала и выполняет `pg_dump -Fc` с обязательным тестовым восстановлением в отдельные базы `omb_restore_*` в каталоге `/var/backups/omb/offline.<id>`.
+4. Ставит новый `.deb`, применяет недостающие миграции, запускает службы и проверяет их состояние, сохранность пользователей и неизменность опубликованного PXE-меню.
+5. Обновляет `current.deb`, `PACKAGE`, `PACKAGE_SHA256`, `CHANNEL`, `COMMIT`, `LAST` и удаляет `PENDING`.
+
+При любой ошибке (или при вызове `sudo bash scripts/offline-deploy.sh rollback <management-ip>` после прерывания или для отмены `LAST`-обновления) установщик:
+
+- возвращает сохранённый в резервной копии предыдущий `.deb` (`apt-get --allow-downgrades --reinstall`);
+- в одной транзакции PostgreSQL переключает затронутые базы обратно на проверенные `omb_restore_*`, сохраняя мигрированные базы под именами `omb_retained_*` с `ALLOW_CONNECTIONS false`;
+- проверяет службы, меню `omb-boot` и восстанавливает `current.deb` и маркеры состояния.
+
+Если после снимка изменились `/etc/omb/secrets.key` или опубликованное меню `menu.ipxe`, откат остановится и потребует согласованного восстановления ключа, меню и БД.
+
+## Каналы обновлений (`stable` и `dev`)
 
 OMB поддерживает два параллельных канала выпусков:
-- **`stable` (ветка `main`):** теги `vX.Y.Z`, пакеты `.deb` с версиями `X.Y.Z` (например `0.2.0`).
-- **`dev` (ветка `dev`):** теги `vX.Y.Z-dev.N`, пакеты `.deb` с версиями `X.Y.Z~dev.N` (например `0.2.0~dev.1`, где тильда `~` гарантирует `0.2.0~dev.N < 0.2.0` в `dpkg`).
 
-При сборке архивов канал задаётся флагом `--channel stable|dev` (по умолчанию `stable`). В `scripts/offline-deb.py` для базового и обновляемого пакетов доступны `--channel`, `--update-channel` и `--base-deb PATH` (побайтовое переиспользование уже установленного базового `.deb` с сохранением `PACKAGE_SHA256`). По умолчанию `offline-deploy.sh` разрешает обновление только внутри текущего канала сервера; явный переход между каналами (например, со `stable` на `dev` или с `dev` на релиз `stable`) требует флага `--allow-channel-switch`:
+- **`stable` (ветка `main`):** теги `vX.Y.Z`, пакеты `.deb` с версиями `X.Y.Z` (например `0.2.0`).
+- **`dev` (ветка `dev`):** теги `vX.Y.Z-dev.N`, пакеты `.deb` с версиями `X.Y.Z~dev.N` (тильда `~` гарантирует `0.2.0~dev.N < 0.2.0` в `dpkg`).
+
+Текущий канал хранится в `/var/lib/omb-deployment/CHANNEL` и отражается в `/usr/share/omb/release.json` и в веб-интерфейсе. По умолчанию `offline-deploy.sh update` разрешает обновление только внутри текущего канала; для явного перехода (`stable` ↔ `dev`) передайте `--allow-channel-switch`:
 
 ```sh
-sudo bash offline-deploy.sh update-deb-repo --allow-channel-switch \
-  omb-install-0.1.4.tar.gz omb-update-0.1.4-to-0.2.0-dev.1.tar.gz \
-  trusted-release-public.pem apt-repo 0.1.4 0.2.0~dev.1 MANAGEMENT_IP
+sudo bash scripts/offline-deploy.sh update --allow-channel-switch \
+  <apt-repo> <public-key> <management-ip>
 ```
-
-## Первичная установка
-
-Установите зависимости из локального APT-репозитория комплекта и выполните разделы первой установки из [офлайн-руководства](offline-installation.md). Задайте реальные управляющий адрес и PXE-интерфейс. Не включайте DHCP до проверки клиентского сегмента. На первом испытании APT запускался в отдельном сетевом пространстве с единственным локальным источником. Пакеты проверены для исходного образа нашей Ubuntu-ВМ. На другом образе сначала проверьте разрешение зависимостей с его фактическими версиями.
-
-После распаковки iPXE проверьте от имени `omb-boot`, что доступен файл `/srv/omb/tftp/ipxeboot/x86_64/undionly.kpxe`. Родительский каталог `/srv/omb` должен пропускать пользователя службы. В принятой конфигурации у него режим `0755`. Для чтения ключа Control используйте `root:omb-control` и `0750` на `/etc/omb`. У самого `secrets.key` остаются права `0600` и владелец `omb-control`. Сохраняйте этот ключ вместе с базой.
-
-После проверки запущенных служб, HTTPS и выдачи меню зафиксируйте полный коммит A в `/var/lib/omb-deployment/COMMIT`. Создайте каталог с владельцем root. Маркер меняется только после проверки установленного выпуска.
-
-## Обновление A → B и откат
-
-Следующие ручные шаги относятся к первому выпуску, меняющему только Control. Для совместного обновления Control и Images используйте команды `update` и `rollback` выше.
-
-1. Выберите окно обслуживания. Проверьте архив B с `--check-host` и сверьте бинарники работающего A с установочным архивом. Завершите активные административные операции.
-2. Остановите Control. В закрытый каталог сохраните `omb-control`, `omb-controlctl`, настройки Control, TLS и ключ интеграций. Сделайте дамп `omb_control` в формате `pg_dump -Fc`. Проверьте его восстановление в отдельную БД с владельцем `omb-control`.
-3. В подготовленном каталоге B выполните миграцию от имени владельца БД, затем замените бинарники и запустите Control:
-
-   ```sh
-   runuser -u omb-control -- psql -Xw -v ON_ERROR_STOP=1 -d omb_control \
-     < /var/tmp/omb-update-b/deploy/sql/2026-11-21-oidc-logout-jti-hash.sql
-   install -m 0755 /var/tmp/omb-update-b/bin/omb-control \
-     /var/tmp/omb-update-b/bin/omb-controlctl /usr/local/bin/
-   systemctl start omb-control.service
-   ```
-
-   Этот блок выполняется под root после остановки Control и проверки копии. После запуска проверьте HTTPS с доверенным сертификатом, пользователей и неизменность выдаваемого PXE-меню. После успешной приёмки запишите коммит B в `COMMIT`.
-4. Для отката снова остановите Control. Сохраните состояние B отдельно, особенно если после обновления открыли запись пользователям. Восстановите дамп A и оба сохранённых бинарника. На испытании восстановленную базу сначала проверили под отдельным именем, затем в одной транзакции переименовали базу B и восстановленную базу A, а подключения к сохранённой B отключили. После возврата проверьте службы, HTTPS и меню, затем верните в `COMMIT` коммит A. [Результат испытания](research/2026-11-21-ubuntu-offline-release-rehearsal.md).

@@ -1,95 +1,109 @@
-# Portable OMB release for Ubuntu 26.04 amd64
+# Self-contained offline OMB release for Ubuntu 26.04 amd64
 
 [Русская версия и подробное руководство](../offline-release.md).
 
-An offline release consists of signed archives verified with a separately distributed OpenSSL public key. The installation archive contains all eight OMB binaries, systemd units, configuration templates, initial database schemas, pinned boot assets (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`), and a local APT dependency index. Update archives contain only the changed binaries, systemd units, helper scripts, and ordered SQL migrations.
+OMB is distributed and upgraded via a single self-contained signed local APT repository (`apt-repo`). Each release bundles the `omb_<version>_amd64.deb` package, all pinned transitive Ubuntu `.deb` dependencies, the `Packages.gz` index, `repo-manifest.json`, and an OpenSSL signature `repo-manifest.sig`.
 
-## Building and verifying signed archives
+Delta `tar.gz` archives and `from_commit` pinning are not used: any installed OMB version can be upgraded directly to any newer version, including multi-release jumps. Historical rehearsal reports are kept in [the initial release rehearsal](../research/2026-11-21-ubuntu-offline-release-rehearsal.md) and [the `.deb` package rehearsal](../research/2026-11-22-deb-package-rehearsal.md).
 
-Build archives on a connected release host with an OpenSSL private key (never copied to target servers):
+## Building and verifying `apt-repo`
 
-```sh
-python3 scripts/offline-release.py pack payload-a omb-install-a.tar.gz \
-  --commit COMMIT_A --channel stable --sign-key signing-private.pem
+Prepare the compiled binaries from a committed Git revision as described in [the offline installation guide](../offline-installation.md) and stage a payload directory containing:
 
-python3 scripts/offline-release.py pack payload-b omb-update-a-to-b.tar.gz \
-  --commit COMMIT_B --from-commit COMMIT_A --channel stable \
-  --migration omb_control=deploy/sql/2026-11-21-oidc-logout-jti-hash.sql \
-  --sign-key signing-private.pem
-```
+- `bin/` — eight amd64 ELF binaries (`omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-winiso-prepare`);
+- `deploy/systemd/` — six systemd units (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-winiso@.service`);
+- `deploy/boot-assets/windows-profiles/` — WinPE profile templates (`omb-setup.cmd.in`, `winpeshl.ini`, and any additional templates);
+- `assets/` — pinned boot assets (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`);
+- `scripts/prepare-ubuntu-source.sh`, `scripts/fetch-ipxe.sh`, `deploy/samba/smb.conf`;
+- `deploy/sql/{boot.sql,images.sql,control.sql}` — initial bootstrap SQL schemas;
+- `deploy/sql/migrations/{omb_boot,omb_images,omb_control}/NNNN_name.sql` — cumulative SQL migrations;
+- `debs/` — local system `.deb` dependencies and `Packages.gz` with versions and SHA-256 digests.
 
-Updates may omit `--migration` when only binaries, systemd units, or helper scripts change.
-
-Verify an archive on the target host without modifying services or databases:
-
-```sh
-sudo python3 offline-release.py verify omb-update-a-to-b.tar.gz \
-  --public-key trusted-release-public.pem --check-host --extract /var/tmp/omb-update-b
-```
-
-## Signed `.deb` APT repository and dependency manifest
-
-On Ubuntu amd64, `scripts/offline-deb.py` builds one `omb` package per release, adds it to `Packages.gz`, and writes `repo-manifest.json` recording all OMB packages, the APT index, all pinned system `.deb` dependencies, boot asset digests, Go version and modules from `go.mod`, and the pinned `internal/unattend/UPSTREAM.md` commit. Pass `--sign-key` to sign `repo-manifest.json` into `repo-manifest.sig` with the same OpenSSL key:
+On the release host, build and sign the repository using an OpenSSL private key (never copied to target servers; distribute the public key separately):
 
 ```sh
-python3 scripts/offline-deb.py omb-install-a.tar.gz apt-repo \
-  --public-key trusted-release-public.pem --version 0.1~rehearsal1 \
-  --update-archive omb-update-a-to-b.tar.gz --update-version 0.1~rehearsal2 \
-  --license LICENSE --sign-key signing-private.pem
-
-python3 scripts/offline-deb.py verify-repo apt-repo --public-key trusted-release-public.pem
+python3 scripts/offline-deb.py build <payload-dir> <apt-repo> \
+  --version 0.2.0 --channel stable \
+  --commit COMMIT_SHA \
+  --license LICENSE --sign-key signing-private.pem \
+  [--go-mod go.mod] [--unattend-upstream internal/unattend/UPSTREAM.md]
 ```
 
-## Automated deployment, updates, and rollback
+`offline-deb.py build` produces:
 
-Copy `offline-deploy.sh`, `offline-install-lib.sh`, `offline-release.py`, and `offline-deb.py` from a trusted checkout into the same directory on the target Ubuntu host.
+- `omb_<version>_amd64.deb` (binaries under `/usr/bin/`, units under `/usr/lib/systemd/system/`, helpers under `/usr/lib/omb/`, bootstrap SQL under `/usr/share/omb/bootstrap/`, cumulative migrations and `/usr/share/omb/migrations/manifest.json`, and `/usr/share/omb/release.json` containing `channel`, `commit`, `display_version`, `package`, `version`);
+- a combined `Packages.gz` index covering `omb` and all system dependencies;
+- `repo-manifest.json` (`format: 2`, target `ubuntu 26.04 amd64`, package metadata, `Packages.gz` and system `.deb` digests, boot asset digests, Go version and modules from `go.mod`, and the pinned `internal/unattend/UPSTREAM.md` commit) signed into `repo-manifest.sig`.
 
-### Using a signed `apt-repo` (recommended)
-
-`install-deb-repo` and `update-deb-repo` verify `repo-manifest.sig`, `Packages.gz`, and every `.deb` against `PUBLIC_KEY`, removing the need to pass 64-character SHA-256 digests manually:
+Verify the repository signature and every file checksum without modifying the host:
 
 ```sh
-sudo bash offline-deploy.sh install-deb-repo omb-install-a.tar.gz trusted-release-public.pem \
-  apt-repo 0.1~rehearsal1 MANAGEMENT_IP none
-
-sudo bash offline-deploy.sh update-deb-repo omb-install-a.tar.gz omb-update-a-to-b.tar.gz \
-  trusted-release-public.pem apt-repo 0.1~rehearsal1 0.1~rehearsal2 MANAGEMENT_IP
-
-sudo bash offline-deploy.sh rollback MANAGEMENT_IP
-dpkg-query -W -f='${Version}\n' omb
+python3 scripts/offline-deb.py verify-repo <apt-repo> \
+  --public-key trusted-release-public.pem [--print-package]
 ```
 
-### Explicit `.deb` and SHA-256 mode
+Passing `--print-package` outputs the TSV tuple (`FILENAME`, `SHA256`, `VERSION`, `COMMIT`, `CHANNEL`) consumed by `offline-deploy.sh`.
+
+## Deployment, updates, and rollback (`offline-deploy.sh`)
+
+Copy `scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh`, and `scripts/offline-deb.py` together into the same directory on the target Ubuntu host alongside `<apt-repo>` and `<public-key>`:
 
 ```sh
-sudo bash offline-deploy.sh install-deb omb-install-a.tar.gz trusted-release-public.pem \
-  "$OMB_PACKAGE_A" "$OMB_PACKAGE_A_SHA256" MANAGEMENT_IP none
+# 1. Fresh installation on a clean Ubuntu 26.04 amd64 host (prompts for initial admin password)
+sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key> <management-ip> [pxe-interface|none]
 
-sudo bash offline-deploy.sh update-deb omb-install-a.tar.gz omb-update-a-to-b.tar.gz \
-  trusted-release-public.pem "$OMB_PACKAGE_A" "$OMB_PACKAGE_A_SHA256" \
-  "$OMB_PACKAGE_B" "$OMB_PACKAGE_B_SHA256" MANAGEMENT_IP
+# 2. Upgrade (including multi-release jumps)
+sudo bash scripts/offline-deploy.sh update [--allow-channel-switch] <apt-repo> <public-key> <management-ip>
+
+# 3. Roll back an interrupted or most recent completed upgrade
+sudo bash scripts/offline-deploy.sh rollback <management-ip>
 ```
 
-### Scope, safety, and rollback guarantees
+### Fresh installation (`install`)
 
-- **Automatic scope calculation:** `offline-deploy.sh` computes the affected services (`control`, `images`, `boot`, `agent`, and optionally `dnsmasq`) and databases (`omb_control`, `omb_images`, `omb_boot`, or `none`) directly from the signed update manifest.
-- **Minimal disruption:** Only affected services are stopped, updated, restarted, and health-checked; unaffected services keep running. Updates without SQL migrations skip database dumps and restores.
-- **Units and helpers:** Package updates may update `/usr/lib/systemd/system/omb-*.service` and `/usr/lib/omb/*` helpers, while `/srv/omb/tftp`, `/usr/share/omb` provisioning inputs, and `/etc/omb` site configuration are never overwritten during `update-deb` / `update-deb-repo`.
-- **Atomic database rollback:** Before running any migration, every affected database is dumped with `pg_dump -Fc`, test-restored into a verified recovery database, and checked against pre-update snapshots. On failure or manual `rollback`, APT downgrades `omb` to the saved `.deb` and all affected databases are swapped back in a single PostgreSQL transaction, retaining the newer databases with connections disabled.
-- **Management-only mode:** Omit `PXE_INTERFACE` or pass `none` during installation to keep DHCP and Samba disabled until the dedicated PXE interface is configured.
+- Requires a clean machine with no existing `/etc/omb`, `/srv/omb/tftp`, `/var/lib/omb-deployment`, or `omb-control`.
+- Verifies `<apt-repo>`, installs system `.deb`s and `omb` offline via `unshare --net` APT (refusing if any already-installed system package would be upgraded), creates `omb-boot`, `omb-control`, `omb-images`, `omb-iso` accounts and PostgreSQL databases, loads `/usr/share/omb/bootstrap/` schemas, and seeds `schema_migrations` from `/usr/share/omb/migrations/manifest.json`.
+- Extracts pinned boot assets, generates `/etc/omb/secrets.key` and `/var/lib/omb-control/control.{crt,key}`, keeps DHCP (`omb-dnsmasq`) and Samba disabled until the PXE segment is configured (`none` uses the reserved `omb-pxe-off` placeholder), and saves `/var/lib/omb-deployment/{current.deb,PACKAGE,PACKAGE_SHA256,CHANNEL,COMMIT}`.
 
-### Release channels (`stable` and `dev`)
+### Local `current.deb` cache and automatic scope calculation
 
-OMB maintains two parallel release channels tracked in `/var/lib/omb-deployment/CHANNEL` and displayed in `/usr/share/omb/release.json` (and the web UI):
-- **`stable` (`main` branch):** Git tags `vX.Y.Z`, Debian versions `X.Y.Z` (for example `0.2.0`).
-- **`dev` (`dev` branch):** Git tags `vX.Y.Z-dev.N`, Debian versions `X.Y.Z~dev.N` (for example `0.2.0~dev.1`, where `~` ensures `0.2.0~dev.N < 0.2.0` in `dpkg`).
+On install and every completed update, the active `omb` package is cached at `/var/lib/omb-deployment/current.deb` alongside `PACKAGE`, `PACKAGE_SHA256`, `CHANNEL`, `COMMIT`, and `LAST`.
 
-Use `--channel stable|dev` on `offline-release.py pack` and `--channel`, `--update-channel`, and `--base-deb PATH` (to preserve an already-installed base `.deb`'s exact `SHA256`) on `offline-deb.py`. Updates stay within the installed channel by default; pass `--allow-channel-switch` to `offline-deploy.sh` when intentionally switching channels (`stable` ↔ `dev`):
+During `offline-deploy.sh update`:
+
+- The script verifies `<apt-repo>`, checks `new_version > old_version` (`dpkg --compare-versions`), enforces channel matching unless `--allow-channel-switch` is set, and confirms that the installed `omb` package matches `/var/lib/omb-deployment/current.deb` (`dpkg --verify omb` and `omb.md5sums`).
+- It diffs `current.deb` against the new `.deb` and compares `schema_migrations` across all three databases against `/usr/share/omb/migrations/manifest.json` to compute the exact service scope (`control` always included; `images`, `boot`, `agent`, `dnsmasq` when their files or databases change) and affected databases (`omb_boot`, `omb_images`, `omb_control`, or `none`). Unaffected services keep running.
+- Site configuration in `/etc/omb/`, `/srv/omb/tftp/`, and provisioning inputs under `/usr/share/omb/{assets,samba,windows-profiles}/` are never overwritten (updates attempting to modify those provisioning inputs are rejected).
+
+### Cumulative migrations and `schema_migrations`
+
+SQL migrations live at `deploy/sql/migrations/<db>/NNNN_<name>.sql` (`omb_boot`, `omb_images`, `omb_control`) and follow strict append-only rules:
+
+- Filenames must match `NNNN_name.sql` with unique 4-digit prefixes per database and no `BEGIN`, `COMMIT`, `ROLLBACK`, or `VACUUM` statements (the runner executes each migration in its own transaction and inserts `(id, sha256)` into `schema_migrations`).
+- Every previously applied migration in `schema_migrations` must still exist in the new package with an identical SHA-256, and unapplied migrations cannot precede an already-applied `id`.
+
+Because every package embeds the full cumulative migration set, an operator can jump across multiple releases in a single `offline-deploy.sh update` run; only missing migrations are applied in `omb_boot` -> `omb_images` -> `omb_control` order.
+
+### Rollback guarantees
+
+Before installing the new `.deb` or running migrations, `offline-deploy.sh update` checks disk space, captures the published `menu.ipxe`, writes `/var/lib/omb-deployment/PENDING`, stops only affected services, saves the prior `omb.deb` and configs to `/var/backups/omb/offline.<id>`, and runs `pg_dump -Fc` plus a verified `pg_restore` into `omb_restore_*` recovery databases.
+
+On failure during `update`, or when running `sudo bash scripts/offline-deploy.sh rollback <management-ip>` (to recover from an interrupted `PENDING` update or revert the `LAST` completed update):
+
+- APT restores the saved previous `.deb` (`--allow-downgrades --reinstall`).
+- All affected databases are atomically swapped back to their verified `omb_restore_*` snapshots in a single PostgreSQL transaction, retaining the post-update databases as `omb_retained_*` with `ALLOW_CONNECTIONS false`.
+- Services, health endpoints, `menu.ipxe`, `/var/lib/omb-deployment/current.deb`, and state markers are restored. (If `/etc/omb/secrets.key` or the published `menu.ipxe` changed after the backup, rollback refuses and requires coordinated manual restoration.)
+
+## Release channels (`stable` and `dev`)
+
+OMB maintains two parallel release channels tracked in `/var/lib/omb-deployment/CHANNEL` and `/usr/share/omb/release.json`:
+
+- **`stable` (`main` branch):** Git tags `vX.Y.Z`, `.deb` versions `X.Y.Z` (for example `0.2.0`).
+- **`dev` (`dev` branch):** Git tags `vX.Y.Z-dev.N`, `.deb` versions `X.Y.Z~dev.N` (where `~` ensures `0.2.0~dev.N < 0.2.0` in `dpkg`).
+
+By default, `offline-deploy.sh update` stays within the installed channel. Pass `--allow-channel-switch` to intentionally switch between `stable` and `dev`:
 
 ```sh
-sudo bash offline-deploy.sh update-deb-repo --allow-channel-switch \
-  omb-install-0.1.4.tar.gz omb-update-0.1.4-to-0.2.0-dev.1.tar.gz \
-  trusted-release-public.pem apt-repo 0.1.4 0.2.0~dev.1 MANAGEMENT_IP
+sudo bash scripts/offline-deploy.sh update --allow-channel-switch \
+  <apt-repo> <public-key> <management-ip>
 ```
-
-For manual archive-only commands (`install`, `check-update`, `update`, `rollback`) and rehearsal reports, see [docs/offline-release.md](../offline-release.md) and [docs/research/2026-11-22-deb-package-rehearsal.md](../research/2026-11-22-deb-package-rehearsal.md).

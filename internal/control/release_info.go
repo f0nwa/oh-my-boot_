@@ -18,7 +18,6 @@ type ReleaseInfo struct {
 	DisplayVersion string `json:"display_version"`
 	Channel        string `json:"channel"`
 	Commit         string `json:"commit"`
-	FromCommit     string `json:"from_commit,omitempty"`
 	Package        string `json:"package"`
 }
 

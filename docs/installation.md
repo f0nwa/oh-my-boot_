@@ -1,108 +1,141 @@
-# Ubuntu Server: first PXE iteration
+# Установка Oh My Boot (OMB)
 
-> This guide uses current OMB names. See the [stand status and remaining checks](research/2026-10-31-omb-technical-migration.md).
+[English version](en/installation.md)
 
-The HTTPS dashboard and second-stage installation are described in [Control installation](control-installation.md).
+Это единое руководство по первичной установке OMB на сервер Ubuntu без контейнеров. После установки вы получите готовую HTTPS-панель управления (`https://<ip>:8443`), службы сетевой загрузки (BIOS/UEFI и UEFI Secure Boot), каталог ISO-образов и — при выборе PXE-интерфейса в мастере — сразу настроенные DHCP (`omb-dnsmasq`) и Samba (`smbd`).
 
-This guide installs the boot foundation on one Ubuntu Server x86_64 host without containers. It serves a diagnostic iPXE menu, offers BIOS and UEFI x64 network boot files, and has separate full DHCP and proxy-DHCP configurations. The dashboard, users and roles are covered in the Control guide; ISO boot remains a later stage.
+## Требования к серверу
 
-## Before you start
+- **ОС и архитектура:**
+  - **Ubuntu 26.04 LTS amd64** — основная целевая ОС (для онлайн- и офлайн-установки).
+  - **Ubuntu 24.04 LTS amd64** — поддерживается для онлайн-установки (для других версий в `install.sh` предусмотрен флаг `--force-os`).
+- **Сеть:** 1 или 2 сетевых интерфейса со **статическим IPv4-адресом**:
+  - **2 интерфейса (рекомендуется):** один — для управления и доступа к веб-панели, второй — выделенный для PXE-сегмента (режим **Full DHCP** или **Proxy DHCP**).
+  - **1 интерфейс:** веб-панель и PXE работают на одном интерфейсе; в общей сети используйте **Proxy DHCP**, чтобы не конфликтовать с существующим DHCP-сервером.
+- **Порты, которые должны быть доступны клиентам и администраторам:**
+  - `TCP 8443` — веб-панель управления (HTTPS);
+  - `TCP 8080` — PXE-меню iPXE и раздача файлов WinPE / ISO по HTTP;
+  - `UDP 69` — TFTP (первичные загрузчики `undionly.kpxe`, `ipxe-shim.efi`, `ipxe.efi`, `snponly.efi`);
+  - `UDP 67` и `UDP 4011` — DHCP / Proxy DHCP;
+  - `TCP 445` — Samba (раздача установочных медиа Windows и Strelec).
+- **Права:** запуск установки от `root` (`sudo`).
 
-- Use an isolated test network with a PXE client VM and a second NIC on the Ubuntu host. In **full** mode, the PXE service assigns addresses; keep every other DHCP server off that test network. In **proxy** mode, keep an existing DHCP server on that test network and let it assign addresses.
-- Set a static IPv4 address on the Ubuntu test NIC. The examples use the documentation subnet `192.0.2.0/24` and `enp2s0`; replace **every** sample address and interface before applying a configuration. Check the real interface with `ip -br addr`.
-- Ensure clients can reach UDP 67, 69 and 4011 and TCP 8080 on the test network. Firewall rules and VM network mode depend on the lab.
-- The full-DHCP BIOS and UEFI test results are recorded in [project history](project-history.md). Proxy-DHCP and ISO boot remain untested.
+## Способ 1. Онлайн-установка одной командой
 
-## Build and install
+Рекомендуемый способ для сервера с доступом в интернет. Скрипт `scripts/install.sh` проверяет ОС и архитектуру, скачивает `.deb`-пакет и `SHA256SUMS` из GitHub Releases, проверяет контрольную сумму, устанавливает пакет с системными зависимостями через `apt-get` и автоматически запускает интерактивный мастер `omb-setup`.
 
-Install PostgreSQL, the `dnsmasq` binary, and storage mounting packages (`cifs-utils` for SMB, `nfs-common` for NFS) without enabling the distribution's default dnsmasq service:
+```sh
+curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
+```
+
+Если репозиторий уже склонирован локально:
+
+```sh
+sudo bash scripts/install.sh
+```
+
+Полезные параметры `install.sh`:
+
+- `--version <ver>` — установить конкретный релиз или тег (например `--version v0.2.0` или `--version v0.2.1-dev.1`);
+- `--channel <stable|dev>` — выбрать канал выпусков, если `--version` не указан (по умолчанию `stable`);
+- `--deb <path>` — установить заранее скачанный локальный `.deb`-файл;
+- `-- <аргументы omb-setup>` — передать дополнительные флаги напрямую в `omb-setup` (например `sudo bash scripts/install.sh -- --lang en`).
+
+## Способ 2. Ручная онлайн-установка из `.deb`-пакета
+
+Если вы скачали пакет `omb_<версия>_amd64.deb` вручную (например, со страницы релизов GitHub):
 
 ```sh
 sudo apt update
-sudo apt install -y dnsmasq-base postgresql ca-certificates curl cifs-utils nfs-common
+sudo apt install ./omb_<версия>_amd64.deb
+sudo omb-setup
 ```
 
-Build with Go 1.26 or newer from this repository. The three output files are Linux x86_64 executables:
+Команда `apt install` подтянет системные зависимости (`postgresql`, `dnsmasq-base`, `samba`, `cifs-utils`, `nfs-common`, `wimtools` и др.), а `omb-setup` выполнит первичную инициализацию и запуск служб.
+
+## Способ 3. Офлайн-установка (изолированный контур)
+
+Для серверов без доступа в интернет используется подписанный локальный APT-репозиторий `apt-repo`, собранный по [руководству по офлайн-выпускам](offline-release.md).
+
+Скопируйте на целевой сервер Ubuntu 26.04 amd64 каталог `<apt-repo>`, публичный ключ `<public-key>` и три скрипта в одну папку: `scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh` и `scripts/offline-deb.py`.
+
+**Интерактивный запуск (рекомендуется):**
 
 ```sh
-mkdir -p dist
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/omb-boot ./cmd/omb-boot
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/omb-agent ./cmd/omb-agent
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/omb-agentctl ./cmd/omb-agentctl
-sudo install -m 0755 dist/omb-boot dist/omb-agent dist/omb-agentctl /usr/local/bin/
+sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key>
 ```
 
-Create the unprivileged Boot account and configuration directory:
+Скрипт проверит подпись и контрольные суммы репозитория, установит системные `.deb`-пакеты и `omb` через `apt-get` внутри изолированного сетевого пространства (`unshare --net`) и передаст управление интерактивному мастеру `omb-setup --install-mode offline`.
+
+**Позиционная форма (без интерактивного выбора сети):**
 
 ```sh
-sudo useradd --system --home /var/lib/omb-boot --shell /usr/sbin/nologin omb-boot
-sudo install -d -m 0750 -o root -g root /etc/omb
-sudo install -d -m 0755 -o root -g root /usr/local/libexec /srv/omb/tftp/ubuntu-sources /var/lib/omb-ubuntu-registry
-sudo install -m 0755 scripts/prepare-ubuntu-source.sh /usr/local/libexec/omb-prepare-ubuntu-source
+sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key> <management-ip> [pxe-interface|none]
 ```
 
-Agent uses the preparation script and Python 3 to validate and prepare each Ubuntu ISO. The registry must remain root-owned so Boot only serves sources registered by Agent.
+В этом варианте DHCP и Samba останутся выключенными до настройки PXE-сети в веб-панели (если передать `none` или опустить четвёртый аргумент, интерфейс PXE можно назначить позже).
 
-Fetch the pinned iPXE v2.0.0 release. The script verifies SHA-256 before publishing the extracted files and refuses to overwrite an existing destination. Details and the upstream source are in [boot assets](../deploy/boot-assets/README.md).
+## Шаги мастера `omb-setup`
+
+При запуске `omb-setup` по очереди проходит шесть этапов:
+
+1. **Шаг 0. Язык интерфейса:** выбор `Русский` или `English`. Выбранный язык используется в мастере и сразу сохраняется как язык интерфейса для учётной записи `admin`.
+2. **Шаг 1. Адрес веб-панели управления (`HTTPS :8443`):** выбор IPv4-адреса из найденных сетевых интерфейсов или ввод адреса вручную.
+3. **Шаг 2. Пароль первого администратора (`admin`):** ввод и подтверждение пароля (минимум 12 символов, ввод скрыт).
+4. **Шаг 3. Интерфейс для сетевой загрузки (PXE):**
+   - при наличии двух и более интерфейсов мастер предлагает отдельный интерфейс для PXE;
+   - при одном интерфейсе поддерживается общий режим (с предупреждением и рекомендацией выбрать **Proxy DHCP**);
+   - также можно выбрать «Настроить позже в веб-панели» — тогда службы поднимутся без DHCP/TFTP, а PXE вы включите позже.
+5. **Шаг 4. Режим DHCP** (показывается, если выбран PXE-интерфейс):
+   - **Proxy DHCP** — IP-адреса уже выдаёт внешний DHCP-сервер, OMB отвечает только на PXE-запросы;
+   - **Full DHCP** — OMB сам выдаёт IP-адреса из заданного пула (начало и конец диапазона предлагаются автоматически и проверяются);
+   - **Пропустить** — не запускать DHCP сейчас и включить его позже в веб-панели.
+6. **Шаг 5. Сводка и подтверждение:** мастер показывает итоговую конфигурацию и после подтверждения:
+   - создаёт системные учётные записи (`omb-boot`, `omb-control`, `omb-images`, `omb-iso`) и три базы PostgreSQL (`omb_boot`, `omb_images`, `omb_control`) со схемами и таблицами `schema_migrations`;
+   - распаковывает закреплённые загрузочные файлы iPXE, `ipxe-shimx64.efi` и `wimboot` в `/srv/omb/tftp`;
+   - генерирует `/etc/omb/secrets.key` и самоподписанный TLS-сертификат для `https://<ip>:8443`;
+   - запускает службы `omb-boot`, `omb-agent`, `omb-images`, `omb-control`;
+   - если на шагах 3–4 выбран PXE-режим (`proxy` или `full`), применяет конфигурацию `omb-dnsmasq` и **автоматически настраивает и запускает Samba (`smbd` и `/etc/samba/smb.conf`)** для раздачи образов Windows и Strelec.
+
+### Неинтерактивный режим (`--non-interactive`)
+
+Для автоматизации развёртывания `omb-setup` можно запускать без диалогов:
 
 ```sh
-sudo ./scripts/fetch-ipxe.sh \
-  https://github.com/ipxe/ipxe/releases/download/v2.0.0/ipxeboot.tar.gz \
-  01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1 \
-  https://github.com/ipxe/shim/releases/download/ipxe-16.1/ipxe-shimx64.efi \
-  5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf \
-  /srv/omb/tftp
+printf '%s\n' 'ВашНадёжныйПароль123!' | sudo omb-setup \
+  --non-interactive \
+  --lang ru \
+  --management-ip 192.0.2.10 \
+  --pxe-interface enp2s0 \
+  --dhcp-mode full \
+  --dhcp-start 192.0.2.100 \
+  --dhcp-end 192.0.2.200 \
+  --admin-password-stdin
 ```
 
-Copy the units and set the client-visible HTTP address in `/etc/omb/boot.env`:
+Основные флаги неинтерактивного режима:
 
-```sh
-sudo install -m 0644 deploy/systemd/*.service /etc/systemd/system/
-printf 'OMB_BOOT_BASE_URL=http://192.0.2.10:8080\n' | sudo tee /etc/omb/boot.env
-sudo chmod 0640 /etc/omb/boot.env
-sudo systemctl daemon-reload
-sudo systemctl enable --now omb-boot.service omb-agent.service
-curl -fsS http://192.0.2.10:8080/boot/menu.ipxe
-```
+| Флаг | Назначение |
+| --- | --- |
+| `--non-interactive` | Запуск без интерактивных вопросов |
+| `--lang <ru\|en>` | Язык вывода мастера и начальный язык `admin` (по умолчанию `ru`) |
+| `--management-ip <ip>` | Обязательный IPv4-адрес веб-панели `HTTPS :8443` |
+| `--pxe-interface <iface\|none>` | Сетевой интерфейс для PXE или `none` |
+| `--dhcp-mode <proxy\|full\|skip>` | Режим DHCP (`proxy`, `full` или `skip`) |
+| `--dhcp-start <ip>`, `--dhcp-end <ip>` | Границы пула для `--dhcp-mode full` |
+| `--skip-pxe` | Пропустить настройку PXE/DHCP и настроить позже в веб-панели |
+| `--admin-password-stdin` | Прочитать пароль `admin` из `stdin` |
 
-The last command should return a script starting with `#!ipxe`. `omb-dnsmasq.service` has no install target and is not started by these commands. DHCP begins only after the explicit `omb-agentctl` apply below.
+## Первые шаги после установки
 
-## Optional PostgreSQL event storage
+1. **Войдите в веб-панель:** откройте `https://<ip>:8443` и авторизуйтесь под пользователем `admin` с паролем, заданным в `omb-setup`.
+2. **Проверьте службы и сеть:** на странице **Система → Обзор** убедитесь, что службы активны и время сервера корректно. Если настройку PXE отложили в мастере, выполните её в **Система → Сеть** — при сохранении настроек `omb-agent` автоматически применит `omb-dnsmasq` и синхронизирует конфигурацию Samba (`smbd`).
+3. **Добавьте ISO-образ:** загрузите образ в **Библиотека → Образы ISO** (или подключите сетевое хранилище в **Система → Хранилища**) и выберите «Проверить ISO» в меню строки.
+4. **Создайте загрузку и опубликуйте меню:** в **Библиотека → Загрузки** создайте запись на основе проверенного образа, добавьте её в черновик в разделе **Меню** и нажмите «Опубликовать меню». После этого клиенты в PXE-сети увидят загрузочный пункт.
 
-Boot works with local journal logging if PostgreSQL is not configured or becomes unavailable. On this single-host installation, use PostgreSQL's local peer authentication: the database role has the same name as the `omb-boot` system user, so no database password is needed.
+## Дальнейшее чтение
 
-```sh
-sudo runuser -u postgres -- psql -c 'CREATE ROLE "omb-boot" LOGIN'
-sudo runuser -u postgres -- createdb -O omb-boot omb_boot
-sudo runuser -u omb-boot -- psql -d omb_boot < deploy/sql/boot.sql
-```
-
-Add `OMB_BOOT_DATABASE_URL="host=/var/run/postgresql dbname=omb_boot user=omb-boot"` to `/etc/omb/boot.env` and restart `omb-boot.service`. The Boot process does not require a database connection to answer client requests; failed inserts are written to the journal. This local database setup and fallback were verified on the Ubuntu test VM.
-
-## Review and apply network settings
-
-Copy [network-proxy.json](../deploy/examples/network-proxy.json) or [network-full.json](../deploy/examples/network-full.json) to a local file. Replace the sample interface, address, subnet, DHCP range and boot URL. Preview the exact dnsmasq configuration, then apply it through the local agent socket:
-
-```sh
-./dist/omb-agentctl -dry-run -config ./network.json > ./preview.conf
-sudo /usr/sbin/dnsmasq --test --conf-file=./preview.conf
-sudo /usr/local/bin/omb-agentctl -config ./network.json
-sudo systemctl status omb-dnsmasq.service
-sudo cat /etc/omb/dnsmasq.conf
-```
-
-The agent also runs `dnsmasq --test` before every apply. It writes only `/etc/omb/dnsmasq.conf`, keeps the last successful settings in `/var/lib/omb-agent/network.json`, and restores the previous file and unit state if a restart fails. Do not edit the generated file by hand. The agent API is a root-owned Unix socket at `/run/omb/agent.sock` and has no TCP listener.
-
-To inspect a failed apply, use `journalctl -u omb-agent -u omb-dnsmasq -n 100 --no-pager` and compare the active config with the saved state. To stop this PXE service's DHCP without affecting any other dnsmasq instance, run `sudo systemctl stop omb-dnsmasq.service`.
-
-## PXE acceptance matrix on the supplied VM
-
-For each row, record the client's DHCP result, TFTP file request, iPXE HTTP menu response and local boot exit. The proxy rows require an independent DHCP server. Secure Boot rows must show that firmware accepts the shim and that it loads `ipxe.efi`.
-
-| Client | Full DHCP | Proxy DHCP |
-| --- | --- | --- |
-| Legacy BIOS | DHCP lease, HTTP menu and Diagnostics passed on SeaBIOS; TFTP transfer not separately recorded | Keenetic lease, dnsmasq proxy PXE request and HTTP menu passed on SeaBIOS; TFTP transfer not separately recorded |
-| UEFI x64, Secure Boot off | Firmware showed Disabled after saving; DHCP, TFTP shim and iPXE binary, HTTP menu passed on OVMF | Two repeat boots passed: Keenetic lease, proxy UDP 4011, TFTP shim and iPXE binary, HTTP menu; one earlier attempt timed out |
-| UEFI x64, Secure Boot on | User reported menu after enabling; no fresh server trace separately linked to that run | Keenetic lease, dnsmasq proxy on UDP 4011, TFTP shim and iPXE binary, HTTP menu passed after Secure Boot was enabled |
-
-Check HTTP with `curl` and service logs with `journalctl -u omb-boot -u omb-agent -u omb-dnsmasq --no-pager`. Check database rows with `sudo runuser -u omb-boot -- psql -d omb_boot -c 'SELECT kind, path, occurred_at FROM boot_events ORDER BY id DESC LIMIT 10'` once PostgreSQL is configured. Do not interpret a successful syntax check as proof that clients boot.
+- [Веб-интерфейс и администрирование (Control)](control-installation.md) — пользователи, роли, меню, журнал машин и Autoinstall.
+- [Образы ISO, хранилища и профили Windows](images-installation.md) — локальные/SMB/NFS-хранилища, WinPE и драйверы.
+- [Самодостаточные офлайн-выпуски, обновления и откат](offline-release.md) — сборка `apt-repo`, каналы `stable`/`dev`, `build-release.sh` и `offline-deploy.sh`.
+- [Сборка офлайн-комплекта из исходников](offline-installation.md) — подготовка зависимостей и загрузочных файлов для закрытого контура.

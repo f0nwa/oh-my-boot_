@@ -8,7 +8,7 @@ OMB распространяется и обновляется через еди
 
 Подготовьте бинарники из зафиксированного Git-коммита по [офлайн-руководству](offline-installation.md) и соберите каталог входных файлов `payload`:
 
-- `bin/` — восемь amd64 ELF-бинарников (`omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-winiso-prepare`);
+- `bin/` — девять amd64 ELF-бинарников (`omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-winiso-prepare`);
 - `deploy/systemd/` — шесть юнитов (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-winiso@.service`);
 - `deploy/boot-assets/windows-profiles/` — профили WinPE (включая `omb-setup.cmd.in` и `winpeshl.ini`);
 - `assets/` — закреплённые загрузочные файлы (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`);
@@ -44,7 +44,7 @@ python3 scripts/offline-deb.py verify-repo <apt-repo> \
 
 ### Сборка релиза одной командой (`scripts/build-release.sh`)
 
-Для автоматической кросс-компиляции всех 8 бинарников, сборки `payload/`, запуска `offline-deb.py build` + `verify-repo` (и при необходимости сразу выката на стенд) используйте `scripts/build-release.sh`. Версия и канал определяются автоматически по тегу Git на `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) или задаются через `--version` / `--channel`:
+Для автоматической кросс-компиляции всех 9 бинарников, сборки `payload/`, запуска `offline-deb.py build` + `verify-repo` (и при необходимости сразу выката на стенд) используйте `scripts/build-release.sh`. Версия и канал определяются автоматически по тегу Git на `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) или задаются через `--version` / `--channel`:
 
 ```sh
 # 1. На Ubuntu-ВМ или в CI (локальный dpkg-deb)
@@ -71,7 +71,10 @@ bash scripts/build-release.sh \
 Скопируйте из доверенной копии репозитория три файла в один каталог на целевой машине: `scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh` и `scripts/offline-deb.py`. Передайте туда же проверенный каталог `<apt-repo>` и публичный ключ `<public-key>`.
 
 ```sh
-# 1. Первичная установка на чистую Ubuntu 26.04 amd64 (запросит пароль первого admin)
+# 1. Первичная установка на чистую Ubuntu 26.04 amd64 (интерактивный мастер omb-setup)
+sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key>
+
+#    Позиционная форма без интерактивного выбора сети (запросит пароль первого admin)
 sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key> <management-ip> [pxe-interface|none]
 
 # 2. Обновление (включая прыжок через несколько версий)
@@ -86,12 +89,12 @@ sudo bash scripts/offline-deploy.sh rollback <management-ip>
 Установка принимает только новую машину без существующих `/etc/omb`, `/srv/omb/tftp`, `/var/lib/omb-deployment` и бинарника `omb-control`. Скрипт:
 
 1. Проверяет `apt-repo` и запускает `apt-get` в изолированном сетевом пространстве (`unshare --net`) с единственным локальным источником (если потребуется обновить уже установленный системный пакет, установка остановится).
-2. Запрашивает пароль первого администратора (не менее 12 символов), создаёт системных пользователей `omb-boot`, `omb-control`, `omb-images`, `omb-iso` и три базы PostgreSQL (`omb_boot`, `omb_images`, `omb_control`).
+2. При вызове в короткой форме (`install <apt-repo> <public-key>`) запускает интерактивный мастер `omb-setup --install-mode offline`; при позиционной форме запрашивает пароль первого администратора (не менее 12 символов), создаёт системных пользователей `omb-boot`, `omb-control`, `omb-images`, `omb-iso` и три базы PostgreSQL (`omb_boot`, `omb_images`, `omb_control`).
 3. Загружает начальные схемы из `/usr/share/omb/bootstrap/` и сразу регистрирует все миграции из `/usr/share/omb/migrations/manifest.json` в таблицах `schema_migrations`.
 4. Распаковывает закреплённые ассеты (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`), создаёт `/etc/omb/secrets.key` (`0600 omb-control:omb-control`) и TLS-сертификат `/var/lib/omb-control/control.{crt,key}`.
 5. Запускает `omb-boot`, `omb-agent`, `omb-images`, `omb-control` и сохраняет эталонный пакет и состояние в `/var/lib/omb-deployment/` (`current.deb`, `PACKAGE`, `PACKAGE_SHA256`, `CHANNEL`, `COMMIT`).
 
-DHCP (`omb-dnsmasq`) и Samba после первичной установки выключены; настройку статического PXE-адреса, DHCP и шары выполняйте по [руководству сервера](installation.md). Если передать `none` (или опустить четвёртый аргумент), Control стартует с зарезервированным именем `omb-pxe-off`, которое можно позже заменить на физический интерфейс через `OMB_CONTROL_INTERFACES` и перезапуск `omb-control`.
+Если PXE-интерфейс и режим DHCP (`proxy` или `full`) выбраны сразу в мастере `omb-setup`, `omb-dnsmasq` и Samba (`smbd` и `/etc/samba/smb.conf`) настраиваются и запускаются автоматически. Если настройка PXE отложена (или использована позиционная форма), DHCP и Samba остаются выключенными до первого применения PXE-сети в веб-панели (**Система → Сеть**), при котором `omb-agent` автоматически синхронизирует `omb-dnsmasq` и `/etc/samba/smb.conf`. При передаче `none` (или пропуске четвёртого аргумента) Control стартует с зарезервированным именем `omb-pxe-off`, которое можно позже заменить на физический интерфейс через `OMB_CONTROL_INTERFACES` и перезапуск `omb-control`. Подробнее о шагах мастера — в [руководстве по установке](installation.md).
 
 ### Локальный кеш `current.deb` и вычисление области изменений
 

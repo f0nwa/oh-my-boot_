@@ -1,108 +1,141 @@
-# Ubuntu Server: first PXE iteration
+# Installing Oh My Boot (OMB)
 
-> This guide uses current OMB names. See the [stand status and remaining checks](../research/2026-10-31-omb-technical-migration.md).
+[Русская версия](../installation.md)
 
-The HTTPS dashboard and second-stage installation are described in [Control installation](control-installation.md).
+This is the unified guide for a fresh, container-free installation of OMB on Ubuntu Server. Once installed, you get the HTTPS admin panel (`https://<ip>:8443`), BIOS/UEFI and UEFI Secure Boot network boot services, the ISO catalog, and — if you configure a PXE interface in the wizard — ready-to-use DHCP (`omb-dnsmasq`) and Samba (`smbd`).
 
-This guide installs the boot foundation on one Ubuntu Server x86_64 host without containers. It serves a diagnostic iPXE menu, offers BIOS and UEFI x64 network boot files, and has separate full DHCP and proxy-DHCP configurations. The dashboard, users and roles are covered in the Control guide; ISO boot remains a later stage.
+## Server requirements
 
-## Before you start
+- **OS and architecture:**
+  - **Ubuntu 26.04 LTS amd64** — primary target OS (required for offline releases, recommended for online installs).
+  - **Ubuntu 24.04 LTS amd64** — supported for online installation (other versions can be overridden in `install.sh` with `--force-os`).
+- **Networking:** 1 or 2 network interfaces with a **static IPv4 address**:
+  - **2 NICs (recommended):** one for management and the web panel, and a dedicated NIC for the PXE segment (**Full DHCP** or **Proxy DHCP**).
+  - **1 NIC:** the web panel and PXE share one interface; use **Proxy DHCP** on shared networks to avoid conflicting with an existing DHCP server.
+- **Ports to allow for clients and administrators:**
+  - `TCP 8443` — HTTPS web control panel;
+  - `TCP 8080` — iPXE boot menu and HTTP delivery of WinPE / ISO files;
+  - `UDP 69` — TFTP (`undionly.kpxe`, `ipxe-shim.efi`, `ipxe.efi`, `snponly.efi`);
+  - `UDP 67` and `UDP 4011` — DHCP / Proxy DHCP;
+  - `TCP 445` — Samba (Windows and Strelec installation media share).
+- **Privileges:** run the installer as `root` (`sudo`).
 
-- Use an isolated test network with a PXE client VM and a second NIC on the Ubuntu host. In **full** mode, the PXE service assigns addresses; keep every other DHCP server off that test network. In **proxy** mode, keep an existing DHCP server on that test network and let it assign addresses.
-- Set a static IPv4 address on the Ubuntu test NIC. The examples use the documentation subnet `192.0.2.0/24` and `enp2s0`; replace **every** sample address and interface before applying a configuration. Check the real interface with `ip -br addr`.
-- Ensure clients can reach UDP 67, 69 and 4011 and TCP 8080 on the test network. Firewall rules and VM network mode depend on the lab.
-- The full-DHCP BIOS and UEFI test results are recorded in [project history](../project-history.md). Proxy-DHCP and ISO boot remain untested.
+## Method 1: Online one-line install
 
-## Build and install
+Recommended for servers with internet access. `scripts/install.sh` checks the OS and architecture, downloads the `.deb` package and `SHA256SUMS` from GitHub Releases, verifies the SHA-256 digest, installs the package and system dependencies via `apt-get`, and launches the interactive `omb-setup` wizard.
 
-Install PostgreSQL, the `dnsmasq` binary, and storage mounting packages (`cifs-utils` for SMB, `nfs-common` for NFS) without enabling the distribution's default dnsmasq service:
+```sh
+curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
+```
+
+If you already cloned the repository locally:
+
+```sh
+sudo bash scripts/install.sh
+```
+
+Useful `install.sh` options:
+
+- `--version <ver>` — install a specific release or tag (for example `--version v0.2.0` or `--version v0.2.1-dev.1`);
+- `--channel <stable|dev>` — select the release channel when `--version` is not set (default: `stable`);
+- `--deb <path>` — install from a local `.deb` file instead of downloading;
+- `-- <omb-setup args>` — forward extra flags directly to `omb-setup` (for example `sudo bash scripts/install.sh -- --lang en`).
+
+## Method 2: Manual online `.deb` install
+
+If you downloaded `omb_<version>_amd64.deb` manually (for example from GitHub Releases):
 
 ```sh
 sudo apt update
-sudo apt install -y dnsmasq-base postgresql ca-certificates curl cifs-utils nfs-common
+sudo apt install ./omb_<version>_amd64.deb
+sudo omb-setup
 ```
 
-Build with Go 1.26 or newer from this repository. The three output files are Linux x86_64 executables:
+`apt install` pulls in the required system dependencies (`postgresql`, `dnsmasq-base`, `samba`, `cifs-utils`, `nfs-common`, `wimtools`, etc.), and `omb-setup` initializes databases, keys, certificates, and services.
+
+## Method 3: Offline air-gapped install
+
+For isolated servers without internet access, use a signed local APT repository (`apt-repo`) built as described in the [offline release guide](offline-release.md).
+
+Copy `<apt-repo>`, the release public key `<public-key>`, and the three deployment files (`scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh`, `scripts/offline-deb.py`) into the same directory on the target Ubuntu 26.04 amd64 server.
+
+**Interactive install (recommended):**
 
 ```sh
-mkdir -p dist
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/omb-boot ./cmd/omb-boot
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/omb-agent ./cmd/omb-agent
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/omb-agentctl ./cmd/omb-agentctl
-sudo install -m 0755 dist/omb-boot dist/omb-agent dist/omb-agentctl /usr/local/bin/
+sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key>
 ```
 
-Create the unprivileged Boot account and configuration directory:
+The script verifies the repository signature and checksums, installs system `.deb` packages and `omb` via `apt-get` inside an isolated network namespace (`unshare --net`), and hands off to the interactive `omb-setup --install-mode offline` wizard.
+
+**Positional non-interactive form:**
 
 ```sh
-sudo useradd --system --home /var/lib/omb-boot --shell /usr/sbin/nologin omb-boot
-sudo install -d -m 0750 -o root -g root /etc/omb
-sudo install -d -m 0755 -o root -g root /usr/local/libexec /srv/omb/tftp/ubuntu-sources /var/lib/omb-ubuntu-registry
-sudo install -m 0755 scripts/prepare-ubuntu-source.sh /usr/local/libexec/omb-prepare-ubuntu-source
+sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key> <management-ip> [pxe-interface|none]
 ```
 
-Agent uses the preparation script and Python 3 to validate and prepare each Ubuntu ISO. The registry must remain root-owned so Boot only serves sources registered by Agent.
+In this form, DHCP and Samba stay disabled until you configure the PXE network in the web panel (passing `none` or omitting the fourth argument defers PXE interface selection).
 
-Fetch the pinned iPXE v2.0.0 release. The script verifies SHA-256 before publishing the extracted files and refuses to overwrite an existing destination. Details and the upstream source are in [boot assets](../../deploy/boot-assets/README.md).
+## `omb-setup` walkthrough
+
+When launched interactively, `omb-setup` guides you through six steps:
+
+1. **Step 0 — Language:** choose `Русский` or `English`. The selected language is used by the wizard and saved as the initial UI language of the `admin` account.
+2. **Step 1 — Web control panel address (`HTTPS :8443`):** pick an IPv4 address from detected network interfaces or enter one manually.
+3. **Step 2 — First administrator password (`admin`):** enter and confirm a password (at least 12 characters, input hidden).
+4. **Step 3 — Network boot interface (PXE):**
+   - on a 2+ NIC host, the wizard recommends a dedicated PXE interface;
+   - on a 1-NIC host, sharing the management interface is supported (with a hint to use **Proxy DHCP**);
+   - you can also choose “Configure later in web panel” to defer PXE setup.
+5. **Step 4 — DHCP mode** (shown when a PXE interface is selected):
+   - **Proxy DHCP** — an existing DHCP server assigns IP addresses while OMB serves PXE options;
+   - **Full DHCP** — OMB assigns IP addresses from a pool (start and end addresses are suggested and validated);
+   - **Skip** — leave DHCP disabled and enable it later in the web panel.
+6. **Step 5 — Summary and confirmation:** displays the final settings and, once confirmed:
+   - creates system accounts (`omb-boot`, `omb-control`, `omb-images`, `omb-iso`) and three PostgreSQL databases (`omb_boot`, `omb_images`, `omb_control`) with schemas and `schema_migrations`;
+   - extracts pinned iPXE, `ipxe-shimx64.efi`, and `wimboot` boot assets into `/srv/omb/tftp`;
+   - generates `/etc/omb/secrets.key` and a self-signed TLS certificate for `https://<ip>:8443`;
+   - starts `omb-boot`, `omb-agent`, `omb-images`, and `omb-control`;
+   - when a PXE mode (`proxy` or `full`) is selected, applies `omb-dnsmasq` and **automatically configures and starts Samba (`smbd` and `/etc/samba/smb.conf`)** for Windows and Strelec installation shares.
+
+### Non-interactive mode (`--non-interactive`)
+
+For automated provisioning, pass `--non-interactive` and the required flags:
 
 ```sh
-sudo ./scripts/fetch-ipxe.sh \
-  https://github.com/ipxe/ipxe/releases/download/v2.0.0/ipxeboot.tar.gz \
-  01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1 \
-  https://github.com/ipxe/shim/releases/download/ipxe-16.1/ipxe-shimx64.efi \
-  5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf \
-  /srv/omb/tftp
+printf '%s\n' 'YourStrongPassword123!' | sudo omb-setup \
+  --non-interactive \
+  --lang en \
+  --management-ip 192.0.2.10 \
+  --pxe-interface enp2s0 \
+  --dhcp-mode full \
+  --dhcp-start 192.0.2.100 \
+  --dhcp-end 192.0.2.200 \
+  --admin-password-stdin
 ```
 
-Copy the units and set the client-visible HTTP address in `/etc/omb/boot.env`:
+Key non-interactive flags:
 
-```sh
-sudo install -m 0644 deploy/systemd/*.service /etc/systemd/system/
-printf 'OMB_BOOT_BASE_URL=http://192.0.2.10:8080\n' | sudo tee /etc/omb/boot.env
-sudo chmod 0640 /etc/omb/boot.env
-sudo systemctl daemon-reload
-sudo systemctl enable --now omb-boot.service omb-agent.service
-curl -fsS http://192.0.2.10:8080/boot/menu.ipxe
-```
+| Flag | Purpose |
+| --- | --- |
+| `--non-interactive` | Run without interactive prompts |
+| `--lang <ru\|en>` | Wizard language and initial `admin` UI language (default: `ru`) |
+| `--management-ip <ip>` | Required IPv4 address for the `HTTPS :8443` panel |
+| `--pxe-interface <iface\|none>` | PXE network interface name or `none` |
+| `--dhcp-mode <proxy\|full\|skip>` | DHCP mode (`proxy`, `full`, or `skip`) |
+| `--dhcp-start <ip>`, `--dhcp-end <ip>` | Pool range for `--dhcp-mode full` |
+| `--skip-pxe` | Skip PXE/DHCP setup and configure later in the web panel |
+| `--admin-password-stdin` | Read the initial `admin` password from `stdin` |
 
-The last command should return a script starting with `#!ipxe`. `omb-dnsmasq.service` has no install target and is not started by these commands. DHCP begins only after the explicit `omb-agentctl` apply below.
+## First steps after installation
 
-## Optional PostgreSQL event storage
+1. **Sign in to the web panel:** open `https://<ip>:8443` and log in as `admin` with the password configured in `omb-setup`.
+2. **Verify services and network:** open **System → Overview** to confirm all services are active and system time is accurate. If you deferred PXE setup, configure it in **System → Network** — saving PXE settings automatically applies `omb-dnsmasq` and synchronizes Samba (`smbd`).
+3. **Add an ISO image:** upload an ISO in **Library → ISO Images** (or mount an SMB/NFS storage in **System → Storages**) and run **Inspect ISO** from the row menu.
+4. **Create a boot entry and publish the menu:** open **Library → Boots** to create an entry from the inspected ISO, add it to the menu draft under **Menu**, and click **Publish menu**. PXE clients will then see the new boot item.
 
-Boot works with local journal logging if PostgreSQL is not configured or becomes unavailable. On this single-host installation, use PostgreSQL's local peer authentication: the database role has the same name as the `omb-boot` system user, so no database password is needed.
+## Further reading
 
-```sh
-sudo runuser -u postgres -- psql -c 'CREATE ROLE "omb-boot" LOGIN'
-sudo runuser -u postgres -- createdb -O omb-boot omb_boot
-sudo runuser -u omb-boot -- psql -d omb_boot < deploy/sql/boot.sql
-```
-
-Add `OMB_BOOT_DATABASE_URL="host=/var/run/postgresql dbname=omb_boot user=omb-boot"` to `/etc/omb/boot.env` and restart `omb-boot.service`. The Boot process does not require a database connection to answer client requests; failed inserts are written to the journal. This local database setup and fallback were verified on the Ubuntu test VM.
-
-## Review and apply network settings
-
-Copy [network-proxy.json](../../deploy/examples/network-proxy.json) or [network-full.json](../../deploy/examples/network-full.json) to a local file. Replace the sample interface, address, subnet, DHCP range and boot URL. Preview the exact dnsmasq configuration, then apply it through the local agent socket:
-
-```sh
-./dist/omb-agentctl -dry-run -config ./network.json > ./preview.conf
-sudo /usr/sbin/dnsmasq --test --conf-file=./preview.conf
-sudo /usr/local/bin/omb-agentctl -config ./network.json
-sudo systemctl status omb-dnsmasq.service
-sudo cat /etc/omb/dnsmasq.conf
-```
-
-The agent also runs `dnsmasq --test` before every apply. It writes only `/etc/omb/dnsmasq.conf`, keeps the last successful settings in `/var/lib/omb-agent/network.json`, and restores the previous file and unit state if a restart fails. Do not edit the generated file by hand. The agent API is a root-owned Unix socket at `/run/omb/agent.sock` and has no TCP listener.
-
-To inspect a failed apply, use `journalctl -u omb-agent -u omb-dnsmasq -n 100 --no-pager` and compare the active config with the saved state. To stop this PXE service's DHCP without affecting any other dnsmasq instance, run `sudo systemctl stop omb-dnsmasq.service`.
-
-## PXE acceptance matrix on the supplied VM
-
-For each row, record the client's DHCP result, TFTP file request, iPXE HTTP menu response and local boot exit. The proxy rows require an independent DHCP server. Secure Boot rows must show that firmware accepts the shim and that it loads `ipxe.efi`.
-
-| Client | Full DHCP | Proxy DHCP |
-| --- | --- | --- |
-| Legacy BIOS | DHCP lease, HTTP menu and Diagnostics passed on SeaBIOS; TFTP transfer not separately recorded | Keenetic lease, dnsmasq proxy PXE request and HTTP menu passed on SeaBIOS; TFTP transfer not separately recorded |
-| UEFI x64, Secure Boot off | Firmware showed Disabled after saving; DHCP, TFTP shim and iPXE binary, HTTP menu passed on OVMF | Two repeat boots passed: Keenetic lease, proxy UDP 4011, TFTP shim and iPXE binary, HTTP menu; one earlier attempt timed out |
-| UEFI x64, Secure Boot on | User reported menu after enabling; no fresh server trace separately linked to that run | Keenetic lease, dnsmasq proxy on UDP 4011, TFTP shim and iPXE binary, HTTP menu passed after Secure Boot was enabled |
-
-Check HTTP with `curl` and service logs with `journalctl -u omb-boot -u omb-agent -u omb-dnsmasq --no-pager`. Check database rows with `sudo runuser -u omb-boot -- psql -d omb_boot -c 'SELECT kind, path, occurred_at FROM boot_events ORDER BY id DESC LIMIT 10'` once PostgreSQL is configured. Do not interpret a successful syntax check as proof that clients boot.
+- [Control and admin interface](control-installation.md) — users, roles, menu management, machine log, and Ubuntu Autoinstall.
+- [Images, ISO catalog, and Windows profiles](images-installation.md) — local/SMB/NFS storages, WinPE, and drivers.
+- [Self-contained offline releases, updates, and rollback](offline-release.md) — building `apt-repo`, `stable`/`dev` channels, `build-release.sh`, and `offline-deploy.sh`.
+- [Offline build from source](offline-installation.md) — preparing dependencies and pinned boot assets for air-gapped environments.

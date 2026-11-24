@@ -23,14 +23,16 @@ All seven services must return `active`.
 
 ## Step 2. Configure the PXE network
 
-Go to [System → Network](/network) and fill in the four sections:
+If you already selected a PXE interface and DHCP mode (`Proxy DHCP` or `Full DHCP`) during the initial `omb-setup` wizard, both `omb-dnsmasq` and Samba (`smbd` and `/etc/samba/smb.conf`) are already configured and running automatically — you only need to review the values.
+
+If PXE setup was deferred or you want to change the settings, go to [System → Network](/network) and fill in the four sections:
 
 1. **Network and DHCP:** select the boot network interface, server IP address, and mode — **Full DHCP** (in an isolated VLAN where OMB assigns IP addresses) or **Proxy DHCP** (when an external corporate DHCP server already assigns IPs).
 2. **iPXE bootloader:** choose the default UEFI driver — `ipxe.efi` (built-in drivers) or `snponly.efi` (firmware driver, useful for USB-C docks and newer NICs).
 3. **WinPE (Windows Setup):** leave the defaults if unsure (90 s network wait timeout, 2 s retry pause).
 4. **Endpoints:** verify the menu URL (`http://<IP>:8080/boot/menu.ipxe`) and TFTP directory (`/srv/omb/tftp`).
 
-Click “Save”, review the diff table on the confirmation screen, and apply the settings.
+Click “Save”, review the diff table on the confirmation screen, and apply the settings. Whenever PXE settings are saved in `/network`, `omb-agent` automatically synchronizes `/etc/samba/smb.conf` and restarts `smbd` — no manual Samba editing is needed.
 
 ## Step 3. Add ISO images
 

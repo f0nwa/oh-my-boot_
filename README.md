@@ -25,6 +25,23 @@ Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an i
 - **Secure Boot:** a signed iPXE chain, a hint when firmware rejects the loader, an SCCM script and a WinPE USB stick (**Library → USB media**) that turn on the Microsoft UEFI CA key on Lenovo, Dell and HP laptops ([Secure Boot guide](docs/en/secure-boot.md)).
 - **Admin page** in Russian and English, with a light, dark or system theme chosen by each user.
 
+## Quick Start
+
+Install OMB on Ubuntu 26.04 LTS amd64 (or Ubuntu 24.04 LTS amd64 for online installs) using one of three methods:
+
+```sh
+# 1. Online one-line install (downloads .deb, verifies SHA-256, launches omb-setup)
+curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
+
+# 2. Manual .deb install
+sudo apt update && sudo apt install ./omb_<version>_amd64.deb && sudo omb-setup
+
+# 3. Offline air-gapped install (from a signed apt-repo)
+sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key>
+```
+
+After installation, open `https://<server-ip>:8443` and sign in as `admin`. See the full installation guide: [English](docs/en/installation.md) · [Русский](docs/installation.md).
+
 ## Tested so far
 
 Test VMs reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and the Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 profile also reached its installer and disk in SeaBIOS; a Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements stopped installation on that VM. A Windows 11 installation with a user-supplied answer file completed and booted from disk, and a newly uploaded Windows 11 26H2 ISO reached disk selection. A Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI and, in SeaBIOS, WinPE with network, both disks and the mounted installer. Physical PXE clients and driver entries on real laptops remain to be checked. These detailed firmware results predate the unified-installations build. After the OMB transition, the user confirmed UEFI Secure Boot loading with XML and drivers; the full repeat client run is deferred until the main development work is complete. Strelec preparation now follows the native PXE recipe in the supplied ISO; client boot verification is recorded separately.
@@ -35,7 +52,7 @@ Use the [current Control guide](docs/en/control-installation.md#installations-an
 
 ## Guides
 
-Start with the [server installation guide](docs/installation.md) ([offline installation](docs/en/offline-installation.md)). The other guides are available in English and Russian:
+Start with the server installation guide ([EN](docs/en/installation.md) · [RU](docs/installation.md)) and [offline releases](docs/en/offline-release.md). The other guides are available in English and Russian:
 
 | Guide | English | Русский |
 | --- | --- | --- |

@@ -10,7 +10,7 @@ Delta `tar.gz` archives and `from_commit` pinning are not used: any installed OM
 
 Prepare the compiled binaries from a committed Git revision as described in [the offline installation guide](../offline-installation.md) and stage a payload directory containing:
 
-- `bin/` — eight amd64 ELF binaries (`omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-winiso-prepare`);
+- `bin/` — nine amd64 ELF binaries (`omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-winiso-prepare`);
 - `deploy/systemd/` — six systemd units (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-winiso@.service`);
 - `deploy/boot-assets/windows-profiles/` — WinPE profile templates (`omb-setup.cmd.in`, `winpeshl.ini`, and any additional templates);
 - `assets/` — pinned boot assets (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`);
@@ -46,7 +46,7 @@ Passing `--print-package` outputs the TSV tuple (`FILENAME`, `SHA256`, `VERSION`
 
 ### Single-command release build (`scripts/build-release.sh`)
 
-To cross-compile all 8 binaries, stage `payload/`, run `offline-deb.py build` + `verify-repo`, and optionally deploy to a stand in one command, use `scripts/build-release.sh`. Version and channel are inferred from the Git tag on `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) or passed explicitly via `--version` / `--channel`:
+To cross-compile all 9 binaries, stage `payload/`, run `offline-deb.py build` + `verify-repo`, and optionally deploy to a stand in one command, use `scripts/build-release.sh`. Version and channel are inferred from the Git tag on `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) or passed explicitly via `--version` / `--channel`:
 
 ```sh
 # 1. On an Ubuntu VM or in CI (local dpkg-deb)
@@ -73,7 +73,10 @@ bash scripts/build-release.sh \
 Copy `scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh`, and `scripts/offline-deb.py` together into the same directory on the target Ubuntu host alongside `<apt-repo>` and `<public-key>`:
 
 ```sh
-# 1. Fresh installation on a clean Ubuntu 26.04 amd64 host (prompts for initial admin password)
+# 1. Fresh installation on a clean Ubuntu 26.04 amd64 host (interactive omb-setup wizard)
+sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key>
+
+#    Positional form without interactive network selection (prompts for initial admin password)
 sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key> <management-ip> [pxe-interface|none]
 
 # 2. Upgrade (including multi-release jumps)
@@ -86,8 +89,9 @@ sudo bash scripts/offline-deploy.sh rollback <management-ip>
 ### Fresh installation (`install`)
 
 - Requires a clean machine with no existing `/etc/omb`, `/srv/omb/tftp`, `/var/lib/omb-deployment`, or `omb-control`.
-- Verifies `<apt-repo>`, installs system `.deb`s and `omb` offline via `unshare --net` APT (refusing if any already-installed system package would be upgraded), creates `omb-boot`, `omb-control`, `omb-images`, `omb-iso` accounts and PostgreSQL databases, loads `/usr/share/omb/bootstrap/` schemas, and seeds `schema_migrations` from `/usr/share/omb/migrations/manifest.json`.
-- Extracts pinned boot assets, generates `/etc/omb/secrets.key` and `/var/lib/omb-control/control.{crt,key}`, keeps DHCP (`omb-dnsmasq`) and Samba disabled until the PXE segment is configured (`none` uses the reserved `omb-pxe-off` placeholder), and saves `/var/lib/omb-deployment/{current.deb,PACKAGE,PACKAGE_SHA256,CHANNEL,COMMIT}`.
+- Verifies `<apt-repo>`, installs system `.deb`s and `omb` offline via `unshare --net` APT (refusing if any already-installed system package would be upgraded), and in the short form (`install <apt-repo> <public-key>`) launches the interactive `omb-setup --install-mode offline` wizard; in the positional form it creates `omb-boot`, `omb-control`, `omb-images`, `omb-iso` accounts and PostgreSQL databases, loads `/usr/share/omb/bootstrap/` schemas, and seeds `schema_migrations` from `/usr/share/omb/migrations/manifest.json`.
+- Extracts pinned boot assets, generates `/etc/omb/secrets.key` and `/var/lib/omb-control/control.{crt,key}`, and saves `/var/lib/omb-deployment/{current.deb,PACKAGE,PACKAGE_SHA256,CHANNEL,COMMIT}`.
+- When a PXE interface and DHCP mode (`proxy` or `full`) are selected in `omb-setup`, `omb-dnsmasq` and Samba (`smbd` and `/etc/samba/smb.conf`) are configured and started automatically. If PXE setup is deferred (or the positional form is used), DHCP and Samba stay disabled until PXE settings are applied in the web panel (**System → Network**), where `omb-agent` automatically syncs `omb-dnsmasq` and `/etc/samba/smb.conf` (`none` uses the reserved `omb-pxe-off` placeholder). See the [installation guide](installation.md) for the full `omb-setup` walkthrough.
 
 ### Local `current.deb` cache and automatic scope calculation
 

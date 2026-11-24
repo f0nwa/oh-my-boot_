@@ -131,6 +131,39 @@ printf 'helper-v2' > "$work/new-multi/usr/lib/omb/omb-prepare-ubuntu-source"
 printf 'omb_images\t0001_add_col\tomb_images/0001_add_col.sql\t1111111111111111111111111111111111111111111111111111111111111111\n' > "$work/pending-img"
 test "$(compute_update_scope "$work/old-boot" "$work/new-multi" "$work/pending-img")" = $'SERVICES\tagent,control,dnsmasq,images\nDATABASES\tomb_images'
 
+# 5g. Removing legacy usr/share/omb/upgrade/* succeeds, while adding/modifying it or touching forbidden paths fails.
+make_pkg_tree "$work/old-legacy-upgrade"
+mkdir -p "$work/old-legacy-upgrade/usr/share/omb/upgrade"
+printf '{"migrations":[]}\n' > "$work/old-legacy-upgrade/usr/share/omb/upgrade/migrations.json"
+make_pkg_tree "$work/new-no-upgrade"
+test "$(compute_update_scope "$work/old-legacy-upgrade" "$work/new-no-upgrade" "$work/no-pending")" = $'SERVICES\tcontrol\nDATABASES\tnone'
+
+# Adding usr/share/omb/upgrade/migrations.json -> hard-fail.
+if compute_update_scope "$work/new-no-upgrade" "$work/old-legacy-upgrade" "$work/no-pending" >/dev/null 2>&1; then
+    echo 'Accepted adding usr/share/omb/upgrade/migrations.json' >&2
+    exit 1
+fi
+
+# Modifying usr/share/omb/upgrade/migrations.json -> hard-fail.
+make_pkg_tree "$work/new-mod-upgrade"
+mkdir -p "$work/new-mod-upgrade/usr/share/omb/upgrade"
+printf '{"migrations":["v2"]}\n' > "$work/new-mod-upgrade/usr/share/omb/upgrade/migrations.json"
+if compute_update_scope "$work/old-legacy-upgrade" "$work/new-mod-upgrade" "$work/no-pending" >/dev/null 2>&1; then
+    echo 'Accepted modifying usr/share/omb/upgrade/migrations.json' >&2
+    exit 1
+fi
+
+# Removing usr/share/omb/upgrade/migrations.json while touching assets/samba/windows-profiles -> hard-fail.
+for forbidden_rel in usr/share/omb/assets/wimboot usr/share/omb/samba/smb.conf usr/share/omb/windows-profiles/winpeshl.ini; do
+    make_pkg_tree "$work/new-bad-combo"
+    printf 'changed' > "$work/new-bad-combo/$forbidden_rel"
+    if compute_update_scope "$work/old-legacy-upgrade" "$work/new-bad-combo" "$work/no-pending" >/dev/null 2>&1; then
+        echo "Accepted forbidden change to $forbidden_rel alongside legacy upgrade removal" >&2
+        exit 1
+    fi
+    rm -rf "$work/new-bad-combo"
+done
+
 # 6. plan_migrations tests.
 sha1=1111111111111111111111111111111111111111111111111111111111111111
 sha2=2222222222222222222222222222222222222222222222222222222222222222
@@ -177,6 +210,35 @@ if plan_migrations "$work/manifest-empty.json" "$work/applied-missing.tsv" >/dev
     exit 1
 fi
 
+# 6f. Non-canonical migration path in manifest -> hard-fail.
+cat > "$work/manifest-bad-path.json" <<JSON
+{
+  "format": 1,
+  "migrations": [
+    {"database": "omb_control", "id": "0001_first", "path": "../evil.sql", "sha256": "$sha1"}
+  ]
+}
+JSON
+if plan_migrations "$work/manifest-bad-path.json" "$work/applied-empty.tsv" >/dev/null 2>&1; then
+    echo 'Accepted non-canonical migration path in manifest' >&2
+    exit 1
+fi
+
+# 6g. Duplicate 4-digit migration prefix per DB -> hard-fail.
+cat > "$work/manifest-dup-prefix.json" <<JSON
+{
+  "format": 1,
+  "migrations": [
+    {"database": "omb_control", "id": "0001_first", "path": "omb_control/0001_first.sql", "sha256": "$sha1"},
+    {"database": "omb_control", "id": "0001_second", "path": "omb_control/0001_second.sql", "sha256": "$sha2"}
+  ]
+}
+JSON
+if plan_migrations "$work/manifest-dup-prefix.json" "$work/applied-empty.tsv" >/dev/null 2>&1; then
+    echo 'Accepted duplicate 4-digit migration prefix in manifest' >&2
+    exit 1
+fi
+
 # 7. apply_migration runs SQL + schema_migrations INSERT in a single transaction as DB owner.
 (
     mig_sql="$work/0001_example.sql"
@@ -194,7 +256,7 @@ fi
     grep -Fq -- "-v mig_sha=$mig_sha" "$captured_args"
     head -n 1 "$captured_stdin" | grep -Fxq 'BEGIN;'
     grep -Fq 'ALTER TABLE public.users ADD COLUMN test_col TEXT;' "$captured_stdin"
-    grep -Fq "INSERT INTO schema_migrations (id, sha256) VALUES (:'mig_id', :'mig_sha');" "$captured_stdin"
+    grep -Fq "INSERT INTO public.schema_migrations (id, sha256) VALUES (:'mig_id', :'mig_sha');" "$captured_stdin"
     tail -n 1 "$captured_stdin" | grep -Fxq 'COMMIT;'
 
     # Failure in psql propagates non-zero exit code.
@@ -212,17 +274,36 @@ fi
     fi
 )
 
-# 8. seed_schema_migrations handles empty and non-empty manifests.
+# 8. seed_schema_migrations handles empty, valid, and invalid manifests.
 (
     source "$repo/scripts/offline-install-lib.sh"
     calls="$work/seed-calls"
+    sql_in="$work/seed-sql"
     : > "$calls"
-    runuser() { printf '%s\n' "$*" >> "$calls"; cat >/dev/null; }
+    : > "$sql_in"
+    runuser() { printf '%s\n' "$*" >> "$calls"; cat >> "$sql_in"; }
     seed_schema_migrations "$work/manifest-empty.json"
     test ! -s "$calls"
     seed_schema_migrations "$work/manifest-jump.json"
     grep -Fq -- '-u omb-control -- psql -Xw -v ON_ERROR_STOP=1 -d omb_control -v mig_id=0001_first' "$calls"
     grep -Fq -- '-u omb-boot -- psql -Xw -v ON_ERROR_STOP=1 -d omb_boot -v mig_id=0001_boot' "$calls"
+    grep -Fq "INSERT INTO public.schema_migrations (id, sha256)" "$sql_in"
+
+    printf '{"format":1,"migrations":[{"database":"omb_other","id":"0001_x","path":"omb_other/0001_x.sql","sha256":"%s"}]}\n' "$sha1" > "$work/seed-bad-db.json"
+    if (seed_schema_migrations "$work/seed-bad-db.json") >/dev/null 2>&1; then
+        echo 'seed_schema_migrations accepted unsupported database' >&2
+        exit 1
+    fi
+    printf '{"format":1,"migrations":[{"database":"omb_control","id":"bad","path":"omb_control/bad.sql","sha256":"%s"}]}\n' "$sha1" > "$work/seed-bad-id.json"
+    if (seed_schema_migrations "$work/seed-bad-id.json") >/dev/null 2>&1; then
+        echo 'seed_schema_migrations accepted invalid id' >&2
+        exit 1
+    fi
+    printf '{"format":1,"migrations":[{"database":"omb_control","id":"0001_x","path":"omb_control/0001_x.sql","sha256":"notasha"}]}\n' > "$work/seed-bad-sha.json"
+    if (seed_schema_migrations "$work/seed-bad-sha.json") >/dev/null 2>&1; then
+        echo 'seed_schema_migrations accepted invalid sha256' >&2
+        exit 1
+    fi
 )
 
 # 9. assert_no_pending guard.

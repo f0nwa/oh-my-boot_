@@ -438,6 +438,7 @@ class OfflineDebTestCase(unittest.TestCase):
             "ROLLBACK;\n",
             "VACUUM;\n",
             "begin;\n",
+            "DO $$ BEGIN PERFORM 1; END $$;\nCOMMIT;\n",
         ]
         for sql in forbidden_cases:
             with self.subTest(sql=sql.strip()), tempfile.TemporaryDirectory() as tmp:
@@ -465,6 +466,13 @@ class OfflineDebTestCase(unittest.TestCase):
                 "-- BEGIN comment with ROLLBACK and VACUUM\n"
                 "/* COMMIT inside block comment */\n"
                 "INSERT INTO notes (body) VALUES ('BEGIN'), ('COMMIT'), ('it''s a ROLLBACK');\n"
+                'ALTER TABLE users ADD COLUMN "begin" TEXT;\n'
+                "DO $$ BEGIN PERFORM 1; END $$;\n"
+                "CREATE OR REPLACE FUNCTION touch_row() RETURNS void LANGUAGE plpgsql AS $fn$\n"
+                "BEGIN\n"
+                "    PERFORM 1;\n"
+                "END;\n"
+                "$fn$;\n"
             )
             payload, license_file = self.make_payload(
                 root,
@@ -480,6 +488,26 @@ class OfflineDebTestCase(unittest.TestCase):
                 "--sign-key", str(self.private_key),
             )
             self.assertEqual(build.returncode, 0, msg=build.stderr)
+
+    def test_rejects_missing_explicit_metadata_paths(self):
+        for flag in ("--go-mod", "--unattend-upstream"):
+            with self.subTest(flag=flag), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                payload, license_file = self.make_payload(root)
+                repo = root / "apt-repo"
+                missing = root / "does-not-exist"
+                build = self.run_cli(
+                    "build", str(payload), str(repo),
+                    "--version", "0.2.0",
+                    "--channel", "stable",
+                    "--commit", COMMIT_SHA,
+                    "--license", str(license_file),
+                    "--sign-key", str(self.private_key),
+                    flag, str(missing),
+                )
+                self.assertNotEqual(build.returncode, 0)
+                self.assertIn("missing required regular file", build.stderr.lower())
+                self.assertFalse(repo.exists())
 
     def test_verify_repo_rejects_tampered_deb_and_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:

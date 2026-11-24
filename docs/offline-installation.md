@@ -209,12 +209,11 @@ done
 
 ```sh
 sudo runuser -u omb-boot    -- psql -v ON_ERROR_STOP=1 -d omb_boot    < deploy/sql/boot.sql
-sudo runuser -u omb-boot    -- psql -v ON_ERROR_STOP=1 -d omb_boot    < deploy/sql/2026-10-23-boot-transfer.sql
 sudo runuser -u omb-images  -- psql -v ON_ERROR_STOP=1 -d omb_images  < deploy/sql/images.sql
 sudo runuser -u omb-control -- psql -v ON_ERROR_STOP=1 -d omb_control < deploy/sql/control.sql
 ```
 
-- `boot.sql` не содержит колонок `status`, `bytes` и `size`, поэтому миграция `2026-10-23-boot-transfer.sql` нужна.
+- `boot.sql` уже содержит колонки `status`, `bytes` и `size`, поэтому для пустой базы достаточно основной схемы.
 - `control.sql` уже содержит таблицы каталога драйверов и остальные изменения Control. Для пустой базы достаточно основной схемы; `2026-10-19-winpe-drivers.sql` отдельно применять не нужно.
 - **Не применяйте** `2026-10-15-managed-smb.sql` к новой базе Images: её колонки уже есть в `images.sql`, и миграция завершится ошибкой.
 

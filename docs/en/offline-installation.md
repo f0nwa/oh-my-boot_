@@ -209,12 +209,11 @@ The guides describe migrations as updates to a running server. For empty databas
 
 ```sh
 sudo runuser -u omb-boot    -- psql -v ON_ERROR_STOP=1 -d omb_boot    < deploy/sql/boot.sql
-sudo runuser -u omb-boot    -- psql -v ON_ERROR_STOP=1 -d omb_boot    < deploy/sql/2026-10-23-boot-transfer.sql
 sudo runuser -u omb-images  -- psql -v ON_ERROR_STOP=1 -d omb_images  < deploy/sql/images.sql
 sudo runuser -u omb-control -- psql -v ON_ERROR_STOP=1 -d omb_control < deploy/sql/control.sql
 ```
 
-- `boot.sql` lacks the `status`, `bytes` and `size` columns, so `2026-10-23-boot-transfer.sql` is needed.
+- `boot.sql` already includes the `status`, `bytes`, and `size` columns, so the main schema is sufficient for an empty database.
 - `control.sql` already includes the driver catalog tables and the other Control changes. Use the main schema for an empty database; do not apply `2026-10-19-winpe-drivers.sql` separately.
 - **Do not apply** `2026-10-15-managed-smb.sql` to a new Images database: its columns are already in `images.sql`, and the migration will fail.
 

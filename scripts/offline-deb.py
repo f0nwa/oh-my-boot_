@@ -58,7 +58,9 @@ MIGRATION_FILENAME_RE = re.compile(r"^[0-9]{4}_[a-z0-9_]+\.sql$")
 SQL_STRIP_RE = re.compile(
     r"--[^\n]*"
     r"|/\*.*?\*/"
-    r"|'(?:''|[^'])*'",
+    r"|\$([A-Za-z_][A-Za-z0-9_]*|)\$.*?\$\1\$"
+    r"|'(?:''|[^'])*'"
+    r'|"(?:""|[^"])*"',
     re.DOTALL,
 )
 FORBIDDEN_SQL_RE = re.compile(r"\b(BEGIN|COMMIT|ROLLBACK|VACUUM)\b", re.IGNORECASE)
@@ -441,7 +443,7 @@ def build_package(
         raise ValueError(f"package filename already exists in the repository: {deb.name}")
     subprocess.run(
         ["dpkg-deb", "--root-owner-group", "-Zgzip", "--build", str(package), str(deb)],
-        env={"SOURCE_DATE_EPOCH": "0", **os.environ},
+        env={**os.environ, "SOURCE_DATE_EPOCH": "0"},
         check=True,
     )
     deb.chmod(0o644)
@@ -464,6 +466,10 @@ def build_repo(args: argparse.Namespace) -> None:
     subprocess.run(["dpkg", "--validate-version", args.version], check=True)
     require_regular_file(args.license, str(args.license))
     require_regular_file(args.sign_key, str(args.sign_key))
+    if args.go_mod is not None:
+        require_regular_file(args.go_mod, str(args.go_mod))
+    if args.unattend_upstream is not None:
+        require_regular_file(args.unattend_upstream, str(args.unattend_upstream))
 
     payload = args.payload
     if not payload.is_dir() or payload.is_symlink():
@@ -511,9 +517,9 @@ def build_repo(args: argparse.Namespace) -> None:
         dependencies: dict = {
             "boot_assets": boot_assets,
         }
-        if args.go_mod and args.go_mod.is_file():
+        if args.go_mod is not None:
             dependencies["go"] = parse_go_mod(args.go_mod)
-        if args.unattend_upstream and args.unattend_upstream.is_file():
+        if args.unattend_upstream is not None:
             dependencies["unattend_upstream"] = parse_unattend_upstream(args.unattend_upstream)
 
         repo_manifest = {

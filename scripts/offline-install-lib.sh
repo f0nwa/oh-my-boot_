@@ -80,13 +80,25 @@ resolve_pxe_interface() {
 seed_schema_migrations() {
     local manifest=$1 rows db id sha
     rows=$(python3 - "$manifest" <<'PY'
-import json, sys
+import json, re, sys
+DB_ORDER = ("omb_boot", "omb_images", "omb_control")
+ID_RE = re.compile(r"^[0-9]{4}_[a-z0-9_]+$")
+SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 with open(sys.argv[1], encoding="utf-8") as f:
     data = json.load(f)
 if data.get("format") != 1 or not isinstance(data.get("migrations"), list):
     sys.exit("Invalid migrations manifest format.")
 for entry in data["migrations"]:
-    print(entry["database"], entry["id"], entry["sha256"], sep="\t")
+    db = entry.get("database")
+    mid = entry.get("id")
+    msha = entry.get("sha256")
+    if db not in DB_ORDER:
+        sys.exit(f"Unsupported migration database in manifest: {db}.")
+    if not isinstance(mid, str) or not ID_RE.match(mid):
+        sys.exit(f"Invalid migration id in manifest: {mid}.")
+    if not isinstance(msha, str) or not SHA_RE.match(msha):
+        sys.exit(f"Invalid migration sha256 in manifest: {db}/{mid}.")
+    print(db, mid, msha, sep="\t")
 PY
     ) || return 1
     if [[ -z "$rows" ]]; then
@@ -94,16 +106,20 @@ PY
     fi
     while IFS=$'\t' read -r db id sha; do
         [[ -n "$db" ]] || continue
+        [[ "$db" == omb_boot || "$db" == omb_images || "$db" == omb_control ]] ||
+            fail "Unsupported migration database: $db."
+        [[ "$id" =~ ^[0-9]{4}_[a-z0-9_]+$ && "$sha" =~ ^[0-9a-f]{64}$ ]] ||
+            fail "Invalid migration metadata for $db/$id."
         runuser -u "${db/_/-}" -- psql -Xw -v ON_ERROR_STOP=1 -d "$db" \
             -v mig_id="$id" -v mig_sha="$sha" <<'SQL'
-INSERT INTO schema_migrations (id, sha256) VALUES (:'mig_id', :'mig_sha') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.schema_migrations (id, sha256) VALUES (:'mig_id', :'mig_sha') ON CONFLICT (id) DO NOTHING;
 SQL
     done <<< "$rows"
 }
 
 fresh_install() {
     local repo=$1 key=$2 pxe_iface
-    local pkg_path pkg_sha package_version commit install_channel deb="$work/install.deb"
+    local pkg_meta pkg_path pkg_sha package_version commit install_channel deb="$work/install.deb"
     local account svc path password confirmation dbs iso_password boot_url="http://$address:8080"
     local boot_dsn='host=/var/run/postgresql dbname=omb_boot user=omb-boot'
     local control_dsn='host=/var/run/postgresql dbname=omb_control user=omb-control'
@@ -120,7 +136,8 @@ fresh_install() {
         if systemctl is-active --quiet "$svc"; then fail "Unexpected active service: $svc."; fi
     done
 
-    IFS=$'\t' read -r pkg_path pkg_sha package_version commit install_channel <<< "$(resolve_repo_package "$repo" "$key")"
+    pkg_meta=$(resolve_repo_package "$repo" "$key")
+    IFS=$'\t' read -r pkg_path pkg_sha package_version commit install_channel <<< "$pkg_meta"
     stage_deb "$pkg_path" "$pkg_sha" "$deb"
     [[ $(package_identity "$deb" "$commit") == "$package_version" ]] || fail 'The package does not match the repository metadata.'
     [[ $(package_channel "$deb") == "$install_channel" ]] || fail 'The package channel does not match the repository metadata.'

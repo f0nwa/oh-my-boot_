@@ -76,6 +76,7 @@ if manifest.get("format") != 1 or not isinstance(manifest.get("migrations"), lis
 
 manifest_by_db = {db: [] for db in DB_ORDER}
 manifest_map = {db: {} for db in DB_ORDER}
+seen_numbers = {db: set() for db in DB_ORDER}
 for entry in manifest["migrations"]:
     db = entry.get("database")
     mid = entry.get("id")
@@ -87,10 +88,14 @@ for entry in manifest["migrations"]:
         sys.exit(f"Invalid migration id in manifest: {mid}.")
     if not isinstance(msha, str) or not SHA_RE.match(msha):
         sys.exit(f"Invalid migration sha256 in manifest: {db}/{mid}.")
-    if not isinstance(mpath, str) or not mpath:
-        sys.exit(f"Invalid migration path in manifest: {db}/{mid}.")
+    if mpath != f"{db}/{mid}.sql":
+        sys.exit(f"Invalid migration path in manifest: {db}/{mid} ({mpath}).")
     if mid in manifest_map[db]:
         sys.exit(f"Duplicate migration id in manifest: {db}/{mid}.")
+    number = mid[:4]
+    if number in seen_numbers[db]:
+        sys.exit(f"Duplicate migration number in manifest: {db}/{number}.")
+    seen_numbers[db].add(number)
     manifest_by_db[db].append(entry)
     manifest_map[db][mid] = entry
 
@@ -139,7 +144,7 @@ collect_applied_migrations() {
     local out=$1 db rows row
     : > "$out"
     for db in omb_boot omb_images omb_control; do
-        rows=$(sql -d "$db" -At -F $'\t' -c "SELECT id, sha256 FROM schema_migrations ORDER BY id") || return 1
+        rows=$(sql -d "$db" -At -F $'\t' -c "SELECT id, sha256 FROM public.schema_migrations ORDER BY id") || return 1
         if [[ -n "$rows" ]]; then
             while IFS= read -r row; do
                 [[ -n "$row" ]] || continue
@@ -233,6 +238,8 @@ for rel in sorted(set(old_files) | set(new_files)):
         services.add(HELPER_TO_SVC[rel])
     elif rel in ALLOWED_EXACT or rel.startswith(ALLOWED_PREFIXES):
         continue
+    elif new_p is None and rel.startswith("usr/share/omb/upgrade/"):
+        continue
     elif rel.startswith(FORBIDDEN_PREFIXES):
         sys.exit(f"The package update changes provisioning inputs under /usr/share/omb: {rel}.")
     else:
@@ -265,7 +272,7 @@ apply_migration() {
     {
         printf 'BEGIN;\n'
         cat -- "$sql_file"
-        printf "\nINSERT INTO schema_migrations (id, sha256) VALUES (:'mig_id', :'mig_sha');\nCOMMIT;\n"
+        printf "\nINSERT INTO public.schema_migrations (id, sha256) VALUES (:'mig_id', :'mig_sha');\nCOMMIT;\n"
     } | runuser -u "${database/_/-}" -- psql -Xw -v ON_ERROR_STOP=1 -d "$database" \
         -v mig_id="$id" -v mig_sha="$sha256"
 }
@@ -618,13 +625,14 @@ restore_snapshot() {
 
 upgrade() {
     local repo=$1 key=$2
-    local pkg_path pkg_sha new_version to target_channel
+    local pkg_meta pkg_path pkg_sha new_version to target_channel
     local old_version old_sha from prior_channel kind field1 suffix
     assert_no_pending "$state"
     check_address
     [[ -z $(dpkg --audit) ]] || fail 'The host package database needs attention before the update.'
 
-    IFS=$'\t' read -r pkg_path pkg_sha new_version to target_channel <<< "$(resolve_repo_package "$repo" "$key")"
+    pkg_meta=$(resolve_repo_package "$repo" "$key")
+    IFS=$'\t' read -r pkg_path pkg_sha new_version to target_channel <<< "$pkg_meta"
     stage_deb "$pkg_path" "$pkg_sha" "$work/new.deb"
     [[ $(package_identity "$work/new.deb" "$to") == "$new_version" ]] || fail 'The package does not match the repository metadata.'
     [[ $(package_channel "$work/new.deb") == "$target_channel" ]] || fail 'The package channel does not match the repository metadata.'

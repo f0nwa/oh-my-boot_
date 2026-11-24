@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="416" viewBox="0 0 1200 416" role="img" aria-labelledby="title desc">
-  <title id="title">Oh My Boot Web Control Panel</title>
-  <desc id="desc">The Live view of the Oh My Boot web panel showing the menu draft bar, active PXE clients with stage progress, and service status.</desc>
+  <title id="title">oh my boot_ Web Control Panel</title>
+  <desc id="desc">The Live view of the oh my boot_ web panel showing the menu draft bar, active PXE clients with stage progress, and service status.</desc>
   <rect width="1200" height="416" rx="16" fill="#F7F8FA" stroke="#E3E6EA" stroke-width="2"/>
   <!-- Topbar -->
   <rect x="0" y="0" width="1200" height="58" rx="16" fill="#FFFFFF"/>

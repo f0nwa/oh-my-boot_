@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="348" viewBox="0 0 1200 348" role="img" aria-labelledby="title desc">
-  <title id="title">Oh My Boot network boot pipeline</title>
+  <title id="title">oh my boot_ network boot pipeline</title>
   <desc id="desc">Four network boot stages from DHCP and signed shim to OS installation, managed by the omb-control HTTPS panel.</desc>
   <rect width="1200" height="348" rx="16" fill="#0E1013" stroke="#23272E" stroke-width="2"/>
-  <text x="52" y="42" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="700" letter-spacing="1.2" fill="#8A929E">HOW NETWORK BOOT WORKS IN OH MY BOOT</text>
+  <text x="52" y="42" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="700" letter-spacing="1.2" fill="#8A929E">HOW NETWORK BOOT WORKS IN oh my boot_</text>
   <g transform="translate(52 56)">
     <rect width="1096" height="38" rx="8" fill="#17140F" stroke="#3A2E17" stroke-width="1.5"/>
     <circle cx="20" cy="19" r="5" fill="#F2A93B"/>

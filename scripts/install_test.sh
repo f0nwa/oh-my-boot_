@@ -206,8 +206,8 @@ printf 'valid-deb-payload-v020' >"$t7/fixtures/omb_0.2.0_amd64.deb"
 good_sha=$(sha256_file "$t7/fixtures/omb_0.2.0_amd64.deb")
 printf '%s  omb_0.2.0_amd64.deb\n' "$good_sha" >"$t7/fixtures/SHA256SUMS"
 run_installer "$t7" "$t7/os-release" -- --lang ru
-grep -Fq "https://github.com/f0nwa/OMB/releases/latest/download/SHA256SUMS" "$t7/logs/curl.log" || fail "t7: wrong SHA256SUMS URL"
-grep -Fq "https://github.com/f0nwa/OMB/releases/latest/download/omb_0.2.0_amd64.deb" "$t7/logs/curl.log" || fail "t7: wrong deb URL"
+grep -Fq "https://github.com/f0nwa/oh-my-boot_/releases/latest/download/SHA256SUMS" "$t7/logs/curl.log" || fail "t7: wrong SHA256SUMS URL"
+grep -Fq "https://github.com/f0nwa/oh-my-boot_/releases/latest/download/omb_0.2.0_amd64.deb" "$t7/logs/curl.log" || fail "t7: wrong deb URL"
 grep -Fq "apt-get -o DPkg::Lock::Timeout=60 install -y --no-install-recommends" "$t7/logs/apt-get.log" || fail "t7: apt-get install not called"
 grep -Fq "omb_0.2.0_amd64.deb" "$t7/logs/apt-get.log" || fail "t7: deb filename missing in apt-get"
 grep -Fq "omb-setup --install-mode online --channel stable --lang ru" "$t7/logs/omb-setup.log" || fail "t7: omb-setup args mismatch"
@@ -252,9 +252,9 @@ printf 'dev-deb-payload' >"$t10/fixtures/omb_0.2.1~dev.2_amd64.deb"
 dev_sha=$(sha256_file "$t10/fixtures/omb_0.2.1~dev.2_amd64.deb")
 printf '%s  omb_0.2.1~dev.2_amd64.deb\n' "$dev_sha" >"$t10/fixtures/SHA256SUMS"
 run_installer "$t10" "$t10/os-release" --channel dev
-grep -Fq "https://api.github.com/repos/f0nwa/OMB/releases?per_page=20" "$t10/logs/curl.log" || fail "t10: did not query GitHub releases API"
-grep -Fq "https://github.com/f0nwa/OMB/releases/download/v0.2.1-dev.2/SHA256SUMS" "$t10/logs/curl.log" || fail "t10: wrong dev SHA256SUMS URL"
-grep -Fq "https://github.com/f0nwa/OMB/releases/download/v0.2.1-dev.2/omb_0.2.1~dev.2_amd64.deb" "$t10/logs/curl.log" || fail "t10: wrong dev deb URL"
+grep -Fq "https://api.github.com/repos/f0nwa/oh-my-boot_/releases?per_page=20" "$t10/logs/curl.log" || fail "t10: did not query GitHub releases API"
+grep -Fq "https://github.com/f0nwa/oh-my-boot_/releases/download/v0.2.1-dev.2/SHA256SUMS" "$t10/logs/curl.log" || fail "t10: wrong dev SHA256SUMS URL"
+grep -Fq "https://github.com/f0nwa/oh-my-boot_/releases/download/v0.2.1-dev.2/omb_0.2.1~dev.2_amd64.deb" "$t10/logs/curl.log" || fail "t10: wrong dev deb URL"
 grep -Fq "omb-setup --install-mode online --channel dev" "$t10/logs/omb-setup.log" || fail "t10: omb-setup must receive --channel dev"
 
 # 11. Piped stdin reaches omb-setup when --non-interactive --admin-password-stdin is passed
@@ -301,8 +301,8 @@ printf '2\n' | env PATH="$t12/bin:$PATH" \
     MOCK_CURL_FIXTURES="$t12/fixtures" \
     bash "$installer" >"$t12/out" 2>&1
 grep -Fq "Выберите ветку / Select release channel:" "$t12/out" || fail "t12: branch prompt not shown"
-grep -Fq "https://api.github.com/repos/f0nwa/OMB/releases?per_page=20" "$t12/logs/curl.log" || fail "t12: did not query GitHub releases API"
-grep -Fq "https://github.com/f0nwa/OMB/releases/download/v0.2.1-dev.3/omb_0.2.1~dev.3_amd64.deb" "$t12/logs/curl.log" || fail "t12: wrong dev deb URL"
+grep -Fq "https://api.github.com/repos/f0nwa/oh-my-boot_/releases?per_page=20" "$t12/logs/curl.log" || fail "t12: did not query GitHub releases API"
+grep -Fq "https://github.com/f0nwa/oh-my-boot_/releases/download/v0.2.1-dev.3/omb_0.2.1~dev.3_amd64.deb" "$t12/logs/curl.log" || fail "t12: wrong dev deb URL"
 grep -Fq "omb-setup --install-mode online --channel dev" "$t12/logs/omb-setup.log" || fail "t12: omb-setup did not receive --channel dev"
 
 # 13. Interactive branch prompt default (Enter) selects stable
@@ -323,7 +323,7 @@ printf '\n' | env PATH="$t13/bin:$PATH" \
     MOCK_CURL_FIXTURES="$t13/fixtures" \
     bash "$installer" >"$t13/out" 2>&1
 grep -Fq "Выберите ветку / Select release channel:" "$t13/out" || fail "t13: branch prompt not shown"
-grep -Fq "https://github.com/f0nwa/OMB/releases/latest/download/omb_0.2.0_amd64.deb" "$t13/logs/curl.log" || fail "t13: wrong stable deb URL"
+grep -Fq "https://github.com/f0nwa/oh-my-boot_/releases/latest/download/omb_0.2.0_amd64.deb" "$t13/logs/curl.log" || fail "t13: wrong stable deb URL"
 grep -Fq "omb-setup --install-mode online --channel stable" "$t13/logs/omb-setup.log" || fail "t13: omb-setup did not receive --channel stable"
 
 echo "install_test.sh: ALL PASS"

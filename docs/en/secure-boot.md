@@ -1,8 +1,8 @@
-# Secure Boot: why Oh My Boot boots without turning it off
+# Secure Boot: why oh my boot_ boots without turning it off
 
 ## In short
 
-With Secure Boot on, firmware runs only programs signed with a trusted key. The enrolled keys depend on the model and firmware settings: a Windows key may be present while the Microsoft key for third-party loaders is absent. Oh My Boot uses a signed chain in which each executable stage is verified before it runs. Secure Boot can stay on when the firmware trusts the third-party loader key.
+With Secure Boot on, firmware runs only programs signed with a trusted key. The enrolled keys depend on the model and firmware settings: a Windows key may be present while the Microsoft key for third-party loaders is absent. oh my boot_ uses a signed chain in which each executable stage is verified before it runs. Secure Boot can stay on when the firmware trusts the third-party loader key.
 
 Some other PXE tools, such as iVentoy, boot the machine with their own unsigned loader. The firmware refuses it, so Secure Boot has to be turned off or a key added by hand on each machine.
 
@@ -206,7 +206,7 @@ Both pinned download sources are in the [boot assets guide](../../deploy/boot-as
 
 ## How OMB differs from iVentoy's EFI file choice
 
-iVentoy lets you pick which EFI file to send to machines. Its loader is unsigned, so the file is matched to the firmware. In Oh My Boot, the chain is signed and all UEFI clients receive the same iPXE loader.
+iVentoy lets you pick which EFI file to send to machines. Its loader is unsigned, so the file is matched to the firmware. In oh my boot_, the chain is signed and all UEFI clients receive the same iPXE loader.
 
 The choice that does matter is iPXE's network driver. `ipxe.efi` has its own network card drivers, while `snponly.efi` uses the firmware's driver. Some hardware (USB-C docks, USB adapters, some new network cards) works only with the latter. For iPXE, `snponly.efi` is the preferred baseline after compatibility is confirmed on the target models; `ipxe.efi` remains the fallback. Both files are signed and started through the shim, so choosing between them does not affect Secure Boot. This choice does not apply to GRUB, which uses a different loader. The iPXE variant can be selected globally, for an individual machine, and by MAC prefix.
 

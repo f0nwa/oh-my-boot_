@@ -5,11 +5,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/hero-en-dark.svg">
-    <img src="docs/images/readme/hero-en-light.svg" width="100%" alt="Oh My Boot — network boot, OS deployment, and machine maintenance from an HTTPS control panel">
+    <img src="docs/images/readme/hero-en-light.svg" width="100%" alt="oh my boot_ — network boot, OS deployment, and machine maintenance from an HTTPS control panel">
   </picture>
 </p>
 
-**Oh My Boot (OMB)** is a Linux network boot (PXE) server that serves a boot menu for BIOS and UEFI machines (including UEFI Secure Boot through signed `shim` + iPXE) and manages its contents from an HTTPS control panel: ISO libraries, Windows and Ubuntu installers, service WinPE images, answer files, WinPE drivers, and a log of every machine that booted. It works both on connected networks and in fully air-gapped environments.
+**oh my boot_ (OMB)** is a Linux network boot (PXE) server that serves a boot menu for BIOS and UEFI machines (including UEFI Secure Boot through signed `shim` + iPXE) and manages its contents from an HTTPS control panel: ISO libraries, Windows and Ubuntu installers, service WinPE images, answer files, WinPE drivers, and a log of every machine that booted. It works both on connected networks and in fully air-gapped environments.
 
 ---
 
@@ -36,14 +36,14 @@ The HTTPS web control panel (`omb-control`, `:8443`) uses an instrument-console 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/panel-en-dark.svg">
-    <img src="docs/images/readme/panel-en-light.svg" width="100%" alt="Oh My Boot web control panel showing active PXE clients, menu draft bar, and service status">
+    <img src="docs/images/readme/panel-en-light.svg" width="100%" alt="oh my boot_ web control panel showing active PXE clients, menu draft bar, and service status">
   </picture>
 </p>
 
 Real iPXE boot menu screenshot on a test virtual machine:
 
 <p align="center">
-  <img src="docs/brand/stage-3/1-text-title.png" width="560" alt="The Oh My Boot boot menu in iPXE on a test VM">
+  <img src="docs/brand/stage-3/1-text-title.png" width="560" alt="The oh my boot_ boot menu in iPXE on a test VM">
 </p>
 
 ---
@@ -66,7 +66,7 @@ Real iPXE boot menu screenshot on a test virtual machine:
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/pipeline-en-dark.svg">
-    <img src="docs/images/readme/pipeline-en-light.svg" width="100%" alt="Oh My Boot network boot pipeline: DHCP/Proxy, TFTP + Secure Boot, iPXE Menu, and OS Deployment">
+    <img src="docs/images/readme/pipeline-en-light.svg" width="100%" alt="oh my boot_ network boot pipeline: DHCP/Proxy, TFTP + Secure Boot, iPXE Menu, and OS Deployment">
   </picture>
 </p>
 
@@ -96,7 +96,7 @@ For the complete port table (including outbound NAS / AD / Keycloak / NTP ports)
 **1. Online one-line install** *(recommended — downloads `.deb`, verifies `SHA256SUMS`, installs dependencies, and launches `omb-setup`)*:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/install.sh | sudo bash
 ```
 
 **2. Manual `.deb` install:**

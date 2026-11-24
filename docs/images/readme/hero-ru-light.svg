@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
-  <title id="title">Oh My Boot — сервер сетевой загрузки и развёртывания ОС</title>
+  <title id="title">oh my boot_ — сервер сетевой загрузки и развёртывания ОС</title>
   <desc id="desc">Логотип oh my boot_, описание возможностей и превью загрузочного меню iPXE с поддержкой UEFI Secure Boot.</desc>
   <rect width="1200" height="360" rx="16" fill="#F7F8FA" stroke="#E3E6EA" stroke-width="2"/>
   <g id="title-block" transform="translate(52 44)">

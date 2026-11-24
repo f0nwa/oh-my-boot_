@@ -157,7 +157,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		langFlag := fs.String("lang", "", "output language (ru or en)")
 		noUpdate := fs.Bool("no-update", false, "switch channel without running an immediate update")
 		yes := fs.Bool("yes", false, "automatically confirm immediate update")
-		repo := fs.String("repo", "", "GitHub repository for releases (default: f0nwa/OMB)")
+		repo := fs.String("repo", "", "GitHub repository for releases (default: f0nwa/oh-my-boot_)")
 		if err := fs.Parse(reorderArgs(rest, map[string]bool{"lang": true, "repo": true})); err != nil {
 			if err == flag.ErrHelp {
 				return 0
@@ -190,7 +190,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		langFlag := fs.String("lang", "", "output language (ru or en)")
 		ch := fs.String("channel", "", "release channel (stable or dev)")
 		ver := fs.String("version", "", "explicit release version or tag (e.g. v0.2.0)")
-		repo := fs.String("repo", "", "GitHub repository for releases (default: f0nwa/OMB)")
+		repo := fs.String("repo", "", "GitHub repository for releases (default: f0nwa/oh-my-boot_)")
 		yes := fs.Bool("yes", false, "skip confirmation prompt")
 		if err := fs.Parse(reorderArgs(rest, map[string]bool{"lang": true, "channel": true, "version": true, "repo": true})); err != nil {
 			if err == flag.ErrHelp {

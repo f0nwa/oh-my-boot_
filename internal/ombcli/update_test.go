@@ -111,11 +111,11 @@ func TestUpdateSHA256MismatchRejected(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/f0nwa/OMB/releases/latest":
+		case "/repos/f0nwa/oh-my-boot_/releases/latest":
 			_ = json.NewEncoder(w).Encode(map[string]string{"tag_name": "v0.2.1"})
-		case "/f0nwa/OMB/releases/download/v0.2.1/SHA256SUMS":
+		case "/f0nwa/oh-my-boot_/releases/download/v0.2.1/SHA256SUMS":
 			fmt.Fprintf(w, "%s  omb_0.2.1_amd64.deb\n", wrongSHA)
-		case "/f0nwa/OMB/releases/download/v0.2.1/omb_0.2.1_amd64.deb":
+		case "/f0nwa/oh-my-boot_/releases/download/v0.2.1/omb_0.2.1_amd64.deb":
 			_, _ = w.Write(debBytes)
 		default:
 			http.NotFound(w, r)
@@ -147,9 +147,9 @@ func TestUpdateAlreadyUpToDate(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/f0nwa/OMB/releases/latest":
+		case "/repos/f0nwa/oh-my-boot_/releases/latest":
 			_ = json.NewEncoder(w).Encode(map[string]string{"tag_name": "v0.2.0"})
-		case "/f0nwa/OMB/releases/download/v0.2.0/SHA256SUMS":
+		case "/f0nwa/oh-my-boot_/releases/download/v0.2.0/SHA256SUMS":
 			fmt.Fprintf(w, "%s  omb_0.2.0_amd64.deb\n", debSHA)
 		default:
 			t.Fatalf("unexpected HTTP request when already up to date: %s", r.URL.Path)
@@ -203,14 +203,14 @@ func TestUpdateFullMockedExecutionDevChannelSwitch(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/f0nwa/OMB/releases":
+		case "/repos/f0nwa/oh-my-boot_/releases":
 			_ = json.NewEncoder(w).Encode([]map[string]string{
 				{"tag_name": "v0.2.0"},
 				{"tag_name": "v0.2.1-dev.3"},
 			})
-		case "/f0nwa/OMB/releases/download/v0.2.1-dev.3/SHA256SUMS":
+		case "/f0nwa/oh-my-boot_/releases/download/v0.2.1-dev.3/SHA256SUMS":
 			fmt.Fprintf(w, "%s  omb_0.2.1~dev.3_amd64.deb\n", debSHA)
-		case "/f0nwa/OMB/releases/download/v0.2.1-dev.3/omb_0.2.1~dev.3_amd64.deb":
+		case "/f0nwa/oh-my-boot_/releases/download/v0.2.1-dev.3/omb_0.2.1~dev.3_amd64.deb":
 			_, _ = w.Write(debBytes)
 		default:
 			http.NotFound(w, r)

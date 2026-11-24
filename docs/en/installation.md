@@ -1,4 +1,4 @@
-# Installing Oh My Boot (OMB)
+# Installing oh my boot_ (OMB)
 
 [Русская версия](../installation.md)
 
@@ -56,7 +56,7 @@ sudo ufw allow in on ens19 to any port 445 proto tcp comment 'OMB Samba [ombisos
 Recommended for servers with internet access. `scripts/install.sh` checks the OS and architecture, prompts to choose the release channel in interactive mode (`stable` or `dev`, default `stable`), downloads the `.deb` package and `SHA256SUMS` from GitHub Releases, verifies the SHA-256 digest, installs the package and system dependencies via `apt-get`, and launches the interactive `omb-setup` wizard.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/install.sh | sudo bash
 ```
 
 If you already cloned the repository locally:

@@ -1,6 +1,6 @@
-# Oh My Boot: overall design
+# oh my boot_: overall design
 
-> Historical design dated 15 October 2026. The title and links use **Oh My Boot**; the body records the original design.
+> Historical design dated 15 October 2026. The title and links use **oh my boot_**; the body records the original design.
 
 Date: 15 October 2026.
 

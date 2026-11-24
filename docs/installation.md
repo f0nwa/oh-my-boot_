@@ -1,4 +1,4 @@
-# Установка Oh My Boot (OMB)
+# Установка oh my boot_ (OMB)
 
 [English version](en/installation.md)
 
@@ -56,7 +56,7 @@ sudo ufw allow in on ens19 to any port 445 proto tcp comment 'OMB Samba [ombisos
 Рекомендуемый способ для сервера с доступом в интернет. Скрипт `scripts/install.sh` проверяет ОС и архитектуру, при интерактивном запуске предлагает выбрать канал выпусков (`stable` или `dev`, по умолчанию `stable`), скачивает `.deb`-пакет и `SHA256SUMS` из GitHub Releases, проверяет контрольную сумму, устанавливает пакет с системными зависимостями через `apt-get` и автоматически запускает интерактивный мастер `omb-setup`.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/install.sh | sudo bash
 ```
 
 Если репозиторий уже склонирован локально:

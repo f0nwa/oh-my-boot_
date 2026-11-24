@@ -25,7 +25,7 @@ const (
 	DefaultReleaseJSONPath = "/usr/share/omb/release.json"
 	DefaultControlEnvPath  = "/etc/omb/control.env"
 	DefaultMigrationsDir   = "/usr/share/omb/migrations"
-	DefaultRepo            = "f0nwa/OMB"
+	DefaultRepo            = "f0nwa/oh-my-boot_"
 	DefaultAPIBaseURL      = "https://api.github.com"
 	DefaultDownloadBaseURL = "https://github.com"
 

@@ -1,6 +1,6 @@
-# Oh My Boot (OMB) Architecture
+# oh my boot_ (OMB) Architecture
 
-This document describes the Oh My Boot services, PostgreSQL database separation, entity layers from physical storages to PXE clients, and the end-to-end network boot pipeline.
+This document describes the oh my boot_ services, PostgreSQL database separation, entity layers from physical storages to PXE clients, and the end-to-end network boot pipeline.
 
 ## 1. Services, Sockets, and Access Boundaries
 

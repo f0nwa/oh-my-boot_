@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="416" viewBox="0 0 1200 416" role="img" aria-labelledby="title desc">
-  <title id="title">Веб-панель управления Oh My Boot («Пульт»)</title>
-  <desc id="desc">Экран «Сейчас» веб-панели Oh My Boot: полоса черновика меню, активные PXE-клиенты с цепочкой этапов загрузки и сводка служб.</desc>
+  <title id="title">Веб-панель управления oh my boot_ («Пульт»)</title>
+  <desc id="desc">Экран «Сейчас» веб-панели oh my boot_: полоса черновика меню, активные PXE-клиенты с цепочкой этапов загрузки и сводка служб.</desc>
   <rect width="1200" height="416" rx="16" fill="#0E1013" stroke="#23272E" stroke-width="2"/>
   <!-- Topbar -->
   <rect x="0" y="0" width="1200" height="58" rx="16" fill="#15181D"/>

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OMB_RELEASE_REPO="${OMB_RELEASE_REPO:-f0nwa/OMB}"
+OMB_RELEASE_REPO="${OMB_RELEASE_REPO:-f0nwa/oh-my-boot_}"
 OMB_GITHUB_API_BASE="${OMB_GITHUB_API_BASE:-${OMB_GITHUB_API_URL:-https://api.github.com}}"
 OMB_GITHUB_RELEASE_BASE="${OMB_GITHUB_RELEASE_BASE:-https://github.com}"
 OMB_OS_RELEASE="${OMB_OS_RELEASE:-/etc/os-release}"
@@ -19,12 +19,12 @@ Options:
   --version <ver>        Install specific release version or tag (e.g. v0.2.0, v0.2.1-dev.1)
   --channel <stable|dev> Release channel when --version is not set (default: stable)
   --deb <path>           Install from a local .deb package instead of downloading
-  --repo <owner/repo>    GitHub repository for releases (default: f0nwa/OMB)
+  --repo <owner/repo>    GitHub repository for releases (default: f0nwa/oh-my-boot_)
   --force-os             Allow installation on OS versions other than Ubuntu 26.04 / 24.04
   -h, --help             Show this help message
 
 Examples:
-  curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
+  curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/install.sh | sudo bash
   sudo bash scripts/install.sh --version v0.2.0
   sudo bash scripts/install.sh --deb ./omb_0.2.0_amd64.deb -- --lang en
 EOF

@@ -5,11 +5,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/hero-ru-dark.svg">
-    <img src="docs/images/readme/hero-ru-light.svg" width="100%" alt="Oh My Boot — сервер сетевой загрузки, развёртывания ОС и обслуживания машин из веб-пульта">
+    <img src="docs/images/readme/hero-ru-light.svg" width="100%" alt="oh my boot_ — сервер сетевой загрузки, развёртывания ОС и обслуживания машин из веб-пульта">
   </picture>
 </p>
 
-**Oh My Boot (OMB)** — сервер сетевой загрузки (PXE) на Linux, который отдаёт загрузочное меню для BIOS и UEFI-машин (включая UEFI Secure Boot через подписанный `shim` + iPXE) и управляет его содержимым из веб-пульта по HTTPS: образами ISO, установщиками Windows и Ubuntu, сервисными WinPE, файлами ответов, драйверами и журналом машин. Работает как в обычных сетях с интернетом, так и в полностью изолированном контуре (air-gapped).
+**oh my boot_ (OMB)** — сервер сетевой загрузки (PXE) на Linux, который отдаёт загрузочное меню для BIOS и UEFI-машин (включая UEFI Secure Boot через подписанный `shim` + iPXE) и управляет его содержимым из веб-пульта по HTTPS: образами ISO, установщиками Windows и Ubuntu, сервисными WinPE, файлами ответов, драйверами и журналом машин. Работает как в обычных сетях с интернетом, так и в полностью изолированном контуре (air-gapped).
 
 ---
 
@@ -36,14 +36,14 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/panel-ru-dark.svg">
-    <img src="docs/images/readme/panel-ru-light.svg" width="100%" alt="Веб-панель управления Oh My Boot («Пульт»): активные PXE-клиенты, полоса черновика меню и состояние служб">
+    <img src="docs/images/readme/panel-ru-light.svg" width="100%" alt="Веб-панель управления oh my boot_ («Пульт»): активные PXE-клиенты, полоса черновика меню и состояние служб">
   </picture>
 </p>
 
 Пример реального загрузочного меню iPXE на тестовой виртуальной машине:
 
 <p align="center">
-  <img src="docs/brand/stage-3/1-text-title.png" width="560" alt="Загрузочное меню Oh My Boot в iPXE на тестовой ВМ">
+  <img src="docs/brand/stage-3/1-text-title.png" width="560" alt="Загрузочное меню oh my boot_ в iPXE на тестовой ВМ">
 </p>
 
 ---
@@ -66,7 +66,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/pipeline-ru-dark.svg">
-    <img src="docs/images/readme/pipeline-ru-light.svg" width="100%" alt="Схема конвейера сетевой загрузки Oh My Boot: DHCP/Proxy, TFTP + Secure Boot, меню iPXE и установка ОС">
+    <img src="docs/images/readme/pipeline-ru-light.svg" width="100%" alt="Схема конвейера сетевой загрузки oh my boot_: DHCP/Proxy, TFTP + Secure Boot, меню iPXE и установка ОС">
   </picture>
 </p>
 
@@ -96,7 +96,7 @@
 **1. Онлайн-установка одной командой** *(рекомендуется — скачивает `.deb`, проверяет `SHA256SUMS`, ставит зависимости и запускает мастер `omb-setup`)*:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/install.sh | sudo bash
 ```
 
 **2. Ручная установка из `.deb`-пакета:**

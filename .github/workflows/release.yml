@@ -69,11 +69,33 @@ jobs:
 
       - name: Build .deb and SHA256SUMS
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dpkg-dev
+
           WORK_DIR="$(mktemp -d)"
+
+          # Prepare pinned boot assets (verified by SHA-256)
+          mkdir -p "$WORK_DIR/assets"
+          curl -fsSL -o "$WORK_DIR/assets/ipxeboot.tar.gz" https://github.com/ipxe/ipxe/releases/download/v2.0.0/ipxeboot.tar.gz
+          curl -fsSL -o "$WORK_DIR/assets/ipxe-shimx64.efi" https://github.com/ipxe/shim/releases/download/ipxe-16.1/ipxe-shimx64.efi
+          curl -fsSL -o "$WORK_DIR/assets/wimboot" https://github.com/ipxe/wimboot/releases/download/v2.9.0/wimboot
+          cat > "$WORK_DIR/assets/expected.sha256" <<'SUMS'
+          01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1  ipxeboot.tar.gz
+          5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf  ipxe-shimx64.efi
+          5f067ccdc4d084d5bf77b6c853bd0f8402dfc2b4cd1b103d358993ae97fae8e3  wimboot
+          SUMS
+          (cd "$WORK_DIR/assets" && sha256sum -c expected.sha256)
+
+          # Minimal sysdebs placeholder required by build-release.sh (only omb_*.deb is published online)
+          mkdir -p "$WORK_DIR/sysdebs"
+          (cd "$WORK_DIR/sysdebs" && apt-get download base-files && dpkg-scanpackages -m . | gzip -9n > Packages.gz)
+
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$WORK_DIR/ephemeral.pem" 2>/dev/null
           bash scripts/build-release.sh \
             --version "${{ steps.meta.outputs.deb_version }}" \
             --channel "${{ steps.meta.outputs.channel }}" \
+            --sysdebs-dir "$WORK_DIR/sysdebs" \
+            --assets-dir "$WORK_DIR/assets" \
             --sign-key "$WORK_DIR/ephemeral.pem" \
             --out "$WORK_DIR/apt-repo"
           rm -f "$WORK_DIR/ephemeral.pem"

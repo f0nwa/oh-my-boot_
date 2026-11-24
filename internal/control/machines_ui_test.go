@@ -123,6 +123,9 @@ func TestMachinesScriptEndpoint(t *testing.T) {
 		"rule-edit-dialog",
 		"data-machine-edit-btn",
 		"data-rule-edit-btn",
+		"data-machine-edit-save",
+		"syncMachineEditSave",
+		"editMachineInitial",
 		"showModal",
 		"machines-table-area",
 		"runSearch",
@@ -133,6 +136,19 @@ func TestMachinesScriptEndpoint(t *testing.T) {
 		if !strings.Contains(js, want) {
 			t.Errorf("/assets/machines.js missing %q", want)
 		}
+	}
+}
+
+func TestMachineEditSaveButtonInitiallyDisabled(t *testing.T) {
+	store := machinesFixture()
+	store.user.Role = "operator"
+	s := &Server{Store: store}
+	body := libraryGet(t, s, "/machines")
+
+	// Verify that the Edit Machine dialog has save button with data-machine-edit-save and disabled
+	needle := `<button form="machine-edit-form" class="btn btn-primary" data-machine-edit-save disabled>`
+	if !strings.Contains(body, needle) {
+		t.Fatalf("expected edit machine dialog to have disabled save button initially, got body without %q", needle)
 	}
 }
 

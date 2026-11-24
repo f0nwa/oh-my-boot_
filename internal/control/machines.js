@@ -6,6 +6,38 @@
   var editDialog = document.getElementById('machine-edit-dialog');
   var ruleCreateDialog = document.getElementById('rule-create-dialog');
   var ruleEditDialog = document.getElementById('rule-edit-dialog');
+  var editMachineInitial = null;
+  var editSaveBtn = editDialog ? (editDialog.querySelector('[data-machine-edit-save]') || editDialog.querySelector('button[form="machine-edit-form"]')) : null;
+
+  function syncMachineEditSave() {
+    if (!editSaveBtn || !editMachineInitial) return;
+    var nameInput = document.getElementById('edit-machine-name');
+    var makerInput = document.getElementById('edit-machine-maker');
+    var productInput = document.getElementById('edit-machine-product');
+    var noteInput = document.getElementById('edit-machine-note');
+
+    var curName = (nameInput ? nameInput.value : '').trim();
+    var curMaker = (makerInput ? makerInput.value : '').trim();
+    var curProduct = (productInput ? productInput.value : '').trim();
+    var curNote = (noteInput ? noteInput.value : '').trim();
+
+    var initName = (editMachineInitial.name || '').trim();
+    var initMaker = (editMachineInitial.maker || '').trim();
+    var initProduct = (editMachineInitial.product || '').trim();
+    var initNote = (editMachineInitial.note || '').trim();
+
+    var isDirty = curName !== initName ||
+                  curMaker !== initMaker ||
+                  curProduct !== initProduct ||
+                  curNote !== initNote;
+    editSaveBtn.disabled = !isDirty;
+  }
+
+  var editFormEl = document.getElementById('machine-edit-form');
+  if (editFormEl) {
+    editFormEl.addEventListener('input', syncMachineEditSave);
+    editFormEl.addEventListener('change', syncMachineEditSave);
+  }
 
   // Auto-open dialog on validation error from server
   document.querySelectorAll('dialog[data-auto-open="true"]').forEach(function (dlg) {
@@ -85,6 +117,14 @@
       var noteInput = document.getElementById('edit-machine-note');
       if (noteInput) noteInput.value = note;
 
+      editMachineInitial = {
+        name: name,
+        maker: maker,
+        product: product,
+        note: note
+      };
+      syncMachineEditSave();
+
       editDialog.showModal();
       if (nameInput) nameInput.focus();
       return;
@@ -154,11 +194,16 @@
     if (!row || !row.id) return;
     ev.preventDefault();
     var dlg = form.closest('dialog');
-    var button = (dlg ? dlg.querySelector('button[form="' + form.id + '"]') : null) || form.querySelector('button');
+    var button = (dlg ? (dlg.querySelector('[data-machine-edit-save]') || dlg.querySelector('button[form="' + form.id + '"]')) : null) || form.querySelector('button');
+    if (button && button.disabled) {
+      ev.preventDefault();
+      return;
+    }
     var status = form.querySelector('[data-row-status]');
     function fail(text) {
       if (status) { status.textContent = text || status.getAttribute('data-failed'); status.hidden = false; }
       if (button) button.disabled = false;
+      syncMachineEditSave();
     }
     if (button) button.disabled = true;
     fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)), credentials: 'same-origin', headers: { 'Accept': 'text/html' } })

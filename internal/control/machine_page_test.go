@@ -169,9 +169,28 @@ func TestMachinePageHasNoDetails(t *testing.T) {
 		`id="machine-delete-dialog"`,
 		"data-machine-edit-open",
 		"data-machine-delete-open",
+		"data-machine-edit-save",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("machine page lacks %q: %s", want, body)
+		}
+	}
+	if !strings.Contains(body, `<button class="btn btn-primary" data-machine-edit-save disabled>`) {
+		t.Fatalf("machine page must render disabled save button initially in machine-edit-dialog")
+	}
+}
+
+func TestMachinePageDialogScriptHandlesDirtySave(t *testing.T) {
+	s := &Server{}
+	js := libraryGet(t, s, "/assets/machine-page.js")
+	for _, want := range []string{
+		"data-machine-edit-save",
+		"syncEditSave",
+		"isDirty",
+		"data-machine-edit-open",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("/assets/machine-page.js missing %q", want)
 		}
 	}
 }

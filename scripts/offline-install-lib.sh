@@ -100,16 +100,16 @@ fresh_install() {
     write_state COMMIT "$commit"
 
     if [[ -z "$mgmt_ip" ]]; then
-        "$binary_dir/omb-setup" --install-mode offline --state-dir "$state"
+        (umask 022; "$binary_dir/omb-setup" --install-mode offline --state-dir "$state")
     else
-        printf '%s\n' "$password" | "$binary_dir/omb-setup" \
+        (umask 022; printf '%s\n' "$password" | "$binary_dir/omb-setup" \
             --non-interactive \
             --install-mode offline \
             --state-dir "$state" \
             --management-ip "$mgmt_ip" \
             --pxe-interface "$pxe_iface" \
             --dhcp-mode skip \
-            --admin-password-stdin
+            --admin-password-stdin)
         unset password
     fi
 }

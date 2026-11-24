@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func testIfaces2NIC() []NetIface {
@@ -354,4 +355,103 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 			t.Errorf("AllowedInterfaces = %q, want omb-pxe-off", got.AllowedInterfaces)
 		}
 	})
+
+	t.Run("rejects 9-rune Cyrillic password (18 UTF-8 bytes)", func(t *testing.T) {
+		pw := "Абвгдежзи"
+		if len(pw) != 18 || utf8.RuneCountInString(pw) != 9 {
+			t.Fatalf("unexpected test password dimensions: bytes=%d runes=%d", len(pw), utf8.RuneCountInString(pw))
+		}
+		_, err := ResolveNonInteractive(
+			Options{ManagementIP: "192.168.10.135", SkipPXE: true},
+			ifaces,
+			strings.NewReader(pw+"\n"),
+			true,
+		)
+		if err == nil {
+			t.Fatalf("expected error for 9-rune Cyrillic password, got nil")
+		}
+	})
+
+	t.Run("accepts 12-rune Cyrillic password", func(t *testing.T) {
+		pw := "Абвгдежзийкл"
+		if utf8.RuneCountInString(pw) != 12 {
+			t.Fatalf("expected 12 runes, got %d", utf8.RuneCountInString(pw))
+		}
+		got, err := ResolveNonInteractive(
+			Options{ManagementIP: "192.168.10.135", SkipPXE: true},
+			ifaces,
+			strings.NewReader(pw+"\n"),
+			true,
+		)
+		if err != nil {
+			t.Fatalf("expected 12-rune Cyrillic password to succeed, got: %v", err)
+		}
+		if got.AdminPassword != pw {
+			t.Errorf("AdminPassword = %q, want %q", got.AdminPassword, pw)
+		}
+	})
+
+	t.Run("rejects pxe-interface none with dhcp-mode full or proxy", func(t *testing.T) {
+		for _, mode := range []string{"full", "proxy"} {
+			_, err := ResolveNonInteractive(
+				Options{ManagementIP: "192.168.10.135", PXEInterface: "none", DHCPMode: mode},
+				ifaces,
+				strings.NewReader("StrongPass1234!\n"),
+				true,
+			)
+			if err == nil {
+				t.Errorf("expected error for --pxe-interface none with --dhcp-mode %s", mode)
+			}
+		}
+	})
+
+	t.Run("rejects invalid pxe-interface syntax even with dhcp-mode skip", func(t *testing.T) {
+		_, err := ResolveNonInteractive(
+			Options{ManagementIP: "192.168.10.135", PXEInterface: "ens19;rm -rf /", DHCPMode: "skip"},
+			ifaces,
+			strings.NewReader("StrongPass1234!\n"),
+			true,
+		)
+		if err == nil {
+			t.Fatalf("expected error for invalid --pxe-interface syntax with --dhcp-mode skip")
+		}
+	})
+}
+
+func TestWizardPolishVersionUnassignedIPAndSingleNICWarning(t *testing.T) {
+	// Step 0: 2 (English)
+	// Step 1: 10.99.99.99 (rejected - not assigned to any detected interface), then 192.168.10.135 (accepted)
+	// Step 3: 1 (ens18)
+	// Step 4: 1 (Proxy DHCP) - verify 1-NIC Full DHCP conflict warning is printed
+	// Step 5: y (confirm)
+	in := strings.NewReader("2\n10.99.99.99\n192.168.10.135\n1\n1\ny\n")
+	var out bytes.Buffer
+
+	opts, confirmed, err := RunWizard(
+		in,
+		&out,
+		mockSecrets("StrongPass1234!", "StrongPass1234!"),
+		testIfaces1NIC(),
+		Options{Version: "v0.2.0"},
+		false,
+	)
+	if err != nil {
+		t.Fatalf("RunWizard returned error: %v", err)
+	}
+	if !confirmed {
+		t.Fatalf("expected confirmed=true")
+	}
+	if opts.ManagementIP != "192.168.10.135" {
+		t.Errorf("ManagementIP = %q, want 192.168.10.135", opts.ManagementIP)
+	}
+	got := out.String()
+	if !strings.Contains(got, "v0.2.0") {
+		t.Errorf("expected header to contain version v0.2.0, got:\n%s", got)
+	}
+	if !strings.Contains(got, "not assigned to any detected interface") {
+		t.Errorf("expected unassigned IPv4 error message, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Full DHCP on a single-NIC host will conflict") {
+		t.Errorf("expected 1-NIC Full DHCP conflict warning in Step 4, got:\n%s", got)
+	}
 }

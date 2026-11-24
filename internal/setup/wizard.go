@@ -6,12 +6,18 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
+	"os"
+	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 
 	"golang.org/x/sys/unix"
 )
+
+var validInterfaceNameRe = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 
 // ReadPasswordTTY reads a line from a TTY file descriptor with terminal echo disabled
 // and always restores the original termios settings before returning.
@@ -27,6 +33,22 @@ func ReadPasswordTTY(fd int) (string, error) {
 	}
 	defer func() {
 		_ = unix.IoctlSetTermios(fd, ioctlWriteTermios, orig)
+	}()
+
+	sigCh := make(chan os.Signal, 1)
+	done := make(chan struct{})
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer func() {
+		signal.Stop(sigCh)
+		close(done)
+	}()
+	go func() {
+		select {
+		case <-sigCh:
+			_ = unix.IoctlSetTermios(fd, ioctlWriteTermios, orig)
+			os.Exit(130)
+		case <-done:
+		}
 	}()
 
 	var line []byte
@@ -76,7 +98,7 @@ func validatePassword(pw string) error {
 	if strings.ContainsAny(pw, "\r\n") {
 		return fmt.Errorf("password must not contain newline characters")
 	}
-	if len(pw) < 12 {
+	if utf8.RuneCountInString(pw) < 12 {
 		return fmt.Errorf("password must be at least 12 characters")
 	}
 	return nil
@@ -110,8 +132,8 @@ func RunWizard(
 		readSecret = readLine
 	}
 
-	ui := NewUI(out, opts.Lang, color, "")
-	ui.Header("")
+	ui := NewUI(out, opts.Lang, color, opts.Version)
+	ui.Header(opts.Version)
 
 	// Step 0: Language selection
 	if opts.Lang != "ru" && opts.Lang != "en" {
@@ -172,8 +194,12 @@ func RunWizard(
 				break
 			}
 			if addr, err := netip.ParseAddr(ans); err == nil && addr.Is4() {
-				mgmtAddr = addr
 				mgmtIface = findIfaceNameByIP(ifaces, addr)
+				if mgmtIface == "" {
+					ui.Error(ui.t("Этот IPv4-адрес не назначен ни одному из найденных интерфейсов.", "This IPv4 address is not assigned to any detected interface."))
+					continue
+				}
+				mgmtAddr = addr
 				break
 			}
 			ui.Error(ui.t("Введите номер из списка или корректный IPv4-адрес.", "Enter a number from the list or a valid IPv4 address."))
@@ -310,6 +336,13 @@ func RunWizard(
 			selectedPXE.Name,
 			opts.PXESubnet,
 		))
+		if singleNIC {
+			ui.Warn(ui.t(
+				"Внимание: Full DHCP на единственном интерфейсе вызовет конфликт, если в сети уже есть другой DHCP-сервер.",
+				"Warning: Full DHCP on a single-NIC host will conflict if another DHCP server already exists on this network.",
+			))
+			fmt.Fprintln(out)
+		}
 		dedicated := selectedPXE.IP != mgmtAddr && len(ifaces) > 1
 		defaultChoice := "1"
 		proxySuffix := " (" + ui.t("рекомендуется", "recommended") + ")"
@@ -446,6 +479,13 @@ func ResolveNonInteractive(opts Options, ifaces []NetIface, passwordStdin io.Rea
 	}
 	if opts.InstallMode != "online" && opts.InstallMode != "offline" {
 		return Options{}, fmt.Errorf("unsupported --install-mode %q (expected online or offline)", opts.InstallMode)
+	}
+
+	if opts.PXEInterface != "" && opts.PXEInterface != "none" && !validInterfaceNameRe.MatchString(opts.PXEInterface) {
+		return Options{}, fmt.Errorf("invalid --pxe-interface %q", opts.PXEInterface)
+	}
+	if opts.PXEInterface == "none" && (opts.DHCPMode == "full" || opts.DHCPMode == "proxy") {
+		return Options{}, fmt.Errorf("--pxe-interface none cannot be combined with --dhcp-mode %s", opts.DHCPMode)
 	}
 
 	if opts.SkipPXE || opts.DHCPMode == "skip" || opts.PXEInterface == "none" {

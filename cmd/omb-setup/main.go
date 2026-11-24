@@ -9,12 +9,15 @@ import (
 	"os/signal"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"omb/internal/setup"
 )
 
 var version = "dev"
 
 func main() {
+	unix.Umask(0o022)
 	os.Exit(run(os.Args[1:]))
 }
 
@@ -49,9 +52,6 @@ func run(args []string) int {
 		return 0
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	color := setup.ColorEnabled(os.Stdout, os.Getenv)
 
 	installer := &setup.Installer{}
@@ -78,6 +78,7 @@ func run(args []string) int {
 		StateDir:     *stateDir,
 		InstallMode:  *installMode,
 		SkipPXE:      *skipPXE,
+		Version:      version,
 	}
 
 	var opts setup.Options
@@ -132,6 +133,9 @@ func run(args []string) int {
 	installer.Progress = func(step, msg string) {
 		ui.ProgressStep(step, msg)
 	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	if err := installer.Execute(ctx, opts); err != nil {
 		errUI := setup.NewUI(os.Stderr, opts.Lang, setup.ColorEnabled(os.Stderr, os.Getenv), version)

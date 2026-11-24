@@ -127,6 +127,24 @@ func (a *Applier) Apply(ctx context.Context, c network.Config) error {
 	}
 	previousExists := readErr == nil
 
+	prevState, stateReadErr := os.ReadFile(a.statePath)
+	if stateReadErr != nil && !os.IsNotExist(stateReadErr) {
+		return fmt.Errorf("read current agent state: %w", stateReadErr)
+	}
+	prevStateExists := stateReadErr == nil
+	rollbackState := func() error {
+		if !prevStateExists {
+			if err := os.Remove(a.statePath); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("remove failed agent state: %w", err)
+			}
+			return nil
+		}
+		if err := writeAtomic(a.statePath, prevState, 0o600); err != nil {
+			return fmt.Errorf("restore previous agent state: %w", err)
+		}
+		return nil
+	}
+
 	var updates []DriverScriptUpdate
 	winpeRollback := func() error { return nil }
 	if a.WinPE != nil {
@@ -164,7 +182,12 @@ func (a *Applier) Apply(ctx context.Context, c network.Config) error {
 	}
 	if !dnsmasqUnchanged && a.LocalSMB != nil {
 		if err := a.LocalSMB.SyncPXENetwork(ctx); err != nil {
-			return fmt.Errorf("sync samba for PXE network: %w", err)
+			return errors.Join(
+				fmt.Errorf("sync samba for PXE network: %w", err),
+				rollbackState(),
+				a.rollback(ctx, previous, previousExists),
+				winpeRollback(),
+			)
 		}
 	}
 	a.status = Status{Applied: true, Mode: c.Mode, Interface: c.Interface}

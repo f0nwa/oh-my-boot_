@@ -73,7 +73,7 @@ The script verifies the repository signature and checksums, installs system `.de
 sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key> <management-ip> [pxe-interface|none]
 ```
 
-In this form, DHCP and Samba stay disabled until you configure the PXE network in the web panel (passing `none` or omitting the fourth argument defers PXE interface selection).
+In this form, DHCP and Samba stay disabled until you configure the PXE network in the web panel. Passing `none` or omitting the fourth positional argument sets `OMB_CONTROL_INTERFACES=omb-pxe-off` in `/etc/omb/control.env` (so enabling PXE later requires updating `OMB_CONTROL_INTERFACES` in `/etc/omb/control.env` and restarting `omb-control`). By contrast, interactive `offline-deploy.sh install <apt-repo> <public-key>` automatically populates `OMB_CONTROL_INTERFACES` with detected interfaces for web-only PXE setup.
 
 ## `omb-setup` walkthrough
 

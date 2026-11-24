@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
+
+	"golang.org/x/sys/unix"
 
 	"omb/internal/network"
 )
@@ -391,6 +394,78 @@ func TestExecuteWithPXEFullDHCP(t *testing.T) {
 		agentCfg.Subnet != "10.30.0.0/24" || agentCfg.DHCPStart != "10.30.0.100" || agentCfg.DHCPEnd != "10.30.0.200" ||
 		agentCfg.BootURL != "http://10.30.0.10:8080/boot/menu.ipxe" || agentCfg.TFTPRoot != "/srv/omb/tftp" {
 		t.Fatalf("unexpected agentctl config: %+v", agentCfg)
+	}
+}
+
+func TestExecuteCreatesMntOmbIsoMode0755UnderRestrictiveUmask(t *testing.T) {
+	oldUmask := unix.Umask(0o077)
+	defer unix.Umask(oldUmask)
+
+	root := t.TempDir()
+	setupCleanAssets(t, root)
+
+	runner := &mockRunner{
+		handler: func(spec CmdSpec) ([]byte, error) {
+			if spec.Name == "openssl" {
+				for i := 0; i < len(spec.Args)-1; i++ {
+					if spec.Args[i] == "-keyout" || spec.Args[i] == "-out" {
+						if err := os.WriteFile(spec.Args[i+1], []byte("dummy-pem"), 0o600); err != nil {
+							return nil, err
+						}
+					}
+				}
+			}
+			return nil, nil
+		},
+	}
+
+	in := &Installer{
+		RootDir:     root,
+		Runner:      runner,
+		Euid:        func() int { return 0 },
+		LookupUser:  func(string) bool { return false },
+		HealthCheck: func(context.Context, string, string) error { return nil },
+	}
+
+	opts := Options{
+		Lang:          "ru",
+		ManagementIP:  "192.168.10.135",
+		PXEInterface:  "none",
+		DHCPMode:      "skip",
+		SkipPXE:       true,
+		AdminPassword: "SuperSecretPass123",
+		InstallMode:   "offline",
+	}
+
+	if err := in.Execute(context.Background(), opts); err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	for _, rel := range []string{"mnt/omb-iso", "mnt/omb-iso/profiles"} {
+		info, err := os.Stat(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("stat %s: %v", rel, err)
+		}
+		if got := info.Mode().Perm(); got != 0o755 {
+			t.Errorf("%s mode = %04o, want 0755", rel, got)
+		}
+	}
+}
+
+func TestExecuteRejectsShortCyrillicPassword(t *testing.T) {
+	pw := "Абвгдежзи" // 9 runes, 18 UTF-8 bytes
+	if len(pw) != 18 || utf8.RuneCountInString(pw) != 9 {
+		t.Fatalf("unexpected test password dimensions: bytes=%d runes=%d", len(pw), utf8.RuneCountInString(pw))
+	}
+	in := &Installer{RootDir: t.TempDir(), Runner: &mockRunner{}}
+	err := in.Execute(context.Background(), Options{
+		Lang:          "ru",
+		ManagementIP:  "192.168.10.135",
+		AdminPassword: pw,
+		SkipPXE:       true,
+	})
+	if err == nil {
+		t.Fatal("expected Execute to reject 9-rune Cyrillic password")
 	}
 }
 

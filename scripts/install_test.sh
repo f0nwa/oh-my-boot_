@@ -49,10 +49,17 @@ EOF
     cat >"$dir/bin/omb-setup" <<EOF
 #!/usr/bin/env bash
 printf 'omb-setup' >>"$dir/logs/omb-setup.log"
+read_stdin=false
 for arg in "\$@"; do
     printf ' %s' "\$arg" >>"$dir/logs/omb-setup.log"
+    if [[ "\$arg" == "--admin-password-stdin" ]]; then
+        read_stdin=true
+    fi
 done
 printf '\n' >>"$dir/logs/omb-setup.log"
+if [[ "\$read_stdin" == "true" ]]; then
+    cat >"$dir/logs/omb-setup.stdin"
+fi
 EOF
 
     cat >"$dir/bin/curl" <<'EOF'
@@ -247,5 +254,24 @@ run_installer "$t10" "$t10/os-release" --channel dev
 grep -Fq "https://api.github.com/repos/f0nwa/OMB/releases?per_page=20" "$t10/logs/curl.log" || fail "t10: did not query GitHub releases API"
 grep -Fq "https://github.com/f0nwa/OMB/releases/download/v0.2.1-dev.2/SHA256SUMS" "$t10/logs/curl.log" || fail "t10: wrong dev SHA256SUMS URL"
 grep -Fq "https://github.com/f0nwa/OMB/releases/download/v0.2.1-dev.2/omb_0.2.1~dev.2_amd64.deb" "$t10/logs/curl.log" || fail "t10: wrong dev deb URL"
+
+# 11. Piped stdin reaches omb-setup when --non-interactive --admin-password-stdin is passed
+t11="$work/t11"
+setup_mock_env "$t11" amd64
+write_os_release "$t11/os-release" ubuntu 26.04
+printf 'fake-deb-piped' >"$t11/omb_0.2.0_amd64.deb"
+printf '%s\n' 'PipedSecretPass123!' | env PATH="$t11/bin:$PATH" \
+    OMB_SKIP_ROOT_CHECK=1 \
+    OMB_OS_RELEASE="$t11/os-release" \
+    OMB_SETUP_BIN="$t11/bin/omb-setup" \
+    MOCK_CURL_LOG="$t11/logs/curl.log" \
+    MOCK_CURL_FIXTURES="$t11/fixtures" \
+    bash "$installer" --deb "$t11/omb_0.2.0_amd64.deb" -- \
+        --non-interactive \
+        --management-ip 192.168.10.135 \
+        --skip-pxe \
+        --admin-password-stdin
+grep -Fq "omb-setup --install-mode online --non-interactive --management-ip 192.168.10.135 --skip-pxe --admin-password-stdin" "$t11/logs/omb-setup.log" || fail "t11: omb-setup args mismatch"
+[[ "$(cat "$t11/logs/omb-setup.stdin")" == "PipedSecretPass123!" ]] || fail "t11: piped password did not reach omb-setup stdin (got: $(cat "$t11/logs/omb-setup.stdin" 2>/dev/null || true))"
 
 echo "install_test.sh: ALL PASS"

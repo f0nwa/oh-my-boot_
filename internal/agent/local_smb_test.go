@@ -729,6 +729,9 @@ func TestLocalSMBManagerSyncPXENetwork_DefaultDisabled(t *testing.T) {
 	if !runner.hasCallWithArgs("systemctl", "enable", "--now", "smbd") {
 		t.Errorf("expected 'systemctl enable --now smbd', calls: %+v", runner.calls)
 	}
+	if !runner.hasCallWithArgs("systemctl", "try-restart", "smbd") {
+		t.Errorf("expected 'systemctl try-restart smbd', calls: %+v", runner.calls)
+	}
 	if !runner.hasCallWithArgs("smbcontrol", "smbd", "reload-config") {
 		t.Errorf("expected 'smbcontrol smbd reload-config', calls: %+v", runner.calls)
 	}

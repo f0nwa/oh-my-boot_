@@ -73,7 +73,7 @@ sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key>
 sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key> <management-ip> [pxe-interface|none]
 ```
 
-В этом варианте DHCP и Samba останутся выключенными до настройки PXE-сети в веб-панели (если передать `none` или опустить четвёртый аргумент, интерфейс PXE можно назначить позже).
+В этом варианте DHCP и Samba останутся выключенными до настройки PXE-сети в веб-панели. Если передать `none` или опустить четвёртый аргумент, в `/etc/omb/control.env` записывается `OMB_CONTROL_INTERFACES=omb-pxe-off` (чтобы разрешить настройку PXE через веб-панель позже, потребуется указать нужный интерфейс в `/etc/omb/control.env` и перезапустить `omb-control`). Для отложенной настройки PXE исключительно через веб-панель без ручной правки `/etc/omb/control.env` используйте интерактивный запуск `offline-deploy.sh install <apt-repo> <public-key>`: мастер автоматически заполнит `OMB_CONTROL_INTERFACES` найденными интерфейсами.
 
 ## Шаги мастера `omb-setup`
 

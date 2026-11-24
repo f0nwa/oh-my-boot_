@@ -175,6 +175,7 @@ if [[ -n "$deb_path" ]]; then
 else
     command -v curl >/dev/null 2>&1 || die "curl is required to download OMB releases"
     work_dir=$(mktemp -d)
+    chmod 0755 "$work_dir"
 
     release_base=""
     if [[ -n "$version" ]]; then
@@ -237,7 +238,17 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$deb_
 # 6. Hand off to omb-setup
 [[ -x "$OMB_SETUP_BIN" ]] || die "omb-setup binary not found or not executable: $OMB_SETUP_BIN"
 
-if [[ ! -t 0 ]] && (: </dev/tty) 2>/dev/null; then
+preserve_stdin=false
+for arg in ${setup_args[@]+"${setup_args[@]}"}; do
+    case "$arg" in
+        --non-interactive|--non-interactive=*|--admin-password-stdin|--admin-password-stdin=*)
+            preserve_stdin=true
+            break
+            ;;
+    esac
+done
+
+if [[ "$preserve_stdin" != "true" && ! -t 0 ]] && (: </dev/tty) 2>/dev/null; then
     "$OMB_SETUP_BIN" --install-mode online ${setup_args[@]+"${setup_args[@]}"} </dev/tty
 else
     "$OMB_SETUP_BIN" --install-mode online ${setup_args[@]+"${setup_args[@]}"}

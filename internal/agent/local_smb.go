@@ -271,6 +271,13 @@ func (m *LocalSMBManager) SyncPXENetwork(ctx context.Context) error {
 		}
 		return fmt.Errorf("enable smbd: %w", err)
 	}
+	if out, err := runner.Run(ctx, "", "systemctl", "try-restart", "smbd"); err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("restart smbd: %w: %s", err, msg)
+		}
+		return fmt.Errorf("restart smbd: %w", err)
+	}
 	if out, err := runner.Run(ctx, "", "smbcontrol", "smbd", "reload-config"); err != nil {
 		msg := strings.TrimSpace(string(out))
 		if msg != "" {

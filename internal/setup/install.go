@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -53,6 +54,7 @@ type Options struct {
 	StateDir          string
 	InstallMode       string
 	SkipPXE           bool
+	Version           string
 }
 
 // CmdSpec describes an external command execution.
@@ -252,7 +254,7 @@ func (in *Installer) Execute(ctx context.Context, opts Options) error {
 	if err != nil || !mgmtAddr.Is4() {
 		return fmt.Errorf("invalid management IPv4 address: %q", opts.ManagementIP)
 	}
-	if len(opts.AdminPassword) < 12 {
+	if utf8.RuneCountInString(opts.AdminPassword) < 12 {
 		return fmt.Errorf("admin password must be at least 12 characters")
 	}
 
@@ -364,6 +366,7 @@ func (in *Installer) Execute(ctx context.Context, opts Options) error {
 		"/mnt/omb-smb-upload",
 		"/mnt/omb-nfs",
 		"/mnt/omb-nfs-upload",
+		"/mnt/omb-iso",
 		"/mnt/omb-iso/profiles",
 		"/var/lib/omb-ubuntu-registry",
 	} {

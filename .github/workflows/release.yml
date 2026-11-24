@@ -159,6 +159,7 @@ jobs:
       - name: Build Ubuntu 24.04 LTS VM images (qcow2.xz + ova)
         run: |
           DEB_VER="${{ needs.release.outputs.deb_version }}"
+          mkdir -p dist-vm
           sudo bash scripts/build-vm-image.sh \
             --deb "dist-release/omb_${DEB_VER}_amd64.deb" \
             --version "$DEB_VER" \

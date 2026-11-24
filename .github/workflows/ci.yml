@@ -25,8 +25,20 @@ jobs:
       - name: Go vet
         run: go vet ./...
 
+      - name: Build all Linux/amd64 binaries
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/...
+
       - name: Go test
         run: go test -count=1 ./...
+
+      - name: Check client JS syntax
+        run: |
+          for f in internal/control/*.js; do
+            node --check "$f"
+          done
+
+      - name: ShellCheck
+        run: shellcheck -S error scripts/*.sh
 
       - name: Script tests
         run: |
@@ -34,3 +46,36 @@ jobs:
           bash scripts/offline-deploy_test.sh
           bash scripts/build-release_test.sh
           bash scripts/install_test.sh
+
+      - name: Verify documentation links
+        run: |
+          python3 - <<'PY'
+          import re, subprocess
+          from pathlib import Path
+
+          root = Path(".")
+          tracked = set(subprocess.check_output(["git", "ls-files"], text=True).splitlines())
+          broken = []
+          for f in sorted(tracked):
+              if not f.endswith(".md") or f.startswith("internal/control/wiki/"):
+                  continue
+              p = root / f
+              text = p.read_text(encoding="utf-8")
+              for m in re.finditer(r'\[([^\]]+)\]\(([^)]+)\)', text):
+                  target = m.group(2).strip()
+                  if target.startswith(("http://", "https://", "mailto:", "#")):
+                      continue
+                  fp = target.split("#", 1)[0]
+                  if not fp:
+                      continue
+                  resolved = (p.parent / fp).resolve()
+                  try:
+                      rel = str(resolved.relative_to(root.resolve()))
+                  except ValueError:
+                      rel = None
+                  if not resolved.exists() or (rel and rel not in tracked and not resolved.is_dir()):
+                      broken.append(f"{f}: {target}")
+          if broken:
+              raise SystemExit("Broken documentation links:\n" + "\n".join(broken))
+          print("All documentation links verified OK.")
+          PY

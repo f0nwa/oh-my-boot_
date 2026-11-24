@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (e.g. v0.2.2 or v0.2.2-dev.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish .deb Release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-dev\.[0-9]+)?$ ]]; then
+            echo "Unsupported tag format: $TAG (expected vX.Y.Z or vX.Y.Z-dev.N)" >&2
+            exit 1
+          fi
+          DEB_VER="${TAG#v}"
+          DEB_VER="${DEB_VER//-dev./~dev.}"
+          if [[ "$TAG" == *-dev.* ]]; then
+            CHANNEL="dev"
+            PRERELEASE="true"
+          else
+            CHANNEL="stable"
+            PRERELEASE="false"
+          fi
+          {
+            echo "tag=$TAG"
+            echo "deb_version=$DEB_VER"
+            echo "channel=$CHANNEL"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Tag=$TAG DebVersion=$DEB_VER Channel=$CHANNEL Prerelease=$PRERELEASE"
+
+      - name: Run tests before building release
+        run: |
+          go vet ./...
+          go test -count=1 ./...
+          python3 scripts/offline-deb_test.py
+          bash scripts/install_test.sh
+
+      - name: Build .deb and SHA256SUMS
+        run: |
+          WORK_DIR="$(mktemp -d)"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$WORK_DIR/ephemeral.pem" 2>/dev/null
+          bash scripts/build-release.sh \
+            --version "${{ steps.meta.outputs.deb_version }}" \
+            --channel "${{ steps.meta.outputs.channel }}" \
+            --sign-key "$WORK_DIR/ephemeral.pem" \
+            --out "$WORK_DIR/apt-repo"
+          rm -f "$WORK_DIR/ephemeral.pem"
+
+          mkdir -p dist-release
+          cp "$WORK_DIR/apt-repo/omb_${{ steps.meta.outputs.deb_version }}_amd64.deb" dist-release/
+          cp "$WORK_DIR/SHA256SUMS" dist-release/
+          (cd dist-release && sha256sum -c SHA256SUMS)
+          ls -lh dist-release/
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          DEB="dist-release/omb_${{ steps.meta.outputs.deb_version }}_amd64.deb"
+          SUMS="dist-release/SHA256SUMS"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$DEB" "$SUMS" --clobber
+          else
+            EXTRA_FLAGS=()
+            if [[ "${{ steps.meta.outputs.prerelease }}" == "true" ]]; then
+              EXTRA_FLAGS+=(--prerelease)
+            else
+              EXTRA_FLAGS+=(--latest)
+            fi
+            gh release create "$TAG" "$DEB" "$SUMS" \
+              --title "oh my boot_ $TAG" \
+              --generate-notes \
+              "${EXTRA_FLAGS[@]}"
+          fi

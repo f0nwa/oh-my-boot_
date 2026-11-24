@@ -9,6 +9,15 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://github.com/f0nwa/oh-my-boot_/actions/workflows/ci.yml"><img src="https://github.com/f0nwa/oh-my-boot_/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/f0nwa/oh-my-boot_/releases"><img src="https://img.shields.io/github/v/release/f0nwa/oh-my-boot_?logo=github&color=F2A93B" alt="Release"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/f0nwa/oh-my-boot_?logo=go&logoColor=white" alt="Go version"></a>
+  <a href="docs/en/installation.md"><img src="https://img.shields.io/badge/platform-Ubuntu%2024.04%20%7C%2026.04-E95420?logo=ubuntu&logoColor=white" alt="Platform Ubuntu 24.04 / 26.04"></a>
+  <a href="https://github.com/f0nwa/oh-my-boot_/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/linted-shellcheck-E6B800?logo=gnu-bash&logoColor=white" alt="ShellCheck"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/f0nwa/oh-my-boot_?color=2F81F7" alt="MIT License"></a>
+</p>
+
 **oh my boot_ (OMB)** is a Linux network boot (PXE) server that serves a boot menu for BIOS and UEFI machines (including UEFI Secure Boot through signed `shim` + iPXE) and manages its contents from an HTTPS control panel: ISO libraries, Windows and Ubuntu installers, service WinPE images, answer files, WinPE drivers, and a log of every machine that booted. It works both on connected networks and in fully air-gapped environments.
 
 ---

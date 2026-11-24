@@ -6,6 +6,7 @@
 !/.gitattributes
 !/LICENSE
 !/README.md
+!/README.en.md
 !/DESIGN.md
 !/CONTEXT.md
 !/go.mod

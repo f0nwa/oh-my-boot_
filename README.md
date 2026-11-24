@@ -1,78 +1,171 @@
+<p align="right">
+  <strong>Русский</strong> · <a href="README.en.md">English</a>
+</p>
+
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo/omb-logo-dark.svg">
-    <img src="docs/brand/logo/omb-logo-light.svg" alt="Oh My Boot" width="420">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/hero-ru-dark.svg">
+    <img src="docs/images/readme/hero-ru-light.svg" width="100%" alt="Oh My Boot — сервер сетевой загрузки, развёртывания ОС и обслуживания машин из веб-пульта">
   </picture>
 </p>
 
-# Oh My Boot
+**Oh My Boot (OMB)** — сервер сетевой загрузки (PXE) на Linux, который отдаёт загрузочное меню для BIOS и UEFI-машин (включая UEFI Secure Boot через подписанный `shim` + iPXE) и управляет его содержимым из веб-пульта по HTTPS: образами ISO, установщиками Windows и Ubuntu, сервисными WinPE, файлами ответов, драйверами и журналом машин. Работает как в обычных сетях с интернетом, так и в полностью изолированном контуре (air-gapped).
 
-**Network boot, OS deployment, and machine maintenance.**
+---
 
-Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an isolated Linux server and manages what that menu offers: Windows and Linux installers, answer files, WinPE drivers, and a log of every machine that booted. It works with full DHCP or alongside an existing DHCP server (proxy-DHCP), boots with UEFI Secure Boot on through signed iPXE files, and is administered from an HTTPS page with users and roles.
+## Содержание
 
-<p align="center"><img src="docs/brand/stage-3/1-text-title.png" alt="The Oh My Boot boot menu in iPXE on a test VM" width="560"></p>
+- [Интерфейс и загрузочное меню](#интерфейс-и-загрузочное-меню)
+- [Возможности](#возможности)
+- [Как это работает](#как-это-работает)
+- [Установка](#установка)
+  - [Требования и порты](#требования-и-порты)
+  - [Способы установки](#способы-установки)
+  - [Первый вход и консольная утилита `omb`](#первый-вход-и-консольная-утилита-omb)
+- [Документация](#документация)
+- [Что проверено](#что-проверено)
+- [Разработка и проверка](#разработка-и-проверка)
+- [Лицензия](#лицензия)
 
-## What works
+---
 
-- **Boot menu** for BIOS and UEFI clients, with folders, a draft that clients do not see until it is published, version history and rollback.
-- **Images:** an ISO catalog across local folders, SMB shares, and NFS exports (NFSv4.1/NFSv3), browser uploads, automatic Windows x64 media preparation when saving a boot entry. Source ISOs stay on their storage; Windows clients receive WinPE startup files over HTTP and installation media over a read-only SMB share.
-- **Windows installs:** several independent `autounattend.xml` scenarios per ISO next to the manual installer, an answer file editor in the admin page, and WinPE driver packages imported from a folder or ZIP and built into separate menu entries.
-- **Ubuntu Autoinstall:** immutable generated files with interactive storage, a warning for installer-selected disk erasure, or exact-serial disk erasure, selected per installation; see the [operations guide](docs/en/control-installation.md#ubuntu-autoinstall).
-- **Boot entries** for Windows, Ubuntu Desktop and Strelec x64: choose a source image, title and menu folder, with WinPE drivers for Windows and Strelec, and answer files for installers. Preparation runs automatically; edit and retry from the same entry. Published menu versions retain their own component snapshots. Strelec uses its native PXE environment and applications from the read-only ISO share.
-- **UEFI network drivers:** signed iPXE or firmware SNP, with a global default, per-machine choices and MAC-prefix overrides applied without restarting DHCP.
-- **Machines:** every machine that reached the menu, with its model and maker, editable names, CSV import and export, and MAC-prefix rules.
-- **Secure Boot:** a signed iPXE chain, a hint when firmware rejects the loader, an SCCM script and a WinPE USB stick (**Library → USB media**) that turn on the Microsoft UEFI CA key on Lenovo, Dell and HP laptops ([Secure Boot guide](docs/en/secure-boot.md)).
-- **Admin page** in Russian and English, with a light, dark or system theme chosen by each user.
+## Интерфейс и загрузочное меню
 
-## Quick Start
+Веб-панель управления (`omb-control`, HTTPS `:8443`) построена в приборном стиле «Пульт» со светлой и тёмной темой, русским и английским языком и встроенной базой знаний (`/wiki`):
 
-Install OMB on Ubuntu 26.04 LTS amd64 (or Ubuntu 24.04 LTS amd64 for online installs) using one of three methods:
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/panel-ru-dark.svg">
+    <img src="docs/images/readme/panel-ru-light.svg" width="100%" alt="Веб-панель управления Oh My Boot («Пульт»): активные PXE-клиенты, полоса черновика меню и состояние служб">
+  </picture>
+</p>
+
+Пример реального загрузочного меню iPXE на тестовой виртуальной машине:
+
+<p align="center">
+  <img src="docs/brand/stage-3/1-text-title.png" width="560" alt="Загрузочное меню Oh My Boot в iPXE на тестовой ВМ">
+</p>
+
+---
+
+## Возможности
+
+- **Загрузочное меню с черновиком и откатом:** единое меню для Legacy BIOS и UEFI, папки, черновик (клиенты не видят изменения до публикации), история версий и восстановление прошлых снимков.
+- **Каталог образов ISO и хранилища:** локальные папки, сетевые шары SMB и NFS (`NFSv4.1` / `NFSv3`), загрузка через браузер, встроенный SFTP/SMB-приёмник, фоновый рескан, перемещение образов между хранилищами и учёт занятого места.
+- **Установка Windows (x64):** автоматическая подготовка профилей WinPE при сохранении пункта меню, независимые сценарии `autounattend.xml` (включая встроенный визуальный редактор файлов ответов), импорт драйверов WinPE из папки или ZIP.
+- **Ubuntu Autoinstall:** генерация неизменяемых сценариев установки с интерактивной разметкой, предупреждением о стирании диска или выбором диска по серийному номеру; см. [руководство по панели управления](docs/control-installation.md#ubuntu-autoinstall).
+- **Сервисные образы WinPE:** загрузка сервисных WinPE-сред по сети с подгрузкой драйверов и доступом к образам по read-only SMB-шаре.
+- **UEFI Secure Boot и сетевые драйверы:** подписанная цепочка `shim 16.1 → iPXE` (Microsoft UEFI CA 2011 и 2023), выбор драйвера UEFI (`ipxe.efi` или `snponly.efi`) глобально, по конкретной машине и по MAC-префиксу без перезапуска DHCP, скрипт для SCCM и генератор сервисной USB-флешки WinPE ([подробнее о Secure Boot](docs/secure-boot.md)).
+- **Журнал и учёт машин:** живой экран «Сейчас» с цепочкой этапов загрузки, история HTTP/DHCP/TFTP и системных событий, список всех машин с производителем и моделью, импорт/экспорт CSV и правила по MAC-префиксам.
+- **Безопасность и интеграции:** HTTPS, роли (`admin` / `operator` / `observer`), локальные учётные записи с политикой паролей и 2FA (TOTP + доверенные браузеры), вход через Active Directory / LDAP и Keycloak (OIDC), встроенная двуязычная Wiki (`/wiki`).
+
+---
+
+## Как это работает
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/pipeline-ru-dark.svg">
+    <img src="docs/images/readme/pipeline-ru-light.svg" width="100%" alt="Схема конвейера сетевой загрузки Oh My Boot: DHCP/Proxy, TFTP + Secure Boot, меню iPXE и установка ОС">
+  </picture>
+</p>
+
+Подробное описание служб `systemd`, Unix-сокетов, трёх баз PostgreSQL и карты путей сервера — в [документации по архитектуре](docs/architecture.md).
+
+---
+
+## Установка
+
+Полное пошаговое руководство по установке, настройке файрвола UFW и мастеру `omb-setup` — в [docs/installation.md](docs/installation.md).
+
+### Требования и порты
+
+- **ОС:** **Ubuntu 26.04 LTS amd64** (основная целевая ОС для онлайн- и офлайн-установки) или **Ubuntu 24.04 LTS amd64** (онлайн-установка).
+- **Сеть:** 1 или 2 сетевых интерфейса со статическим IPv4 (рекомендуется 2: отдельный интерфейс управления и отдельный PXE-сегмент; при 1 интерфейсе используйте режим **Proxy DHCP**).
+- **Основные порты:**
+
+| Сегмент | Порты | Назначение |
+| --- | --- | --- |
+| **Management** | `TCP 8443` *(обяз.)*, `TCP 2022` *(SFTP)*, `TCP 445` *(SMB `[iso]`)* | Веб-панель `omb-control` (HTTPS) и опциональная загрузка ISO |
+| **PXE** | `UDP 67`, `UDP 4011`, `UDP 69`, `TCP 8080`, `TCP 445` | DHCP / Proxy DHCP (`omb-dnsmasq`), TFTP, HTTP-меню (`omb-boot`), Samba `[ombisos]` |
+
+Полная таблица (включая исходящие порты NAS / AD / Keycloak / NTP) и готовые правила `ufw` — в [разделе портов и файрвола](docs/installation.md#сетевые-порты-и-файрвол).
+
+### Способы установки
+
+**1. Онлайн-установка одной командой** *(рекомендуется — скачивает `.deb`, проверяет `SHA256SUMS`, ставит зависимости и запускает мастер `omb-setup`)*:
 
 ```sh
-# 1. Online one-line install (downloads .deb, verifies SHA-256, launches omb-setup)
 curl -fsSL https://raw.githubusercontent.com/f0nwa/OMB/main/scripts/install.sh | sudo bash
+```
 
-# 2. Manual .deb install
-sudo apt update && sudo apt install ./omb_<version>_amd64.deb && sudo omb-setup
+**2. Ручная установка из `.deb`-пакета:**
 
-# 3. Offline air-gapped install (from a signed apt-repo)
+```sh
+sudo apt update
+sudo apt install ./omb_<версия>_amd64.deb
+sudo omb-setup
+```
+
+**3. Офлайн-установка (изолированный контур, из подписанного `apt-repo`):**
+
+```sh
 sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key>
 ```
 
-After installation, open `https://<server-ip>:8443` and sign in as `admin`. For day-2 console administration on the server, use `sudo omb status | channel | update | reset-password`. See the full installation guide: [English](docs/en/installation.md) · [Русский](docs/installation.md).
+> Сборка подписанного локального репозитория, обновления без интернета и откат описаны в [docs/offline-release.md](docs/offline-release.md) и [docs/offline-installation.md](docs/offline-installation.md).
 
-## Tested so far
+### Первый вход и консольная утилита `omb`
 
-Test VMs reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and the Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 profile also reached its installer and disk in SeaBIOS; a Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements stopped installation on that VM. A Windows 11 installation with a user-supplied answer file completed and booted from disk, and a newly uploaded Windows 11 26H2 ISO reached disk selection. A Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI and, in SeaBIOS, WinPE with network, both disks and the mounted installer. Physical PXE clients and driver entries on real laptops remain to be checked. These detailed firmware results predate the unified-installations build. After the OMB transition, the user confirmed UEFI Secure Boot loading with XML and drivers; the full repeat client run is deferred until the main development work is complete. Strelec preparation now follows the native PXE recipe in the supplied ISO; client boot verification is recorded separately.
+После завершения мастера `omb-setup` откройте веб-панель `https://<server-ip>:8443` и войдите под учётной записью `admin` с заданным паролем.
 
-Network driver selection was verified on a UEFI VM: inherited firmware SNP and an explicit iPXE override both reached the menu. Physical Dell Secure Boot checks remain to be completed on real hardware.
+Для повседневного обслуживания сервера из консоли доступна утилита `omb`:
 
-Use the [current Control guide](docs/en/control-installation.md#installations-and-menu) for installation and operation.
+```sh
+sudo omb status                  # версия, канал, статус 7 служб и UFW
+sudo omb channel [stable|dev]    # просмотр и переключение канала обновлений
+sudo omb update                  # онлайн-обновление с бэкапом БД и проверкой SHA-256
+sudo omb reset-password [user]   # сброс пароля локальной учётной записи
+sudo omb reset-2fa [user]        # сброс 2FA (TOTP) пользователя
+```
 
-## Guides
+---
 
-Start with the server installation guide ([EN](docs/en/installation.md) · [RU](docs/installation.md)) and [offline releases](docs/en/offline-release.md). The other guides are available in English and Russian:
+## Документация
 
-| Guide | English | Русский |
+Вся пользовательская документация доступна на русском и английском языках (а также встроена внутрь самого сервера по адресу `/wiki`).
+
+| Раздел | Русский | English |
 | --- | --- | --- |
-| Control and admin interface | [EN](docs/en/control-installation.md) | [RU](docs/control-installation.md) |
-| Answer file editor | [EN](docs/en/answer-editor.md) | [RU](docs/answer-editor.md) |
-| Images, ISO catalog and Windows profiles | [EN](docs/en/images-installation.md) | [RU](docs/images-installation.md) |
-| Secure Boot: how the boot chain works | [EN](docs/en/secure-boot.md) | [RU](docs/secure-boot.md) |
-| Network boot paths: iPXE, GRUB, Windows | — | [RU, with diagrams](docs/secure-boot-boot-paths.md) |
-| Secure Boot: preparing domain laptops with SCCM | [EN](docs/en/secure-boot-sccm.md) | [RU](docs/secure-boot-sccm.md) |
-| Ubuntu Desktop PXE | [EN](docs/en/ubuntu-desktop-pxe.md) | [RU](docs/ubuntu-desktop-pxe.md) |
-| Windows 10 WinPE | [EN](docs/en/windows-winpe-pxe.md) | [RU](docs/windows-winpe-pxe.md) |
-| Windows 11 WinPE | [EN](docs/en/windows11-winpe-pxe.md) | [RU](docs/windows11-winpe-pxe.md) |
-| Architecture, services and boot pipeline | [EN](docs/en/architecture.md) | [RU](docs/architecture.md) |
-| Architecture and acceptance plan | [EN](docs/en/omb-design.md) | — |
-| Offline updates and `.deb` releases | [EN](docs/en/offline-release.md) | [RU](docs/offline-release.md) |
-| Brand: mark, files and usage rules | — | [RU](docs/brand/README.md) |
+| **Установка сервера, порты, `omb-setup` и CLI `omb`** | [docs/installation.md](docs/installation.md) | [docs/en/installation.md](docs/en/installation.md) |
+| **Веб-панель управления, меню, загрузки, роли, 2FA, AD / OIDC** | [docs/control-installation.md](docs/control-installation.md) | [docs/en/control-installation.md](docs/en/control-installation.md) |
+| **Каталог ISO, хранилища (Local / SMB / NFS) и профили Windows** | [docs/images-installation.md](docs/images-installation.md) | [docs/en/images-installation.md](docs/en/images-installation.md) |
+| **Редактор файлов ответов (`autounattend.xml`)** | [docs/answer-editor.md](docs/answer-editor.md) | [docs/en/answer-editor.md](docs/en/answer-editor.md) |
+| **Архитектура, службы, базы данных и конвейер загрузки** | [docs/architecture.md](docs/architecture.md) | [docs/en/architecture.md](docs/en/architecture.md) |
+| **UEFI Secure Boot: цепочка подписей и диагностика** | [docs/secure-boot.md](docs/secure-boot.md) | [docs/en/secure-boot.md](docs/en/secure-boot.md) |
+| **Маршруты сетевой загрузки (схемы)** | [docs/secure-boot-boot-paths.md](docs/secure-boot-boot-paths.md) | — |
+| **Secure Boot: подготовка доменных ноутбуков через SCCM** | [docs/secure-boot-sccm.md](docs/secure-boot-sccm.md) | [docs/en/secure-boot-sccm.md](docs/en/secure-boot-sccm.md) |
+| **Сценарий Ubuntu Desktop PXE** | [docs/ubuntu-desktop-pxe.md](docs/ubuntu-desktop-pxe.md) | [docs/en/ubuntu-desktop-pxe.md](docs/en/ubuntu-desktop-pxe.md) |
+| **Сценарий Windows 10 WinPE** | [docs/windows-winpe-pxe.md](docs/windows-winpe-pxe.md) | [docs/en/windows-winpe-pxe.md](docs/en/windows-winpe-pxe.md) |
+| **Сценарий Windows 11 WinPE** | [docs/windows11-winpe-pxe.md](docs/windows11-winpe-pxe.md) | [docs/en/windows11-winpe-pxe.md](docs/en/windows11-winpe-pxe.md) |
+| **Офлайн-выпуски `.deb`, обновления и откат** | [docs/offline-release.md](docs/offline-release.md) | [docs/en/offline-release.md](docs/en/offline-release.md) |
+| **Комплект для первичной офлайн-установки** | [docs/offline-installation.md](docs/offline-installation.md) | [docs/en/offline-installation.md](docs/en/offline-installation.md) |
+| **План архитектуры и приёмки** | — | [docs/en/omb-design.md](docs/en/omb-design.md) |
+| **Брендбук: знак, логотипы и правила использования** | [docs/brand/README.md](docs/brand/README.md) | — |
 
-## Development
+---
 
-For local verification:
+## Что проверено
+
+- **Серверная установка и обновления:** на чистых ВМ Ubuntu 26.04.1 LTS проверены онлайн-установка (`install.sh` + `omb-setup`), полностью офлайн-установка (`offline-deploy.sh install` + `omb-setup`), кумулятивные миграции БД (`schema_migrations`), смена каналов (`stable` / `dev`) и самодостаточный откат (`rollback`).
+- **Сетевая загрузка ВМ:** подтверждены загрузка Ubuntu Desktop в Legacy BIOS (SeaBIOS) и UEFI (с Secure Boot и без), запуск установщиков Windows 10 и Windows 11 с видимыми дисками в UEFI, полная установка Windows 11 с пользовательским `autounattend.xml` и драйверами VirtIO (сеть + SCSI), а также переключение сетевых драйверов UEFI (`snponly.efi` / `ipxe.efi`).
+- **На заметку:** полный повторный клиентский регресс на физических ноутбуках (включая специфические проверки Secure Boot на реальном железе Dell/Lenovo/HP) продолжается.
+
+---
+
+## Разработка и проверка
+
+Локальный прогон тестов и проверок:
 
 ```sh
 go test ./...
@@ -81,6 +174,8 @@ go vet ./...
 scripts/fetch-ipxe_test.sh
 ```
 
-## License
+---
 
-The code is released under the [MIT License](LICENSE). The Oh My Boot mark and its files are described in [docs/brand](docs/brand/README.md).
+## Лицензия
+
+Исходный код распространяется под лицензией [MIT](LICENSE). Знак `oh my boot_` и правила его использования описаны в [docs/brand/README.md](docs/brand/README.md).

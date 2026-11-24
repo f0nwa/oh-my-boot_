@@ -29,9 +29,9 @@ Oh My Boot (OMB) serves a network boot menu for BIOS and UEFI machines from an i
 
 Test VMs reached the Ubuntu Desktop with SeaBIOS and with UEFI Secure Boot on and off, and the Windows 10 and Windows 11 installers with visible disks in UEFI. The Windows 10 profile also reached its installer and disk in SeaBIOS; a Windows 11 profile reached Setup in SeaBIOS, where Windows 11's UEFI and TPM requirements stopped installation on that VM. A Windows 11 installation with a user-supplied answer file completed and booted from disk, and a newly uploaded Windows 11 26H2 ISO reached disk selection. A Windows 11 entry with VirtIO network and SCSI drivers reached Setup with both disks visible in UEFI and, in SeaBIOS, WinPE with network, both disks and the mounted installer. Physical PXE clients and driver entries on real laptops remain to be checked. These detailed firmware results predate the unified-installations build. After the OMB transition, the user confirmed UEFI Secure Boot loading with XML and drivers; the full repeat client run is deferred until the main development work is complete. Strelec preparation now follows the native PXE recipe in the supplied ISO; client boot verification is recorded separately.
 
-Network driver selection was verified on a UEFI VM: inherited firmware SNP and an explicit iPXE override both reached the menu. The deployed build’s physical Dell Secure Boot check is deferred; see the [acceptance report](docs/research/2026-11-02-network-driver-selection-acceptance.md).
+Network driver selection was verified on a UEFI VM: inherited firmware SNP and an explicit iPXE override both reached the menu. Physical Dell Secure Boot checks remain to be completed on real hardware.
 
-Use the [current Control guide](docs/en/control-installation.md#installations-and-menu) for installation and operation. Completed transition reports are available through [project history](docs/project-history.md); current recovery instructions are in the [recovery guide](docs/recovery.md).
+Use the [current Control guide](docs/en/control-installation.md#installations-and-menu) for installation and operation.
 
 ## Guides
 
@@ -49,10 +49,9 @@ Start with the [server installation guide](docs/installation.md) ([offline insta
 | Windows 10 WinPE | [EN](docs/en/windows-winpe-pxe.md) | [RU](docs/windows-winpe-pxe.md) |
 | Windows 11 WinPE | [EN](docs/en/windows11-winpe-pxe.md) | [RU](docs/windows11-winpe-pxe.md) |
 | Architecture, services and boot pipeline | [EN](docs/en/architecture.md) | [RU](docs/architecture.md) |
-| Architecture and acceptance plan | [EN](docs/en/omb-design.md) | [RU](docs/superpowers/specs/2026-10-15-omb-design.md) |
+| Architecture and acceptance plan | [EN](docs/en/omb-design.md) | — |
+| Offline updates and `.deb` releases | [EN](docs/en/offline-release.md) | [RU](docs/offline-release.md) |
 | Brand: mark, files and usage rules | — | [RU](docs/brand/README.md) |
-
-Current specifications in `docs/superpowers/specs` and the unfinished machine-list plan in `docs/superpowers/plans` are kept in Russian. Completed implementation plans and test reports are available through [project history](docs/project-history.md).
 
 ## Development
 
@@ -65,26 +64,6 @@ go vet ./...
 scripts/fetch-ipxe_test.sh
 ```
 
-## Names
-
-The source code, installation files and existing test stand use OMB technical names (`omb-control`, `omb-agent`, `/etc/omb`, …). Migration included a verified restore rehearsal and server reboot. Initial UEFI Secure Boot loading with drivers and XML was confirmed by the user. Full client regression testing is planned after the main development work; see the [migration report](docs/research/2026-10-31-omb-technical-migration.md) and [name audit](docs/research/2026-11-01-omb-name-audit.md). Completed plans, reports and the one-time migration tool are retired from the current tree. Their original versions remain in Git, and the verified recovery bundle remains on the stand; see [project history](docs/project-history.md) and [recovery](docs/recovery.md).
-
 ## License
 
 The code is released under the [MIT License](LICENSE). The Oh My Boot mark and its files are described in [docs/brand](docs/brand/README.md).
-
-## Набор для работы с агентами (для человека)
-
-Контекст проекта хранится в Markdown-файлах в корне, а не в памяти чатов, поэтому работу можно продолжать в любом агенте. Инструкция для агентов — [AGENTS.md](AGENTS.md), список агентов и фраза старта — [_platforms/агенты.md](_platforms/агенты.md).
-
-| Файл | Что внутри |
-| --- | --- |
-| [AGENTS.md](AGENTS.md) | Как работать: порядок сессии, правила, структура, нейминг, правила разработки |
-| [MEMORY.md](MEMORY.md) | Что помнить: владелец, цели, решения, прогресс |
-| [INDEX.md](INDEX.md) | Что где лежит и что актуально |
-| [JOURNAL.md](JOURNAL.md) | Журнал сессий, только дописывается |
-| [TODO.md](TODO.md) | Очередь задач |
-| [_platforms/](_platforms/агенты.md) | Агенты и универсальный промт |
-| [_templates/](_templates/фича/README.md) | Шаблон новой единицы работы |
-
-Переходники на AGENTS.md: `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, `.clinerules`, `.github/copilot-instructions.md`.

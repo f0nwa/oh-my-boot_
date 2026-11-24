@@ -90,7 +90,7 @@ For our own boot chain, we can generate a key pair, enroll its **public certific
 | Dell | Some Latitude manuals distinguish `Append from File` from `Replace from File`; turning off `Custom Mode` discards custom changes | Menu labels, certificate format, and whether the entry persists across a reboot |
 | Lenovo | Lenovo describes modifying Secure Boot `db` for custom loaders, `Custom Mode`, and `Restore Factory Keys`; restoring factory keys erases custom changes | Whether our ThinkPad can append without replacement and how its BIOS version handles the operation |
 
-[Example Dell Latitude manual](https://www.dell.com/support/manuals/en-us/latitude-15-5590-laptop/latitude_5590_om/secure-boot-screen-options?guid=guid-10e2d556-4d8c-40f5-a192-a95aa791e1a1&lang=en-us), [Lenovo ThinkPad Secure Boot paper](https://download.lenovo.com/pccbbs/mobiles_pdf/lenovo_thinkpad_x250_bios_security_white_paper.pdf). These documents establish behavior for the **named models**, not every Dell or Lenovo. The model-specific investigation is tracked in the [TODO](../../TODO.md).
+[Example Dell Latitude manual](https://www.dell.com/support/manuals/en-us/latitude-15-5590-laptop/latitude_5590_om/secure-boot-screen-options?guid=guid-10e2d556-4d8c-40f5-a192-a95aa791e1a1&lang=en-us), [Lenovo ThinkPad Secure Boot paper](https://download.lenovo.com/pccbbs/mobiles_pdf/lenovo_thinkpad_x250_bios_security_white_paper.pdf). These documents establish behavior for the **named models**, not every Dell or Lenovo.
 
 ## If a machine does not boot
 
@@ -204,11 +204,11 @@ What was checked on the test server:
 - **The new shim does not help a Windows-only `db`.** Such firmware has Windows keys but neither third-party CA. It still needs a firmware option or the [SCCM script](secure-boot-sccm.md).
 - The dual signature matters for firmware that trusts only the 2023 third-party CA. Certificate expiry alone does not force rejection; the firmware checks `db` trust and `dbx` revocations.
 
-Both pinned download sources are in the [boot assets guide](../../deploy/boot-assets/README.md). A VM test with three key sets (third-party 2023 only, third-party 2011 only, Windows only) remains in the [TODO](../../TODO.md).
+Both pinned download sources are in the [boot assets guide](../../deploy/boot-assets/README.md). A VM test with three key sets (third-party 2023 only, third-party 2011 only, Windows only) should be run separately before fleet rollout.
 
-## How the lab switch differs from iVentoy's EFI file choice
+## How OMB differs from iVentoy's EFI file choice
 
-iVentoy lets you pick which EFI file to send to machines. Its loader is unsigned, so the file is matched to the firmware. In the main Oh My Boot mode, the chain is signed and all UEFI clients receive the same iPXE loader. The lab now has a global **iPXE / GRUB** choice to test [a separate Debian chain](../grub-secure-boot-test.md); it changes the boot file for every UEFI client and does not select one for a particular firmware.
+iVentoy lets you pick which EFI file to send to machines. Its loader is unsigned, so the file is matched to the firmware. In Oh My Boot, the chain is signed and all UEFI clients receive the same iPXE loader.
 
 The choice that does matter is iPXE's network driver. `ipxe.efi` has its own network card drivers, while `snponly.efi` uses the firmware's driver. Some hardware (USB-C docks, USB adapters, some new network cards) works only with the latter. For iPXE, `snponly.efi` is the preferred baseline after compatibility is confirmed on the target models; `ipxe.efi` remains the fallback. Both files are signed and started through the shim, so choosing between them does not affect Secure Boot. This choice does not apply to GRUB, which uses a different loader. The iPXE variant can be selected globally, for an individual machine, and by MAC prefix.
 

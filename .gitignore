@@ -1,3 +1,49 @@
-.worktrees/
-
+# Сборки, временные файлы и рабочие копии
 dist/
+.worktrees/
+__pycache__/
+*.pyc
+*.deb
+*.bak
+*.orig
+*.tmp
+
+# Секреты и локальное окружение
+.env
+.env.*
+*.key
+*.pem
+
+# ОС и редакторы
+.DS_Store
+.vscode/
+.idea/
+
+# Инфраструктура ИИ-агентов и внутренняя память проекта
+.claude/
+.mcp.json
+.superpowers/
+_platforms/
+_templates/
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/.cursorrules
+/.clinerules
+/.github/copilot-instructions.md
+/INDEX.md
+/JOURNAL.md
+/MEMORY.md
+/TODO.md
+
+# Временные HTML-макеты UI в корне
+/*-mockup.html
+/*-mockups.html
+
+# Внутренние отчёты, спецификации, планы и документы стенда
+/docs/research/
+/docs/superpowers/
+/docs/roadmaps/
+/docs/grub-secure-boot-test.md
+/docs/project-history.md
+/docs/recovery.md

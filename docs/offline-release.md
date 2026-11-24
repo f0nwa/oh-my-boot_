@@ -56,12 +56,12 @@ bash scripts/build-release.sh \
 
 # 2. С macOS: собрать на стенде и сразу обновить его одной командой
 bash scripts/build-release.sh \
-  --remote fonwa@192.168.10.135 \
-  --apply 192.168.10.135
+  --remote user@192.0.2.10 \
+  --apply 192.0.2.10
 
 # 3. С macOS: собрать на Ubuntu-хосте и забрать готовый apt-repo локально
 bash scripts/build-release.sh \
-  --remote fonwa@192.168.10.135 \
+  --remote user@192.0.2.10 \
   --sign-key /path/to/signing-private.pem \
   --out ./dist/apt-repo
 ```

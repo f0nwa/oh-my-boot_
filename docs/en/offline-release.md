@@ -58,12 +58,12 @@ bash scripts/build-release.sh \
 
 # 2. From macOS: build on an Ubuntu stand and apply the update in one step
 bash scripts/build-release.sh \
-  --remote fonwa@192.168.10.135 \
-  --apply 192.168.10.135
+  --remote user@192.0.2.10 \
+  --apply 192.0.2.10
 
 # 3. From macOS: build on an Ubuntu host and fetch the signed apt-repo locally
 bash scripts/build-release.sh \
-  --remote fonwa@192.168.10.135 \
+  --remote user@192.0.2.10 \
   --sign-key /path/to/signing-private.pem \
   --out ./dist/apt-repo
 ```

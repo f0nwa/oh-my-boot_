@@ -29,9 +29,10 @@ const path = require('node:path');
     res.end(fs.readFileSync(file));
   });
 
+  const chromiumPath = process.env.OMB_CHROMIUM_EXECUTABLE || undefined;
   const browser = await chromium.launch({
     headless: true,
-    executablePath: process.env.OMB_CHROMIUM_EXECUTABLE || '/Users/fonwa/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell'
+    ...(chromiumPath ? { executablePath: chromiumPath } : {})
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 

@@ -12,6 +12,11 @@
 !/go.mod
 !/go.sum
 
+# Public GitHub workflows (keep local agent adapter files ignored)
+!/.github/
+/.github/*
+!/.github/workflows/
+
 # Public source, deployment, scripts, tests, and tooling directories
 !/cmd/
 !/deploy/

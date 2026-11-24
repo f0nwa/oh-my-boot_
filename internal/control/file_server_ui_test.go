@@ -207,9 +207,9 @@ func TestFileServerUI_Users(t *testing.T) {
 	}
 	for _, want := range []string{
 		`action="/users/file-access"`,
-		`name="mode" value="none"`,
-		`name="mode" value="ro"`,
-		`name="mode" value="rw"`,
+		`name="mode" value="none"><span><strong>`,
+		`name="mode" value="ro"><span><strong>`,
+		`name="mode" value="rw"><span><strong>`,
 		`data-user-fs-save`,
 		`data-password-generator`,
 	} {

@@ -234,9 +234,9 @@
 <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
 <input type="hidden" name="id" id="user-fs-modal-id">
 <div class="fs-radio-cards">
-<label class="radio-card" data-fs-card="none"><input type="radio" name="mode" value="none"><div><strong>{{t "Отключён"}}</strong><small>{{t "Пользователь не может подключаться к локальному серверу по SMB и SFTP."}}</small></div></label>
-<label class="radio-card" data-fs-card="ro"><input type="radio" name="mode" value="ro"><div><strong>{{t "Только чтение"}}</strong><small>{{t "Просмотр и скачивание существующих ISO-образов без права загрузки и удаления."}}</small></div></label>
-<label class="radio-card" data-fs-card="rw"><input type="radio" name="mode" value="rw"><div><strong>{{t "Чтение и запись"}}</strong><small>{{t "Отправка новых образов ISO на сервер, создание подпапок и удаление свободных ISO."}}</small></div></label>
+<label class="radio-card" data-fs-card="none"><input type="radio" name="mode" value="none"><span><strong>{{t "Отключён"}}</strong><small>{{t "Пользователь не может подключаться к локальному серверу по SMB и SFTP."}}</small></span></label>
+<label class="radio-card" data-fs-card="ro"><input type="radio" name="mode" value="ro"><span><strong>{{t "Только чтение"}}</strong><small>{{t "Просмотр и скачивание существующих ISO-образов без права загрузки и удаления."}}</small></span></label>
+<label class="radio-card" data-fs-card="rw"><input type="radio" name="mode" value="rw"><span><strong>{{t "Чтение и запись"}}</strong><small>{{t "Отправка новых образов ISO на сервер, создание подпапок и удаление свободных ISO."}}</small></span></label>
 </div>
 <div id="user-fs-pw-box">
 <label class="field-label" for="user-fs-pw-input"><span id="user-fs-pw-label">{{t "Отдельный пароль SMB / SFTP (не менее 12 символов; оставьте пустым, чтобы не менять текущий)"}}</span></label>

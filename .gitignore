@@ -16,6 +16,7 @@
 !/.github/
 /.github/*
 !/.github/workflows/
+!/.github/FUNDING.yml
 
 # Public source, deployment, scripts, tests, and tooling directories
 !/cmd/

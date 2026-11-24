@@ -16,6 +16,7 @@
   <a href="docs/en/installation.md"><img src="https://img.shields.io/badge/platform-Ubuntu%2024.04%20%7C%2026.04-E95420?logo=ubuntu&logoColor=white" alt="Platform Ubuntu 24.04 / 26.04"></a>
   <a href="https://github.com/f0nwa/oh-my-boot_/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/linted-shellcheck-E6B800?logo=gnu-bash&logoColor=white" alt="ShellCheck"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/f0nwa/oh-my-boot_?color=2F81F7" alt="MIT License"></a>
+  <a href="https://boosty.to/fonwa"><img src="https://img.shields.io/badge/Boosty-Support-F15F2C?logo=boosty&logoColor=white" alt="Support on Boosty"></a>
 </p>
 
 **oh my boot_ (OMB)** is a Linux network boot (PXE) server that serves a boot menu for BIOS and UEFI machines (including UEFI Secure Boot through signed `shim` + iPXE) and manages its contents from an HTTPS control panel: ISO libraries, Windows and Ubuntu installers, service WinPE images, answer files, WinPE drivers, and a log of every machine that booted. It works both on connected networks and in fully air-gapped environments.
@@ -34,6 +35,7 @@
 - [Documentation](#documentation)
 - [Tested So Far](#tested-so-far)
 - [Development & Verification](#development--verification)
+- [Support the Project](#support-the-project)
 - [License](#license)
 
 ---
@@ -192,6 +194,12 @@ go vet ./...
 ./scripts/validate-ubuntu-autoinstall.sh testdata/autoinstall/interactive-user-data testdata/autoinstall/serial-user-data
 scripts/fetch-ipxe_test.sh
 ```
+
+---
+
+## Support the Project
+
+If `oh my boot_` saves you time and helps in your infrastructure, you can support ongoing development on [Boosty](https://boosty.to/fonwa).
 
 ---
 

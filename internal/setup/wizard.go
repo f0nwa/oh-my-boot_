@@ -480,6 +480,9 @@ func ResolveNonInteractive(opts Options, ifaces []NetIface, passwordStdin io.Rea
 	if opts.InstallMode != "online" && opts.InstallMode != "offline" {
 		return Options{}, fmt.Errorf("unsupported --install-mode %q (expected online or offline)", opts.InstallMode)
 	}
+	if opts.Channel != "" && opts.Channel != "stable" && opts.Channel != "dev" {
+		return Options{}, fmt.Errorf("unsupported --channel %q (expected stable or dev)", opts.Channel)
+	}
 
 	if opts.PXEInterface != "" && opts.PXEInterface != "none" && !validInterfaceNameRe.MatchString(opts.PXEInterface) {
 		return Options{}, fmt.Errorf("invalid --pxe-interface %q", opts.PXEInterface)

@@ -469,6 +469,158 @@ func TestExecuteRejectsShortCyrillicPassword(t *testing.T) {
 	}
 }
 
+func TestResolveChannel(t *testing.T) {
+	dir := t.TempDir()
+	devMeta := filepath.Join(dir, "release-dev.json")
+	if err := os.WriteFile(devMeta, []byte(`{"version":"0.2.1~dev.3","channel":"dev"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := ResolveChannel("dev", ""); err != nil || got != "dev" {
+		t.Fatalf("ResolveChannel(dev) = (%q, %v), want (dev, nil)", got, err)
+	}
+	if got, err := ResolveChannel("stable", devMeta); err != nil || got != "stable" {
+		t.Fatalf("ResolveChannel(stable, devMeta) = (%q, %v), want (stable, nil)", got, err)
+	}
+	if got, err := ResolveChannel("", devMeta); err != nil || got != "dev" {
+		t.Fatalf("ResolveChannel('', devMeta) = (%q, %v), want (dev, nil)", got, err)
+	}
+	if got, err := ResolveChannel("", filepath.Join(dir, "missing.json")); err != nil || got != "stable" {
+		t.Fatalf("ResolveChannel('', missing) = (%q, %v), want (stable, nil)", got, err)
+	}
+	if _, err := ResolveChannel("nightly", ""); err == nil {
+		t.Fatal("expected ResolveChannel to reject invalid channel 'nightly'")
+	}
+}
+
+func TestExecuteWritesChannel(t *testing.T) {
+	newTestInstaller := func(t *testing.T, root string) *Installer {
+		t.Helper()
+		setupCleanAssets(t, root)
+		runner := &mockRunner{
+			handler: func(spec CmdSpec) ([]byte, error) {
+				if spec.Name == "openssl" {
+					for i := 0; i < len(spec.Args)-1; i++ {
+						if spec.Args[i] == "-keyout" || spec.Args[i] == "-out" {
+							if err := os.WriteFile(spec.Args[i+1], []byte("dummy-pem"), 0o600); err != nil {
+								return nil, err
+							}
+						}
+					}
+				}
+				return nil, nil
+			},
+		}
+		return &Installer{
+			RootDir:     root,
+			Runner:      runner,
+			Euid:        func() int { return 0 },
+			LookupUser:  func(string) bool { return false },
+			HealthCheck: func(context.Context, string, string) error { return nil },
+		}
+	}
+
+	t.Run("online explicit dev writes CHANNEL with mode 0600", func(t *testing.T) {
+		root := t.TempDir()
+		in := newTestInstaller(t, root)
+		err := in.Execute(context.Background(), Options{
+			Lang:          "ru",
+			ManagementIP:  "192.168.10.135",
+			AdminPassword: "SuperSecretPass123",
+			SkipPXE:       true,
+			InstallMode:   "online",
+			Channel:       "dev",
+		})
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+		chPath := filepath.Join(root, "var/lib/omb-deployment/CHANNEL")
+		data, err := os.ReadFile(chPath)
+		if err != nil {
+			t.Fatalf("read CHANNEL: %v", err)
+		}
+		if string(data) != "dev\n" {
+			t.Fatalf("CHANNEL = %q, want %q", string(data), "dev\n")
+		}
+		info, err := os.Stat(chPath)
+		if err != nil {
+			t.Fatalf("stat CHANNEL: %v", err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("CHANNEL mode = %04o, want 0600", got)
+		}
+	})
+
+	t.Run("online default writes stable", func(t *testing.T) {
+		root := t.TempDir()
+		in := newTestInstaller(t, root)
+		err := in.Execute(context.Background(), Options{
+			Lang:          "ru",
+			ManagementIP:  "192.168.10.135",
+			AdminPassword: "SuperSecretPass123",
+			SkipPXE:       true,
+			InstallMode:   "online",
+		})
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+		chPath := filepath.Join(root, "var/lib/omb-deployment/CHANNEL")
+		data, err := os.ReadFile(chPath)
+		if err != nil {
+			t.Fatalf("read CHANNEL: %v", err)
+		}
+		if string(data) != "stable\n" {
+			t.Fatalf("CHANNEL = %q, want %q", string(data), "stable\n")
+		}
+	})
+
+	t.Run("offline preserves existing CHANNEL", func(t *testing.T) {
+		root := t.TempDir()
+		in := newTestInstaller(t, root)
+		stateDir := filepath.Join(root, "var/lib/omb-deployment")
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		chPath := filepath.Join(stateDir, "CHANNEL")
+		if err := os.WriteFile(chPath, []byte("dev\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		err := in.Execute(context.Background(), Options{
+			Lang:          "ru",
+			ManagementIP:  "192.168.10.135",
+			AdminPassword: "SuperSecretPass123",
+			SkipPXE:       true,
+			InstallMode:   "offline",
+			Channel:       "stable",
+		})
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+		data, err := os.ReadFile(chPath)
+		if err != nil {
+			t.Fatalf("read CHANNEL: %v", err)
+		}
+		if string(data) != "dev\n" {
+			t.Fatalf("offline mode overwrote existing CHANNEL: got %q, want %q", string(data), "dev\n")
+		}
+	})
+
+	t.Run("rejects invalid channel", func(t *testing.T) {
+		root := t.TempDir()
+		in := newTestInstaller(t, root)
+		err := in.Execute(context.Background(), Options{
+			Lang:          "ru",
+			ManagementIP:  "192.168.10.135",
+			AdminPassword: "SuperSecretPass123",
+			SkipPXE:       true,
+			Channel:       "beta",
+		})
+		if err == nil {
+			t.Fatal("expected Execute to reject invalid channel")
+		}
+	})
+}
+
 func assertFileExists(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Stat(path); err != nil {

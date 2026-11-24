@@ -37,6 +37,7 @@ func run(args []string) int {
 		nonInteractive     = fs.Bool("non-interactive", false, "Run without interactive prompts")
 		stateDir           = fs.String("state-dir", "/var/lib/omb-deployment", "Directory for deployment state metadata")
 		installMode        = fs.String("install-mode", "online", "Installation mode recorded in state dir (online or offline)")
+		channel            = fs.String("channel", "", "Release channel recorded in state dir (stable or dev)")
 		showVersion        = fs.Bool("version", false, "Print version and exit")
 	)
 
@@ -50,6 +51,13 @@ func run(args []string) int {
 	if *showVersion {
 		fmt.Printf("omb-setup %s\n", version)
 		return 0
+	}
+
+	resolvedChannel, err := setup.ResolveChannel(*channel, "/usr/share/omb/release.json")
+	if err != nil {
+		ui := setup.NewUI(os.Stderr, *lang, setup.ColorEnabled(os.Stderr, os.Getenv), version)
+		ui.Error(err.Error())
+		return 1
 	}
 
 	color := setup.ColorEnabled(os.Stdout, os.Getenv)
@@ -77,6 +85,7 @@ func run(args []string) int {
 		DHCPEnd:      *dhcpEnd,
 		StateDir:     *stateDir,
 		InstallMode:  *installMode,
+		Channel:      resolvedChannel,
 		SkipPXE:      *skipPXE,
 		Version:      version,
 	}

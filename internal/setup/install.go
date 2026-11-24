@@ -53,8 +53,31 @@ type Options struct {
 	AllowedInterfaces string
 	StateDir          string
 	InstallMode       string
+	Channel           string
 	SkipPXE           bool
 	Version           string
+}
+
+// ResolveChannel validates an explicit release channel ("stable" or "dev") or,
+// when explicit is empty, infers it from releaseJSONPath (falling back to "stable").
+func ResolveChannel(explicit, releaseJSONPath string) (string, error) {
+	if explicit != "" {
+		if explicit != "stable" && explicit != "dev" {
+			return "", fmt.Errorf("unsupported channel: %q (expected stable or dev)", explicit)
+		}
+		return explicit, nil
+	}
+	if releaseJSONPath != "" {
+		if raw, err := os.ReadFile(releaseJSONPath); err == nil {
+			var meta struct {
+				Channel string `json:"channel"`
+			}
+			if json.Unmarshal(raw, &meta) == nil && (meta.Channel == "stable" || meta.Channel == "dev") {
+				return meta.Channel, nil
+			}
+		}
+	}
+	return "stable", nil
 }
 
 // CmdSpec describes an external command execution.
@@ -268,6 +291,10 @@ func (in *Installer) Execute(ctx context.Context, opts Options) error {
 	}
 	if installMode != "online" && installMode != "offline" {
 		return fmt.Errorf("unsupported install mode: %s", installMode)
+	}
+	channel, err := ResolveChannel(opts.Channel, in.resolve("/usr/share/omb/release.json"))
+	if err != nil {
+		return err
 	}
 
 	configurePXE := !opts.SkipPXE && (opts.DHCPMode == "full" || opts.DHCPMode == "proxy")
@@ -589,10 +616,17 @@ func (in *Installer) Execute(ctx context.Context, opts Options) error {
 		}
 	}
 
-	// 12. Record deployment install mode.
+	// 12. Record deployment install mode and release channel.
 	in.progress("state", "Recording installation metadata")
 	if err := writeFileAtomic(filepath.Join(in.resolve(stateDir), "INSTALL_MODE"), []byte(installMode+"\n"), 0o644); err != nil {
 		return fmt.Errorf("write INSTALL_MODE: %w", err)
+	}
+	channelPath := filepath.Join(in.resolve(stateDir), "CHANNEL")
+	_, channelStatErr := os.Stat(channelPath)
+	if installMode != "offline" || os.IsNotExist(channelStatErr) {
+		if err := writeFileAtomic(channelPath, []byte(channel+"\n"), 0o600); err != nil {
+			return fmt.Errorf("write CHANNEL: %w", err)
+		}
 	}
 
 	return nil

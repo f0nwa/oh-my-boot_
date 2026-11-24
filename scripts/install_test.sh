@@ -130,6 +130,7 @@ run_installer() {
     shift 2
     env PATH="$env_dir/bin:$PATH" \
         OMB_SKIP_ROOT_CHECK=1 \
+        OMB_INSTALL_DISABLE_TTY=1 \
         OMB_OS_RELEASE="$os_file" \
         OMB_SETUP_BIN="$env_dir/bin/omb-setup" \
         MOCK_CURL_LOG="$env_dir/logs/curl.log" \
@@ -209,7 +210,7 @@ grep -Fq "https://github.com/f0nwa/OMB/releases/latest/download/SHA256SUMS" "$t7
 grep -Fq "https://github.com/f0nwa/OMB/releases/latest/download/omb_0.2.0_amd64.deb" "$t7/logs/curl.log" || fail "t7: wrong deb URL"
 grep -Fq "apt-get -o DPkg::Lock::Timeout=60 install -y --no-install-recommends" "$t7/logs/apt-get.log" || fail "t7: apt-get install not called"
 grep -Fq "omb_0.2.0_amd64.deb" "$t7/logs/apt-get.log" || fail "t7: deb filename missing in apt-get"
-grep -Fq "omb-setup --install-mode online --lang ru" "$t7/logs/omb-setup.log" || fail "t7: omb-setup args mismatch"
+grep -Fq "omb-setup --install-mode online --channel stable --lang ru" "$t7/logs/omb-setup.log" || fail "t7: omb-setup args mismatch"
 
 # 8. Download mode: refuses to install when SHA-256 mismatches
 t8="$work/t8"
@@ -254,6 +255,7 @@ run_installer "$t10" "$t10/os-release" --channel dev
 grep -Fq "https://api.github.com/repos/f0nwa/OMB/releases?per_page=20" "$t10/logs/curl.log" || fail "t10: did not query GitHub releases API"
 grep -Fq "https://github.com/f0nwa/OMB/releases/download/v0.2.1-dev.2/SHA256SUMS" "$t10/logs/curl.log" || fail "t10: wrong dev SHA256SUMS URL"
 grep -Fq "https://github.com/f0nwa/OMB/releases/download/v0.2.1-dev.2/omb_0.2.1~dev.2_amd64.deb" "$t10/logs/curl.log" || fail "t10: wrong dev deb URL"
+grep -Fq "omb-setup --install-mode online --channel dev" "$t10/logs/omb-setup.log" || fail "t10: omb-setup must receive --channel dev"
 
 # 11. Piped stdin reaches omb-setup when --non-interactive --admin-password-stdin is passed
 t11="$work/t11"
@@ -262,6 +264,7 @@ write_os_release "$t11/os-release" ubuntu 26.04
 printf 'fake-deb-piped' >"$t11/omb_0.2.0_amd64.deb"
 printf '%s\n' 'PipedSecretPass123!' | env PATH="$t11/bin:$PATH" \
     OMB_SKIP_ROOT_CHECK=1 \
+    OMB_INSTALL_DISABLE_TTY=1 \
     OMB_OS_RELEASE="$t11/os-release" \
     OMB_SETUP_BIN="$t11/bin/omb-setup" \
     MOCK_CURL_LOG="$t11/logs/curl.log" \
@@ -273,5 +276,54 @@ printf '%s\n' 'PipedSecretPass123!' | env PATH="$t11/bin:$PATH" \
         --admin-password-stdin
 grep -Fq "omb-setup --install-mode online --non-interactive --management-ip 192.168.10.135 --skip-pxe --admin-password-stdin" "$t11/logs/omb-setup.log" || fail "t11: omb-setup args mismatch"
 [[ "$(cat "$t11/logs/omb-setup.stdin")" == "PipedSecretPass123!" ]] || fail "t11: piped password did not reach omb-setup stdin (got: $(cat "$t11/logs/omb-setup.stdin" 2>/dev/null || true))"
+
+# 12. Interactive branch prompt selecting 2 (dev) auto-resolves latest dev prerelease tag
+t12="$work/t12"
+setup_mock_env "$t12" amd64
+write_os_release "$t12/os-release" ubuntu 26.04
+mkdir -p "$t12/fixtures"
+cat >"$t12/fixtures/releases.json" <<'JSON'
+[
+  {"tag_name": "v0.2.1-dev.3", "prerelease": true},
+  {"tag_name": "v0.2.0", "prerelease": false}
+]
+JSON
+printf 'dev-deb-prompt' >"$t12/fixtures/omb_0.2.1~dev.3_amd64.deb"
+t12_sha=$(sha256_file "$t12/fixtures/omb_0.2.1~dev.3_amd64.deb")
+printf '%s  omb_0.2.1~dev.3_amd64.deb\n' "$t12_sha" >"$t12/fixtures/SHA256SUMS"
+printf '2\n' | env PATH="$t12/bin:$PATH" \
+    OMB_SKIP_ROOT_CHECK=1 \
+    OMB_INSTALL_PROMPT_STDIN=1 \
+    OMB_INSTALL_DISABLE_TTY=1 \
+    OMB_OS_RELEASE="$t12/os-release" \
+    OMB_SETUP_BIN="$t12/bin/omb-setup" \
+    MOCK_CURL_LOG="$t12/logs/curl.log" \
+    MOCK_CURL_FIXTURES="$t12/fixtures" \
+    bash "$installer" >"$t12/out" 2>&1
+grep -Fq "Выберите ветку / Select release channel:" "$t12/out" || fail "t12: branch prompt not shown"
+grep -Fq "https://api.github.com/repos/f0nwa/OMB/releases?per_page=20" "$t12/logs/curl.log" || fail "t12: did not query GitHub releases API"
+grep -Fq "https://github.com/f0nwa/OMB/releases/download/v0.2.1-dev.3/omb_0.2.1~dev.3_amd64.deb" "$t12/logs/curl.log" || fail "t12: wrong dev deb URL"
+grep -Fq "omb-setup --install-mode online --channel dev" "$t12/logs/omb-setup.log" || fail "t12: omb-setup did not receive --channel dev"
+
+# 13. Interactive branch prompt default (Enter) selects stable
+t13="$work/t13"
+setup_mock_env "$t13" amd64
+write_os_release "$t13/os-release" ubuntu 26.04
+mkdir -p "$t13/fixtures"
+printf 'stable-deb-prompt' >"$t13/fixtures/omb_0.2.0_amd64.deb"
+t13_sha=$(sha256_file "$t13/fixtures/omb_0.2.0_amd64.deb")
+printf '%s  omb_0.2.0_amd64.deb\n' "$t13_sha" >"$t13/fixtures/SHA256SUMS"
+printf '\n' | env PATH="$t13/bin:$PATH" \
+    OMB_SKIP_ROOT_CHECK=1 \
+    OMB_INSTALL_PROMPT_STDIN=1 \
+    OMB_INSTALL_DISABLE_TTY=1 \
+    OMB_OS_RELEASE="$t13/os-release" \
+    OMB_SETUP_BIN="$t13/bin/omb-setup" \
+    MOCK_CURL_LOG="$t13/logs/curl.log" \
+    MOCK_CURL_FIXTURES="$t13/fixtures" \
+    bash "$installer" >"$t13/out" 2>&1
+grep -Fq "Выберите ветку / Select release channel:" "$t13/out" || fail "t13: branch prompt not shown"
+grep -Fq "https://github.com/f0nwa/OMB/releases/latest/download/omb_0.2.0_amd64.deb" "$t13/logs/curl.log" || fail "t13: wrong stable deb URL"
+grep -Fq "omb-setup --install-mode online --channel stable" "$t13/logs/omb-setup.log" || fail "t13: omb-setup did not receive --channel stable"
 
 echo "install_test.sh: ALL PASS"

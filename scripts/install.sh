@@ -2,11 +2,13 @@
 set -euo pipefail
 
 OMB_RELEASE_REPO="${OMB_RELEASE_REPO:-f0nwa/OMB}"
-OMB_GITHUB_API_BASE="${OMB_GITHUB_API_BASE:-https://api.github.com}"
+OMB_GITHUB_API_BASE="${OMB_GITHUB_API_BASE:-${OMB_GITHUB_API_URL:-https://api.github.com}}"
 OMB_GITHUB_RELEASE_BASE="${OMB_GITHUB_RELEASE_BASE:-https://github.com}"
 OMB_OS_RELEASE="${OMB_OS_RELEASE:-/etc/os-release}"
 OMB_SKIP_ROOT_CHECK="${OMB_SKIP_ROOT_CHECK:-0}"
 OMB_SETUP_BIN="${OMB_SETUP_BIN:-/usr/bin/omb-setup}"
+OMB_INSTALL_PROMPT_STDIN="${OMB_INSTALL_PROMPT_STDIN:-0}"
+OMB_INSTALL_DISABLE_TTY="${OMB_INSTALL_DISABLE_TTY:-0}"
 
 usage() {
     cat <<'EOF'
@@ -70,8 +72,36 @@ normalize_tag() {
     printf '%s' "$v"
 }
 
+prompt_channel() {
+    local fd="$1"
+    local choice=""
+    echo "Выберите ветку / Select release channel:"
+    echo "  1) stable (рекомендуется / recommended)"
+    echo "  2) dev"
+    while true; do
+        printf 'Выбор / Choice [1]: '
+        if ! IFS= read -r choice <&"$fd"; then
+            choice=""
+        fi
+        case "$choice" in
+            ""|1|stable)
+                channel="stable"
+                return 0
+                ;;
+            2|dev)
+                channel="dev"
+                return 0
+                ;;
+            *)
+                echo "omb-install: введите 1 (stable) или 2 (dev) / enter 1 (stable) or 2 (dev)" >&2
+                ;;
+        esac
+    done
+}
+
 version=""
 channel="stable"
+channel_explicit=false
 deb_path=""
 repo="$OMB_RELEASE_REPO"
 force_os=false
@@ -87,6 +117,7 @@ while [[ $# -gt 0 ]]; do
         --channel)
             [[ $# -ge 2 && -n "$2" ]] || die "--channel requires a value"
             channel="$2"
+            channel_explicit=true
             shift 2
             ;;
         --deb)
@@ -122,6 +153,24 @@ case "$channel" in
     stable|dev) ;;
     *) die "unsupported --channel: $channel (expected stable or dev)" ;;
 esac
+
+non_interactive=false
+preserve_stdin=false
+has_channel_arg=false
+for arg in ${setup_args[@]+"${setup_args[@]}"}; do
+    case "$arg" in
+        --non-interactive|--non-interactive=*)
+            non_interactive=true
+            preserve_stdin=true
+            ;;
+        --admin-password-stdin|--admin-password-stdin=*)
+            preserve_stdin=true
+            ;;
+        --channel|--channel=*)
+            has_channel_arg=true
+            ;;
+    esac
+done
 
 # 1. Root check
 if [[ "$OMB_SKIP_ROOT_CHECK" != "1" && "$(id -u)" -ne 0 ]]; then
@@ -176,6 +225,15 @@ else
     command -v curl >/dev/null 2>&1 || die "curl is required to download OMB releases"
     work_dir=$(mktemp -d)
     chmod 0755 "$work_dir"
+
+    if [[ -z "$version" && "$channel_explicit" != "true" && "$non_interactive" != "true" ]]; then
+        if [[ "$OMB_INSTALL_PROMPT_STDIN" == "1" ]]; then
+            prompt_channel 0
+        elif [[ "$OMB_INSTALL_DISABLE_TTY" != "1" ]] && exec 3</dev/tty 2>/dev/null; then
+            prompt_channel 3
+            exec 3<&-
+        fi
+    fi
 
     release_base=""
     if [[ -n "$version" ]]; then
@@ -238,18 +296,13 @@ DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=60 install -y --no
 # 6. Hand off to omb-setup
 [[ -x "$OMB_SETUP_BIN" ]] || die "omb-setup binary not found or not executable: $OMB_SETUP_BIN"
 
-preserve_stdin=false
-for arg in ${setup_args[@]+"${setup_args[@]}"}; do
-    case "$arg" in
-        --non-interactive|--non-interactive=*|--admin-password-stdin|--admin-password-stdin=*)
-            preserve_stdin=true
-            break
-            ;;
-    esac
-done
+channel_args=()
+if [[ "$has_channel_arg" != "true" ]] && [[ "$channel_explicit" == "true" || ( -z "$deb_path" && -z "$version" ) ]]; then
+    channel_args=(--channel "$channel")
+fi
 
-if [[ "$preserve_stdin" != "true" && ! -t 0 ]] && (: </dev/tty) 2>/dev/null; then
-    "$OMB_SETUP_BIN" --install-mode online ${setup_args[@]+"${setup_args[@]}"} </dev/tty
+if [[ "$preserve_stdin" != "true" && ! -t 0 ]] && [[ "$OMB_INSTALL_DISABLE_TTY" != "1" ]] && (: </dev/tty) 2>/dev/null; then
+    "$OMB_SETUP_BIN" --install-mode online ${channel_args[@]+"${channel_args[@]}"} ${setup_args[@]+"${setup_args[@]}"} </dev/tty
 else
-    "$OMB_SETUP_BIN" --install-mode online ${setup_args[@]+"${setup_args[@]}"}
+    "$OMB_SETUP_BIN" --install-mode online ${channel_args[@]+"${channel_args[@]}"} ${setup_args[@]+"${setup_args[@]}"}
 fi

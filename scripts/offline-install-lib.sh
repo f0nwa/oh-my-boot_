@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Installation steps for offline-deploy.sh. Source only from its trusted copy.
 
 install_packages() (

@@ -146,16 +146,16 @@ After creation, configure the user, password/SSH key, and network on the **Cloud
      - **Disks:** `Size: Unknown` for `omb-disk1.vmdk` is expected for `streamOptimized` VMDK in Proxmox; the actual `20 GiB` virtual size is applied on import;
      - **SCSI Controller:** switch from `Default (LSI 53C895A)` to **`VirtIO SCSI single`**;
      - **Network Interfaces (`net0`, `net1`):** switch model from `VMware vmxnet3` to **`VirtIO (paravirtualized)`** and select your Management and PXE bridges (uncheck **Use** on `net1` if you only need one NIC).
-4. **Configure the VM before first boot (required):**
-   - **Hardware → Add → CloudInit Drive** — attach a Cloud-Init drive (on `local-zfs` / `local-lvm`);
-   - **Cloud-Init** tab — set **User**, **Password** and/or **SSH public key**, and a static **IP Config** (Ubuntu Cloud Image has no default password; without Cloud-Init you cannot sign in);
-   - **Options → QEMU Guest Agent** — enable **Use QEMU Guest Agent** (already installed inside the image);
+4. **Optional settings before first boot:**
+   - **Console sign-in without Cloud-Init:** the image includes a built-in console account **`omb`** with temporary password **`omb`** (mandatory password change on first sign-in), so you can boot the VM right away and sign in via Proxmox **noVNC** without attaching Cloud-Init.
+   - **If you want SSH keys or automatic IP via Cloud-Init:** attach **Hardware → Add → CloudInit Drive** (on `local-zfs` / `local-lvm`) and configure **User**, **SSH public key** / **Password**, and **IP Config** on the **Cloud-Init** tab.
+   - **Options → QEMU Guest Agent** — enable **Use QEMU Guest Agent** (already installed inside the image).
    - optionally grow the disk (**Hardware → Hard Disk → Disk Action → Resize**) — the root filesystem expands automatically on boot.
-5. **Start the VM**, sign in via SSH or console, and run `sudo omb-setup`.
+5. **Start the VM**, sign in on the console as `omb` / `omb` (or via SSH if configured via Cloud-Init), and run `sudo omb-setup`.
 
 ### Importing `.ova` in VMware ESXi / vSphere
 
-Import `omb_<version>_ubuntu24.04_amd64.ova` via **Create/Register VM → Deploy a virtual machine from an OVF or OVA file**, map the `Management` and `PXE` networks to your port groups, provide Cloud-Init settings (user / SSH key / IP), and run `sudo omb-setup` after first sign-in.
+Import `omb_<version>_ubuntu24.04_amd64.ova` via **Create/Register VM → Deploy a virtual machine from an OVF or OVA file**, map the `Management` and `PXE` networks to your port groups, start the VM, sign in on the console as `omb` / `omb` (you will be prompted to set a new password), and run `sudo omb-setup`.
 
 ## `omb-setup` walkthrough
 

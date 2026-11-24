@@ -144,6 +144,44 @@ chroot "$MNT_DIR" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euo pipefail
 
 rm -f "$MNT_DIR/usr/sbin/policy-rc.d"
 
+# Create default appliance console account (omb / omb) with mandatory password change on first login.
+# Cloud-Init remains enabled so Proxmox/ESXi users can still provision custom users, SSH keys, and IPs.
+chroot "$MNT_DIR" bash -euo pipefail -c '
+    if ! id -u omb >/dev/null 2>&1; then
+        useradd -m -s /bin/bash -G sudo omb
+    fi
+    printf "omb:omb\n" | chpasswd
+    chage -d 0 omb
+'
+
+# Display appliance login hint and IPv4 address directly on the VM console (noVNC / ESXi)
+cat > "$MNT_DIR/etc/issue" <<'EOF'
+Ubuntu 24.04 LTS \n \l
+
+  oh my boot_ VM Appliance
+  Console login: omb / omb (password change required on first sign-in)
+  IPv4: \4
+  After sign-in, run: sudo omb-setup
+
+EOF
+
+# Prefer tty1 (VGA / noVNC) as primary /dev/console while keeping serial ttyS0 active
+mkdir -p "$MNT_DIR/etc/default/grub.d"
+cat > "$MNT_DIR/etc/default/grub.d/60-omb-console.cfg" <<'EOF'
+GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0,115200n8 console=tty1"
+EOF
+if [[ -f "$MNT_DIR/boot/grub/grub.cfg" ]]; then
+    sed -i 's/console=tty1 console=ttyS0/console=ttyS0 console=tty1/g' "$MNT_DIR/boot/grub/grub.cfg"
+fi
+
+# Avoid 2-minute boot delay when a second NIC (PXE) has no DHCP or host is air-gapped
+mkdir -p "$MNT_DIR/etc/systemd/system/systemd-networkd-wait-online.service.d"
+cat > "$MNT_DIR/etc/systemd/system/systemd-networkd-wait-online.service.d/10-omb-timeout.conf" <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/lib/systemd/systemd-networkd-wait-online --any --timeout=15
+EOF
+
 # Add first-boot MOTD banner prompting sudo omb-setup until configured
 cat > "$MNT_DIR/etc/update-motd.d/99-oh-my-boot" <<'EOF'
 #!/bin/sh

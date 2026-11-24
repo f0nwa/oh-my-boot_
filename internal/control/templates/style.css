@@ -800,7 +800,8 @@ tr.is-migrating td{background:var(--draft-bg)}
 .row-menu-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 10px 2px}
 
 /* Compact account grid, cards and password generator controls */
-.account-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;max-width:980px;align-items:stretch}
+.account-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;max-width:1440px;align-items:stretch}
+@media(max-width:1180px){.account-grid{grid-template-columns:repeat(2,minmax(0,1fr));max-width:980px}}
 @media(max-width:860px){.account-grid{grid-template-columns:1fr;max-width:560px}}
 .account-card{margin:0;display:flex;flex-direction:column}
 .account-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}

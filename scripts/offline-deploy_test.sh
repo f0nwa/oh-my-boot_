@@ -172,6 +172,14 @@ make_pkg_tree "$work/new-with-setup-v2"
 printf 'setup-v2' > "$work/new-with-setup-v2/usr/bin/omb-setup"
 test "$(compute_update_scope "$work/new-with-setup" "$work/new-with-setup-v2" "$work/no-pending")" = $'SERVICES\tcontrol\nDATABASES\tnone'
 
+# 5i. Adding or changing usr/bin/omb is allowed without error.
+make_pkg_tree "$work/new-with-omb"
+printf 'omb-v1' > "$work/new-with-omb/usr/bin/omb"
+test "$(compute_update_scope "$work/old-boot" "$work/new-with-omb" "$work/no-pending")" = $'SERVICES\tcontrol\nDATABASES\tnone'
+make_pkg_tree "$work/new-with-omb-v2"
+printf 'omb-v2' > "$work/new-with-omb-v2/usr/bin/omb"
+test "$(compute_update_scope "$work/new-with-omb" "$work/new-with-omb-v2" "$work/no-pending")" = $'SERVICES\tcontrol\nDATABASES\tnone'
+
 # 6. plan_migrations tests.
 sha1=1111111111111111111111111111111111111111111111111111111111111111
 sha2=2222222222222222222222222222222222222222222222222222222222222222

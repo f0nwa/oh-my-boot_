@@ -28,6 +28,7 @@ REPO_MANIFEST = "repo-manifest.json"
 REPO_SIGNATURE = "repo-manifest.sig"
 
 BINARIES = (
+    "omb",
     "omb-agent",
     "omb-agentctl",
     "omb-boot",
@@ -329,7 +330,7 @@ def stage_package_tree(
     bin_dir = payload / "bin"
     if not bin_dir.is_dir() or bin_dir.is_symlink():
         raise ValueError("missing payload directory: bin")
-    actual_bins = {p.name for p in bin_dir.iterdir() if p.name.startswith("omb-")}
+    actual_bins = {p.name for p in bin_dir.iterdir() if p.name == "omb" or p.name.startswith("omb-")}
     missing_bins = sorted(set(BINARIES) - actual_bins)
     if missing_bins:
         raise ValueError(f"missing required binaries: {', '.join(missing_bins)}")

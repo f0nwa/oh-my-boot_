@@ -21,6 +21,7 @@ COMMIT_SHA = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
 AMD64_ELF_PREFIX = b"\x7fELF\x02\x01" + bytes(12) + (62).to_bytes(2, "little")
 
 BINARIES = (
+    "omb",
     "omb-agent",
     "omb-agentctl",
     "omb-boot",
@@ -342,6 +343,7 @@ class OfflineDebTestCase(unittest.TestCase):
 
             for binary in BINARIES:
                 self.assertTrue((extracted / "usr/bin" / binary).is_file(), msg=f"missing /usr/bin/{binary}")
+            self.assertTrue((extracted / "usr/bin/omb").is_file())
             self.assertTrue((extracted / "usr/bin/omb-setup").is_file())
 
             mig_manifest = json.loads(

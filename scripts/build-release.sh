@@ -3,6 +3,7 @@
 set -euo pipefail
 
 BINARIES=(
+    omb
     omb-agent
     omb-agentctl
     omb-boot

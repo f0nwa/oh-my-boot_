@@ -85,14 +85,19 @@ PY
 # 8. --help exits 0
 bash "$repo/scripts/build-release.sh" --help >/dev/null
 
-# 9. BINARIES includes omb-setup (9 binaries total)
-test "${#BINARIES[@]}" -eq 9
+# 9. BINARIES includes omb and omb-setup (10 binaries total)
+test "${#BINARIES[@]}" -eq 10
+found_omb=false
 found_setup=false
 for b in "${BINARIES[@]}"; do
+    if [[ "$b" == "omb" ]]; then
+        found_omb=true
+    fi
     if [[ "$b" == "omb-setup" ]]; then
         found_setup=true
     fi
 done
+$found_omb || { echo "omb missing from BINARIES" >&2; exit 1; }
 $found_setup || { echo "omb-setup missing from BINARIES" >&2; exit 1; }
 
 # 10. Standalone .deb SHA256SUMS is written alongside apt-repo without modifying apt-repo

@@ -192,6 +192,7 @@ FORBIDDEN_PREFIXES = (
     "usr/share/omb/windows-profiles/",
 )
 ALLOWED_EXACT = {
+    "usr/bin/omb",
     "usr/bin/omb-setup",
     "usr/share/omb/release.json",
     "usr/share/doc/omb/copyright",

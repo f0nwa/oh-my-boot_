@@ -5,34 +5,43 @@ umask 077
 
 state=/var/lib/omb-deployment
 backups=/var/backups/omb
-binary_dir=/usr/local/bin
-package_mode=false
+etc_omb_dir=/etc/omb
+binary_dir=/usr/bin
+lock_file=/run/lock/omb-offline-deploy.lock
 allow_channel_switch=false
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-verifier="$script_dir/offline-release.py"
 deb_tool="$script_dir/offline-deb.py"
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 
 resolve_repo_package() {
-    local repo=$1 key=$2 version=$3 line fname digest commit channel
-    line=$(python3 "$deb_tool" verify-repo "$repo" --public-key "$key" --version "$version") ||
-        fail "Repository verification failed for version $version."
-    IFS=$'\t' read -r fname digest commit channel <<< "$line"
-    [[ -n "$fname" && "$digest" =~ ^[0-9a-f]{64}$ && -f "$repo/$fname" ]] ||
-        fail "Invalid package metadata from repository for version $version."
-    printf '%s\t%s\n' "$repo/$fname" "$digest"
+    local repo=$1 key=$2 line fname digest version commit channel
+    line=$(python3 "$deb_tool" verify-repo "$repo" --public-key "$key" --print-package) ||
+        fail 'Repository verification failed.'
+    IFS=$'\t' read -r fname digest version commit channel <<< "$line"
+    [[ -n "$fname" && "$digest" =~ ^[0-9a-f]{64}$ && -n "$version" &&
+       "$commit" =~ ^[0-9a-f]{40}$ && ( "$channel" == stable || "$channel" == dev ) &&
+       -f "$repo/$fname" ]] ||
+        fail 'Invalid package metadata from repository.'
+    printf '%s\t%s\t%s\t%s\t%s\n' "$repo/$fname" "$digest" "$version" "$commit" "$channel"
 }
 
 assert_no_pending() {
     [[ ! -e "$1/PENDING" ]] || fail 'An update is pending. Run rollback before starting another operation.'
 }
 
+verify_sha256() {
+    local expected=$1 file=$2 actual
+    [[ "$expected" =~ ^[0-9a-f]{64}$ && -f "$file" ]] || return 1
+    actual=$(sha256sum "$file" | awk '{print $1}') || return 1
+    [[ "$actual" == "$expected" ]]
+}
+
 stage_deb() {
     local source=$1 digest=$2 dest=$3
     [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || fail 'Expected a lowercase SHA-256 for the package.'
     cp -- "$source" "$dest"
-    printf '%s  %s\n' "$digest" "$dest" | sha256sum --check --status || fail 'Package checksum differs.'
+    verify_sha256 "$digest" "$dest" || fail 'Package checksum differs.'
 }
 
 package_identity() {
@@ -40,68 +49,6 @@ package_identity() {
     [[ $(dpkg-deb -f "$deb" Package) == omb && $(dpkg-deb -f "$deb" Architecture) == amd64 &&
        $(dpkg-deb -f "$deb" X-OMB-Commit) == "$commit" ]] || fail 'The package does not match the release.'
     dpkg-deb -f "$deb" Version
-}
-
-match_package_payload() {
-    local deb=$1 root=$2 base=$3 update=${4:-}
-    dpkg-deb -x "$deb" "$root"
-    python3 - "$root" "$base" "$update" <<'PY'
-from pathlib import Path
-import sys
-
-root = Path(sys.argv[1])
-base = Path(sys.argv[2])
-update = Path(sys.argv[3]) if sys.argv[3] else None
-ubuntu_helper = "/usr/lib/omb/omb-prepare-ubuntu-source"
-
-
-def overlay(rel):
-    if update is not None:
-        candidate = update / rel
-        if candidate.is_file():
-            return candidate
-    return base / rel
-
-
-def package_unit(name, content):
-    lines = []
-    for line in content.splitlines(keepends=True):
-        if line.startswith("ExecStart=/usr/local/bin/"):
-            line = line.replace("ExecStart=/usr/local/bin/", "ExecStart=/usr/bin/", 1)
-            if name == "omb-agent.service":
-                line = f"{line.rstrip()} -ubuntu-source-script {ubuntu_helper}\n"
-        lines.append(line)
-    return "".join(lines)
-
-
-expected_bins = sorted(p.name for p in (base / "bin").glob("omb-*"))
-actual_bins = sorted(p.name for p in (root / "usr/bin").glob("*"))
-if actual_bins != expected_bins:
-    sys.exit("Package binaries do not match the expected inventory.")
-for name in expected_bins:
-    if overlay(f"bin/{name}").read_bytes() != (root / "usr/bin" / name).read_bytes():
-        sys.exit(f"Package binary differs from the signed archive: {name}.")
-
-expected_units = sorted(p.name for p in (base / "deploy/systemd").glob("omb-*.service"))
-actual_units = sorted(p.name for p in (root / "usr/lib/systemd/system").glob("*"))
-if actual_units != expected_units:
-    sys.exit("Package systemd units do not match the expected inventory.")
-for name in expected_units:
-    expected = package_unit(name, overlay(f"deploy/systemd/{name}").read_text()).encode()
-    if expected != (root / "usr/lib/systemd/system" / name).read_bytes():
-        sys.exit(f"Package unit differs from the signed archive: {name}.")
-
-helpers = {
-    "omb-prepare-ubuntu-source": "scripts/prepare-ubuntu-source.sh",
-    "fetch-ipxe": "scripts/fetch-ipxe.sh",
-}
-actual_helpers = sorted(p.name for p in (root / "usr/lib/omb").glob("*"))
-if actual_helpers != sorted(helpers):
-    sys.exit("Package helpers do not match the expected inventory.")
-for dest_name, rel in helpers.items():
-    if overlay(rel).read_bytes() != (root / "usr/lib/omb" / dest_name).read_bytes():
-        sys.exit(f"Package helper differs from the signed archive: {dest_name}.")
-PY
 }
 
 installed_package_matches() {
@@ -113,97 +60,228 @@ installed_package_matches() {
     [[ -z "$verification" ]]
 }
 
-inspect_update() {
-    python3 - "$1" <<'PY'
-import json, sys
+plan_migrations() {
+    python3 - "$1" "$2" <<'PY'
+import json, re, sys
+
+DB_ORDER = ("omb_boot", "omb_images", "omb_control")
+SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+ID_RE = re.compile(r"^[0-9]{4}_[a-z0-9_]+$")
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    manifest = json.load(f)
+
+if manifest.get("format") != 1 or not isinstance(manifest.get("migrations"), list):
+    sys.exit("Invalid migrations manifest format.")
+
+manifest_by_db = {db: [] for db in DB_ORDER}
+manifest_map = {db: {} for db in DB_ORDER}
+for entry in manifest["migrations"]:
+    db = entry.get("database")
+    mid = entry.get("id")
+    mpath = entry.get("path")
+    msha = entry.get("sha256")
+    if db not in manifest_by_db:
+        sys.exit(f"Unsupported migration database in manifest: {db}.")
+    if not isinstance(mid, str) or not ID_RE.match(mid):
+        sys.exit(f"Invalid migration id in manifest: {mid}.")
+    if not isinstance(msha, str) or not SHA_RE.match(msha):
+        sys.exit(f"Invalid migration sha256 in manifest: {db}/{mid}.")
+    if not isinstance(mpath, str) or not mpath:
+        sys.exit(f"Invalid migration path in manifest: {db}/{mid}.")
+    if mid in manifest_map[db]:
+        sys.exit(f"Duplicate migration id in manifest: {db}/{mid}.")
+    manifest_by_db[db].append(entry)
+    manifest_map[db][mid] = entry
+
+applied_by_db = {db: [] for db in DB_ORDER}
+with open(sys.argv[2], encoding="utf-8") as f:
+    for raw in f:
+        line = raw.strip()
+        if not line:
+            continue
+        parts = line.split("\t")
+        if len(parts) != 3:
+            sys.exit(f"Invalid applied migration record: {line}.")
+        db, mid, msha = parts
+        if db not in applied_by_db:
+            sys.exit(f"Unsupported applied migration database: {db}.")
+        applied_by_db[db].append((mid, msha))
+
+for db in DB_ORDER:
+    by_id = manifest_map[db]
+    applied = applied_by_db[db]
+    applied_ids = set()
+    for aid, asha in applied:
+        if aid not in by_id:
+            sys.exit(f"Applied migration {db}/{aid} is missing from the new package.")
+        if by_id[aid]["sha256"] != asha:
+            sys.exit(f"Migration checksum drift detected for {db}/{aid}.")
+        applied_ids.add(aid)
+
+    sorted_manifest = sorted(manifest_by_db[db], key=lambda item: item["id"])
+    if applied_ids:
+        max_applied = max(applied_ids)
+        for entry in sorted_manifest:
+            if entry["id"] not in applied_ids and entry["id"] < max_applied:
+                sys.exit(
+                    f"Append-only violation: unapplied migration {db}/{entry['id']} "
+                    f"precedes applied {max_applied}."
+                )
+
+    for entry in sorted_manifest:
+        if entry["id"] not in applied_ids:
+            print(db, entry["id"], entry["path"], entry["sha256"], sep="\t")
+PY
+}
+
+collect_applied_migrations() {
+    local out=$1 db rows row
+    : > "$out"
+    for db in omb_boot omb_images omb_control; do
+        rows=$(sql -d "$db" -At -F $'\t' -c "SELECT id, sha256 FROM schema_migrations ORDER BY id") || return 1
+        if [[ -n "$rows" ]]; then
+            while IFS= read -r row; do
+                [[ -n "$row" ]] || continue
+                printf '%s\t%s\n' "$db" "$row" >> "$out"
+            done <<< "$rows"
+        fi
+    done
+}
+
+compute_update_scope() {
+    python3 - "$1" "$2" "$3" <<'PY'
+from pathlib import Path
+import sys
 
 BINARY_TO_SVC = {
-    "bin/omb-control": "control",
-    "bin/omb-controlctl": "control",
-    "bin/omb-images": "images",
-    "bin/omb-imagesctl": "images",
-    "bin/omb-boot": "boot",
-    "bin/omb-agent": "agent",
-    "bin/omb-agentctl": "agent",
-    "bin/omb-winiso-prepare": "agent",
+    "usr/bin/omb-control": "control",
+    "usr/bin/omb-controlctl": "control",
+    "usr/bin/omb-images": "images",
+    "usr/bin/omb-imagesctl": "images",
+    "usr/bin/omb-boot": "boot",
+    "usr/bin/omb-agent": "agent",
+    "usr/bin/omb-agentctl": "agent",
+    "usr/bin/omb-winiso-prepare": "agent",
 }
 UNIT_TO_SVC = {
-    "deploy/systemd/omb-control.service": "control",
-    "deploy/systemd/omb-images.service": "images",
-    "deploy/systemd/omb-boot.service": "boot",
-    "deploy/systemd/omb-agent.service": "agent",
-    "deploy/systemd/omb-winiso@.service": "agent",
-    "deploy/systemd/omb-dnsmasq.service": "dnsmasq",
+    "usr/lib/systemd/system/omb-control.service": "control",
+    "usr/lib/systemd/system/omb-images.service": "images",
+    "usr/lib/systemd/system/omb-boot.service": "boot",
+    "usr/lib/systemd/system/omb-agent.service": "agent",
+    "usr/lib/systemd/system/omb-winiso@.service": "agent",
+    "usr/lib/systemd/system/omb-dnsmasq.service": "dnsmasq",
 }
 HELPER_TO_SVC = {
-    "scripts/prepare-ubuntu-source.sh": "agent",
-    "scripts/fetch-ipxe.sh": "agent",
+    "usr/lib/omb/omb-prepare-ubuntu-source": "agent",
+    "usr/lib/omb/fetch-ipxe": "agent",
 }
 DB_TO_SVC = {
     "omb_control": "control",
     "omb_images": "images",
     "omb_boot": "boot",
 }
-METADATA_FILES = {"README.md", "go.mod", "go.sum", "provenance.json"}
+FORBIDDEN_PREFIXES = (
+    "usr/share/omb/assets/",
+    "usr/share/omb/samba/",
+    "usr/share/omb/windows-profiles/",
+)
+ALLOWED_EXACT = {
+    "usr/share/omb/release.json",
+    "usr/share/doc/omb/copyright",
+}
+ALLOWED_PREFIXES = (
+    "usr/share/omb/bootstrap/",
+    "usr/share/omb/migrations/",
+)
 
-with open(sys.argv[1], encoding="utf-8") as f:
-    data = json.load(f)
+old_root = Path(sys.argv[1])
+new_root = Path(sys.argv[2])
+pending_path = Path(sys.argv[3])
 
-if not data.get("from_commit"):
-    sys.exit("Unsupported update: missing from_commit.")
 
-services = set()
+def collect_files(root: Path) -> dict[str, Path]:
+    files = {}
+    for p in root.rglob("*"):
+        if p.is_file() or p.is_symlink():
+            rel = p.relative_to(root).as_posix()
+            files[rel] = p
+    return files
+
+
+old_files = collect_files(old_root)
+new_files = collect_files(new_root)
+
+services = {"control"}
 databases = set()
-binaries = set()
-package_only = False
-migration_paths = set()
 
-for step in data.get("migrations", []):
-    db = step["database"]
-    if db not in DB_TO_SVC:
-        sys.exit(f"Unsupported migration database: {db}.")
-    services.add(DB_TO_SVC[db])
-    databases.add(db)
-    migration_paths.add(step["path"])
-
-for name in data.get("files", {}):
-    if name in BINARY_TO_SVC:
-        services.add(BINARY_TO_SVC[name])
-        binaries.add(name.split("/", 1)[1])
-    elif name in UNIT_TO_SVC:
-        services.add(UNIT_TO_SVC[name])
-        package_only = True
-    elif name in HELPER_TO_SVC:
-        services.add(HELPER_TO_SVC[name])
-        package_only = True
-    elif name in migration_paths or name in METADATA_FILES:
+for rel in sorted(set(old_files) | set(new_files)):
+    old_p = old_files.get(rel)
+    new_p = new_files.get(rel)
+    changed = (
+        old_p is None
+        or new_p is None
+        or old_p.read_bytes() != new_p.read_bytes()
+    )
+    if not changed:
         continue
+    if rel in BINARY_TO_SVC:
+        services.add(BINARY_TO_SVC[rel])
+    elif rel in UNIT_TO_SVC:
+        services.add(UNIT_TO_SVC[rel])
+    elif rel in HELPER_TO_SVC:
+        services.add(HELPER_TO_SVC[rel])
+    elif rel in ALLOWED_EXACT or rel.startswith(ALLOWED_PREFIXES):
+        continue
+    elif rel.startswith(FORBIDDEN_PREFIXES):
+        sys.exit(f"The package update changes provisioning inputs under /usr/share/omb: {rel}.")
     else:
-        sys.exit(f"Unsupported update file: {name}.")
+        sys.exit(f"Unsupported package file change: {rel}.")
 
-if not services:
-    sys.exit("Unsupported update: no OMB services or databases affected.")
+with pending_path.open(encoding="utf-8") as f:
+    for raw in f:
+        line = raw.strip()
+        if not line:
+            continue
+        db = line.split("\t", 1)[0]
+        if db not in DB_TO_SVC:
+            sys.exit(f"Unsupported migration database: {db}.")
+        databases.add(db)
+        services.add(DB_TO_SVC[db])
 
 print("SERVICES", ",".join(sorted(services)), sep="\t")
 print("DATABASES", ",".join(sorted(databases)) if databases else "none", sep="\t")
-print("BINARIES", ",".join(sorted(binaries)) if binaries else "none", sep="\t")
-print("PACKAGE_ONLY", "1" if package_only else "0", sep="\t")
-for step in data.get("migrations", []):
-    print("MIGRATION", step["database"], step["path"], sep="\t")
 PY
+}
+
+apply_migration() {
+    local database=$1 id=$2 sql_file=$3 sha256=$4
+    [[ "$database" == omb_boot || "$database" == omb_images || "$database" == omb_control ]] ||
+        fail "Unsupported migration database: $database."
+    [[ "$id" =~ ^[0-9]{4}_[a-z0-9_]+$ && "$sha256" =~ ^[0-9a-f]{64}$ && -f "$sql_file" ]] ||
+        fail "Invalid migration metadata for $database/$id."
+    verify_sha256 "$sha256" "$sql_file" ||
+        fail "Migration file checksum differs: $database/$id."
+    {
+        printf 'BEGIN;\n'
+        cat -- "$sql_file"
+        printf "\nINSERT INTO schema_migrations (id, sha256) VALUES (:'mig_id', :'mig_sha');\nCOMMIT;\n"
+    } | runuser -u "${database/_/-}" -- psql -Xw -v ON_ERROR_STOP=1 -d "$database" \
+        -v mig_id="$id" -v mig_sha="$sha256"
+}
+
+apply_pending_migrations() {
+    local migrations_dir=$1 pending_file=$2
+    local database id relpath sha256
+    while IFS=$'\t' read -r database id relpath sha256; do
+        [[ -n "$database" ]] || continue
+        apply_migration "$database" "$id" "$migrations_dir/$relpath" "$sha256"
+    done < "$pending_file"
 }
 
 has_service() { [[ ",${scope_services:-}," == *",$1,"* ]]; }
 
 has_database() { [[ "${scope_databases:-none}" != none && ",${scope_databases}," == *",$1,"* ]]; }
-
-manifest_commit() {
-    python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' "$1/manifest.json"
-}
-
-manifest_channel() {
-    python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("channel","stable"))' "$1/manifest.json"
-}
 
 package_channel() {
     local ch ver
@@ -238,58 +316,17 @@ check_channel_switch() {
     fi
 }
 
-extract() {
-    local archive=$1 dest=$2 key=$3
-    shift 3
-    python3 "$verifier" verify "$archive" --public-key "$key" --extract "$dest" "$@" >/dev/null
-}
-
-prepare_update() {
-    local base_archive=$1 update_archive=$2 key=$3
-    local kind field1 field2 bin_list='' package_only=0
-    shift 3
-    assert_no_pending "$state"
-    extract "$base_archive" "$work/base" "$key"
-    python3 -c 'import json,sys; sys.exit(json.load(open(sys.argv[1]))["from_commit"] is not None)' \
-        "$work/base/manifest.json" || fail 'The base archive is not a fresh installation.'
-    from=$(manifest_commit "$work/base")
-    extract "$update_archive" "$work/update" "$key" --expect-from "$from" "$@"
-    to=$(manifest_commit "$work/update")
-    prior_channel=$(installed_channel)
-    target_channel=$(manifest_channel "$work/update")
-    inspect_update "$work/update/manifest.json" > "$work/plan"
-    : > "$work/migrations"
-    scope_services=''
-    scope_databases=none
-    binaries=()
-    while IFS=$'\t' read -r kind field1 field2; do
-        case "$kind" in
-            SERVICES) scope_services=$field1 ;;
-            DATABASES) scope_databases=$field1 ;;
-            BINARIES) bin_list=$field1 ;;
-            PACKAGE_ONLY) package_only=$field1 ;;
-            MIGRATION) printf '%s\t%s\n' "$field1" "$field2" >> "$work/migrations" ;;
-        esac
-    done < "$work/plan"
-    if [[ "$bin_list" != none && -n "$bin_list" ]]; then
-        IFS=',' read -r -a binaries <<< "$bin_list"
-    fi
-    if ! $package_mode && [[ "$package_only" == 1 ]]; then
-        fail 'Updates that change systemd units or helpers require update-deb.'
-    fi
-    local f
-    for f in "$work/base"/bin/*; do
-        cmp -s "$f" "$binary_dir/${f##*/}" || fail "Installed binary differs from the base archive: ${f##*/}."
-    done
-    printf 'Verified installed binaries and signed update %s -> %s (services: %s; databases: %s).\n' \
-        "$from" "$to" "$scope_services" "$scope_databases"
-}
-
 write_state() {
     local name=$1 value=$2 tmp
     tmp=$(mktemp "$state/.state.XXXXXXXX")
     printf '%s\n' "$value" > "$tmp"
     mv -T -- "$tmp" "$state/$name"
+}
+
+write_current_deb() {
+    local src=$1 tmp
+    tmp=$(mktemp "$state/.current.deb.XXXXXXXX") || return 1
+    install -m 0600 "$src" "$tmp" && mv -T -- "$tmp" "$state/current.deb"
 }
 
 sql() { runuser -u postgres -- psql -Xqw -v ON_ERROR_STOP=1 "$@"; }
@@ -346,14 +383,6 @@ ipaddress.IPv4Address(sys.argv[1])
 PY
     ip -o -4 addr show | awk -v ip="$address" '{split($4,a,"/"); if (a[1]==ip) found=1} END {exit !found}' ||
         fail "Management address $address is not assigned to this host."
-}
-
-install_binaries() {
-    local src=$1 binary tmp
-    for binary in "${binaries[@]}"; do
-        tmp=$(mktemp /usr/local/bin/.omb-replacement.XXXXXXXX) || return 1
-        install -m 0755 "$src/$binary" "$tmp" && mv -T -- "$tmp" "/usr/local/bin/$binary" || return 1
-    done
 }
 
 stop_services() {
@@ -441,31 +470,19 @@ check_backup_space() {
 }
 
 read_snapshot() {
-    local line
     [[ "$backup" == "$backups"/offline.* && -d "$backup" && ! -L "$backup" ]] || return 1
     read -r prior target suffix scope_services scope_databases dnsmasq_was_active < "$backup/metadata" || return 1
     [[ "$prior" =~ ^[0-9a-f]{40}$ && "$target" =~ ^[0-9a-f]{40}$ && "$suffix" =~ ^[0-9a-z]+$ &&
        "$scope_services" =~ ^(agent|boot|control|dnsmasq|images)(,(agent|boot|control|dnsmasq|images))*$ &&
        "$scope_databases" =~ ^(none|(omb_boot|omb_control|omb_images)(,(omb_boot|omb_control|omb_images))*)$ &&
        "$dnsmasq_was_active" =~ ^[01]$ ]] || return 1
+    [[ -f "$backup/omb.deb" && -f "$backup/omb.deb.sha256" ]] || return 1
     restored_control="omb_restore_control_$suffix"
     retained_control="omb_retained_control_$suffix"
     restored_images="omb_restore_images_$suffix"
     retained_images="omb_retained_images_$suffix"
     restored_boot="omb_restore_boot_$suffix"
     retained_boot="omb_retained_boot_$suffix"
-    binaries=()
-    if [[ -f "$backup/binaries" ]]; then
-        while IFS= read -r line; do
-            [[ -n "$line" ]] && binaries+=("$line")
-        done < "$backup/binaries"
-    fi
-    if [[ -f "$backup/omb.deb" ]]; then
-        package_mode=true
-        binary_dir=/usr/bin
-    elif [[ -e "$state/PACKAGE" ]]; then
-        return 1
-    fi
 }
 
 verify_restored_data() {
@@ -535,23 +552,20 @@ SQL
 }
 
 restore_snapshot() {
-    local installed binary previous_version
+    local installed previous_version
     read_snapshot || return 1
     installed=$(cat "$state/COMMIT") || return 1
     [[ "$installed" == "$prior" || "$installed" == "$target" ]] || return 1
     if [[ ! -e "$backup/READY" ]]; then
-        # No migration or binary replacement is allowed until the restore has been verified.
+        # No migration or package replacement is allowed until the restore has been verified.
         [[ "$installed" == "$prior" ]] || return 1
-        for binary in ${binaries[@]+"${binaries[@]}"}; do
-            cmp -s "$backup/$binary" "$binary_dir/$binary" || return 1
-        done
         start_services && health || return 1
         unlink "$state/PENDING" || return 1
         printf 'Restarted %s. The interrupted backup had not reached the migration step.\n' "$prior"
         return 0
     fi
     if [[ -f "$backup/secrets.key" ]]; then
-        cmp -s /etc/omb/secrets.key "$backup/secrets.key" || {
+        cmp -s "$etc_omb_dir/secrets.key" "$backup/secrets.key" || {
             echo 'Integration key changed. Restore it deliberately before attempting rollback.' >&2
             return 1
         }
@@ -563,23 +577,18 @@ restore_snapshot() {
             return 1
         }
     fi
-    if $package_mode; then
-        (cd "$backup" && sha256sum --check --status omb.deb.sha256) || return 1
-        previous_version=$(package_identity "$backup/omb.deb" "$prior") || return 1
-    fi
+    verify_sha256 "$(awk '{print $1}' "$backup/omb.deb.sha256")" "$backup/omb.deb" || return 1
+    previous_version=$(package_identity "$backup/omb.deb" "$prior") || return 1
 
     # PENDING also covers an interrupted rollback. Restore can resume after the DB rename.
     write_state PENDING "$backup" || return 1
     stop_services || return 1
-    if $package_mode; then
-        if ! installed_package_matches "$previous_version" "$prior" "$backup/omb.deb"; then
-            install_packages '' "$backup/omb.deb" --allow-downgrades --reinstall || return 1
-            installed_package_matches "$previous_version" "$prior" "$backup/omb.deb" || return 1
-        fi
-        systemctl daemon-reload || return 1
+    if ! installed_package_matches "$previous_version" "$prior" "$backup/omb.deb"; then
+        install_packages '' "$backup/omb.deb" --allow-downgrades --reinstall || return 1
+        installed_package_matches "$previous_version" "$prior" "$backup/omb.deb" || return 1
     fi
+    systemctl daemon-reload || return 1
     swap_databases || return 1
-    if ! $package_mode && (( ${#binaries[@]} > 0 )); then install_binaries "$backup" || return 1; fi
     reset_failed_services || return 1
     start_services || return 1
     health || return 1
@@ -587,10 +596,9 @@ restore_snapshot() {
         boot_menu > "$work/menu-after-rollback" || return 1
         cmp -s "$backup/menu.ipxe" "$work/menu-after-rollback" || return 1
     fi
-    if $package_mode; then
-        write_state PACKAGE "$previous_version" || return 1
-        write_state PACKAGE_SHA256 "$(cut -d ' ' -f 1 "$backup/omb.deb.sha256")" || return 1
-    fi
+    write_current_deb "$backup/omb.deb" || return 1
+    write_state PACKAGE "$previous_version" || return 1
+    write_state PACKAGE_SHA256 "$(cut -d ' ' -f 1 "$backup/omb.deb.sha256")" || return 1
     if [[ -f "$backup/channel" ]]; then
         write_state CHANNEL "$(cat "$backup/channel")" || return 1
     fi
@@ -609,65 +617,86 @@ restore_snapshot() {
 }
 
 upgrade() {
-    prepare_update "$1" "$2" "$3" --check-host
+    local repo=$1 key=$2
+    local pkg_path pkg_sha new_version to target_channel
+    local old_version old_sha from prior_channel kind field1 suffix
+    assert_no_pending "$state"
     check_address
+    [[ -z $(dpkg --audit) ]] || fail 'The host package database needs attention before the update.'
+
+    IFS=$'\t' read -r pkg_path pkg_sha new_version to target_channel <<< "$(resolve_repo_package "$repo" "$key")"
+    stage_deb "$pkg_path" "$pkg_sha" "$work/new.deb"
+    [[ $(package_identity "$work/new.deb" "$to") == "$new_version" ]] || fail 'The package does not match the repository metadata.'
+    [[ $(package_channel "$work/new.deb") == "$target_channel" ]] || fail 'The package channel does not match the repository metadata.'
+
+    [[ -f "$state/current.deb" && -f "$state/PACKAGE" && -f "$state/PACKAGE_SHA256" && -f "$state/COMMIT" ]] ||
+        fail 'Host deployment state is incomplete. Expected current.deb, PACKAGE, PACKAGE_SHA256, and COMMIT.'
+    old_version=$(cat "$state/PACKAGE")
+    old_sha=$(cat "$state/PACKAGE_SHA256")
+    from=$(cat "$state/COMMIT")
+    prior_channel=$(installed_channel)
+
+    dpkg --compare-versions "$new_version" gt "$old_version" || fail 'The new package version must be greater.'
+    check_channel_switch
+
+    verify_sha256 "$old_sha" "$state/current.deb" ||
+        fail 'Stored current.deb checksum differs from PACKAGE_SHA256.'
+    [[ $(package_identity "$state/current.deb" "$from") == "$old_version" ]] ||
+        fail 'Stored current.deb does not match recorded PACKAGE or COMMIT.'
+    installed_package_matches "$old_version" "$from" "$state/current.deb" ||
+        fail 'The installed package does not match current.deb.'
+
+    dpkg-deb -x "$state/current.deb" "$work/old-package"
+    dpkg-deb -x "$work/new.deb" "$work/new-package"
+
+    collect_applied_migrations "$work/applied-migrations"
+    plan_migrations "$work/new-package/usr/share/omb/migrations/manifest.json" "$work/applied-migrations" > "$work/pending-migrations"
+    compute_update_scope "$work/old-package" "$work/new-package" "$work/pending-migrations" > "$work/scope"
+
+    scope_services=''
+    scope_databases=none
+    while IFS=$'\t' read -r kind field1; do
+        case "$kind" in
+            SERVICES) scope_services=$field1 ;;
+            DATABASES) scope_databases=$field1 ;;
+        esac
+    done < "$work/scope"
+
+    printf 'Verified signed update %s (%s) -> %s (%s) (services: %s; databases: %s).\n' \
+        "$old_version" "$prior_channel" "$new_version" "$target_channel" "$scope_services" "$scope_databases"
+
     dnsmasq_was_active=0
     if has_service dnsmasq && systemctl is-active --quiet omb-dnsmasq.service; then
         dnsmasq_was_active=1
     fi
     health
-    local old_version new_version
-    if $package_mode; then
-        [[ -z $(dpkg --audit) ]] || fail 'The host package database needs attention before the update.'
-        stage_deb "$4" "$5" "$work/old.deb"
-        stage_deb "$6" "$7" "$work/new.deb"
-        old_version=$(package_identity "$work/old.deb" "$from")
-        new_version=$(package_identity "$work/new.deb" "$to")
-        dpkg --compare-versions "$new_version" gt "$old_version" || fail 'The new package version must be greater.'
-        [[ $(cat "$state/PACKAGE") == "$old_version" && $(cat "$state/PACKAGE_SHA256") == "$5" ]] &&
-            installed_package_matches "$old_version" "$from" "$work/old.deb" ||
-            fail 'The installed package does not match the base release.'
-        match_package_payload "$work/old.deb" "$work/old-package" "$work/base"
-        match_package_payload "$work/new.deb" "$work/new-package" "$work/base" "$work/update"
-        diff -qr --exclude=release.json --exclude=upgrade \
-            "$work/old-package/usr/share/omb" "$work/new-package/usr/share/omb" >/dev/null ||
-            fail 'The package update changes provisioning inputs under /usr/share/omb.'
-        target_channel=$(package_channel "$work/new.deb")
-    fi
-    check_channel_switch
+
     if [[ ! -d "$backups" ]]; then install -d -m 0700 "$backups"; fi
     check_backup_space
     backup=$(mktemp -d "$backups/offline.XXXXXXXX")
-    local suffix binary database migration
     suffix=$(printf '%s' "${backup##*.}" | tr '[:upper:]' '[:lower:]')
     printf '%s %s %s %s %s %s\n' "$from" "$to" "$suffix" "$scope_services" "$scope_databases" "$dnsmasq_was_active" \
         > "$backup/metadata"
     printf '%s\n' "$prior_channel" > "$backup/channel"
-    if (( ${#binaries[@]} > 0 )); then
-        printf '%s\n' "${binaries[@]}" > "$backup/binaries"
-    fi
-    if $package_mode; then
-        install -m 0600 "$work/old.deb" "$backup/omb.deb"
-        (cd "$backup" && sha256sum omb.deb > omb.deb.sha256)
-    fi
+    install -m 0600 "$state/current.deb" "$backup/omb.deb"
+    (cd "$backup" && sha256sum omb.deb > omb.deb.sha256)
     read_snapshot
-    for binary in ${binaries[@]+"${binaries[@]}"}; do
-        install -m 0700 "$binary_dir/$binary" "$backup/"
-    done
+
     # Capture published menu before stopping omb-boot if boot is in scope.
     boot_menu > "$backup/menu.ipxe"
     write_state PENDING "$backup"
     upgrade_paused=true
     stop_services
+
     if has_service control; then
-        install -m 0600 /etc/omb/control.env /etc/omb/secrets.key \
+        install -m 0600 "$etc_omb_dir/control.env" "$etc_omb_dir/secrets.key" \
             /var/lib/omb-control/control.crt /var/lib/omb-control/control.key "$backup/"
     fi
     if has_service images; then
-        install -m 0600 /etc/omb/images.env "$backup/"
+        install -m 0600 "$etc_omb_dir/images.env" "$backup/"
     fi
     if has_service boot; then
-        install -m 0600 /etc/omb/boot.env "$backup/"
+        install -m 0600 "$etc_omb_dir/boot.env" "$backup/"
     fi
     if has_database omb_control; then
         snapshot_users omb_control > "$backup/users.json"
@@ -684,17 +713,12 @@ upgrade() {
     verify_restored_data || fail 'Restored data differs from the backup source.'
     : > "$backup/READY"
 
-    while IFS=$'\t' read -r database migration; do
-        [[ -n "$database" ]] || continue
-        runuser -u "${database/_/-}" -- psql -Xw -v ON_ERROR_STOP=1 -d "$database" < "$work/update/$migration"
-    done < "$work/migrations"
-    if $package_mode; then
-        install_packages '' "$work/new.deb"
-        installed_package_matches "$new_version" "$to" "$work/new.deb" || fail 'The updated package failed verification.'
-        systemctl daemon-reload
-    elif (( ${#binaries[@]} > 0 )); then
-        install_binaries "$work/update/bin"
-    fi
+    install_packages '' "$work/new.deb"
+    installed_package_matches "$new_version" "$to" "$work/new.deb" || fail 'The updated package failed verification.'
+    systemctl daemon-reload
+
+    apply_pending_migrations /usr/share/omb/migrations "$work/pending-migrations"
+
     start_services
     health
     if has_database omb_control; then
@@ -703,17 +727,17 @@ upgrade() {
     fi
     boot_menu > "$work/menu-after"
     cmp -s "$backup/menu.ipxe" "$work/menu-after" || fail 'Published PXE menu changed during the update.'
-    if $package_mode; then
-        write_state PACKAGE "$new_version"
-        write_state PACKAGE_SHA256 "$7"
-    fi
+
+    write_current_deb "$work/new.deb"
+    write_state PACKAGE "$new_version"
+    write_state PACKAGE_SHA256 "$pkg_sha"
     write_state CHANNEL "$target_channel"
     write_state COMMIT "$to"
     write_state LAST "$backup"
     unlink "$state/PENDING"
     upgrade_paused=false
-    printf 'Updated to %s (services: %s; databases: %s). Verified rollback backup: %s\n' \
-        "$to" "$scope_services" "$scope_databases" "$backup"
+    printf 'Updated to %s (%s, %s; services: %s; databases: %s). Verified rollback backup: %s\n' \
+        "$new_version" "$target_channel" "$to" "$scope_services" "$scope_databases" "$backup"
 }
 
 cleanup() {
@@ -734,13 +758,8 @@ cleanup() {
 
 usage() {
     cat >&2 <<'TEXT'
-offline-deploy.sh check-update [--allow-channel-switch] BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY
-offline-deploy.sh install INSTALL_ARCHIVE PUBLIC_KEY MANAGEMENT_IP [PXE_INTERFACE|none]
-offline-deploy.sh install-deb INSTALL_ARCHIVE PUBLIC_KEY PACKAGE SHA256 MANAGEMENT_IP [PXE_INTERFACE|none]
-offline-deploy.sh install-deb-repo INSTALL_ARCHIVE PUBLIC_KEY APT_REPO VERSION MANAGEMENT_IP [PXE_INTERFACE|none]
-offline-deploy.sh update [--allow-channel-switch] BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY MANAGEMENT_IP
-offline-deploy.sh update-deb [--allow-channel-switch] BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY OLD_PACKAGE OLD_SHA256 NEW_PACKAGE NEW_SHA256 MANAGEMENT_IP
-offline-deploy.sh update-deb-repo [--allow-channel-switch] BASE_ARCHIVE UPDATE_ARCHIVE PUBLIC_KEY APT_REPO OLD_VERSION NEW_VERSION MANAGEMENT_IP
+offline-deploy.sh install APT_REPO PUBLIC_KEY MANAGEMENT_IP [PXE_INTERFACE|none]
+offline-deploy.sh update [--allow-channel-switch] APT_REPO PUBLIC_KEY MANAGEMENT_IP
 offline-deploy.sh rollback MANAGEMENT_IP
 TEXT
     exit 2
@@ -760,22 +779,20 @@ main() {
     done
     if $allow_channel_switch; then
         case "$command" in
-            check-update|update|update-deb|update-deb-repo) ;;
+            update) ;;
             *) usage ;;
         esac
     fi
-    set -- "$command" "${pos_args[@]}"
+    set -- "$command" ${pos_args[@]+"${pos_args[@]}"}
     case "$command:$#" in
-        check-update:4|install:4|install:5|install-deb:6|install-deb:7|install-deb-repo:6|install-deb-repo:7|update:5|update-deb:9|update-deb-repo:8|rollback:2) ;;
+        install:4|install:5|update:4|rollback:2) ;;
         *) usage ;;
     esac
     shift
-    if [[ "$command" != check-update ]]; then
-        [[ $(id -u) == 0 ]] || fail 'This command needs sudo.'
-        export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        exec 9>/run/lock/omb-offline-deploy.lock
-        flock -n 9 || fail 'Another OMB deployment operation is running.'
-    fi
+    [[ $(id -u) == 0 ]] || fail 'This command needs sudo.'
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    exec 9>"$lock_file"
+    flock -n 9 || fail 'Another OMB deployment operation is running.'
     work=$(mktemp -d /var/tmp/omb-deploy.XXXXXXXX)
     upgrade_paused=false
     trap cleanup EXIT
@@ -784,53 +801,14 @@ main() {
     # shellcheck source=offline-install-lib.sh
     source "$script_dir/offline-install-lib.sh"
     case "$command" in
-        check-update)
-            [[ ! -e "$state/PACKAGE" ]] || fail 'This host is managed by APT.'
-            prepare_update "$1" "$2" "$3"
-            check_channel_switch
-            ;;
         install)
             address=$3
             check_address
             fresh_install "$1" "$2" "${4:-none}"
             ;;
-        install-deb)
-            package_mode=true
-            binary_dir=/usr/bin
-            address=$5
-            check_address
-            fresh_install "$1" "$2" "${6:-none}" "$3" "$4"
-            ;;
-        install-deb-repo)
-            local pkg_path pkg_sha
-            IFS=$'\t' read -r pkg_path pkg_sha <<< "$(resolve_repo_package "$3" "$2" "$4")"
-            package_mode=true
-            binary_dir=/usr/bin
-            address=$5
-            check_address
-            fresh_install "$1" "$2" "${6:-none}" "$pkg_path" "$pkg_sha"
-            ;;
         update)
-            [[ ! -e "$state/PACKAGE" ]] || fail 'Use update-deb on an APT-managed installation.'
-            address=$4
-            upgrade "$1" "$2" "$3"
-            ;;
-        update-deb)
-            [[ -f "$state/PACKAGE" ]] || fail 'This installation is not managed by APT.'
-            package_mode=true
-            binary_dir=/usr/bin
-            address=$8
-            upgrade "${@:1:7}"
-            ;;
-        update-deb-repo)
-            [[ -f "$state/PACKAGE" ]] || fail 'This installation is not managed by APT.'
-            local old_pkg old_sha new_pkg new_sha
-            IFS=$'\t' read -r old_pkg old_sha <<< "$(resolve_repo_package "$4" "$3" "$5")"
-            IFS=$'\t' read -r new_pkg new_sha <<< "$(resolve_repo_package "$4" "$3" "$6")"
-            package_mode=true
-            binary_dir=/usr/bin
-            address=$7
-            upgrade "$1" "$2" "$3" "$old_pkg" "$old_sha" "$new_pkg" "$new_sha"
+            address=$3
+            upgrade "$1" "$2"
             ;;
         rollback)
             address=$1

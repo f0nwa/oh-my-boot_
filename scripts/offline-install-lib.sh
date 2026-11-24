@@ -2,14 +2,14 @@
 
 install_packages() (
     set -euo pipefail
-    local release=$1 deb=${2:-}
+    local repo=$1 deb=${2:-}
     shift
     if (( $# )); then shift; fi
     local_bundle=$(mktemp -d /var/tmp/omb-apt.XXXXXXXX) || return 1
     policy=/usr/sbin/policy-rc.d
     owns_policy=false
     trap 'if $owns_policy; then unlink "$policy"; fi; rm -r -- "$local_bundle"' EXIT
-    if [[ -n "$release" && ( -e "$policy" || -L "$policy" ) ]]; then
+    if [[ -n "$repo" && ( -e "$policy" || -L "$policy" ) ]]; then
         fail 'A package service policy already exists.'
     fi
     # _apt must be able to traverse these paths. Only verified packages go here.
@@ -17,8 +17,8 @@ install_packages() (
     install -d -m 0755 "$local_bundle"/{debs,empty,lists,archives} || return 1
     : > "$local_bundle/offline.list" || return 1
     local packages=()
-    if [[ -n "$release" ]]; then
-        install -m 0644 "$release"/debs/*.deb "$release/debs/Packages.gz" "$local_bundle/debs/" || return 1
+    if [[ -n "$repo" ]]; then
+        install -m 0644 "$repo"/*.deb "$repo/Packages.gz" "$local_bundle/debs/" || return 1
         printf 'deb [trusted=yes] file:%s/debs ./\n' "$local_bundle" > "$local_bundle/offline.list" || return 1
         packages=(dnsmasq-base postgresql ca-certificates curl openssl cifs-utils nfs-common samba wimtools python3)
     fi
@@ -42,15 +42,15 @@ APT
             LC_ALL=C apt-get "$@"
     }
     local apt_options=(--no-install-recommends --no-remove "$@")
-    if [[ -n "$release" ]]; then apt_local update || return 1; fi
+    if [[ -n "$repo" ]]; then apt_local update || return 1; fi
     apt_local -s "${apt_options[@]}" install "${packages[@]}" > "$local_bundle/plan" || return 1
-    if [[ -z "$release" ]]; then
+    if [[ -z "$repo" ]]; then
         awk '/^(Inst|Conf|Remv) / && $2 != "omb" {exit 1}' "$local_bundle/plan" ||
             fail 'The package change would affect other installed packages.'
     elif grep -Eq '^Inst [^ ]+ \[' "$local_bundle/plan"; then
         fail 'The selected Ubuntu base would require upgrading an installed package.'
     fi
-    if [[ -n "$release" ]]; then
+    if [[ -n "$repo" ]]; then
         (set -C; printf '%s\n' '#!/bin/sh' 'exit 101' > "$policy") || return 1
         owns_policy=true
         chmod 0755 "$policy" || return 1
@@ -77,9 +77,34 @@ resolve_pxe_interface() {
     printf '%s\n' "$pxe_iface"
 }
 
+seed_schema_migrations() {
+    local manifest=$1 rows db id sha
+    rows=$(python3 - "$manifest" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    data = json.load(f)
+if data.get("format") != 1 or not isinstance(data.get("migrations"), list):
+    sys.exit("Invalid migrations manifest format.")
+for entry in data["migrations"]:
+    print(entry["database"], entry["id"], entry["sha256"], sep="\t")
+PY
+    ) || return 1
+    if [[ -z "$rows" ]]; then
+        return 0
+    fi
+    while IFS=$'\t' read -r db id sha; do
+        [[ -n "$db" ]] || continue
+        runuser -u "${db/_/-}" -- psql -Xw -v ON_ERROR_STOP=1 -d "$db" \
+            -v mig_id="$id" -v mig_sha="$sha" <<'SQL'
+INSERT INTO schema_migrations (id, sha256) VALUES (:'mig_id', :'mig_sha') ON CONFLICT (id) DO NOTHING;
+SQL
+    done <<< "$rows"
+}
+
 fresh_install() {
-    local archive=$1 key=$2 pxe_iface release="$work/install" commit account svc path
-    local password confirmation dbs steps db file iso_password boot_url="http://$address:8080" deb='' package_version='' install_channel='stable'
+    local repo=$1 key=$2 pxe_iface
+    local pkg_path pkg_sha package_version commit install_channel deb="$work/install.deb"
+    local account svc path password confirmation dbs iso_password boot_url="http://$address:8080"
     local boot_dsn='host=/var/run/postgresql dbname=omb_boot user=omb-boot'
     local control_dsn='host=/var/run/postgresql dbname=omb_control user=omb-control'
     local images_dsn='host=/var/run/postgresql dbname=omb_images user=omb-images'
@@ -94,22 +119,12 @@ fresh_install() {
     for svc in omb-dnsmasq smbd nmbd; do
         if systemctl is-active --quiet "$svc"; then fail "Unexpected active service: $svc."; fi
     done
-    extract "$archive" "$release" "$key" --check-host
-    commit=$(manifest_commit "$release")
-    install_channel=$(manifest_channel "$release")
-    if $package_mode; then
-        deb="$work/install.deb"
-        stage_deb "$4" "$5" "$deb"
-        package_version=$(package_identity "$deb" "$commit")
-        install_channel=$(package_channel "$deb")
-        match_package_payload "$deb" "$work/package" "$release"
-    fi
-    steps=$(python3 - "$release/manifest.json" <<'PY'
-import json, sys
-for step in json.load(open(sys.argv[1]))["migrations"]:
-    print(step["database"], step["path"], sep="\t")
-PY
-    )
+
+    IFS=$'\t' read -r pkg_path pkg_sha package_version commit install_channel <<< "$(resolve_repo_package "$repo" "$key")"
+    stage_deb "$pkg_path" "$pkg_sha" "$deb"
+    [[ $(package_identity "$deb" "$commit") == "$package_version" ]] || fail 'The package does not match the repository metadata.'
+    [[ $(package_channel "$deb") == "$install_channel" ]] || fail 'The package channel does not match the repository metadata.'
+
     IFS= read -rs -p 'New OMB administrator password (at least 12 characters): ' password </dev/tty
     printf '\n'
     IFS= read -rs -p 'Repeat OMB administrator password: ' confirmation </dev/tty
@@ -117,10 +132,9 @@ PY
     [[ ${#password} -ge 12 && "$confirmation" == "$password" ]] || fail 'Passwords do not match or are too short.'
     unset confirmation
 
-    install_packages "$release" "$deb"
-    if $package_mode; then
-        installed_package_matches "$package_version" "$commit" "$deb" || fail 'The installed package failed verification.'
-    fi
+    install_packages "$repo" "$deb"
+    installed_package_matches "$package_version" "$commit" "$deb" || fail 'The installed package failed verification.'
+
     systemctl start postgresql.service
     dbs=$(sql -d postgres -Atc "SELECT datname FROM pg_database WHERE datname IN ('omb_boot','omb_control','omb_images')")
     [[ -z "$dbs" ]] || fail 'An OMB database already exists.'
@@ -129,32 +143,26 @@ PY
         sql -d postgres -c "CREATE ROLE \"omb-$svc\" LOGIN"
         runuser -u postgres -- createdb --owner="omb-$svc" "omb_$svc"
     done
-    while IFS=$'\t' read -r db file; do
-        runuser -u "omb-${db#omb_}" -- psql -Xw -v ON_ERROR_STOP=1 -d "$db" < "$release/$file"
-    done <<< "$steps"
+    for svc in boot images control; do
+        runuser -u "omb-$svc" -- psql -Xw -v ON_ERROR_STOP=1 -d "omb_$svc" < "/usr/share/omb/bootstrap/$svc.sql"
+    done
+    seed_schema_migrations /usr/share/omb/migrations/manifest.json
     useradd --system --user-group --home-dir /var/lib/omb-iso --shell /usr/sbin/nologin omb-iso
 
-    if ! $package_mode; then
-        install -m 0755 "$release"/bin/omb-* /usr/local/bin/
-        install -d -m 0755 /usr/local/libexec /usr/share/omb/windows-profiles
-        install -m 0755 "$release/scripts/prepare-ubuntu-source.sh" /usr/local/libexec/omb-prepare-ubuntu-source
-        install -m 0644 "$release"/deploy/boot-assets/windows-profiles/* /usr/share/omb/windows-profiles/
-        install -m 0644 "$release"/deploy/systemd/*.service /etc/systemd/system/
-    fi
     install -d -m 0755 /srv/omb
     install -d -m 0750 -o root -g omb-control /etc/omb
     install -d -m 0750 /etc/omb/winiso
     install -d -m 0755 /mnt/omb-{smb,smb-upload,nfs,nfs-upload} /mnt/omb-iso/profiles /var/lib/omb-ubuntu-registry
     # The package ships pinned iPXE and shim inputs. This script has no HTTP source.
-    sh "$release/scripts/fetch-ipxe.sh" \
-        "file://$release/assets/ipxeboot.tar.gz" "$(sha256sum "$release/assets/ipxeboot.tar.gz" | cut -d' ' -f1)" \
-        "file://$release/assets/ipxe-shimx64.efi" "$(sha256sum "$release/assets/ipxe-shimx64.efi" | cut -d' ' -f1)" \
+    sh /usr/lib/omb/fetch-ipxe \
+        "file:///usr/share/omb/assets/ipxeboot.tar.gz" "$(sha256sum /usr/share/omb/assets/ipxeboot.tar.gz | cut -d' ' -f1)" \
+        "file:///usr/share/omb/assets/ipxe-shimx64.efi" "$(sha256sum /usr/share/omb/assets/ipxe-shimx64.efi | cut -d' ' -f1)" \
         /srv/omb/tftp
     chmod 0755 /srv/omb/tftp
     runuser -u omb-boot -- test -r /srv/omb/tftp/ipxeboot/x86_64/undionly.kpxe
     install -d -m 0755 /srv/omb/tftp/{windows,windows-profiles,windows-answers,windows-driver-wims,windows-driver-configs,ubuntu-sources}
     install -d -m 0750 -o omb-boot -g omb-control /srv/omb/tftp/ubuntu-autoinstall
-    install -m 0644 "$release/assets/wimboot" /srv/omb/tftp/windows/wimboot
+    install -m 0644 /usr/share/omb/assets/wimboot /srv/omb/tftp/windows/wimboot
     install -d -m 0750 -o omb-images -g omb-images /var/lib/omb-images
     install -d -m 2770 -o root -g omb-images /var/lib/omb-images/iso
     install -d -m 0700 -o omb-control -g omb-control /var/lib/omb-control
@@ -182,7 +190,7 @@ PY
     # Keep Samba local until the operator knows the PXE client subnet.
     sed -e 's/^ *interfaces *=.*/   interfaces = lo/' \
         -e 's/^ *hosts allow *=.*/   hosts allow = 127.0.0.1/' \
-        "$release/deploy/samba/smb.conf" > "$work/smb.conf"
+        /usr/share/omb/samba/smb.conf > "$work/smb.conf"
     testparm -s "$work/smb.conf" >/dev/null
     install -m 0644 "$work/smb.conf" /etc/samba/smb.conf
     systemctl disable smbd.service nmbd.service >/dev/null
@@ -201,11 +209,10 @@ PY
     for svc in omb-dnsmasq smbd nmbd; do
         if systemctl is-active --quiet "$svc"; then fail "Unexpected active service: $svc."; fi
     done
-    if $package_mode; then
-        write_state PACKAGE "$package_version"
-        write_state PACKAGE_SHA256 "$5"
-    fi
+    write_current_deb "$deb"
+    write_state PACKAGE "$package_version"
+    write_state PACKAGE_SHA256 "$pkg_sha"
     write_state CHANNEL "$install_channel"
     write_state COMMIT "$commit"
-    printf 'Installed %s. Control: https://%s:8443/login.\n' "$commit" "$address"
+    printf 'Installed %s (%s, %s). Control: https://%s:8443/login.\n' "$package_version" "$install_channel" "$commit" "$address"
 }

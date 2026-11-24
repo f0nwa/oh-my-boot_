@@ -65,9 +65,10 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line-strong);b
 @media (prefers-reduced-motion:reduce){.search-open.is-loading::after,.search-box.is-loading .search-spinner,.toolbar .machine-search.is-loading .search-spinner{animation:none;border-color:var(--accent)}.search-loader-bar{animation:none;width:100%}.dot-pulse{animation:none}}
 .search-group{padding:10px 10px 4px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 .search-hint{padding:14px 10px;color:var(--muted)}
-.search-item{display:flex;align-items:baseline;gap:10px;padding:8px 10px;border-radius:6px;text-decoration:none}
+.search-item{position:relative;display:flex;align-items:baseline;gap:10px;padding:8px 10px;border-radius:6px;text-decoration:none}
 .search-item:hover,.search-item[aria-selected="true"]{background:var(--chip)}
-.search-item[aria-selected="true"]{box-shadow:inset 2px 0 0 var(--accent)}
+.search-item[aria-selected="true"]{padding-left:15px}
+.search-item[aria-selected="true"]::before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:2.5px;border-radius:2px;background:var(--accent)}
 .search-title{font-weight:500}.search-item small{color:var(--faint)}
 .search-foot{margin:0;padding:8px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
 .search-page-results{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
@@ -579,9 +580,10 @@ td .mono.muted{color:var(--muted)}
 /* Answer file editor: contents, one section, summary/XML/questions and saving */
 .ed{display:grid;grid-template-columns:220px minmax(0,1fr) minmax(300px,380px);gap:20px;align-items:start}
 .ed-toc{position:sticky;top:12px;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:6px}
-.ed-toc-item{justify-content:flex-start;gap:8px;min-height:32px;margin:0;padding:6px 10px;border:0;border-radius:6px;background:transparent;color:var(--text-2);font-weight:400;text-align:left}
+.ed-toc-item{position:relative;justify-content:flex-start;gap:8px;min-height:32px;margin:0;padding:6px 10px;border:0;border-radius:6px;background:transparent;color:var(--text-2);font-weight:400;text-align:left}
 .ed-toc-item:hover{background:var(--chip);color:var(--text)}
-.ed-toc-item.on{background:var(--chip);color:var(--text);font-weight:500;box-shadow:inset 2px 0 0 var(--accent)}
+.ed-toc-item.on{padding-left:14px;background:var(--chip);color:var(--text);font-weight:500}
+.ed-toc-item.on::before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:2.5px;border-radius:2px;background:var(--accent)}
 .ed-no{font-family:var(--mono);color:var(--muted);width:18px;font-size:12px;flex:none}
 .ed-toc-title{flex:1}
 .ed-mark{font-size:11px;color:var(--muted);white-space:nowrap}.ed-mark.chg{color:var(--accent-ink)}.ed-mark.bad{color:var(--bad)}
@@ -1227,9 +1229,10 @@ html[data-theme="light"] .chan-pill.is-stable{background:rgba(13,148,104,.10);bo
 .wiki-sec-group:first-child{margin-top:0}
 .wiki-sec-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 5px;padding:0 8px}
 .wiki-nav-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
-.wiki-nav-list a{display:block;padding:6px 8px;border-radius:6px;color:var(--text-2);text-decoration:none;font-size:12.5px;line-height:1.35}
+.wiki-nav-list a{position:relative;display:block;padding:6px 8px;border-radius:6px;color:var(--text-2);text-decoration:none;font-size:12.5px;line-height:1.35}
 .wiki-nav-list a:hover{background:var(--chip);color:var(--text)}
-.wiki-nav-list a.active{background:var(--chip);color:var(--text);font-weight:500;box-shadow:inset 2px 0 0 var(--accent)}
+.wiki-nav-list a.active{padding-left:13px;background:var(--chip);color:var(--text);font-weight:500}
+.wiki-nav-list a.active::before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:2.5px;border-radius:2px;background:var(--accent)}
 .wiki-article{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:26px 32px 30px;max-width:860px;min-width:0}
 .wiki-crumbs{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px}
 .wiki-crumbs a{color:var(--muted);text-decoration:none}

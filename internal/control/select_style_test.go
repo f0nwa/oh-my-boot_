@@ -61,3 +61,26 @@ func TestContentSecurityPolicyAllowsDataImagesForSelectChevron(t *testing.T) {
 		t.Fatalf("CSP does not permit data: images for select chevron: %q", csp)
 	}
 }
+
+func TestStylesheetUsesInnerPillIndicatorForActiveListItems(t *testing.T) {
+	data, err := templateFS.ReadFile("templates/style.css")
+	if err != nil {
+		t.Fatalf("failed to read templates/style.css: %v", err)
+	}
+	css := string(data)
+
+	if strings.Contains(css, "inset 2px 0 0 var(--accent)") {
+		t.Errorf("stylesheet still uses clipped inset 2px 0 0 var(--accent) on rounded items")
+	}
+
+	for _, want := range []string{
+		`.search-item[aria-selected="true"]::before`,
+		`.ed-toc-item.on::before`,
+		`.wiki-nav-list a.active::before`,
+		`left:4px;top:6px;bottom:6px;width:2.5px;border-radius:2px;background:var(--accent)`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("stylesheet missing inner pill indicator rule %q", want)
+		}
+	}
+}

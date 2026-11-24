@@ -51,6 +51,7 @@ for cmd in curl qemu-img losetup growpart resize2fs e2fsck chroot xz tar sha256s
 done
 
 mkdir -p "$OUT_DIR"
+OUT_DIR=$(cd "$OUT_DIR" && pwd)
 WORK_DIR=$(mktemp -d /tmp/omb-vm-build.XXXXXX)
 MNT_DIR="$WORK_DIR/mnt"
 LOOP_DEV=''
@@ -190,7 +191,7 @@ OVA_OUT="${OUT_DIR}/${BASE_NAME}.ova"
 
 echo "==> Exporting compressed QCOW2 (${BASE_NAME}.qcow2.xz)..."
 qemu-img convert -f raw -O qcow2 -c "$RAW_IMG" "$QCOW2_PATH"
-xz -T0 -6 -c "$QCOW2_PATH" > "$QCOW2_XZ_OUT"
+xz -T0 -3 -c "$QCOW2_PATH" > "$QCOW2_XZ_OUT"
 rm -f "$QCOW2_PATH"
 
 echo "==> Exporting streamOptimized VMDK and OVA (${BASE_NAME}.ova)..."

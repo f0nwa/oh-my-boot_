@@ -12,13 +12,44 @@ This is the unified guide for a fresh, container-free installation of OMB on Ubu
 - **Networking:** 1 or 2 network interfaces with a **static IPv4 address**:
   - **2 NICs (recommended):** one for management and the web panel, and a dedicated NIC for the PXE segment (**Full DHCP** or **Proxy DHCP**).
   - **1 NIC:** the web panel and PXE share one interface; use **Proxy DHCP** on shared networks to avoid conflicting with an existing DHCP server.
-- **Ports to allow for clients and administrators:**
-  - `TCP 8443` — HTTPS web control panel;
-  - `TCP 8080` — iPXE boot menu and HTTP delivery of WinPE / ISO files;
-  - `UDP 69` — TFTP (`undionly.kpxe`, `ipxe-shim.efi`, `ipxe.efi`, `snponly.efi`);
-  - `UDP 67` and `UDP 4011` — DHCP / Proxy DHCP;
-  - `TCP 445` — Samba (Windows and Strelec installation media share).
 - **Privileges:** run the installer as `root` (`sudo`).
+
+## Network ports and firewall
+
+On a clean Ubuntu Server installation, UFW is disabled by default so all required ports open automatically when OMB services start. If UFW or an external firewall is enabled in your environment, allow the ports listed below. `omb-setup` checks for conflicting listeners before making changes and warns after installation (as does `omb status`) when UFW is active.
+
+| Segment | Port | Protocol | Purpose | Requirement |
+| --- | --- | --- | --- | --- |
+| **Management** | `8443` | TCP | HTTPS web control panel (`omb-control`) | Required |
+| **Management** | `2022` | TCP | Built-in SFTP server for ISO uploads | Optional (if enabled) |
+| **Management** | `445` | TCP | Samba `[iso]` share for uploading ISOs from workstations | Optional (if enabled) |
+| **PXE** | `67` | UDP | DHCP (`omb-dnsmasq`, Full DHCP / Proxy DHCP) | Required for PXE |
+| **PXE** | `4011` | UDP | Proxy DHCP (`omb-dnsmasq`) | Required for Proxy DHCP |
+| **PXE** | `69` | UDP | TFTP — stage-1 bootloaders (`undionly.kpxe`, `ipxe-shim.efi`, `ipxe.efi`, `snponly.efi`) | Required for PXE |
+| **PXE** | `8080` | TCP | iPXE boot menu and HTTP delivery of WinPE / ISO files (`omb-boot`) | Required for PXE |
+| **PXE** | `445` | TCP | Samba `[ombisos]` share (Windows and Strelec installation media) | Required for Windows/Strelec |
+| **Outbound** | `445` | TCP | External SMB storage (NAS) | Optional |
+| **Outbound** | `2049` | TCP | External NFSv4.1 storage (NAS) | Optional |
+| **Outbound** | `389`, `636` | TCP | Active Directory / LDAP (LDAPS) authentication | Optional |
+| **Outbound** | `443` | TCP | Keycloak OIDC sign-in | Optional |
+| **Outbound** | `123` | UDP | NTP time synchronization | Optional |
+
+Example UFW rules for a two-NIC host with Management (`ens18`) and PXE (`ens19`):
+
+```sh
+# Management interface (ens18)
+sudo ufw allow in on ens18 to any port 8443 proto tcp comment 'OMB Control HTTPS'
+# Optional, if SFTP upload or Samba [iso] share is enabled:
+# sudo ufw allow in on ens18 to any port 2022 proto tcp comment 'OMB SFTP'
+# sudo ufw allow in on ens18 to any port 445 proto tcp comment 'OMB Samba [iso]'
+
+# PXE interface (ens19)
+sudo ufw allow in on ens19 to any port 67 proto udp comment 'OMB DHCP'
+sudo ufw allow in on ens19 to any port 4011 proto udp comment 'OMB Proxy DHCP'
+sudo ufw allow in on ens19 to any port 69 proto udp comment 'OMB TFTP'
+sudo ufw allow in on ens19 to any port 8080 proto tcp comment 'OMB iPXE HTTP'
+sudo ufw allow in on ens19 to any port 445 proto tcp comment 'OMB Samba [ombisos]'
+```
 
 ## Method 1: Online one-line install
 

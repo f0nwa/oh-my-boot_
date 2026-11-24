@@ -153,6 +153,9 @@ func run(args []string) int {
 	}
 
 	ui.ReadyBanner(opts)
+	if active, _ := setup.DetectUFWActive(ctx, installer.Runner); active {
+		ui.UFWWarning()
+	}
 	return 0
 }
 

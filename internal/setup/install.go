@@ -126,6 +126,7 @@ type Installer struct {
 	Exists      func(path string) bool
 	LookupUser  func(name string) bool
 	Chown       func(path, userName, groupName string) error
+	PortCheck   func(checkPXE bool) error
 	HealthCheck func(ctx context.Context, managementIP, bootURL string) error
 	Progress    func(step, msg string)
 }
@@ -204,6 +205,13 @@ func (in *Installer) chown(path, userName, groupName string) error {
 	return os.Chown(in.resolve(path), uid, gid)
 }
 
+func (in *Installer) checkPorts(checkPXE bool) error {
+	if in.PortCheck != nil {
+		return in.PortCheck(checkPXE)
+	}
+	return CheckPortConflicts(checkPXE)
+}
+
 func (in *Installer) progress(step, msg string) {
 	if in.Progress != nil {
 		in.Progress(step, msg)
@@ -260,6 +268,10 @@ func (in *Installer) Preflight() error {
 		}
 	}
 
+	if err := in.checkPorts(false); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -307,6 +319,9 @@ func (in *Installer) Execute(ctx context.Context, opts Options) error {
 		pxeCfgBytes, err = json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
 			return fmt.Errorf("encode PXE network config: %w", err)
+		}
+		if err := in.checkPorts(true); err != nil {
+			return err
 		}
 	}
 

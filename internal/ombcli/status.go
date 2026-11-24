@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"omb/internal/setup"
 )
 
 // StatusServices is the canonical list of 7 services inspected by `omb status`.
@@ -29,6 +31,7 @@ type StatusReport struct {
 	Commit      string
 	Channel     string
 	InstallMode string
+	UFWActive   bool
 	Services    []ServiceStatus
 }
 
@@ -71,6 +74,8 @@ func (a *App) CollectStatus(ctx context.Context) StatusReport {
 	if mode, err := a.ReadStateFile("INSTALL_MODE"); err == nil && mode != "" {
 		report.InstallMode = mode
 	}
+
+	report.UFWActive, _ = setup.DetectUFWActive(ctx, a.runner())
 
 	report.Services = make([]ServiceStatus, 0, len(StatusServices))
 	for _, svc := range StatusServices {
@@ -139,6 +144,20 @@ func (a *App) Status(ctx context.Context) error {
 	}
 	a.printKV(a.t("Канал:", "Channel:"), chVal)
 	a.printKV(a.t("Режим установки:", "Install mode:"), report.InstallMode)
+
+	var fwVal string
+	if report.UFWActive {
+		fwVal = a.amber(a.t(
+			"UFW активен (проверьте правила: 8443/tcp, 8080/tcp, 67/69/4011/udp, 445/tcp)",
+			"UFW active (check rules: 8443/tcp, 8080/tcp, 67/69/4011/udp, 445/tcp)",
+		))
+	} else {
+		fwVal = a.dim(a.t(
+			"UFW выключен (порты открыты)",
+			"UFW inactive (ports open)",
+		))
+	}
+	a.printKV(a.t("Файрвол:", "Firewall:"), fwVal)
 
 	fmt.Fprintf(a.out(), "\n  %s\n", a.white(a.t("Службы:", "Services:")))
 	for _, svc := range report.Services {

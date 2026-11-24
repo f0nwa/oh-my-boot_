@@ -119,9 +119,84 @@ func TestStatusFormattingAll7Services(t *testing.T) {
 		"active",
 		"inactive",
 		"failed",
+		"Файрвол:",
+		"UFW выключен (порты открыты)",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("expected status output to contain %q, got:\n%s", want, text)
 		}
+	}
+}
+
+func TestStatusUFWActiveAndInactive(t *testing.T) {
+	tests := []struct {
+		name      string
+		lang      string
+		ufwOut    string
+		ufwErr    error
+		wantLabel string
+		wantValue string
+	}{
+		{
+			name:      "ru active",
+			lang:      "ru",
+			ufwOut:    "Status: active\n",
+			wantLabel: "Файрвол:",
+			wantValue: "UFW активен (проверьте правила: 8443/tcp, 8080/tcp, 67/69/4011/udp, 445/tcp)",
+		},
+		{
+			name:      "en active",
+			lang:      "en",
+			ufwOut:    "Status: active\n",
+			wantLabel: "Firewall:",
+			wantValue: "UFW active (check rules: 8443/tcp, 8080/tcp, 67/69/4011/udp, 445/tcp)",
+		},
+		{
+			name:      "en inactive",
+			lang:      "en",
+			ufwOut:    "Status: inactive\n",
+			wantLabel: "Firewall:",
+			wantValue: "UFW inactive (ports open)",
+		},
+		{
+			name:      "ru ufw missing",
+			lang:      "ru",
+			ufwErr:    errors.New("not found"),
+			wantLabel: "Файрвол:",
+			wantValue: "UFW выключен (порты открыты)",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := &mockRunner{
+				fn: func(_ context.Context, spec setup.CmdSpec) ([]byte, error) {
+					if spec.Name == "ufw" {
+						return []byte(tc.ufwOut), tc.ufwErr
+					}
+					if spec.Name == "systemctl" {
+						return []byte("active\n"), nil
+					}
+					return nil, errors.New("not installed")
+				},
+			}
+			var out bytes.Buffer
+			app := &App{
+				RootDir: t.TempDir(),
+				Lang:    tc.lang,
+				Out:     &out,
+				Runner:  runner,
+			}
+			if err := app.Status(context.Background()); err != nil {
+				t.Fatalf("Status failed: %v", err)
+			}
+			text := out.String()
+			if !strings.Contains(text, tc.wantLabel) {
+				t.Errorf("expected output to contain %q, got:\n%s", tc.wantLabel, text)
+			}
+			if !strings.Contains(text, tc.wantValue) {
+				t.Errorf("expected output to contain %q, got:\n%s", tc.wantValue, text)
+			}
+		})
 	}
 }

@@ -271,3 +271,12 @@ func (u *UI) ReadyBanner(opts Options) {
 		)),
 	)
 }
+
+// UFWWarning prints a concise amber warning when UFW is active after installation.
+func (u *UI) UFWWarning() {
+	fmt.Fprintln(u.Out)
+	u.Warn(u.t(
+		"UFW активен: откройте порты — Management: 8443/tcp; PXE: 67,69,4011/udp, 8080,445/tcp",
+		"UFW is active: allow ports — Management: 8443/tcp; PXE: 67,69,4011/udp, 8080,445/tcp",
+	))
+}

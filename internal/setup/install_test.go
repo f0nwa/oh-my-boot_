@@ -87,6 +87,7 @@ func newPreflightInstaller(t *testing.T, root string, runner CmdRunner) *Install
 		Runner:     runner,
 		Euid:       func() int { return 0 },
 		LookupUser: func(string) bool { return false },
+		PortCheck:  func(bool) error { return nil },
 	}
 }
 
@@ -357,6 +358,7 @@ func TestExecuteWithPXEFullDHCP(t *testing.T) {
 		Runner:      runner,
 		Euid:        func() int { return 0 },
 		LookupUser:  func(string) bool { return false },
+		PortCheck:   func(bool) error { return nil },
 		HealthCheck: func(context.Context, string, string) error { return nil },
 	}
 
@@ -424,6 +426,7 @@ func TestExecuteCreatesMntOmbIsoMode0755UnderRestrictiveUmask(t *testing.T) {
 		Runner:      runner,
 		Euid:        func() int { return 0 },
 		LookupUser:  func(string) bool { return false },
+		PortCheck:   func(bool) error { return nil },
 		HealthCheck: func(context.Context, string, string) error { return nil },
 	}
 

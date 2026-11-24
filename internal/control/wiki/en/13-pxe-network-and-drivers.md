@@ -44,3 +44,23 @@ The option takes effect only when both conditions are met (verified live in the 
 
 1. **Full DHCP OMB** mode is enabled.
 2. The client uses the **firmware (`snponly`)** driver.
+
+## Network ports and firewall
+
+On a clean Ubuntu Server installation, UFW is disabled by default so ports open automatically when OMB services start. If UFW or an external firewall is active, allow the ports below (you can check UFW status with `sudo omb status`):
+
+| Segment | Port | Protocol | Purpose | Requirement |
+| --- | --- | --- | --- | --- |
+| **Management** | `8443` | TCP | HTTPS web control panel (`omb-control`) | Required |
+| **Management** | `2022` | TCP | Built-in SFTP server for ISO uploads | Optional |
+| **Management** | `445` | TCP | Samba `[iso]` share for ISO uploads | Optional |
+| **PXE** | `67` | UDP | DHCP (`omb-dnsmasq`) | Required for PXE |
+| **PXE** | `4011` | UDP | Proxy DHCP (`omb-dnsmasq`) | Required for Proxy DHCP |
+| **PXE** | `69` | UDP | TFTP — stage-1 iPXE / shim bootloaders | Required for PXE |
+| **PXE** | `8080` | TCP | iPXE boot menu and HTTP delivery of WinPE / ISO files (`omb-boot`) | Required for PXE |
+| **PXE** | `445` | TCP | Samba `[ombisos]` share (Windows and Strelec installation media) | Required for Windows/Strelec |
+| **Outbound** | `445` | TCP | External SMB storage (NAS) | Optional |
+| **Outbound** | `2049` | TCP | External NFSv4.1 storage (NAS) | Optional |
+| **Outbound** | `389`, `636` | TCP | Active Directory / LDAP (LDAPS) | Optional |
+| **Outbound** | `443` | TCP | Keycloak (OIDC) | Optional |
+| **Outbound** | `123` | UDP | NTP time synchronization | Optional |

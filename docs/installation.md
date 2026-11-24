@@ -12,13 +12,44 @@
 - **Сеть:** 1 или 2 сетевых интерфейса со **статическим IPv4-адресом**:
   - **2 интерфейса (рекомендуется):** один — для управления и доступа к веб-панели, второй — выделенный для PXE-сегмента (режим **Full DHCP** или **Proxy DHCP**).
   - **1 интерфейс:** веб-панель и PXE работают на одном интерфейсе; в общей сети используйте **Proxy DHCP**, чтобы не конфликтовать с существующим DHCP-сервером.
-- **Порты, которые должны быть доступны клиентам и администраторам:**
-  - `TCP 8443` — веб-панель управления (HTTPS);
-  - `TCP 8080` — PXE-меню iPXE и раздача файлов WinPE / ISO по HTTP;
-  - `UDP 69` — TFTP (первичные загрузчики `undionly.kpxe`, `ipxe-shim.efi`, `ipxe.efi`, `snponly.efi`);
-  - `UDP 67` и `UDP 4011` — DHCP / Proxy DHCP;
-  - `TCP 445` — Samba (раздача установочных медиа Windows и Strelec).
 - **Права:** запуск установки от `root` (`sudo`).
+
+## Сетевые порты и файрвол
+
+На чистой установке Ubuntu Server файрвол UFW по умолчанию выключен — все нужные порты открываются автоматически при запуске служб OMB. Если в вашей инфраструктуре включён UFW или внешний межсетевой экран, разрешите порты из таблицы ниже. Перед установкой `omb-setup` проверяет, что обязательные порты не заняты другими службами, а после установки (и в `omb status`) предупреждает, если UFW активен.
+
+| Сегмент | Порт | Протокол | Назначение | Обязательность |
+| --- | --- | --- | --- | --- |
+| **Management** | `8443` | TCP | Веб-панель управления (`omb-control`, HTTPS) | Обязательный |
+| **Management** | `2022` | TCP | Встроенный SFTP-сервер для загрузки ISO | Опциональный (если включён) |
+| **Management** | `445` | TCP | Samba-шара `[iso]` для загрузки образов с рабочих станций | Опциональный (если включён) |
+| **PXE** | `67` | UDP | DHCP (`omb-dnsmasq`, Full DHCP / Proxy DHCP) | Обязательный для PXE |
+| **PXE** | `4011` | UDP | Proxy DHCP (`omb-dnsmasq`) | Обязательный для Proxy DHCP |
+| **PXE** | `69` | UDP | TFTP — первичные загрузчики (`undionly.kpxe`, `ipxe-shim.efi`, `ipxe.efi`, `snponly.efi`) | Обязательный для PXE |
+| **PXE** | `8080` | TCP | Меню iPXE и раздача файлов WinPE / ISO по HTTP (`omb-boot`) | Обязательный для PXE |
+| **PXE** | `445` | TCP | Samba-шара `[ombisos]` (раздача установочных медиа Windows и Strelec) | Обязательный для Windows/Strelec |
+| **Исходящие** | `445` | TCP | Подключение внешнего SMB-хранилища (NAS) | Опциональный |
+| **Исходящие** | `2049` | TCP | Подключение внешнего NFSv4.1-хранилища (NAS) | Опциональный |
+| **Исходящие** | `389`, `636` | TCP | Аутентификация Active Directory / LDAP (LDAPS) | Опциональный |
+| **Исходящие** | `443` | TCP | Вход через Keycloak (OIDC) | Опциональный |
+| **Исходящие** | `123` | UDP | Синхронизация времени NTP | Опциональный |
+
+Пример правил UFW для сервера с двумя интерфейсами — Management (`ens18`) и PXE (`ens19`):
+
+```sh
+# Management-интерфейс (ens18)
+sudo ufw allow in on ens18 to any port 8443 proto tcp comment 'OMB Control HTTPS'
+# Опционально, если включены загрузка по SFTP или Samba [iso]:
+# sudo ufw allow in on ens18 to any port 2022 proto tcp comment 'OMB SFTP'
+# sudo ufw allow in on ens18 to any port 445 proto tcp comment 'OMB Samba [iso]'
+
+# PXE-интерфейс (ens19)
+sudo ufw allow in on ens19 to any port 67 proto udp comment 'OMB DHCP'
+sudo ufw allow in on ens19 to any port 4011 proto udp comment 'OMB Proxy DHCP'
+sudo ufw allow in on ens19 to any port 69 proto udp comment 'OMB TFTP'
+sudo ufw allow in on ens19 to any port 8080 proto tcp comment 'OMB iPXE HTTP'
+sudo ufw allow in on ens19 to any port 445 proto tcp comment 'OMB Samba [ombisos]'
+```
 
 ## Способ 1. Онлайн-установка одной командой
 

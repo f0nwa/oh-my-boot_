@@ -1,49 +1,54 @@
-# Сборки, временные файлы и рабочие копии
-dist/
-.worktrees/
+# Default deny at repository root; explicitly allow public project entries
+/*
+
+# Public root files
+!/.gitignore
+!/.gitattributes
+!/LICENSE
+!/README.md
+!/DESIGN.md
+!/CONTEXT.md
+!/go.mod
+!/go.sum
+
+# Public source, deployment, scripts, tests, and tooling directories
+!/cmd/
+!/deploy/
+!/examples/
+!/internal/
+!/scripts/
+!/testdata/
+!/tools/
+
+# Public user documentation
+!/docs/
+/docs/*
+!/docs/brand/
+!/docs/en/
+!/docs/images/
+!/docs/answer-editor.md
+!/docs/architecture.md
+!/docs/control-installation.md
+!/docs/images-installation.md
+!/docs/installation.md
+!/docs/offline-installation.md
+!/docs/offline-release.md
+!/docs/secure-boot.md
+!/docs/secure-boot-boot-paths.md
+!/docs/secure-boot-sccm.md
+!/docs/ubuntu-desktop-pxe.md
+!/docs/windows-winpe-pxe.md
+!/docs/windows11-winpe-pxe.md
+
+# Common OS, build, and secret artifacts inside allowed directories
+.DS_Store
 __pycache__/
 *.pyc
 *.deb
 *.bak
 *.orig
 *.tmp
-
-# Секреты и локальное окружение
 .env
 .env.*
 *.key
 *.pem
-
-# ОС и редакторы
-.DS_Store
-.vscode/
-.idea/
-
-# Инфраструктура ИИ-агентов и внутренняя память проекта
-.claude/
-.mcp.json
-.superpowers/
-_platforms/
-_templates/
-/AGENTS.md
-/CLAUDE.md
-/GEMINI.md
-/.cursorrules
-/.clinerules
-/.github/copilot-instructions.md
-/INDEX.md
-/JOURNAL.md
-/MEMORY.md
-/TODO.md
-
-# Временные HTML-макеты UI в корне
-/*-mockup.html
-/*-mockups.html
-
-# Внутренние отчёты, спецификации, планы и документы стенда
-/docs/research/
-/docs/superpowers/
-/docs/roadmaps/
-/docs/grub-secure-boot-test.md
-/docs/project-history.md
-/docs/recovery.md

@@ -134,6 +134,17 @@ sudo omb-setup
 sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key>
 ```
 
+**4. Готовая ВМ для Proxmox VE / ESXi (`.qcow2.xz` и `.ova`, Ubuntu 24.04 LTS):**
+
+В каждом релизе публикуются готовые образы ВМ с предустановленными `omb`, PostgreSQL, Samba, `dnsmasq`, `wimtools`, `qemu-guest-agent` и Cloud-Init (удобно и для быстрого старта, и для закрытого контура — без выхода в интернет). Развёртывание на ноде Proxmox одной командой:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/proxmox-create-vm.sh | bash -s -- \
+  --vmid 200 --storage local-lvm --bridge vmbr0 --pxe-bridge vmbr1
+```
+
+*(Для офлайн-ноды Proxmox передайте локальный файл `--image omb_<версия>_ubuntu24.04_amd64.qcow2.xz`, либо импортируйте `.ova` через мастер импорта Proxmox / ESXi. После первого входа в ВМ запустите `sudo omb-setup`.)*
+
 > Сборка подписанного локального репозитория, обновления без интернета и откат описаны в [docs/offline-release.md](docs/offline-release.md) и [docs/offline-installation.md](docs/offline-installation.md).
 
 ### Первый вход и консольная утилита `omb`

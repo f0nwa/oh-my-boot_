@@ -109,6 +109,54 @@ sudo bash scripts/offline-deploy.sh install <apt-repo> <public-key> <management-
 
 В этом варианте DHCP и Samba останутся выключенными до настройки PXE-сети в веб-панели. Если передать `none` или опустить четвёртый аргумент, в `/etc/omb/control.env` записывается `OMB_CONTROL_INTERFACES=omb-pxe-off` (чтобы разрешить настройку PXE через веб-панель позже, потребуется указать нужный интерфейс в `/etc/omb/control.env` и перезапустить `omb-control`). Для отложенной настройки PXE исключительно через веб-панель без ручной правки `/etc/omb/control.env` используйте интерактивный запуск `offline-deploy.sh install <apt-repo> <public-key>`: мастер автоматически заполнит `OMB_CONTROL_INTERFACES` найденными интерфейсами.
 
+## Способ 4. Готовая ВМ для Proxmox VE / ESXi (`.qcow2.xz` и `.ova`)
+
+В каждом релизе GitHub публикуются готовые образы ВМ на базе **Ubuntu 24.04 LTS Cloud Image** с предустановленными `omb`, PostgreSQL, Samba, `dnsmasq`, `wimtools`, `qemu-guest-agent` и Cloud-Init. Образ готов к развёртыванию и в закрытом контуре без доступа к интернету.
+
+### Proxmox VE через скрипт (`.qcow2.xz`, рекомендуется)
+
+Самый быстрый способ — скрипт `scripts/proxmox-create-vm.sh` на ноде Proxmox. Он сам создаёт ВМ с `VirtIO SCSI single`, `VirtIO NIC`, `qemu-guest-agent` и подключённым `CloudInit Drive`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/proxmox-create-vm.sh | bash -s -- \
+  --vmid 200 --storage local-zfs --bridge vmbr0 --pxe-bridge vmbr1
+```
+
+Для офлайн-ноды Proxmox скачайте файл заранее и передайте его через `--image`:
+
+```sh
+bash scripts/proxmox-create-vm.sh --vmid 200 --storage local-zfs --bridge vmbr0 \
+  --image omb_<версия>_ubuntu24.04_amd64.qcow2.xz
+```
+
+После создания ВМ задайте пользователя, пароль/SSH-ключ и сеть на вкладке **Cloud-Init**, запустите ВМ и выполните `sudo omb-setup`.
+
+### Импорт `.ova` через веб-интерфейс Proxmox VE
+
+1. **Подготовьте хранилище `local` (разово):**
+   откройте **Datacenter → Storage → `local` → Edit → Content** и убедитесь, что отмечены **`Import`** и **`Disk image`**.
+   - *Зачем нужен `Disk image` на `local`, если сама ВМ создаётся на `local-zfs` или `local-lvm`:* Proxmox не умеет распаковывать `.vmdk` из `.ova` напрямую в блочное хранилище (ZFS / LVM-thin). На время импорта он использует файловое хранилище (**Import Working Storage**) как временный буфер и требует на нём тип `Disk image` — без него мастер выдаст ошибку `import working storage '...' does not support 'images' content type or is not file based`. После завершения импорта временный файл удаляется автоматически, а галочку `Disk image` у `local` при желании можно снять обратно.
+2. **Загрузите образ:** откройте **`local` → Import**, загрузите `omb_<версия>_ubuntu24.04_amd64.ova`, выберите файл и нажмите **Import**.
+3. **Проверьте параметры в мастере импорта:**
+   - вкладка **General:**
+     - **Default Storage:** целевое хранилище диска ВМ (например, `local-zfs` или `local-lvm`);
+     - **Import Working Storage:** оставьте **`Source Storage`** (или выберите `local`) — **не** выбирайте ZFS/LVM;
+     - **Cores / Memory:** минимум `2` vCPU и `2048 MiB` (для локального хранения ISO рекомендуется `4` vCPU и `4096+ MiB`);
+   - вкладка **Advanced:**
+     - **Disks:** значение `Size: Unknown` у `omb-disk1.vmdk` — нормальное поведение Proxmox для `streamOptimized` VMDK, фактический размер (`20 GiB`) определится при импорте;
+     - **SCSI Controller:** переключите с `Default (LSI 53C895A)` на **`VirtIO SCSI single`**;
+     - **Network Interfaces (`net0`, `net1`):** смените модель с `VMware vmxnet3` на **`VirtIO (paravirtualized)`** и укажите нужные мосты (Management и PXE; если второй интерфейс не нужен, снимите галочку **Use** у `net1`).
+4. **Настройте ВМ до первого запуска (обязательно):**
+   - **Hardware → Add → CloudInit Drive** — добавьте диск Cloud-Init (на `local-zfs` / `local-lvm`);
+   - вкладка **Cloud-Init** — задайте **User**, **Password** и/или **SSH public key** и статический **IP Config** (в Ubuntu Cloud Image по умолчанию нет пароля, без Cloud-Init войти в систему не получится);
+   - **Options → QEMU Guest Agent** — включите **Use QEMU Guest Agent** (агент уже установлен внутри образа);
+   - при необходимости увеличьте диск (**Hardware → Hard Disk → Disk Action → Resize**) — корневой раздел расширится автоматически при загрузке.
+5. **Запустите ВМ**, войдите по SSH или через консоль и запустите мастер настройки `sudo omb-setup`.
+
+### Импорт `.ova` в VMware ESXi / vSphere
+
+Импортируйте `omb_<версия>_ubuntu24.04_amd64.ova` через **Create/Register VM → Deploy a virtual machine from an OVF or OVA file**, сопоставьте логические сети `Management` и `PXE` вашим порт-группам, передайте конфигурацию Cloud-Init (пользователь / SSH-ключ / IP) и после первого входа запустите `sudo omb-setup`.
+
 ## Шаги мастера `omb-setup`
 
 При запуске `omb-setup` по очереди проходит шесть этапов:

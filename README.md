@@ -143,7 +143,7 @@ curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/prox
   --vmid 200 --storage local-lvm --bridge vmbr0 --pxe-bridge vmbr1
 ```
 
-*(Для офлайн-ноды Proxmox передайте локальный файл `--image omb_<версия>_ubuntu24.04_amd64.qcow2.xz`, либо импортируйте `.ova` через мастер импорта Proxmox / ESXi. После первого входа в ВМ запустите `sudo omb-setup`.)*
+*(Для офлайн-ноды Proxmox передайте локальный файл `--image omb_<версия>_ubuntu24.04_amd64.qcow2.xz`, либо импортируйте `.ova` через веб-интерфейс Proxmox / ESXi — подробная пошаговая инструкция по импорту `.ova` в Proxmox, включая `Disk image` на `local`, `VirtIO SCSI` и `CloudInit Drive`, приведена в [docs/installation.md](docs/installation.md#способ-4-готовая-вм-для-proxmox-ve--esxi-qcow2xz-и-ova). После первого входа в ВМ запустите `sudo omb-setup`.)*
 
 > Сборка подписанного локального репозитория, обновления без интернета и откат описаны в [docs/offline-release.md](docs/offline-release.md) и [docs/offline-installation.md](docs/offline-installation.md).
 

@@ -143,7 +143,7 @@ curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/prox
   --vmid 200 --storage local-lvm --bridge vmbr0 --pxe-bridge vmbr1
 ```
 
-*(For an offline Proxmox host, pass `--image omb_<version>_ubuntu24.04_amd64.qcow2.xz`, or import the `.ova` directly in Proxmox VE / ESXi. After the first sign-in to the VM, run `sudo omb-setup`.)*
+*(For an offline Proxmox host, pass `--image omb_<version>_ubuntu24.04_amd64.qcow2.xz`, or import the `.ova` via the Proxmox VE / ESXi UI — see the step-by-step Proxmox `.ova` import checklist (`Disk image` on `local`, `VirtIO SCSI`, and `CloudInit Drive`) in [docs/en/installation.md](docs/en/installation.md#method-4-ready-to-boot-vm-for-proxmox-ve--esxi-qcow2xz-and-ova). After the first sign-in to the VM, run `sudo omb-setup`.)*
 
 > Building signed offline repositories, air-gapped updates, and rollback are covered in [docs/en/offline-release.md](docs/en/offline-release.md) and [docs/en/offline-installation.md](docs/en/offline-installation.md).
 

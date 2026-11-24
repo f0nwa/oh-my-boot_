@@ -40,7 +40,7 @@
 <tr data-user-row data-user-id="{{.ID}}" data-user-login="{{.Username}}" data-user-role="{{.Role}}" data-user-enabled="{{if .Enabled}}true{{else}}false{{end}}">
 <td>
 {{if not $self}}<form id="user-change-{{.ID}}" method="post" action="/users/change"><input type="hidden" name="csrf" value="{{$.Info.CSRF}}"><input type="hidden" name="id" value="{{.ID}}">{{if not $local}}<input type="hidden" name="role" value="{{.Role}}">{{end}}</form>{{end}}
-<span class="user-name"><strong>{{.Username}}</strong></span> <small class="mono faint">#{{.ID}}</small>{{if $self}} <span class="chip">{{t "вы"}}</span>{{end}}{{if .DisplayName}}<br><small class="muted">{{.DisplayName}}</small>{{end}}
+<span class="user-name">{{.Username}}</span> <small class="mono faint">#{{.ID}}</small>{{if $self}} <span class="chip">{{t "вы"}}</span>{{end}}{{if .DisplayName}}<br><small class="muted">{{.DisplayName}}</small>{{end}}
 </td>
 <td>
 {{if eq .AuthSource "ldap"}}<span class="chip-src chip-src-ldap">LDAP</span>{{else if eq .AuthSource "keycloak"}}<span class="chip-src chip-src-kc">Keycloak</span>{{else}}<span class="chip-src">{{t "Локальный"}}</span>{{end}}

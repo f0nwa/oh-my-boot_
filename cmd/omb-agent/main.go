@@ -95,8 +95,6 @@ func main() {
 			UEFICAUSB:            usbBuilder.CacheRoot,
 		},
 	}
-	handler := agent.HandlerWithNFS(agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder), nfs)
-	handler = agent.HandlerWithSystemTime(agent.HandlerWithDiskUsage(agent.HandlerWithUbuntuISO(handler, ubuntu), diskUsage), &agent.SystemTimeManager{})
 	localSMB := &agent.LocalSMBManager{
 		SMBConfPath:      "/etc/samba/smb.conf",
 		UserMapPath:      "/etc/omb/samba-usermap.conf",
@@ -104,6 +102,9 @@ func main() {
 		LocalISORoot:     filepath.Join(agent.LocalISORoot, "iso"),
 		Runner:           agent.ExecDriverCommandRunner{},
 	}
+	applier.LocalSMB = localSMB
+	handler := agent.HandlerWithNFS(agent.HandlerWithUEFICAUSB(agent.HandlerWithSMBSessions(agent.HandlerWithDHCPLog(agent.HandlerWithRecovery(applier, smb, windows, driverManager, recovery), agent.NewDHCPLog()), smbSessions), usbBuilder), nfs)
+	handler = agent.HandlerWithSystemTime(agent.HandlerWithDiskUsage(agent.HandlerWithUbuntuISO(handler, ubuntu), diskUsage), &agent.SystemTimeManager{})
 	handler = agent.HandlerWithLocalSMB(handler, localSMB)
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

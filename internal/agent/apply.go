@@ -35,6 +35,7 @@ type Applier struct {
 	status            Status
 	current           network.Config
 	WinPE             *WinPEWaitUpdater
+	LocalSMB          *LocalSMBManager
 	lastDriverUpdates []DriverScriptUpdate
 }
 
@@ -160,6 +161,11 @@ func (a *Applier) Apply(ctx context.Context, c network.Config) error {
 	}
 	if err := writeAtomic(a.statePath, state, 0o600); err != nil {
 		return errors.Join(fmt.Errorf("save agent state: %w", err), a.rollback(ctx, previous, previousExists), winpeRollback())
+	}
+	if !dnsmasqUnchanged && a.LocalSMB != nil {
+		if err := a.LocalSMB.SyncPXENetwork(ctx); err != nil {
+			return fmt.Errorf("sync samba for PXE network: %w", err)
+		}
 	}
 	a.status = Status{Applied: true, Mode: c.Mode, Interface: c.Interface}
 	a.current = c

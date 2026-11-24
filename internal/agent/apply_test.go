@@ -133,3 +133,66 @@ func TestNewApplierRestoresSavedServiceAfterRestart(t *testing.T) {
 }
 
 func (f *fakeRunner) Reload(context.Context) error { f.reloads++; return f.reloadErr }
+
+func TestApplierApplySyncsLocalSMB(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "dnsmasq.conf")
+	statePath := filepath.Join(dir, "network.json")
+	hostsPath := filepath.Join(dir, "dhcp", "hosts")
+	smbConf := filepath.Join(dir, "smb.conf")
+	userMap := filepath.Join(dir, "samba-usermap.conf")
+	smbState := filepath.Join(dir, "local-smb.json")
+
+	runner := &fakeRunner{}
+	smbRunner := &fakeLocalSMBRunner{}
+	applier, err := NewApplier(configPath, statePath, hostsPath, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applier.LocalSMB = &LocalSMBManager{
+		SMBConfPath:      smbConf,
+		UserMapPath:      userMap,
+		NetworkStatePath: statePath,
+		StatePath:        smbState,
+		LocalISORoot:     filepath.Join(dir, "iso"),
+		Runner:           smbRunner,
+	}
+
+	cfg := agentConfig()
+	if err := applier.Apply(context.Background(), cfg); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	content, err := os.ReadFile(smbConf)
+	if err != nil {
+		t.Fatalf("read smb.conf: %v", err)
+	}
+	confStr := string(content)
+	if !strings.Contains(confStr, "interfaces = lo enp2s0") {
+		t.Errorf("smb.conf missing 'interfaces = lo enp2s0', got:\n%s", confStr)
+	}
+	if !strings.Contains(confStr, "hosts allow = 127.0.0.1 192.0.2.0/24") {
+		t.Errorf("smb.conf missing 'hosts allow = 127.0.0.1 192.0.2.0/24', got:\n%s", confStr)
+	}
+	if !smbRunner.hasCallWithArgs("systemctl", "enable", "--now", "smbd") {
+		t.Errorf("expected 'systemctl enable --now smbd', calls: %+v", smbRunner.calls)
+	}
+
+	smbRunner.mu.Lock()
+	callsBeforeWinPEOnly := len(smbRunner.calls)
+	smbRunner.mu.Unlock()
+
+	winpeOnly := cfg
+	winpeOnly.WinPETimeoutSeconds = 120
+	if err := applier.Apply(context.Background(), winpeOnly); err != nil {
+		t.Fatalf("WinPE-only Apply failed: %v", err)
+	}
+
+	smbRunner.mu.Lock()
+	callsAfterWinPEOnly := len(smbRunner.calls)
+	smbRunner.mu.Unlock()
+
+	if callsAfterWinPEOnly != callsBeforeWinPEOnly {
+		t.Errorf("expected SyncPXENetwork not to be called when only WinPE wait parameters change; calls grew from %d to %d", callsBeforeWinPEOnly, callsAfterWinPEOnly)
+	}
+}

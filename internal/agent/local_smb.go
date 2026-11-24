@@ -44,6 +44,7 @@ type LocalSMBManager struct {
 	SMBConfPath      string
 	UserMapPath      string
 	NetworkStatePath string
+	StatePath        string
 	LocalISORoot     string
 	Runner           CommandRunner
 }
@@ -74,6 +75,40 @@ func (m *LocalSMBManager) networkStatePath() string {
 		return m.NetworkStatePath
 	}
 	return "/var/lib/omb-agent/network.json"
+}
+
+func (m *LocalSMBManager) statePath() string {
+	if m.StatePath != "" {
+		return m.StatePath
+	}
+	return "/var/lib/omb-agent/local-smb.json"
+}
+
+func (m *LocalSMBManager) saveState(cfg LocalSMBConfig) error {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal local smb state: %w", err)
+	}
+	_ = os.MkdirAll(filepath.Dir(m.statePath()), 0o750)
+	if err := writeAtomic(m.statePath(), data, 0o600); err != nil {
+		return fmt.Errorf("write local smb state: %w", err)
+	}
+	return nil
+}
+
+func (m *LocalSMBManager) loadState() (LocalSMBConfig, error) {
+	data, err := os.ReadFile(m.statePath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return LocalSMBConfig{Enabled: false}, nil
+		}
+		return LocalSMBConfig{}, fmt.Errorf("read local smb state: %w", err)
+	}
+	var cfg LocalSMBConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return LocalSMBConfig{}, fmt.Errorf("parse local smb state: %w", err)
+	}
+	return cfg, nil
 }
 
 func (m *LocalSMBManager) localISORoot() string {
@@ -115,6 +150,9 @@ func (m *LocalSMBManager) ApplyConfig(ctx context.Context, cfg LocalSMBConfig) e
 		conf := renderDisabledSMBConf(pxeIface, pxeSubnet)
 		if err := writeAtomic(m.smbConfPath(), []byte(conf), 0644); err != nil {
 			return fmt.Errorf("write smb.conf: %w", err)
+		}
+		if err := m.saveState(cfg); err != nil {
+			return err
 		}
 
 		_, _ = runner.Run(ctx, "", "smbcontrol", "smbd", "close-share", "iso")
@@ -165,12 +203,81 @@ func (m *LocalSMBManager) ApplyConfig(ctx context.Context, cfg LocalSMBConfig) e
 	if err := writeAtomic(m.smbConfPath(), []byte(conf), 0644); err != nil {
 		return fmt.Errorf("write smb.conf: %w", err)
 	}
+	savedCfg := cfg
+	savedCfg.Users = users
+	if err := m.saveState(savedCfg); err != nil {
+		return err
+	}
 
 	if validCount == 0 {
 		_, _ = runner.Run(ctx, "", "smbcontrol", "smbd", "close-share", "iso")
 	}
 	_, _ = runner.Run(ctx, "", "systemctl", "try-restart", "smbd")
 	_, _ = runner.Run(ctx, "", "smbcontrol", "smbd", "reload-config")
+	return nil
+}
+
+func (m *LocalSMBManager) SyncPXENetwork(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cfg, err := m.loadState()
+	if err != nil {
+		return err
+	}
+	pxeIface, pxeSubnet := m.readNetworkConfig()
+
+	var conf string
+	if cfg.Enabled {
+		users := append([]LocalSMBUser(nil), cfg.Users...)
+		sort.Slice(users, func(i, j int) bool {
+			return users[i].ID < users[j].ID
+		})
+		conf = renderEnabledSMBConf(renderSMBOptions{
+			pxeIface:    pxeIface,
+			pxeSubnet:   pxeSubnet,
+			listenIP:    cfg.ListenIP,
+			userMapPath: m.userMapPath(),
+			isoRoot:     m.localISORoot(),
+			readOnlyAll: cfg.ReadOnlyAll,
+			users:       users,
+		})
+	} else {
+		conf = renderDisabledSMBConf(pxeIface, pxeSubnet)
+	}
+
+	candidate, err := writeCandidate(m.smbConfPath(), []byte(conf), 0o644)
+	if err != nil {
+		return fmt.Errorf("write smb.conf candidate: %w", err)
+	}
+	defer os.Remove(candidate)
+
+	runner := m.runner()
+	if out, err := runner.Run(ctx, "", "testparm", "-s", candidate); err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("validate smb.conf with testparm: %w: %s", err, msg)
+		}
+		return fmt.Errorf("validate smb.conf with testparm: %w", err)
+	}
+	if err := os.Rename(candidate, m.smbConfPath()); err != nil {
+		return fmt.Errorf("activate smb.conf: %w", err)
+	}
+
+	if out, err := runner.Run(ctx, "", "systemctl", "enable", "--now", "smbd"); err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("enable smbd: %w: %s", err, msg)
+		}
+		return fmt.Errorf("enable smbd: %w", err)
+	}
+	if out, err := runner.Run(ctx, "", "smbcontrol", "smbd", "reload-config"); err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("reload smbd config: %w: %s", err, msg)
+		}
+		return fmt.Errorf("reload smbd config: %w", err)
+	}
 	return nil
 }
 

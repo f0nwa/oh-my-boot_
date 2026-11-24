@@ -253,7 +253,7 @@ func (u *UI) ReadyBanner(opts Options) {
 	url := fmt.Sprintf("https://%s:8443", opts.ManagementIP)
 	fmt.Fprintf(u.Out, "\n%s %s\n\n",
 		u.okBadge(" "+u.t("ГОТОВО", "READY")+" "),
-		u.white(u.t("Oh My Boot установлен и запущен", "Oh My Boot is installed and running")),
+		u.white(u.t("oh my boot_ установлен и запущен", "oh my boot_ is installed and running")),
 	)
 	fmt.Fprintf(u.Out, "  %s %s\n", u.muted(padRightRunes(u.t("Панель управления:", "Control panel:"), 19)), u.cyan(url))
 	fmt.Fprintf(u.Out, "  %s %s\n", u.muted(padRightRunes(u.t("Логин:", "Username:"), 19)), u.white("admin"))

@@ -232,8 +232,8 @@ else
 fi
 
 # 5. Install .deb via apt-get
-DEBIAN_FRONTEND=noninteractive apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$deb_file"
+DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=60 update
+DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=60 install -y --no-install-recommends "$deb_file"
 
 # 6. Hand off to omb-setup
 [[ -x "$OMB_SETUP_BIN" ]] || die "omb-setup binary not found or not executable: $OMB_SETUP_BIN"

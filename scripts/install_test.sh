@@ -146,8 +146,8 @@ setup_mock_env "$t2" amd64
 write_os_release "$t2/os-release" ubuntu 26.04
 printf 'fake-deb-2604' >"$t2/omb_0.2.0_amd64.deb"
 run_installer "$t2" "$t2/os-release" --deb "$t2/omb_0.2.0_amd64.deb" -- --lang en --skip-pxe
-grep -Fq "DEBIAN_FRONTEND=noninteractive apt-get update" "$t2/logs/apt-get.log" || fail "t2: apt-get update missing"
-grep -Fq "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $t2/omb_0.2.0_amd64.deb" "$t2/logs/apt-get.log" || fail "t2: apt-get install args mismatch"
+grep -Fq "DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=60 update" "$t2/logs/apt-get.log" || fail "t2: apt-get update missing"
+grep -Fq "DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=60 install -y --no-install-recommends $t2/omb_0.2.0_amd64.deb" "$t2/logs/apt-get.log" || fail "t2: apt-get install args mismatch"
 grep -Fq "omb-setup --install-mode online --lang en --skip-pxe" "$t2/logs/omb-setup.log" || fail "t2: omb-setup args mismatch"
 
 # 3. Accepts Ubuntu 24.04 amd64 with bare relative --deb path (must prefix ./)
@@ -159,7 +159,7 @@ printf 'fake-deb-2404' >"$t3/omb_0.2.0_amd64.deb"
     cd "$t3"
     run_installer "$t3" "$t3/os-release" --deb "omb_0.2.0_amd64.deb"
 )
-grep -Fq "apt-get install -y --no-install-recommends ./omb_0.2.0_amd64.deb" "$t3/logs/apt-get.log" || fail "t3: relative --deb must be prefixed with ./"
+grep -Fq "apt-get -o DPkg::Lock::Timeout=60 install -y --no-install-recommends ./omb_0.2.0_amd64.deb" "$t3/logs/apt-get.log" || fail "t3: relative --deb must be prefixed with ./"
 grep -Fq "omb-setup --install-mode online" "$t3/logs/omb-setup.log" || fail "t3: omb-setup not invoked"
 
 # 4. Rejects Ubuntu 22.04 without --force-os, accepts with --force-os
@@ -173,7 +173,7 @@ fi
 grep -Fq -- "--force-os" "$t4/out" || fail "t4: error message should mention --force-os"
 test ! -e "$t4/logs/apt-get.log" || fail "t4: apt-get must not run on rejected OS"
 run_installer "$t4" "$t4/os-release" --force-os --deb "$t4/omb_0.2.0_amd64.deb"
-grep -Fq "apt-get install -y --no-install-recommends" "$t4/logs/apt-get.log" || fail "t4: --force-os should allow Ubuntu 22.04"
+grep -Fq "apt-get -o DPkg::Lock::Timeout=60 install -y --no-install-recommends" "$t4/logs/apt-get.log" || fail "t4: --force-os should allow Ubuntu 22.04"
 
 # 5. Rejects Debian without --force-os, accepts with --force-os
 t5="$work/t5"
@@ -207,7 +207,7 @@ printf '%s  omb_0.2.0_amd64.deb\n' "$good_sha" >"$t7/fixtures/SHA256SUMS"
 run_installer "$t7" "$t7/os-release" -- --lang ru
 grep -Fq "https://github.com/f0nwa/OMB/releases/latest/download/SHA256SUMS" "$t7/logs/curl.log" || fail "t7: wrong SHA256SUMS URL"
 grep -Fq "https://github.com/f0nwa/OMB/releases/latest/download/omb_0.2.0_amd64.deb" "$t7/logs/curl.log" || fail "t7: wrong deb URL"
-grep -Fq "apt-get install -y --no-install-recommends" "$t7/logs/apt-get.log" || fail "t7: apt-get install not called"
+grep -Fq "apt-get -o DPkg::Lock::Timeout=60 install -y --no-install-recommends" "$t7/logs/apt-get.log" || fail "t7: apt-get install not called"
 grep -Fq "omb_0.2.0_amd64.deb" "$t7/logs/apt-get.log" || fail "t7: deb filename missing in apt-get"
 grep -Fq "omb-setup --install-mode online --lang ru" "$t7/logs/omb-setup.log" || fail "t7: omb-setup args mismatch"
 

@@ -1,5 +1,4 @@
 {{define "wiki"}}{{template "top" .}}
-{{if eq lang "en"}}<div class="notice wiki-lang-note" role="status"><span class="notice-text">{{t "Статьи встроенной базы знаний пока доступны на русском языке."}}</span></div>{{end}}
 {{with .Wiki}}
 {{if .NotFound}}
 <section class="card wiki-empty">

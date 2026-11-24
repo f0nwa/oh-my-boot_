@@ -1,0 +1,24 @@
+- id: start
+  order: 10
+  title: Getting Started
+  description: Purpose of oh my boot_, core concepts, access roles, and a quick path to the first network boot.
+- id: architecture
+  order: 20
+  title: Architecture
+  description: Systemd services, Unix sockets, three PostgreSQL databases, the network boot pipeline, and server paths.
+- id: panel
+  order: 30
+  title: Web Panel
+  description: Menu draft and publishing, the Now screen, machine inventory, event logs, and global search.
+- id: os-scenarios
+  order: 40
+  title: OS Deployment Scenarios
+  description: Windows 10 and 11 via WinPE, answer file editor, drivers, Strelec, and Ubuntu Desktop.
+- id: infra
+  order: 50
+  title: Secure Boot, Network & Storage
+  description: Signed iPXE shim 16.1, PXE network and UEFI driver settings, SMB/NFS, local file server, and maintenance mode.
+- id: operations
+  order: 60
+  title: Security, Updates & History
+  description: Users, AD/LDAP, Keycloak, 2FA, offline .deb packages, release channels, recovery, and OMB development history.

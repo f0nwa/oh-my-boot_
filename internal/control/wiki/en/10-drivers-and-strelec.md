@@ -1,0 +1,45 @@
+---
+slug: drivers-and-strelec
+section: os-scenarios
+order: 30
+title: WinPE Drivers and Strelec Service Image
+summary: Uploading INF driver packages, SHA-256 deduplicated boot.wim builds, and network booting Strelec (SSTR) service images.
+keywords: [drivers, winpe, inf, boot.wim, wimlib, strelec, sstr, virtio, vmd]
+---
+
+The stock `boot.wim` inside a Windows ISO often lacks drivers for modern NICs, USB-C adapters, or NVMe/RAID controllers (Intel VMD, VirtIO). OMB lets you upload driver packages once and attach them to any Windows or Strelec boot.
+
+## Driver catalog (`/drivers`)
+
+Under [Library → Drivers](/drivers), two upload methods are supported:
+
+- **Driver folder** — pick a local directory on your workstation; the browser uploads the full structure with `.inf`, `.sys`, and `.cat` files.
+- **ZIP archive** — upload a vendor driver pack (Dell WinPE Driver Pack, Lenovo, VirtIO, and others).
+
+OMB inspects the archive, indexes every `.inf` file, computes the package SHA-256, and stores the inventory in the database. Clicking any package opens its file list in a modal dialog.
+
+> [!NOTE]
+> For WinPE network deployment, two driver classes are usually enough: **Net** (NIC driver so WinPE can connect to `[ombisos]`) and **SCSIAdapter / HDC** (storage controller so Windows Setup sees the drive).
+
+## Attaching drivers and `boot.wim` deduplication
+
+Drivers are selected directly on the [New boot](/installations/new) form:
+
+- if a package contains a single `.inf`, it renders as a single selectable card;
+- if a package contains multiple `.inf` files, you can select the whole package or pick individual `.inf` entries.
+
+During the build, `omb-agent` injects the selected drivers into a copy of `boot.wim` using `wimlib-imagex`. Built `boot.wim` files are stored in `/srv/omb/tftp/windows-driver-wims/` with **SHA-256 deduplication** (source `boot.wim` + `.inf` set): if multiple boots share the same driver set, `boot.wim` is neither duplicated on disk nor rebuilt.
+
+Disk space used by configurations is shown in the WinPE configurations table and on [System → Storages](/storages) without double-counting shared `boot.wim` files.
+
+## Strelec service image (`SSTR`)
+
+OMB automatically detects Strelec x64 (`SSTR`) service ISOs during ISO inspection:
+
+1. When creating a boot from a Strelec image, choose the **WinPE 11** or **WinPE 10** edition and optionally attach WinPE driver packages. XML answer file and Autoinstall fields are hidden for Strelec.
+2. `omb-agent` adapts `BCD` and builds the connection script using the network wait settings from [System → Network](/network).
+3. On the client, drivers load one by one — a single incompatible `.inf` does not abort the boot and is logged to `X:\omb-driver.log`.
+4. Share connection and service image mounting steps are recorded in `X:\omb-strelec.log`.
+
+> [!IMPORTANT]
+> Just like for Windows, the `windows-driver-configs/*/omb-setup.cmd` URL for Strelec is served only on the PXE boot network (`200`), and returns `404` from the management network.

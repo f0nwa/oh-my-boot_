@@ -1196,7 +1196,6 @@ html[data-theme="light"] .chan-pill.is-stable{background:rgba(13,148,104,.10);bo
 .wiki-top-btn:hover{color:var(--text);border-color:var(--line-strong)}
 .wiki-top-btn.active{background:var(--draft-bg);border-color:var(--draft-line);color:var(--accent-ink)}
 .wiki-top-btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
-.wiki-lang-note{max-width:1200px;margin:0 auto 16px}
 .wiki-home{max-width:1200px;margin:0 auto}
 .wiki-home-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 24px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--line)}
 .wiki-home-title{flex:1 1 360px;min-width:0}

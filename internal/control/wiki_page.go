@@ -16,12 +16,13 @@ type wikiView struct {
 	NotFound bool
 }
 
-func (s *Server) wikiCatalog() (*wiki.Catalog, error) {
-	return wiki.Default()
+func (s *Server) wikiCatalog(lang string) (*wiki.Catalog, error) {
+	return wiki.ForLanguage(lang)
 }
 
 func (s *Server) wikiHome(w http.ResponseWriter, r *http.Request) {
-	cat, err := s.wikiCatalog()
+	info := requestInfo(r)
+	cat, err := s.wikiCatalog(normalizeLanguage(info.User.Language))
 	if err != nil {
 		http.Error(w, "wiki unavailable", http.StatusInternalServerError)
 		return
@@ -35,13 +36,14 @@ func (s *Server) wikiHome(w http.ResponseWriter, r *http.Request) {
 		view.Hits = cat.Search(q, 30)
 	}
 	render(w, "wiki", pageData{
-		Info: requestInfo(r),
+		Info: info,
 		Wiki: view,
 	})
 }
 
 func (s *Server) wikiArticle(w http.ResponseWriter, r *http.Request) {
-	cat, err := s.wikiCatalog()
+	info := requestInfo(r)
+	cat, err := s.wikiCatalog(normalizeLanguage(info.User.Language))
 	if err != nil {
 		http.Error(w, "wiki unavailable", http.StatusInternalServerError)
 		return
@@ -51,7 +53,7 @@ func (s *Server) wikiArticle(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		render(w, "wiki", pageData{
-			Info: requestInfo(r),
+			Info: info,
 			Wiki: &wikiView{
 				Sections: cat.Sections,
 				NotFound: true,
@@ -60,7 +62,7 @@ func (s *Server) wikiArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render(w, "wiki", pageData{
-		Info: requestInfo(r),
+		Info: info,
 		Wiki: &wikiView{
 			Sections: cat.Sections,
 			Article:  art,

@@ -222,7 +222,7 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 			}
 		}
 	}
-	if cat, err := s.wikiCatalog(); err == nil {
+	if cat, err := s.wikiCatalog(normalizeLanguage(info.User.Language)); err == nil {
 		for _, hit := range cat.Search(query, 5) {
 			add(searchResult{
 				Kind:  "Wiki",

@@ -13,7 +13,7 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-//go:embed ru/*.yaml ru/*.md
+//go:embed ru/*.yaml ru/*.md en/*.yaml en/*.md
 var embeddedFS embed.FS
 
 // Section groups related wiki articles in the sidebar and on the /wiki landing page.
@@ -71,17 +71,33 @@ type articleFrontmatter struct {
 }
 
 var (
-	defaultOnce    sync.Once
-	defaultCatalog *Catalog
-	defaultErr     error
+	ruOnce    sync.Once
+	ruCatalog *Catalog
+	ruErr     error
+
+	enOnce    sync.Once
+	enCatalog *Catalog
+	enErr     error
 )
 
 // Default returns the singleton embedded Russian wiki catalog.
 func Default() (*Catalog, error) {
-	defaultOnce.Do(func() {
-		defaultCatalog, defaultErr = LoadFS(embeddedFS, "ru")
+	return ForLanguage("ru")
+}
+
+// ForLanguage returns the singleton embedded wiki catalog for "en" or "ru"
+// (any unknown language falls back to "ru").
+func ForLanguage(lang string) (*Catalog, error) {
+	if strings.EqualFold(strings.TrimSpace(lang), "en") {
+		enOnce.Do(func() {
+			enCatalog, enErr = LoadFS(embeddedFS, "en")
+		})
+		return enCatalog, enErr
+	}
+	ruOnce.Do(func() {
+		ruCatalog, ruErr = LoadFS(embeddedFS, "ru")
 	})
-	return defaultCatalog, defaultErr
+	return ruCatalog, ruErr
 }
 
 // LoadFS parses sections.yaml and all *.md files in dir inside fsys.
@@ -139,7 +155,11 @@ func LoadFS(fsys fs.FS, dir string) (*Catalog, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s: unknown section %q", entry.Name(), meta.Section)
 		}
-		rendered, toc, plain := RenderMarkdown(body)
+		lang := "ru"
+		if dir == "en" || strings.HasSuffix(dir, "/en") {
+			lang = "en"
+		}
+		rendered, toc, plain := RenderMarkdownWithLang(body, lang)
 		var tocText strings.Builder
 		for _, item := range toc {
 			tocText.WriteString(item.Text)

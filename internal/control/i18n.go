@@ -2243,7 +2243,6 @@ var englishMessages = map[string]string{
 	"Сбросить доверенные браузеры":                                                                                                                       "Reset trusted browsers",
 	"Доверие браузерам сброшено":                                                                                                                         "Trusted browsers reset",
 	"Встроенная Wiki OMB":                                                                                                                                "Built-in OMB Wiki",
-	"Статьи встроенной базы знаний пока доступны на русском языке.":                                                                                      "Built-in knowledge base articles are currently available in Russian.",
 	"Статья не найдена":                                                                                                                                  "Article not found",
 	"Запрошенной статьи нет во встроенной базе знаний этой версии OMB.":                                                                                  "The requested article does not exist in this OMB version's knowledge base.",
 	"Перейти в базу знаний":                                                                                                                              "Go to knowledge base",

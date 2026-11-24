@@ -90,12 +90,13 @@ func TestWikiSearchInCmdKAndScriptEndpoint(t *testing.T) {
 	}
 }
 
-func TestWikiEnglishBannerShownInEnglishMode(t *testing.T) {
+func TestWikiEnglishModeRendersEnglishCatalogWithoutBanner(t *testing.T) {
 	store := &authOnlyStore{user: User{ID: 1, Username: "admin", Role: "admin", Enabled: true, Language: langEN}}
 	srv := &Server{Store: store}
 	h := srv.Handler()
 	cookie := &http.Cookie{Name: "omb_session", Value: "test-token"}
 
+	// /wiki landing page in English
 	req := httptest.NewRequest(http.MethodGet, "/wiki", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
@@ -104,11 +105,51 @@ func TestWikiEnglishBannerShownInEnglishMode(t *testing.T) {
 		t.Fatalf("GET /wiki (EN) = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Built-in knowledge base articles are currently available in Russian.") {
-		t.Errorf("expected English language notice on /wiki in EN mode")
+	if strings.Contains(body, "wiki-lang-note") || strings.Contains(body, "currently available in Russian") {
+		t.Errorf("EN /wiki must not show obsolete Russian-only banner")
 	}
-	if !strings.Contains(body, "oh my boot_ Knowledge Base") {
-		t.Errorf("expected translated heading on /wiki in EN mode")
+	for _, want := range []string{"oh my boot_ Knowledge Base", "Getting Started", "What is oh my boot_", "Offline Installation, .deb Packages, Channels, and Recovery"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET /wiki (EN) missing %q", want)
+		}
+	}
+
+	// /wiki/{slug} article page in English
+	reqArt := httptest.NewRequest(http.MethodGet, "/wiki/services-and-databases", nil)
+	reqArt.AddCookie(cookie)
+	recArt := httptest.NewRecorder()
+	h.ServeHTTP(recArt, reqArt)
+	if recArt.Code != http.StatusOK {
+		t.Fatalf("GET /wiki/services-and-databases (EN) = %d", recArt.Code)
+	}
+	artBody := recArt.Body.String()
+	for _, want := range []string{"Services, Unix Sockets, and Databases", "<strong>Important:</strong>", `data-wiki-copy>Copy</button>`} {
+		if !strings.Contains(artBody, want) {
+			t.Errorf("GET /wiki/services-and-databases (EN) missing %q", want)
+		}
+	}
+
+	// ⌘K search returns English Wiki titles and sections
+	reqSearch := httptest.NewRequest(http.MethodGet, "/search?format=json&q=Secure+Boot", nil)
+	reqSearch.AddCookie(cookie)
+	recSearch := httptest.NewRecorder()
+	h.ServeHTTP(recSearch, reqSearch)
+	if recSearch.Code != http.StatusOK {
+		t.Fatalf("GET /search (EN) = %d", recSearch.Code)
+	}
+	var results []searchResult
+	if err := json.Unmarshal(recSearch.Body.Bytes(), &results); err != nil {
+		t.Fatalf("unmarshal /search (EN): %v", err)
+	}
+	foundEN := false
+	for _, r := range results {
+		if r.Kind == "Wiki" && r.Href == "/wiki/secure-boot" && r.Title == "Secure Boot, iPXE shim 16.1, and UEFI CA Keys" {
+			foundEN = true
+			break
+		}
+	}
+	if !foundEN {
+		t.Fatalf("expected English Wiki hit in ⌘K results, got %+v", results)
 	}
 }
 

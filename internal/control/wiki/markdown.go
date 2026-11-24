@@ -24,8 +24,21 @@ var (
 
 // RenderMarkdown converts a subset of GitHub-Flavored Markdown used by OMB Wiki
 // into safe HTML (all raw HTML is escaped) and returns extracted h2/h3 TOC entries
-// plus plain text for search indexing.
+// plus plain text for search indexing, using Russian UI labels.
 func RenderMarkdown(src string) (template.HTML, []TOCEntry, string) {
+	return RenderMarkdownWithLang(src, "ru")
+}
+
+// RenderMarkdownWithLang converts OMB Wiki Markdown into safe HTML with
+// localized UI labels for code copy buttons and callout prefixes ("ru" or "en").
+func RenderMarkdownWithLang(src, lang string) (template.HTML, []TOCEntry, string) {
+	isEN := strings.EqualFold(strings.TrimSpace(lang), "en")
+	copyText := "Скопировать"
+	noteLabel, importantLabel, warningLabel := "Заметка", "Важно", "Внимание"
+	if isEN {
+		copyText = "Copy"
+		noteLabel, importantLabel, warningLabel = "Note", "Important", "Warning"
+	}
 	lines := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
 	var out strings.Builder
 	var plain strings.Builder
@@ -69,7 +82,9 @@ func RenderMarkdown(src string) (template.HTML, []TOCEntry, string) {
 			}
 			out.WriteString(`<div class="wiki-code-block"><div class="wiki-code-head"><span>`)
 			out.WriteString(html.EscapeString(label))
-			out.WriteString(`</span><button type="button" class="wiki-code-copy" data-wiki-copy>Скопировать</button></div><pre><code>`)
+			out.WriteString(`</span><button type="button" class="wiki-code-copy" data-wiki-copy>`)
+			out.WriteString(copyText)
+			out.WriteString(`</button></div><pre><code>`)
 			out.WriteString(html.EscapeString(code))
 			out.WriteString("</code></pre></div>\n")
 			addPlain(code)
@@ -112,15 +127,15 @@ func RenderMarkdown(src string) (template.HTML, []TOCEntry, string) {
 				switch {
 				case strings.HasPrefix(first, "[!NOTE]"):
 					kind = "info"
-					label = "Заметка"
+					label = noteLabel
 					quoteLines[0] = strings.TrimSpace(strings.TrimPrefix(first, "[!NOTE]"))
 				case strings.HasPrefix(first, "[!IMPORTANT]"):
 					kind = "warn"
-					label = "Важно"
+					label = importantLabel
 					quoteLines[0] = strings.TrimSpace(strings.TrimPrefix(first, "[!IMPORTANT]"))
 				case strings.HasPrefix(first, "[!WARNING]"):
 					kind = "bad"
-					label = "Внимание"
+					label = warningLabel
 					quoteLines[0] = strings.TrimSpace(strings.TrimPrefix(first, "[!WARNING]"))
 				}
 			}

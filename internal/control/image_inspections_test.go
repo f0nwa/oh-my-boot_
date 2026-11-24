@@ -171,7 +171,7 @@ func TestImageInspectionMigrationTwice(t *testing.T) {
 	if _, err := store.Pool.Exec(ctx, "DROP TABLE image_inspections"); err != nil {
 		t.Fatal(err)
 	}
-	sql, err := os.ReadFile("../../deploy/sql/2026-11-05-verified-image-types.sql")
+	sql, err := os.ReadFile("../../deploy/sql/control.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

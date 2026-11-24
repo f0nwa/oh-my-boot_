@@ -12,7 +12,7 @@ func TestImageMigrationSQL(t *testing.T) {
 	pool := store.Pool
 	ctx := context.Background()
 
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-18-image-migration.sql")
+	migration, err := os.ReadFile("../../deploy/sql/control.sql")
 	if err != nil {
 		t.Fatalf("failed to read migration: %v", err)
 	}

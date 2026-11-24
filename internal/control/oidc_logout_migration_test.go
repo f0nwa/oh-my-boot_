@@ -13,63 +13,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"omb/internal/control/oidcclient"
 )
-
-func TestOIDCLogoutJTISchemaMigration(t *testing.T) {
-	store := installationTestStore(t)
-	ctx := context.Background()
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-21-oidc-logout-jti-hash.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const jti = "выход-test"
-	expires := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
-	for _, column := range []string{"jti", "jti_hash"} {
-		t.Run(column, func(t *testing.T) {
-			if _, err := store.Pool.Exec(ctx, "DROP TABLE oidc_logout_jti; CREATE TABLE oidc_logout_jti ("+
-				column+" text PRIMARY KEY, expires_at timestamptz NOT NULL)"); err != nil {
-				t.Fatal(err)
-			}
-			value := jti
-			if column == "jti_hash" {
-				value = tokenHash(jti)
-			}
-			if _, err := store.Pool.Exec(ctx, "INSERT INTO oidc_logout_jti VALUES ($1, $2)", value, expires); err != nil {
-				t.Fatal(err)
-			}
-			for i := 0; i < 2; i++ {
-				if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
-					t.Fatal(err)
-				}
-			}
-			var stored string
-			var storedExpiry time.Time
-			if err := store.Pool.QueryRow(ctx, "SELECT jti_hash, expires_at FROM oidc_logout_jti").Scan(&stored, &storedExpiry); err != nil {
-				t.Fatal(err)
-			}
-			if stored != tokenHash(jti) || !storedExpiry.Equal(expires) {
-				t.Fatalf("incorrect migrated record: %q, %s", stored, storedExpiry)
-			}
-			if fresh, err := store.RecordOIDCLogoutJTI(ctx, jti, expires); err != nil || fresh {
-				t.Fatalf("existing identifier was not recognized: fresh=%v, err=%v", fresh, err)
-			}
-		})
-	}
-	t.Run("unexpected schema", func(t *testing.T) {
-		if _, err := store.Pool.Exec(ctx, "ALTER TABLE oidc_logout_jti ADD COLUMN jti text"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := store.Pool.Exec(ctx, string(migration)); err == nil || !strings.Contains(err.Error(), "unexpected oidc_logout_jti schema") {
-			t.Fatalf("unexpected migration result: %v", err)
-		}
-	})
-}
 
 func TestOIDCBackChannelLogoutWithPostgreSQL(t *testing.T) {
 	ctx := context.Background()

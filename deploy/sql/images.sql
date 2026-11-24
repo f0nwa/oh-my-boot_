@@ -38,3 +38,9 @@ INSERT INTO catalog_settings (id, rescan_enabled, rescan_interval_minutes)
 VALUES (1, TRUE, 30)
 ON CONFLICT (id) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+

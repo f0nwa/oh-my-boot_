@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"os"
 	"testing"
 )
 
@@ -19,17 +18,6 @@ func TestNetworkDriverStore(t *testing.T) {
 		t.Fatalf("fresh default=%q %v", driver, err)
 	}
 	if _, err := store.AddMacRule(ctx, MacRule{Prefix: "a4:bb:6d", Title: "preserved rule"}); err != nil {
-		t.Fatal(err)
-	}
-	// Recreate the previous shape while retaining its rows, then migrate it.
-	if _, err := store.Pool.Exec(ctx, `ALTER TABLE machines DROP COLUMN network_driver; ALTER TABLE mac_prefix_rules DROP COLUMN network_driver`); err != nil {
-		t.Fatal(err)
-	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-02-network-driver-selection.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
 		t.Fatal(err)
 	}
 	for _, table := range []string{"machines", "mac_prefix_rules"} {

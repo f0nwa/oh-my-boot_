@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"omb/internal/boot"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -104,19 +103,6 @@ func TestDownloadDeleteWorkflow(t *testing.T) {
 	before, err := store.MenuVersions(ctx)
 	if err != nil {
 		t.Fatal(err)
-	}
-	// Upgrade a populated old schema twice: history must remain unchanged.
-	if _, err := store.Pool.Exec(ctx, `ALTER TABLE menu_version_items ADD CONSTRAINT menu_version_items_installation_id_fkey FOREIGN KEY (installation_id) REFERENCES installations(id) ON DELETE RESTRICT`); err != nil {
-		t.Fatal(err)
-	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-03-download-deletion.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
-			t.Fatal(err)
-		}
 	}
 	// Fail closed if Boot has not received the saved version yet.
 	if res := menuPost(t, s, route, url.Values{"confirm": {"yes"}}); res.Code != 503 {

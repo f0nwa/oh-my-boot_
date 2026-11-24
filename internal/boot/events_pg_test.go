@@ -53,10 +53,6 @@ func bootTestStore(t *testing.T) PostgresStore {
 	if _, err := pool.Exec(context.Background(), string(sql)); err != nil {
 		t.Fatal(err)
 	}
-	transferSQL, err := os.ReadFile("../../deploy/sql/2026-10-23-boot-transfer.sql")
-	if err == nil {
-		_, _ = pool.Exec(context.Background(), string(transferSQL))
-	}
 	return PostgresStore{Pool: pool}
 }
 

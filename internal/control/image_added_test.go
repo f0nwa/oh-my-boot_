@@ -98,42 +98,6 @@ func TestHistoricalUploadDateSurvivesDeletedActor(t *testing.T) {
 	}
 }
 
-func TestLegacyDiscoveryDateStaysUnknownAfterMigration(t *testing.T) {
-	control := installationTestStore(t)
-	ctx := context.Background()
-	schema, err := os.ReadFile("../../deploy/sql/images.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := control.Pool.Exec(ctx, string(schema)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := control.Pool.Exec(ctx, `ALTER TABLE images DROP COLUMN first_seen_at; INSERT INTO storages(name,kind,root) VALUES('NAS','smb','/mnt/omb-smb/key7'); INSERT INTO images(storage_id,path,size_bytes,modified_at) SELECT id,'legacy.iso',1234,now() FROM storages`); err != nil {
-		t.Fatal(err)
-	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-05-image-first-seen.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < 2; i++ {
-		if _, err := control.Pool.Exec(ctx, string(migration)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	store := images.Store{Pool: control.Pool}
-	catalog, err := store.Catalog(ctx)
-	if err != nil || len(catalog.Images) != 1 || catalog.Images[0].FirstSeenAt != nil {
-		t.Fatalf("migration invented a date: %+v %v", catalog, err)
-	}
-	if err := store.SaveScan(ctx, catalog.Storages[0].ID, catalog.Images, 0); err != nil {
-		t.Fatal(err)
-	}
-	catalog, err = store.Catalog(ctx)
-	if err != nil || catalog.Images[0].FirstSeenAt != nil {
-		t.Fatal("rescan invented a historical date")
-	}
-}
-
 func TestLegacyISOColumnDoesNotUseFileModificationTime(t *testing.T) {
 	s, _, _ := downloadsServer(t)
 	page := libraryGet(t, s, "/images")

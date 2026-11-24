@@ -276,35 +276,6 @@ func TestDriverConfigAuthorAndRenameMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Simulate pre-migration schema without author columns.
-	if _, err := store.Pool.Exec(ctx, `ALTER TABLE winpe_driver_configs DROP COLUMN author, DROP COLUMN author_inferred`); err != nil {
-		t.Fatal(err)
-	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-16-winpe-config-author-name.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got1, err := store.DriverConfig(ctx, c1.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got2, err := store.DriverConfig(ctx, c2.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got1.Author != "vlad" || got1.AuthorInferred || got1.CreatedAt.IsZero() {
-		t.Fatalf("c1 author mismatch: %+v", got1)
-	}
-	if got2.Author != "fonwa" || !got2.AuthorInferred || got2.CreatedAt.IsZero() {
-		t.Fatalf("c2 inferred author mismatch: %+v", got2)
-	}
-
 	// SetDriverConfigTitle updates title and returns pgx.ErrNoRows for unknown ID.
 	if err := store.SetDriverConfigTitle(ctx, c1.ID, "Новое русское имя"); err != nil {
 		t.Fatal(err)

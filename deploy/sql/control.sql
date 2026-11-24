@@ -449,3 +449,9 @@ CREATE INDEX IF NOT EXISTS user_trusted_browsers_user_idx ON user_trusted_browse
 CREATE INDEX IF NOT EXISTS user_trusted_browsers_token_idx ON user_trusted_browsers (token_hash);
 CREATE INDEX IF NOT EXISTS user_trusted_browsers_expires_idx ON user_trusted_browsers (expires_at);
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+

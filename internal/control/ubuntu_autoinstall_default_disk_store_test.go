@@ -34,7 +34,7 @@ func TestUbuntuDefaultDiskMigration(t *testing.T) {
 		return value
 	}
 	before := snapshot()
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-02-ubuntu-default-disk.sql")
+	migration, err := os.ReadFile("../../deploy/sql/control.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,3 +1,0 @@
-BEGIN;
-ALTER TABLE storages ADD COLUMN IF NOT EXISTS other_bytes BIGINT NOT NULL DEFAULT 0 CHECK (other_bytes >= 0);
-COMMIT;

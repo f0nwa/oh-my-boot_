@@ -112,7 +112,7 @@ func TestImageNamesMigrationWorksTwice(t *testing.T) {
 	if _, err := store.Pool.Exec(ctx, "DROP TABLE image_names"); err != nil {
 		t.Fatal(err)
 	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-05-image-display-names.sql")
+	migration, err := os.ReadFile("../../deploy/sql/control.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

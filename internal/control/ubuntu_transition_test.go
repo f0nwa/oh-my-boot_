@@ -2,45 +2,12 @@ package control
 
 import (
 	"context"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
 
 	"omb/internal/autoinstall"
 )
-
-// A legacy menu must never be rebound to an unverified or guessed Ubuntu ISO.
-func TestLegacyUbuntuMigrationRejectsMissingVerification(t *testing.T) {
-	ctx := context.Background()
-	store := installationTestStore(t)
-	if err := store.EnsureBootProfiles(ctx); err != nil {
-		t.Fatal(err)
-	}
-	var versionID int64
-	const script = "#!ipxe\nchain http://boot/images/ubuntu-desktop.iso\n"
-	if err := store.Pool.QueryRow(ctx, `INSERT INTO menu_versions(title,diagnostic_label,diagnostic_message,script,sha256,active) VALUES('Active','Diagnostics','Ready',$1,'original',true) RETURNING id`, script).Scan(&versionID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Pool.Exec(ctx, `INSERT INTO menu_versions(title,diagnostic_label,diagnostic_message,script,sha256,active) VALUES('History','Diagnostics','Ready',$1,'historic',false)`, script); err != nil {
-		t.Fatal(err)
-	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-04-multi-ubuntu.sql")
-	if err != nil {
-		t.Fatalf("migration is not available: %v", err)
-	}
-	if _, err := store.Pool.Exec(ctx, string(migration)); err == nil {
-		t.Fatal("migration accepted an unverified legacy source")
-	}
-	var gotScript, gotHash string
-	var active bool
-	if err := store.Pool.QueryRow(ctx, `SELECT script,sha256,active FROM menu_versions WHERE id=$1`, versionID).Scan(&gotScript, &gotHash, &active); err != nil {
-		t.Fatal(err)
-	}
-	if !active || gotScript != script || gotHash != "original" {
-		t.Fatal("failed migration changed the published menu")
-	}
-}
 
 func TestBootProfilesExposeIndividualUbuntuSourceIdentity(t *testing.T) {
 	ctx := context.Background()
@@ -62,85 +29,6 @@ func TestBootProfilesExposeIndividualUbuntuSourceIdentity(t *testing.T) {
 		if !field.IsValid() || field.Interface() != want {
 			t.Fatalf("profile missing source field %s with value %v", name, want)
 		}
-	}
-}
-
-func TestLegacyUbuntuMigrationPreservesMenuWithVerifiedSource(t *testing.T) {
-	ctx := context.Background()
-	store := installationTestStore(t)
-	if err := store.EnsureBootProfiles(ctx); err != nil {
-		t.Fatal(err)
-	}
-	var profileID, installationID, versionID int64
-	if err := store.Pool.QueryRow(ctx, `SELECT id FROM boot_profiles WHERE kind='ubuntu_builtin'`).Scan(&profileID); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Pool.QueryRow(ctx, `INSERT INTO installations(boot_profile_id,title) VALUES($1,'Ubuntu') RETURNING id`, profileID).Scan(&installationID); err != nil {
-		t.Fatal(err)
-	}
-	var customID int64
-	if err := store.Pool.QueryRow(ctx, `INSERT INTO installations(boot_profile_id,title) VALUES($1,'Recovery') RETURNING id`, profileID).Scan(&customID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Pool.Exec(ctx, `ALTER TABLE menu_draft_items DROP COLUMN title_override`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Pool.Exec(ctx, `INSERT INTO menu_draft_items(position,installation_id,title) VALUES(0,$1,'Ubuntu'),(1,$2,'Custom recovery')`, installationID, customID); err != nil {
-		t.Fatal(err)
-	}
-	const script = "#!ipxe\nchain http://boot/images/ubuntu-desktop.iso\n"
-	if err := store.Pool.QueryRow(ctx, `INSERT INTO menu_versions(title,diagnostic_label,diagnostic_message,script,sha256,active) VALUES('Active','Diagnostics','Ready',$1,'original',true) RETURNING id`, script).Scan(&versionID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Pool.Exec(ctx, `INSERT INTO menu_versions(title,diagnostic_label,diagnostic_message,script,sha256,active) VALUES('History','Diagnostics','Ready',$1,'historic',false)`, script); err != nil {
-		t.Fatal(err)
-	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-04-multi-ubuntu.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	conn, err := store.Pool.Acquire(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Release()
-	for key, value := range map[string]string{"omb.ubuntu_storage_id": "7", "omb.ubuntu_path": "ubuntu.iso", "omb.ubuntu_sha256": strings.Repeat("a", 64)} {
-		if _, err := conn.Exec(ctx, `SELECT set_config($1,$2,false)`, key, value); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := conn.Exec(ctx, string(migration)); err != nil {
-		t.Fatal(err)
-	}
-	var inherited *string
-	var custom string
-	if err := conn.QueryRow(ctx, `SELECT title_override FROM menu_draft_items WHERE installation_id=$1`, installationID).Scan(&inherited); err != nil || inherited != nil {
-		t.Fatalf("matching title should inherit: %v %v", inherited, err)
-	}
-	if err := conn.QueryRow(ctx, `SELECT title_override FROM menu_draft_items WHERE installation_id=$1`, customID).Scan(&custom); err != nil || custom != "Custom recovery" {
-		t.Fatalf("custom title was not preserved: %q %v", custom, err)
-	}
-	var gotProfile, storageID int64
-	var path, digest, gotScript string
-	if err := conn.QueryRow(ctx, `SELECT boot_profile_id,storage_id,path,sha256 FROM ubuntu_sources`).Scan(&gotProfile, &storageID, &path, &digest); err != nil {
-		t.Fatal(err)
-	}
-	if gotProfile != profileID || storageID != 7 || path != "ubuntu.iso" || digest != strings.Repeat("a", 64) {
-		t.Fatal("migration did not preserve the verified source identity")
-	}
-	if err := conn.QueryRow(ctx, `SELECT script FROM menu_versions WHERE id=$1 AND active`, versionID).Scan(&gotScript); err != nil || gotScript != script {
-		t.Fatalf("active menu changed: %v", err)
-	}
-	var provenActive, provenHistory int
-	if err := conn.QueryRow(ctx, `SELECT count(*) FILTER (WHERE active AND legacy_ubuntu_source_id IS NOT NULL),count(*) FILTER (WHERE NOT active AND legacy_ubuntu_source_id IS NOT NULL) FROM menu_versions`).Scan(&provenActive, &provenHistory); err != nil || provenActive != 1 || provenHistory != 0 {
-		t.Fatalf("invalid legacy source attribution: active=%d history=%d err=%v", provenActive, provenHistory, err)
-	}
-	var gotInstallationID int64
-	if err := conn.QueryRow(ctx, `SELECT id FROM installations WHERE boot_profile_id=$1`, profileID).Scan(&gotInstallationID); err != nil || gotInstallationID != installationID {
-		t.Fatalf("installation changed: %v", err)
-	}
-	if _, err := conn.Exec(ctx, string(migration)); err != nil {
-		t.Fatalf("repeat migration: %v", err)
 	}
 }
 

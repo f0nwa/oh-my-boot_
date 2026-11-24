@@ -11,7 +11,7 @@ import (
 func TestAnswerFileMetadata(t *testing.T) {
 	store := installationTestStore(t)
 	ctx := context.Background()
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-13-answer-disk-summary.sql")
+	migration, err := os.ReadFile("../../deploy/sql/control.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,3 +10,14 @@ CREATE INDEX IF NOT EXISTS boot_events_occurred_at_idx ON boot_events (occurred_
 
 ALTER TABLE boot_events ADD COLUMN IF NOT EXISTS mac TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS boot_events_mac_idx ON boot_events (mac, occurred_at DESC);
+
+ALTER TABLE boot_events ADD COLUMN IF NOT EXISTS status INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE boot_events ADD COLUMN IF NOT EXISTS bytes BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE boot_events ADD COLUMN IF NOT EXISTS size BIGINT NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+

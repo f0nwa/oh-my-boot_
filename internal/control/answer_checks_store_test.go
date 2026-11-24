@@ -129,7 +129,7 @@ func TestAnswerChecksMigration(t *testing.T) {
 	if err := store.SaveAnswerCheck(ctx, AnswerCheck{Kind: "windows", AnswerID: win.ID, SHA256: win.SHA256, WindowsProfileID: profile.ID, Result: "success", UserID: user}); err != nil {
 		t.Fatal(err)
 	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-16-unbound-installation-scripts.sql")
+	migration, err := os.ReadFile("../../deploy/sql/control.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestDeleteUserPreservesAnswerChecksAndProtectsAdmins(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-18-user-delete.sql")
+	migration, err := os.ReadFile("../../deploy/sql/control.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

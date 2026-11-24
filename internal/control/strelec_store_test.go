@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -10,27 +9,13 @@ import (
 	"omb/internal/agent"
 )
 
-func TestStrelecMigrationPreservesInstallerSourcesAndStoresServiceKind(t *testing.T) {
+func TestStrelecPreservesInstallerSourcesAndStoresServiceKind(t *testing.T) {
 	store := installationTestStore(t)
 	ctx := context.Background()
 	original, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{StorageID: 7, Path: "Windows.iso", StorageRoot: "/iso", Size: 100, Modified: time.Now(), Title: "Windows"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Pool.Exec(ctx, `ALTER TABLE windows_profiles DROP COLUMN boot_mode; ALTER TABLE boot_profiles DROP CONSTRAINT boot_profiles_kind_check; ALTER TABLE boot_profiles ADD CONSTRAINT boot_profiles_kind_check CHECK (kind IN ('windows_iso','ubuntu_builtin'))`); err != nil {
-		t.Fatal(err)
-	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-11-03-strelec-pxe.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	apply := func() {
-		t.Helper()
-		if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	apply()
 	saved, err := store.WindowsProfile(ctx, original.ID)
 	if err != nil || saved.BootMode != "" || saved.Path != original.Path {
 		t.Fatalf("installer changed: %+v %v", saved, err)
@@ -66,11 +51,6 @@ func TestStrelecMigrationPreservesInstallerSourcesAndStoresServiceKind(t *testin
 	entry.AnswerID = answer.ID
 	if err := store.UpdateInstallation(ctx, entry); err == nil {
 		t.Fatal("service source accepted installer XML")
-	}
-	apply()
-	saved, err = store.WindowsProfile(ctx, service.ID)
-	if err != nil || saved.BootMode != agent.ISOStrelecMode || !profileBootable(saved) {
-		t.Fatalf("repeat migration changed service source: %+v %v", saved, err)
 	}
 }
 

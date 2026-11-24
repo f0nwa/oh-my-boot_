@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -160,83 +159,6 @@ func TestUbuntuAutoinstallStore(t *testing.T) {
 
 	if _, err := store.Pool.Exec(ctx, `DELETE FROM ubuntu_autoinstall_files WHERE id=$1`, saved.ID); err == nil {
 		t.Fatal("deleted referenced file")
-	}
-}
-
-func TestUbuntuAutoinstallMigration(t *testing.T) {
-	ctx := context.Background()
-	store := installationTestStore(t)
-	// Reproduce the unified schema immediately before this additive migration.
-	if _, err := store.Pool.Exec(ctx, `DROP TABLE answer_installation_checks; DROP TRIGGER IF EXISTS installation_autoinstall_immutable ON installations; ALTER TABLE installations DROP COLUMN autoinstall_id; DROP TABLE ubuntu_autoinstall_files`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Pool.Exec(ctx, `
- INSERT INTO windows_profiles(storage_id,path,storage_root,size_bytes,modified_at,title) VALUES(1,'win.iso','/iso',100,now(),'Windows');
- INSERT INTO windows_answer_variants(title,sha256,size_bytes) VALUES('XML',repeat('a',64),10);
- INSERT INTO winpe_driver_configs(profile_id,answer_id,title,selected_infs) VALUES(1,1,'Drivers','[{}]');
- INSERT INTO boot_profiles(kind,title) VALUES('windows_iso','Windows'),('ubuntu_builtin','Ubuntu');
- INSERT INTO windows_boot_profiles VALUES(1,1);
- INSERT INTO installations(boot_profile_id,title) VALUES(1,'Windows'),(2,'Ubuntu');
- INSERT INTO windows_installation_options VALUES(1,1,NULL);
- INSERT INTO menu_draft(id,title,label,message) VALUES(1,'Draft','Tools','Ready');
- INSERT INTO menu_draft_items(position,installation_id,title,folder) VALUES(0,1,'Draft Windows','Lab');
- INSERT INTO menu_versions(title,diagnostic_label,diagnostic_message,script,sha256,active) VALUES('Published','Tools','Ready','#!ipxe','old',true);
- INSERT INTO menu_version_items(version_id,installation_id,position,title,folder) VALUES(1,2,0,'Old Ubuntu','Recovery');`); err != nil {
-		t.Fatal(err)
-	}
-	snapshots := map[string]string{}
-	tables := []string{"windows_profiles", "windows_answer_variants", "winpe_driver_configs", "boot_profiles", "windows_boot_profiles", "windows_installation_options", "menu_draft", "menu_draft_items", "menu_versions", "menu_version_items"}
-	snapshot := func(table string) string {
-		t.Helper()
-		var result string
-		if err := store.Pool.QueryRow(ctx, "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text FROM "+table+" t").Scan(&result); err != nil {
-			t.Fatal(err)
-		}
-		return result
-	}
-	for _, table := range tables {
-		snapshots[table] = snapshot(table)
-	}
-	var before string
-	if err := store.Pool.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM installations t`).Scan(&before); err != nil {
-		t.Fatal(err)
-	}
-	migration, err := os.ReadFile("../../deploy/sql/2026-10-30-ubuntu-autoinstall.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for table, want := range snapshots {
-		if got := snapshot(table); got != want {
-			t.Fatalf("%s changed: %s != %s", table, got, want)
-		}
-	}
-	var after string
-	if err := store.Pool.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(t)-'autoinstall_id' ORDER BY id)::text FROM installations t`).Scan(&after); err != nil || before != after {
-		t.Fatalf("installations changed: %s != %s; err=%v", before, after, err)
-	}
-	saved, err := store.CreateUbuntuAutoinstall(ctx, testAutoinstallFile(t, "migrated"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	item, err := store.CreateInstallation(ctx, Installation{BootProfileID: 2, Title: "Migrated", AutoinstallID: saved.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Pool.Exec(ctx, string(migration)); err != nil {
-		t.Fatal(err)
-	}
-	got, err := store.UbuntuAutoinstall(ctx, saved.ID)
-	if err != nil || !reflect.DeepEqual(got, saved) {
-		t.Fatalf("rerun changed library: %+v err=%v", got, err)
-	}
-	items, err := store.Installations(ctx)
-	if err != nil || len(items) != 3 || items[2] != item {
-		t.Fatalf("rerun changed binding: %+v err=%v", items, err)
 	}
 }
 

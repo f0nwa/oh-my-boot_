@@ -28,7 +28,7 @@ func TestWikiRoutesAndAuth(t *testing.T) {
 		status int
 		want   []string
 	}{
-		{"/wiki", http.StatusOK, []string{"База знаний Oh My Boot", "wiki-cards", "/wiki/overview", "/wiki/project-history", `class="wiki-top-btn active"`}},
+		{"/wiki", http.StatusOK, []string{"База знаний oh my boot_", "wiki-cards", "/wiki/overview", "/wiki/project-history", `class="wiki-top-btn active"`}},
 		{"/wiki?q=Secure+Boot", http.StatusOK, []string{"wiki-hit-card", "/wiki/secure-boot"}},
 		{"/wiki/services-and-databases", http.StatusOK, []string{"Службы, Unix-сокеты и базы данных", "wiki-toc", "wiki-pager", "/assets/wiki.js", `class="wiki-top-btn active"`}},
 		{"/wiki/no-such-article", http.StatusNotFound, []string{"Статья не найдена", "/wiki"}},
@@ -107,7 +107,7 @@ func TestWikiEnglishBannerShownInEnglishMode(t *testing.T) {
 	if !strings.Contains(body, "Built-in knowledge base articles are currently available in Russian.") {
 		t.Errorf("expected English language notice on /wiki in EN mode")
 	}
-	if !strings.Contains(body, "Oh My Boot Knowledge Base") {
+	if !strings.Contains(body, "oh my boot_ Knowledge Base") {
 		t.Errorf("expected translated heading on /wiki in EN mode")
 	}
 }

@@ -16,7 +16,7 @@
         <dt>{{t "Сессия"}}</dt><dd class="muted">{{t "Внешняя · действует до 30 минут"}}</dd>
       {{end}}
     </dl>
-    {{if not .Info.User.IsLocal}}<p class="hint account-external-note">{{t "Пароль для входа в Oh My Boot управляется внешним источником. Смена пароля в панели недоступна."}}</p>{{end}}
+    {{if not .Info.User.IsLocal}}<p class="hint account-external-note">{{t "Пароль для входа в oh my boot_ управляется внешним источником. Смена пароля в панели недоступна."}}</p>{{end}}
     <div class="account-lang-block"><form method="post" action="/settings/language"><input type="hidden" name="csrf" value="{{.Info.CSRF}}"><input type="hidden" name="return" value="/account"><label for="account-language" class="account-lang-label">{{t "Язык интерфейса"}}</label><div class="account-lang-row"><select id="account-language" name="language"><option value="ru"{{if eq lang "ru"}} selected{{end}}>Русский</option><option value="en"{{if eq lang "en"}} selected{{end}}>English</option></select><button class="btn">{{t "Сохранить"}}</button></div></form></div>
   </section>
 

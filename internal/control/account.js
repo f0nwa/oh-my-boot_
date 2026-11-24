@@ -422,7 +422,7 @@
       event.preventDefault();
       var host = dlCodesBtn.closest('[data-username]');
       var uname = (host && host.getAttribute('data-username')) || 'user';
-      var content = 'Oh My Boot 2FA recovery codes (' + uname + ')\n\n' + activeRecoveryCodes.join('\n') + '\n';
+      var content = 'oh my boot_ 2FA recovery codes (' + uname + ')\n\n' + activeRecoveryCodes.join('\n') + '\n';
       var blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');

@@ -36,7 +36,7 @@ var editorMessages = map[string]string{
 	"Не проверять TPM, Secure Boot и объём памяти": "Skip TPM, Secure Boot and memory checks",
 	"для старых компьютеров и ВМ":                  "for old computers and VMs",
 	"Редакция и ключ — в следующем разделе.":       "Edition and key are in the next section.",
-	"При установке по сети Oh My Boot подключает папку образа как I:, и pe.cmd находит install.wim там. Файлы ответов, сохранённые к образу до 24.10.2026, этого подключения не имеют — сохраните файл заново.": "For network installs Oh My Boot maps the image folder as I:, where pe.cmd finds install.wim. Answer files saved to an image before 24.10.2026 lack this mapping — save the file again.",
+	"При установке по сети oh my boot_ подключает папку образа как I:, и pe.cmd находит install.wim там. Файлы ответов, сохранённые к образу до 24.10.2026, этого подключения не имеют — сохраните файл заново.": "For network installs oh my boot_ maps the image folder as I:, where pe.cmd finds install.wim. Answer files saved to an image before 24.10.2026 lack this mapping — save the file again.",
 	"Какой диск":                              "Which disk",
 	"Стереть и разметить":                     "Wipe and partition",
 	"Разметить вручную в консоли (Shift+F10)": "Partition by hand in the console (Shift+F10)",

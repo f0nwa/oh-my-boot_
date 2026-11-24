@@ -49,7 +49,7 @@ func TestPagesShowProductName(t *testing.T) {
 	}
 	res := httptest.NewRecorder()
 	render(res, "login", samplePageData(langEN))
-	if !strings.Contains(res.Body.String(), "Sign in to Oh My Boot") || !strings.Contains(res.Body.String(), `class="wordmark" aria-hidden="true"`) {
+	if !strings.Contains(res.Body.String(), "Sign in to oh my boot_") || !strings.Contains(res.Body.String(), `class="wordmark" aria-hidden="true"`) {
 		t.Fatalf("login: %s", res.Body.String())
 	}
 }

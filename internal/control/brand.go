@@ -5,9 +5,9 @@ import "net/http"
 // The product name and its forms. The admin pages show productName; the boot
 // menu is plain ASCII for iPXE and shows the wordmark as text.
 const (
-	productName        = "Oh My Boot"
+	productName        = "oh my boot_"
 	productMenuTitle   = "oh my boot_"
-	defaultMenuMessage = "Oh My Boot network boot is ready"
+	defaultMenuMessage = "oh my boot_ network boot is ready"
 )
 
 // brandFiles are the browser icons, served without a session so the sign-in

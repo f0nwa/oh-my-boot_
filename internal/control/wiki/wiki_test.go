@@ -139,3 +139,27 @@ func TestCatalogSearch(t *testing.T) {
 		t.Errorf("unexpected hits for 'omb-controlctl reset-2fa': %+v", hits2)
 	}
 }
+
+func TestOfflineUpdatesArticleCLISignatures(t *testing.T) {
+	cat, err := Default()
+	if err != nil {
+		t.Fatalf("Default() error: %v", err)
+	}
+	art, ok := cat.Article("offline-updates-and-recovery")
+	if !ok {
+		t.Fatal("article offline-updates-and-recovery not found")
+	}
+	body := string(art.HTML)
+	if strings.Contains(body, "--repo-dir") {
+		t.Errorf("offline-updates-and-recovery must not reference nonexistent --repo-dir flag")
+	}
+	for _, want := range []string{
+		"offline-deb.py verify-repo",
+		"offline-deploy.sh update-deb-repo",
+		"offline-deploy.sh rollback MANAGEMENT_IP",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("offline-updates-and-recovery missing %q", want)
+		}
+	}
+}

@@ -34,16 +34,21 @@ OMB спроектирован для серверов без доступа в 
 ```bash
 # 1. Проверить подпись и целостность комплекта до установки
 python3 scripts/offline-deb.py verify-repo \
-  --repo-dir /path/to/apt-repo \
-  --public-key /path/to/release-pub.pem
+  /path/to/apt-repo \
+  --public-key /path/to/trusted-release-public.pem
 
 # 2. Выполнить обновление из подписанного локального репозитория
-sudo scripts/offline-deploy.sh update-deb-repo \
-  --repo-dir /path/to/apt-repo \
-  --public-key /path/to/release-pub.pem
+# (для явной смены канала добавьте --allow-channel-switch после update-deb-repo)
+sudo bash scripts/offline-deploy.sh update-deb-repo \
+  omb-install-base.tar.gz \
+  omb-update.tar.gz \
+  trusted-release-public.pem \
+  apt-repo \
+  0.2.0~dev.1 0.2.0~dev.2 \
+  MANAGEMENT_IP
 
 # 3. При необходимости откатиться на предыдущую версию
-sudo scripts/offline-deploy.sh rollback
+sudo bash scripts/offline-deploy.sh rollback MANAGEMENT_IP
 ```
 
 Что делает `update-deb-repo`:
@@ -73,5 +78,5 @@ dpkg --verify omb
 
 - **Неудачная правка меню:** откройте [Меню](/menu) → «История версий» → «Откатить».
 - **Ошибка в параметрах PXE-сети:** `omb-agent` проверяет `dnsmasq.conf` через `dnsmasq --test` и откатывает конфиг автоматически при ошибке.
-- **Сбой после обновления пакета:** выполните `sudo scripts/offline-deploy.sh rollback` — скрипт восстановит предыдущую версию `.deb`, канал и согласованные дампы БД из `/var/backups/omb/`.
+- **Сбой после обновления пакета:** выполните `sudo bash scripts/offline-deploy.sh rollback MANAGEMENT_IP` — скрипт восстановит предыдущую версию `.deb`, канал и согласованные дампы БД из `/var/backups/omb/`.
 - **Ручное резервное копирование:** сохраняйте `/etc/omb/` (включая `secrets.key`), `/var/lib/omb-control/` (TLS) и согласованные дампы `pg_dump` баз `omb_control`, `omb_images` и `omb_boot` при остановленных службах-писателях.

@@ -57,8 +57,10 @@
 {{else}}
 <div class="wiki-home">
   <div class="wiki-home-head">
-    <h1>{{t "База знаний oh my boot_"}}</h1>
-    <p class="muted">{{t "Локальная документация сервера: устройство, сценарии установки, безопасность и эксплуатация в закрытом контуре."}}</p>
+    <div class="wiki-home-title">
+      <h1>{{t "База знаний oh my boot_"}}</h1>
+      <p class="muted">{{t "Локальная документация сервера: устройство, сценарии установки, безопасность и эксплуатация в закрытом контуре."}}</p>
+    </div>
     <form method="get" action="/wiki" class="wiki-search-form">
       <input type="search" name="q" value="{{.Query}}" placeholder="{{t "Найти по статьям: Secure Boot, WinPE, LDAP, откат…"}}" aria-label="{{t "Поиск по Wiki"}}">
       <button type="submit" class="btn btn-primary">{{t "Найти"}}</button>

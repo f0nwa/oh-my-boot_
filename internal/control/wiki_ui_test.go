@@ -111,3 +111,36 @@ func TestWikiEnglishBannerShownInEnglishMode(t *testing.T) {
 		t.Errorf("expected translated heading on /wiki in EN mode")
 	}
 }
+
+func TestWikiHomeCenteredThreeByTwoLayout(t *testing.T) {
+	store := &authOnlyStore{user: User{ID: 1, Username: "admin", Role: "admin", Enabled: true, Language: langRU}}
+	srv := &Server{Store: store}
+	h := srv.Handler()
+	cookie := &http.Cookie{Name: "omb_session", Value: "test-token"}
+
+	req := httptest.NewRequest(http.MethodGet, "/wiki", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /wiki = %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `class="wiki-home-title"`) {
+		t.Errorf("GET /wiki missing wiki-home-title header wrapper")
+	}
+
+	data, err := templateFS.ReadFile("templates/style.css")
+	if err != nil {
+		t.Fatalf("read style.css: %v", err)
+	}
+	css := string(data)
+	for _, want := range []string{
+		`.wiki-home{max-width:1200px;margin:0 auto}`,
+		`.wiki-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}`,
+		`@media (max-width:980px){.wiki-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("style.css missing wiki home layout rule %q", want)
+		}
+	}
+}

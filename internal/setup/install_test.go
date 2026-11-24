@@ -230,7 +230,7 @@ func TestExecuteDeferredPXE(t *testing.T) {
 
 	opts := Options{
 		Lang:              "en",
-		ManagementIP:      "192.168.10.135",
+		ManagementIP:      "192.0.2.10",
 		PXEInterface:      "none",
 		DHCPMode:          "skip",
 		SkipPXE:           true,
@@ -298,16 +298,16 @@ func TestExecuteDeferredPXE(t *testing.T) {
 	if !healthCalled {
 		t.Fatal("expected HealthCheck to be called")
 	}
-	if healthMgmtIP != "192.168.10.135" || healthBootURL != "http://192.168.10.135:8080" {
-		t.Errorf("HealthCheck got (%q, %q), want (%q, %q)", healthMgmtIP, healthBootURL, "192.168.10.135", "http://192.168.10.135:8080")
+	if healthMgmtIP != "192.0.2.10" || healthBootURL != "http://192.0.2.10:8080" {
+		t.Errorf("HealthCheck got (%q, %q), want (%q, %q)", healthMgmtIP, healthBootURL, "192.0.2.10", "http://192.0.2.10:8080")
 	}
 
 	// Verify generated files.
 	assertFileContains(t, filepath.Join(root, "srv/omb/tftp/windows/wimboot"), "fake-wimboot")
-	assertFileContains(t, filepath.Join(root, "etc/omb/boot.env"), "OMB_BOOT_BASE_URL=http://192.168.10.135:8080")
-	assertFileContains(t, filepath.Join(root, "etc/omb/control.env"), "OMB_CONTROL_LISTEN=192.168.10.135:8443")
+	assertFileContains(t, filepath.Join(root, "etc/omb/boot.env"), "OMB_BOOT_BASE_URL=http://192.0.2.10:8080")
+	assertFileContains(t, filepath.Join(root, "etc/omb/control.env"), "OMB_CONTROL_LISTEN=192.0.2.10:8443")
 	assertFileContains(t, filepath.Join(root, "etc/omb/control.env"), "OMB_CONTROL_INTERFACES=ens19")
-	assertFileContains(t, filepath.Join(root, "etc/omb/control.env"), "OMB_CONTROL_BOOT_BASE_URL=http://192.168.10.135:8080")
+	assertFileContains(t, filepath.Join(root, "etc/omb/control.env"), "OMB_CONTROL_BOOT_BASE_URL=http://192.0.2.10:8080")
 	assertFileContains(t, filepath.Join(root, "etc/omb/images.env"), `OMB_IMAGES_DATABASE_URL="host=/var/run/postgresql dbname=omb_images user=omb-images"`)
 	assertFileExists(t, filepath.Join(root, "etc/omb/secrets.key"))
 	assertFileContains(t, filepath.Join(root, "var/lib/omb-deployment/control.crt"), "dummy-pem")
@@ -364,7 +364,7 @@ func TestExecuteWithPXEFullDHCP(t *testing.T) {
 
 	opts := Options{
 		Lang:          "ru",
-		ManagementIP:  "192.168.10.135",
+		ManagementIP:  "192.0.2.10",
 		PXEInterface:  "ens19",
 		PXEServerIP:   "10.30.0.10",
 		PXESubnet:     "10.30.0.0/24",
@@ -432,7 +432,7 @@ func TestExecuteCreatesMntOmbIsoMode0755UnderRestrictiveUmask(t *testing.T) {
 
 	opts := Options{
 		Lang:          "ru",
-		ManagementIP:  "192.168.10.135",
+		ManagementIP:  "192.0.2.10",
 		PXEInterface:  "none",
 		DHCPMode:      "skip",
 		SkipPXE:       true,
@@ -463,7 +463,7 @@ func TestExecuteRejectsShortCyrillicPassword(t *testing.T) {
 	in := &Installer{RootDir: t.TempDir(), Runner: &mockRunner{}}
 	err := in.Execute(context.Background(), Options{
 		Lang:          "ru",
-		ManagementIP:  "192.168.10.135",
+		ManagementIP:  "192.0.2.10",
 		AdminPassword: pw,
 		SkipPXE:       true,
 	})
@@ -528,7 +528,7 @@ func TestExecuteWritesChannel(t *testing.T) {
 		in := newTestInstaller(t, root)
 		err := in.Execute(context.Background(), Options{
 			Lang:          "ru",
-			ManagementIP:  "192.168.10.135",
+			ManagementIP:  "192.0.2.10",
 			AdminPassword: "SuperSecretPass123",
 			SkipPXE:       true,
 			InstallMode:   "online",
@@ -559,7 +559,7 @@ func TestExecuteWritesChannel(t *testing.T) {
 		in := newTestInstaller(t, root)
 		err := in.Execute(context.Background(), Options{
 			Lang:          "ru",
-			ManagementIP:  "192.168.10.135",
+			ManagementIP:  "192.0.2.10",
 			AdminPassword: "SuperSecretPass123",
 			SkipPXE:       true,
 			InstallMode:   "online",
@@ -590,7 +590,7 @@ func TestExecuteWritesChannel(t *testing.T) {
 		}
 		err := in.Execute(context.Background(), Options{
 			Lang:          "ru",
-			ManagementIP:  "192.168.10.135",
+			ManagementIP:  "192.0.2.10",
 			AdminPassword: "SuperSecretPass123",
 			SkipPXE:       true,
 			InstallMode:   "offline",
@@ -613,7 +613,7 @@ func TestExecuteWritesChannel(t *testing.T) {
 		in := newTestInstaller(t, root)
 		err := in.Execute(context.Background(), Options{
 			Lang:          "ru",
-			ManagementIP:  "192.168.10.135",
+			ManagementIP:  "192.0.2.10",
 			AdminPassword: "SuperSecretPass123",
 			SkipPXE:       true,
 			Channel:       "beta",

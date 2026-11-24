@@ -51,7 +51,7 @@ func TestAgentClientLocalSMB(t *testing.T) {
 
 	cfg := agent.LocalSMBConfig{
 		Enabled:     true,
-		ListenIP:    "192.168.10.135",
+		ListenIP:    "192.0.2.10",
 		ReadOnlyAll: false,
 		Users: []agent.LocalSMBUser{
 			{ID: 1, Username: "admin", Mode: "rw"},
@@ -60,7 +60,7 @@ func TestAgentClientLocalSMB(t *testing.T) {
 	if err := api.ApplyLocalSMB(context.Background(), cfg); err != nil {
 		t.Fatalf("ApplyLocalSMB error: %v", err)
 	}
-	if !appliedConfig.Enabled || appliedConfig.ListenIP != "192.168.10.135" || len(appliedConfig.Users) != 1 {
+	if !appliedConfig.Enabled || appliedConfig.ListenIP != "192.0.2.10" || len(appliedConfig.Users) != 1 {
 		t.Fatalf("unexpected applied config: %+v", appliedConfig)
 	}
 

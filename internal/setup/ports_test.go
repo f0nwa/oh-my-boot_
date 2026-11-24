@@ -163,7 +163,7 @@ func TestExecuteChecksPXEPortsBeforeChanges(t *testing.T) {
 
 	err := in.Execute(context.Background(), Options{
 		Lang:          "ru",
-		ManagementIP:  "192.168.10.135",
+		ManagementIP:  "192.0.2.10",
 		PXEInterface:  "ens19",
 		PXEServerIP:   "10.30.0.10",
 		PXESubnet:     "10.30.0.0/24",

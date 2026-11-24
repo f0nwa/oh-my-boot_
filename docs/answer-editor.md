@@ -1,7 +1,5 @@
 # Редактор файлов ответов
 
-> Руководство использует текущие имена OMB. Состояние стенда и оставшиеся проверки: [отчёт](research/2026-10-31-omb-technical-migration.md).
-
 «Библиотека → Скрипты установки → Создать в редакторе» собирает `autounattend.xml` для установки Windows. У каждого готового файла в списке есть кнопка «Открыть в редакторе». Редактор — перенос на Go библиотеки [cschneegans/unattend-generator](https://github.com/cschneegans/unattend-generator) (на ней работает сайт [schneegans.de](https://schneegans.de/windows/unattend-generator/)), поэтому настройки и результат те же, что на сайте.
 
 ## Страница

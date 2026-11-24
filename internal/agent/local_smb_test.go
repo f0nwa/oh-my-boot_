@@ -173,7 +173,7 @@ func TestLocalSMBManagerEnabledRendersShareAndUserMap(t *testing.T) {
 
 	err := manager.ApplyConfig(context.Background(), LocalSMBConfig{
 		Enabled:  true,
-		ListenIP: "192.168.10.135",
+		ListenIP: "192.0.2.10",
 		Users: []LocalSMBUser{
 			{ID: 1, Username: "admin", Mode: "rw"},
 			{ID: 2, Username: "engineer", Mode: "ro"},
@@ -189,8 +189,8 @@ func TestLocalSMBManagerEnabledRendersShareAndUserMap(t *testing.T) {
 	}
 	confStr := string(content)
 
-	if !strings.Contains(confStr, "interfaces = lo ens19 192.168.10.135") {
-		t.Errorf("smb.conf missing 'interfaces = lo ens19 192.168.10.135', got:\n%s", confStr)
+	if !strings.Contains(confStr, "interfaces = lo ens19 192.0.2.10") {
+		t.Errorf("smb.conf missing 'interfaces = lo ens19 192.0.2.10', got:\n%s", confStr)
 	}
 	if !strings.Contains(confStr, "bind interfaces only = yes") {
 		t.Errorf("smb.conf missing 'bind interfaces only = yes'")
@@ -281,7 +281,7 @@ func TestLocalSMBManagerReadOnlyAllOmitsWriteList(t *testing.T) {
 
 	err := manager.ApplyConfig(context.Background(), LocalSMBConfig{
 		Enabled:     true,
-		ListenIP:    "192.168.10.135",
+		ListenIP:    "192.0.2.10",
 		ReadOnlyAll: true,
 		Users: []LocalSMBUser{
 			{ID: 1, Username: "admin", Mode: "rw"},
@@ -458,7 +458,7 @@ func TestLocalSMBHTTPHandlersValidation(t *testing.T) {
 				name: "valid enabled config",
 				payload: LocalSMBConfig{
 					Enabled:  true,
-					ListenIP: "192.168.10.135",
+					ListenIP: "192.0.2.10",
 					Users: []LocalSMBUser{
 						{ID: 1, Username: "admin", Mode: "rw"},
 						{ID: 2, Username: "engineer", Mode: "ro"},
@@ -637,7 +637,7 @@ func TestLocalSMBManagerZeroValidUsersClosesShare(t *testing.T) {
 	// Enabled=true, but Users is empty (zero valid users)
 	err := manager.ApplyConfig(context.Background(), LocalSMBConfig{
 		Enabled:  true,
-		ListenIP: "192.168.10.135",
+		ListenIP: "192.0.2.10",
 		Users:    []LocalSMBUser{},
 	})
 	if err != nil {
@@ -767,7 +767,7 @@ func TestLocalSMBManagerSyncPXENetwork_PreservesEnabledISOShare(t *testing.T) {
 
 	if err := manager.ApplyConfig(context.Background(), LocalSMBConfig{
 		Enabled:  true,
-		ListenIP: "192.168.10.135",
+		ListenIP: "192.0.2.10",
 		Users: []LocalSMBUser{
 			{ID: 7, Username: "alice", Mode: "rw"},
 		},
@@ -795,8 +795,8 @@ func TestLocalSMBManagerSyncPXENetwork_PreservesEnabledISOShare(t *testing.T) {
 	}
 	confStr := string(content)
 
-	if !strings.Contains(confStr, "interfaces = lo eth1 192.168.10.135") {
-		t.Errorf("smb.conf missing 'interfaces = lo eth1 192.168.10.135', got:\n%s", confStr)
+	if !strings.Contains(confStr, "interfaces = lo eth1 192.0.2.10") {
+		t.Errorf("smb.conf missing 'interfaces = lo eth1 192.0.2.10', got:\n%s", confStr)
 	}
 	ombisosIdx := strings.Index(confStr, "[ombisos]")
 	isoIdx := strings.Index(confStr, "[iso]")

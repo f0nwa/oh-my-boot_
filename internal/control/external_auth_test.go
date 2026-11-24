@@ -176,7 +176,7 @@ func TestRenderIntegrationsUsersAndAccountForExternalUsers(t *testing.T) {
 			CSRF: "c1",
 			Path: "/account",
 		},
-		FileServer: fileServerView{SMBEnabled: true, SFTPEnabled: true, SMBAddress: "smb://192.168.10.135/iso", SFTPPort: 2022},
+		FileServer: fileServerView{SMBEnabled: true, SFTPEnabled: true, SMBAddress: "smb://192.0.2.10/iso", SFTPPort: 2022},
 	})
 	accHTML := recAcc.Body.String()
 	if strings.Contains(accHTML, "data-account-password-open") || strings.Contains(accHTML, "id=\"account-password-dialog\"") {

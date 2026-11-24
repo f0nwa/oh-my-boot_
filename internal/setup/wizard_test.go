@@ -12,7 +12,7 @@ func testIfaces2NIC() []NetIface {
 	return []NetIface{
 		{
 			Name:   "ens18",
-			IP:     netip.MustParseAddr("192.168.10.135"),
+			IP:     netip.MustParseAddr("192.0.2.10"),
 			Prefix: netip.MustParsePrefix("192.168.10.0/24"),
 		},
 		{
@@ -27,7 +27,7 @@ func testIfaces1NIC() []NetIface {
 	return []NetIface{
 		{
 			Name:   "ens18",
-			IP:     netip.MustParseAddr("192.168.10.135"),
+			IP:     netip.MustParseAddr("192.0.2.10"),
 			Prefix: netip.MustParsePrefix("192.168.10.0/24"),
 		},
 	}
@@ -78,8 +78,8 @@ func TestWizardInteractive2NICRussian(t *testing.T) {
 	if opts.Lang != "ru" {
 		t.Errorf("Lang = %q, want %q", opts.Lang, "ru")
 	}
-	if opts.ManagementIP != "192.168.10.135" {
-		t.Errorf("ManagementIP = %q, want %q", opts.ManagementIP, "192.168.10.135")
+	if opts.ManagementIP != "192.0.2.10" {
+		t.Errorf("ManagementIP = %q, want %q", opts.ManagementIP, "192.0.2.10")
 	}
 	if opts.AdminPassword != "StrongPass1234!" {
 		t.Errorf("AdminPassword = %q, want %q", opts.AdminPassword, "StrongPass1234!")
@@ -271,7 +271,7 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 
 	t.Run("short password from stdin", func(t *testing.T) {
 		_, err := ResolveNonInteractive(
-			Options{Lang: "en", ManagementIP: "192.168.10.135", PXEInterface: "ens19", DHCPMode: "proxy"},
+			Options{Lang: "en", ManagementIP: "192.0.2.10", PXEInterface: "ens19", DHCPMode: "proxy"},
 			ifaces,
 			strings.NewReader("short\n"),
 			true,
@@ -283,7 +283,7 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 
 	t.Run("missing admin-password-stdin flag", func(t *testing.T) {
 		_, err := ResolveNonInteractive(
-			Options{Lang: "en", ManagementIP: "192.168.10.135", PXEInterface: "ens19", DHCPMode: "proxy"},
+			Options{Lang: "en", ManagementIP: "192.0.2.10", PXEInterface: "ens19", DHCPMode: "proxy"},
 			ifaces,
 			nil,
 			false,
@@ -297,7 +297,7 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 		got, err := ResolveNonInteractive(
 			Options{
 				Lang:         "ru",
-				ManagementIP: "192.168.10.135",
+				ManagementIP: "192.0.2.10",
 				PXEInterface: "ens19",
 				DHCPMode:     "full",
 				DHCPStart:    "10.30.0.110",
@@ -312,8 +312,8 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ResolveNonInteractive returned unexpected error: %v", err)
 		}
-		if got.ManagementIP != "192.168.10.135" {
-			t.Errorf("ManagementIP = %q, want 192.168.10.135", got.ManagementIP)
+		if got.ManagementIP != "192.0.2.10" {
+			t.Errorf("ManagementIP = %q, want 192.0.2.10", got.ManagementIP)
 		}
 		if got.AdminPassword != "StrongPass1234!" {
 			t.Errorf("AdminPassword = %q, want StrongPass1234!", got.AdminPassword)
@@ -335,7 +335,7 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 	t.Run("valid skip pxe", func(t *testing.T) {
 		got, err := ResolveNonInteractive(
 			Options{
-				ManagementIP: "192.168.10.135",
+				ManagementIP: "192.0.2.10",
 				SkipPXE:      true,
 			},
 			ifaces,
@@ -362,7 +362,7 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 			t.Fatalf("unexpected test password dimensions: bytes=%d runes=%d", len(pw), utf8.RuneCountInString(pw))
 		}
 		_, err := ResolveNonInteractive(
-			Options{ManagementIP: "192.168.10.135", SkipPXE: true},
+			Options{ManagementIP: "192.0.2.10", SkipPXE: true},
 			ifaces,
 			strings.NewReader(pw+"\n"),
 			true,
@@ -378,7 +378,7 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 			t.Fatalf("expected 12 runes, got %d", utf8.RuneCountInString(pw))
 		}
 		got, err := ResolveNonInteractive(
-			Options{ManagementIP: "192.168.10.135", SkipPXE: true},
+			Options{ManagementIP: "192.0.2.10", SkipPXE: true},
 			ifaces,
 			strings.NewReader(pw+"\n"),
 			true,
@@ -394,7 +394,7 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 	t.Run("rejects pxe-interface none with dhcp-mode full or proxy", func(t *testing.T) {
 		for _, mode := range []string{"full", "proxy"} {
 			_, err := ResolveNonInteractive(
-				Options{ManagementIP: "192.168.10.135", PXEInterface: "none", DHCPMode: mode},
+				Options{ManagementIP: "192.0.2.10", PXEInterface: "none", DHCPMode: mode},
 				ifaces,
 				strings.NewReader("StrongPass1234!\n"),
 				true,
@@ -407,7 +407,7 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 
 	t.Run("rejects invalid pxe-interface syntax even with dhcp-mode skip", func(t *testing.T) {
 		_, err := ResolveNonInteractive(
-			Options{ManagementIP: "192.168.10.135", PXEInterface: "ens19;rm -rf /", DHCPMode: "skip"},
+			Options{ManagementIP: "192.0.2.10", PXEInterface: "ens19;rm -rf /", DHCPMode: "skip"},
 			ifaces,
 			strings.NewReader("StrongPass1234!\n"),
 			true,
@@ -420,11 +420,11 @@ func TestNonInteractiveFlagValidation(t *testing.T) {
 
 func TestWizardPolishVersionUnassignedIPAndSingleNICWarning(t *testing.T) {
 	// Step 0: 2 (English)
-	// Step 1: 10.99.99.99 (rejected - not assigned to any detected interface), then 192.168.10.135 (accepted)
+	// Step 1: 10.99.99.99 (rejected - not assigned to any detected interface), then 192.0.2.10 (accepted)
 	// Step 3: 1 (ens18)
 	// Step 4: 1 (Proxy DHCP) - verify 1-NIC Full DHCP conflict warning is printed
 	// Step 5: y (confirm)
-	in := strings.NewReader("2\n10.99.99.99\n192.168.10.135\n1\n1\ny\n")
+	in := strings.NewReader("2\n10.99.99.99\n192.0.2.10\n1\n1\ny\n")
 	var out bytes.Buffer
 
 	opts, confirmed, err := RunWizard(
@@ -441,8 +441,8 @@ func TestWizardPolishVersionUnassignedIPAndSingleNICWarning(t *testing.T) {
 	if !confirmed {
 		t.Fatalf("expected confirmed=true")
 	}
-	if opts.ManagementIP != "192.168.10.135" {
-		t.Errorf("ManagementIP = %q, want 192.168.10.135", opts.ManagementIP)
+	if opts.ManagementIP != "192.0.2.10" {
+		t.Errorf("ManagementIP = %q, want 192.0.2.10", opts.ManagementIP)
 	}
 	got := out.String()
 	if !strings.Contains(got, "v0.2.0") {

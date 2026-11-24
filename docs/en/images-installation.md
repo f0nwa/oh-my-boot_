@@ -123,4 +123,4 @@ runuser -u omb-control -g omb-images -- curl --fail --unix-socket /run/omb-image
 journalctl -u omb-images -u omb-agent -n 100 --no-pager
 ~~~
 
-Save consistent database, configuration and file backups before updating. See [recovery](../recovery.md), [stand status and remaining checks](../research/2026-10-31-omb-technical-migration.md), and [access to previous reports](../project-history.md).
+Save consistent database, configuration and file backups before updating. Package rollback is covered in the [offline release guide](offline-release.md).

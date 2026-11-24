@@ -1,8 +1,6 @@
 # Сетевая загрузка с Secure Boot: iPXE, GRUB и Windows
 
-> Руководство использует текущие имена OMB. Состояние стенда и оставшиеся проверки: [отчёт](research/2026-10-31-omb-technical-migration.md).
-
-Для проверки альтернативной цепочки Debian shim → сетевой GRUB → Debian Installer см. [инструкцию для тестовой среды](grub-secure-boot-test.md). В сетевых настройках переключение действует сразу для всех UEFI x64 клиентов; это отдельное тестовое меню.
+Для проверки альтернативной цепочки Debian shim → сетевой GRUB → Debian Installer см. архивные материалы по тестовому маршруту GRUB. В сетевых настройках переключение действует сразу для всех UEFI x64 клиентов; это отдельное тестовое меню.
 
 Зафиксировано 28 октября 2026 года. Эта заметка сопоставляет **реализованные цепочки** Oh My Boot и стенда из переписки с **вариантами, которые пока требуют проверки**. Схемы показывают порядок запуска, а не обещают совместимость с любым ноутбуком. Кто проверяет подпись на каждом этапе, каким сертификатом и что означает отказ, объясняет [схема доверия Secure Boot](secure-boot.md#кто-принимает-решение-о-запуске).
 
@@ -27,7 +25,7 @@ flowchart TD
 
 Для UEFI [конфигурация DHCP/PXE](../internal/network/dnsmasq.go) выдаёт `ipxeboot/x86_64-sb/ipxe-shim.efi`. Этот подписанный shim загружает парный `ipxe.efi`; затем iPXE получает меню и файлы по HTTP. Такую последовательность описывает сам проект iPXE. Пункт Windows в [генераторе меню](../internal/control/menu_tree.go) загружает `wimboot`, `boot.wim` и стартовые файлы WinPE. Пункт Ubuntu в [генераторе меню](../internal/control/menu.go) загружает ядро и `initrd`, затем командой iPXE `shim` подключает подписанный Ubuntu shim для проверки загрузки. **GRUB не показывает текущее меню Ubuntu.** [iPXE: Secure Boot](https://ipxe.org/secboot), [iPXE: команда `shim`](https://ipxe.org/cmd/shim), [iPXE: `wimboot`](https://ipxe.org/wimboot).
 
-До 29 октября 2026 года установленный iPXE shim имел подпись только Microsoft Corporation UEFI CA 2011. Сейчас сервер выдаёт [официальный iPXE shim 16.1](https://github.com/ipxe/shim/releases/tag/ipxe-16.1) с подписями сторонних CA 2011 и 2023; его SHA-256 `5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf`. Проверенный [Debian `bootnetx64.efi`](grub-secure-boot-test.md#подготовка-файлов) тоже имеет обе подписи. Состав обоих файлов сверяли `sbverify --list` на сервере. Поэтому одно только наличие стороннего CA 2023 больше не даёт Debian преимущества перед текущим iPXE на первом шаге. Подпись файла со стенда коллеги в переписке не проверялась; остаются различия в сетевом коде и следующем этапе загрузки. [Подробности установки и проверки](secure-boot.md#ключи-2011-и-2023).
+До 29 октября 2026 года установленный iPXE shim имел подпись только Microsoft Corporation UEFI CA 2011. Сейчас сервер выдаёт [официальный iPXE shim 16.1](https://github.com/ipxe/shim/releases/tag/ipxe-16.1) с подписями сторонних CA 2011 и 2023; его SHA-256 `5eecca2780bd49c900565e124516a1bd666ec5e012825f34991b6ba1ef2fa6cf`. Проверенный Debian `bootnetx64.efi` тоже имеет обе подписи. Состав обоих файлов сверяли `sbverify --list` на сервере. Поэтому одно только наличие стороннего CA 2023 больше не даёт Debian преимущества перед текущим iPXE на первом шаге. Подпись файла со стенда коллеги в переписке не проверялась; остаются различия в сетевом коде и следующем этапе загрузки. [Подробности установки и проверки](secure-boot.md#ключи-2011-и-2023).
 
 ```mermaid
 flowchart TD
@@ -45,7 +43,7 @@ flowchart TD
 
 ## 2. Стенд коллеги: Debian shim → сетевой GRUB
 
-В [локальной заметке о стенде](research/2026-10-28-debian-grub-stand.md#состав-и-настройка-стенда) сохранены сведения о пакетах `shim-signed` и `grub-efi-amd64-signed`, [снимок файлов](images/debian-grub-stand/tftp-files.jpg) и описание конфигураций GRUB и Caddy. В каталоге TFTP находились `bootx64.efi`, `grubx64.efi`, `grub/grub.cfg`, ядро и `initrd`; меню передавало ядру `fetch=http://…/filesystem.squashfs`, а Caddy отдавал SquashFS по HTTP. Значит, «только TFTP» относится к начальным файлам, а не к загрузке всей Live-системы. Официальный пример Debian использует именно подписанный shim и сетевой `grubnetx64.efi.signed`; документация `live-boot` описывает параметр `fetch=` для скачивания SquashFS. [Debian: Secure Boot и PXE](https://wiki.debian.org/SecureBoot/VirtualMachine), [Debian: `live-boot`](https://dyn.manpages.debian.org/bookworm/live-boot-doc/live-boot.7).
+В заметке о тестовом стенде сохранены сведения о пакетах `shim-signed` и `grub-efi-amd64-signed`, [снимок файлов](images/debian-grub-stand/tftp-files.jpg) и описание конфигураций GRUB и Caddy. В каталоге TFTP находились `bootx64.efi`, `grubx64.efi`, `grub/grub.cfg`, ядро и `initrd`; меню передавало ядру `fetch=http://…/filesystem.squashfs`, а Caddy отдавал SquashFS по HTTP. Значит, «только TFTP» относится к начальным файлам, а не к загрузке всей Live-системы. Официальный пример Debian использует именно подписанный shim и сетевой `grubnetx64.efi.signed`; документация `live-boot` описывает параметр `fetch=` для скачивания SquashFS. [Debian: Secure Boot и PXE](https://wiki.debian.org/SecureBoot/VirtualMachine), [Debian: `live-boot`](https://dyn.manpages.debian.org/bookworm/live-boot-doc/live-boot.7).
 
 Сохранённые материалы не содержат настройки DHCP с именем первого EFI-файла и проверки подписей этих двух файлов. Указанная цепочка следует из слов коллеги, состава каталога и результата загрузки; точные бинарные файлы нужно сверить на его стенде.
 
@@ -59,7 +57,7 @@ flowchart TD
     Q --> L[Debian Live]
 ```
 
-**Статус:** коллега показал [запущенный Debian Live с включённым Secure Boot](images/debian-grub-stand/debian-live-secure-boot.jpg) на Dell. Это подтверждает его стенд, но не совместимость со всеми Dell и Lenovo. [Локальная заметка](research/2026-10-28-debian-grub-stand.md#результат-и-пределы-проверки) фиксирует, что успешной проверки Lenovo с заводскими настройками нет, а установка Windows с SMB обсуждалась как план, без результата запуска через GRUB.
+**Статус:** коллега показал [запущенный Debian Live с включённым Secure Boot](images/debian-grub-stand/debian-live-secure-boot.jpg) на Dell. Это подтверждает его стенд, но не совместимость со всеми Dell и Lenovo. Заметка о проверке фиксирует, что успешной проверки Lenovo с заводскими настройками нет, а установка Windows с SMB обсуждалась как план, без результата запуска через GRUB.
 
 ## 3. Windows через GRUB или напрямую
 

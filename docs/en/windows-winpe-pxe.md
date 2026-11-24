@@ -1,6 +1,6 @@
 # Windows 10: network installation through WinPE in OMB
 
-[Русская версия](../windows-winpe-pxe.md). This guide covers current ISO profiles. Static entries and separate shares from the first trials are retired; use [project history](../project-history.md) to retrieve the original reports.
+[Русская версия](../windows-winpe-pxe.md). This guide covers current ISO profiles. Static entries and separate shares from the first trials are retired.
 
 ## Preparation
 
@@ -22,6 +22,6 @@ XML can select and erase disks. To check startup only, use a separate test VM an
 
 ## Menu recovery and repeat acceptance
 
-Use **Menu → Versions** to return to a published version while its dependencies remain available. This does not restore deleted ISOs or undo client disk changes. See [server recovery](../recovery.md) for restoring a server bundle.
+Use **Menu → Versions** to return to a published version while its dependencies remain available. This does not restore deleted ISOs or undo client disk changes. See the [offline release guide](offline-release.md) for package rollback.
 
-The full BIOS, UEFI, Secure Boot, XML and driver test run is deferred until the main development work is complete. See the [stand report](../research/2026-10-31-omb-technical-migration.md).
+The full BIOS, UEFI, Secure Boot, XML and driver test run is deferred until the main development work is complete.

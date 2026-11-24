@@ -24,6 +24,6 @@ Check delivery of the matching NoCloud `user-data` and `meta-data` pair and inst
 
 `casper` downloads the ISO into memory. A VM with 16 GiB RAM was used for the previously tested ISO of about 6.5 GB; with 4 GiB the download failed with `No space left on device`. Check memory needs separately for other ISOs.
 
-Before the technical transition, the user confirmed the Ubuntu desktop in SeaBIOS and OVMF with Secure Boot on and off. A full repeat run with the current build, including Autoinstall, is deferred until the main development work is complete. Retrieve original records through [project history](../project-history.md).
+Before the technical transition, the user confirmed the Ubuntu desktop in SeaBIOS and OVMF with Secure Boot on and off. A full repeat run with the current build, including Autoinstall, is deferred until the main development work is complete.
 
-If boot fails, check client memory, ISO availability, matching kernel and initrd, Boot logs and storage state. **Menu → Versions** can restore an available previous menu version. For files and databases, see [recovery](../recovery.md).
+If boot fails, check client memory, ISO availability, matching kernel and initrd, Boot logs and storage state. **Menu → Versions** can restore an available previous menu version. For package rollback, see the [offline release guide](offline-release.md).

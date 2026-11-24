@@ -28,7 +28,7 @@ func TestParseEnvFile(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, "control.env")
 	content := `# comment line
-OMB_CONTROL_LISTEN=192.168.10.135:8443
+OMB_CONTROL_LISTEN=192.0.2.10:8443
 OMB_CONTROL_DATABASE_URL="host=/var/run/postgresql dbname=omb_control user=omb-control"
 export SINGLE_QUOTED='hello world'
 `
@@ -40,7 +40,7 @@ export SINGLE_QUOTED='hello world'
 	if err != nil {
 		t.Fatalf("ParseEnvFile error: %v", err)
 	}
-	if got["OMB_CONTROL_LISTEN"] != "192.168.10.135:8443" {
+	if got["OMB_CONTROL_LISTEN"] != "192.0.2.10:8443" {
 		t.Fatalf("unexpected OMB_CONTROL_LISTEN: %q", got["OMB_CONTROL_LISTEN"])
 	}
 	wantDSN := "host=/var/run/postgresql dbname=omb_control user=omb-control"
@@ -234,7 +234,7 @@ func writeTestControlEnv(t *testing.T, root string) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "OMB_CONTROL_LISTEN=192.168.10.135:8443\nOMB_CONTROL_DATABASE_URL=\"host=/var/run/postgresql dbname=omb_control user=omb-control\"\n"
+	body := "OMB_CONTROL_LISTEN=192.0.2.10:8443\nOMB_CONTROL_DATABASE_URL=\"host=/var/run/postgresql dbname=omb_control user=omb-control\"\n"
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}

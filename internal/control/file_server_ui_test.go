@@ -20,8 +20,8 @@ func sampleFileServerPageData(role, lang string, smbOn, sftpOn bool) pageData {
 		SMBEnabled:         smbOn,
 		SFTPEnabled:        sftpOn,
 		SFTPPort:           2022,
-		SMBAddress:         `\\192.168.10.135\iso`,
-		SFTPAddress:        "sftp://192.168.10.135:2022/",
+		SMBAddress:         `\\192.0.2.10\iso`,
+		SFTPAddress:        "sftp://192.0.2.10:2022/",
 		HostKeyFingerprint: "SHA256:4X7xMockSFTPHostKeyFingerprintBase64",
 		ActiveUsersCount:   2,
 		ROUsersCount:       1,
@@ -52,10 +52,10 @@ func TestFileServerUI_Storages(t *testing.T) {
 		}
 
 		// Local row chips
-		if !strings.Contains(body, `SMB · \\192.168.10.135\iso`) {
+		if !strings.Contains(body, `SMB · \\192.0.2.10\iso`) {
 			t.Fatalf("missing SMB address chip in Local row: %s", body)
 		}
-		if !strings.Contains(body, `SFTP · sftp://192.168.10.135:2022/`) {
+		if !strings.Contains(body, `SFTP · sftp://192.0.2.10:2022/`) {
 			t.Fatalf("missing SFTP address chip in Local row: %s", body)
 		}
 
@@ -253,10 +253,10 @@ func TestFileServerUI_Account(t *testing.T) {
 		if !strings.Contains(body, "Чтение и запись") {
 			t.Fatalf("missing mode label in account page")
 		}
-		if !strings.Contains(body, `\\192.168.10.135\iso`) {
+		if !strings.Contains(body, `\\192.0.2.10\iso`) {
 			t.Fatalf("missing SMB address in account page")
 		}
-		if !strings.Contains(body, `sftp://engineer@192.168.10.135:2022/`) {
+		if !strings.Contains(body, `sftp://engineer@192.0.2.10:2022/`) {
 			t.Fatalf("missing user SFTP address in account page: %s", body)
 		}
 		if !strings.Contains(body, `data-account-fs-password-open`) {
@@ -379,7 +379,7 @@ const protoCardSmb = createEl('proto-card-smb', 'div');
 const protoCardSftp = createEl('proto-card-sftp', 'div');
 const smbChip = createEl('fs-smb-chip', 'span');
 const sftpChip = createEl('fs-sftp-chip', 'span');
-const sftpAddr = createEl('fs-sftp-addr', 'span', { dataset: { baseHost: '192.168.10.135' } });
+const sftpAddr = createEl('fs-sftp-addr', 'span', { dataset: { baseHost: '192.0.2.10' } });
 
 global.document = {
   documentElement: { lang: 'ru' },
@@ -474,7 +474,7 @@ assert.equal(submitPrevented, true, 'submit of file-server-form must be prevente
 const copyBtn = {
   textContent: 'Скопировать',
   getAttribute(name) {
-    if (name === 'data-copy') return '\\\\192.168.10.135\\iso';
+    if (name === 'data-copy') return '\\\\192.0.2.10\\iso';
     return null;
   },
   closest(sel) {
@@ -486,7 +486,7 @@ docListeners['click'].forEach(fn => fn({
   target: copyBtn,
   preventDefault() {}
 }));
-assert.equal(copiedText, '\\\\192.168.10.135\\iso', 'copy button must copy data-copy address');
+assert.equal(copiedText, '\\\\192.0.2.10\\iso', 'copy button must copy data-copy address');
 queueMicrotask(() => {
   assert.equal(copyBtn.textContent, 'Скопировано', 'copy button text should become "Скопировано"');
   console.log('STORAGES_JS_GATE_PASS');

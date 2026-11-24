@@ -78,7 +78,7 @@ func TestDefaultDHCPRange(t *testing.T) {
 func TestResolveAllowedInterfaces(t *testing.T) {
 	nic0 := NetIface{
 		Name:   "ens18",
-		IP:     netip.MustParseAddr("192.168.10.135"),
+		IP:     netip.MustParseAddr("192.0.2.10"),
 		Prefix: netip.MustParsePrefix("192.168.10.0/24"),
 	}
 	nic1 := NetIface{

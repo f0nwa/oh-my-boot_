@@ -1,7 +1,5 @@
 # Secure Boot: why Oh My Boot boots without turning it off
 
-> This guide uses current OMB names. See the [stand status and remaining checks](../research/2026-10-31-omb-technical-migration.md).
-
 ## In short
 
 With Secure Boot on, firmware runs only programs signed with a trusted key. The enrolled keys depend on the model and firmware settings: a Windows key may be present while the Microsoft key for third-party loaders is absent. Oh My Boot uses a signed chain in which each executable stage is verified before it runs. Secure Boot can stay on when the firmware trusts the third-party loader key.

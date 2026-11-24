@@ -1,7 +1,5 @@
 # Answer file editor
 
-> This guide uses current OMB names. See the [stand status and remaining checks](../research/2026-10-31-omb-technical-migration.md).
-
 “Library → Installation scripts → Create in editor” builds an `autounattend.xml` for Windows Setup. Every ready file in the list has an “Open in editor” button. The editor is a Go port of [cschneegans/unattend-generator](https://github.com/cschneegans/unattend-generator), the library behind [schneegans.de](https://schneegans.de/windows/unattend-generator/), so the settings and the output are those of the site.
 
 ## The page

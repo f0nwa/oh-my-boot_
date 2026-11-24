@@ -311,7 +311,7 @@ func TestUpdateFullMockedExecutionDevChannelSwitch(t *testing.T) {
 		Runner:          runner,
 		HealthCheck: func(_ context.Context, mgmtIP string) error {
 			healthCalled = true
-			if mgmtIP != "192.168.10.135" {
+			if mgmtIP != "192.0.2.10" {
 				t.Errorf("unexpected health check IP: %q", mgmtIP)
 			}
 			return nil

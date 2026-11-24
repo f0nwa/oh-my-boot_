@@ -271,10 +271,10 @@ printf '%s\n' 'PipedSecretPass123!' | env PATH="$t11/bin:$PATH" \
     MOCK_CURL_FIXTURES="$t11/fixtures" \
     bash "$installer" --deb "$t11/omb_0.2.0_amd64.deb" -- \
         --non-interactive \
-        --management-ip 192.168.10.135 \
+        --management-ip 192.0.2.10 \
         --skip-pxe \
         --admin-password-stdin
-grep -Fq "omb-setup --install-mode online --non-interactive --management-ip 192.168.10.135 --skip-pxe --admin-password-stdin" "$t11/logs/omb-setup.log" || fail "t11: omb-setup args mismatch"
+grep -Fq "omb-setup --install-mode online --non-interactive --management-ip 192.0.2.10 --skip-pxe --admin-password-stdin" "$t11/logs/omb-setup.log" || fail "t11: omb-setup args mismatch"
 [[ "$(cat "$t11/logs/omb-setup.stdin")" == "PipedSecretPass123!" ]] || fail "t11: piped password did not reach omb-setup stdin (got: $(cat "$t11/logs/omb-setup.stdin" 2>/dev/null || true))"
 
 # 12. Interactive branch prompt selecting 2 (dev) auto-resolves latest dev prerelease tag

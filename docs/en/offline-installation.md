@@ -1,7 +1,5 @@
 # Installing without internet access
 
-> This guide uses current OMB names. See the [stand status and remaining checks](../research/2026-10-31-omb-technical-migration.md).
-
 [Русская версия](../offline-installation.md)
 
 The regular guides assume the server can reach the internet: packages come from `apt`, Go modules are downloaded during the build, and iPXE and wimboot are fetched from GitHub. This guide explains how to build a kit with everything needed on a machine that has internet access, move it to an isolated server, and install there without any outside connections.

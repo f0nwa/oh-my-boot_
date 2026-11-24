@@ -123,4 +123,4 @@ runuser -u omb-control -g omb-images -- curl --fail --unix-socket /run/omb-image
 journalctl -u omb-images -u omb-agent -n 100 --no-pager
 ~~~
 
-Перед обновлением сохраните согласованную копию баз, конфигурации и файлов. [Восстановление](recovery.md), [состояние стенда и оставшиеся проверки](research/2026-10-31-omb-technical-migration.md), [доступ к прежним отчётам](project-history.md).
+Перед обновлением сохраните согласованную копию баз, конфигурации и файлов. Откат пакетного обновления описан в [руководстве по офлайн-выпускам](offline-release.md).

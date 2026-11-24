@@ -194,4 +194,3 @@ flowchart TD
 - [Каталог образов ISO и профили Windows](images-installation.md)
 - [Цепочка Secure Boot](secure-boot.md) и [пути сетевой загрузки (iPXE, GRUB, Windows)](secure-boot-boot-paths.md)
 - [Переносимый офлайн-выпуск и обновление](offline-release.md)
-- [Восстановление сервера](recovery.md)

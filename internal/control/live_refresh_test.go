@@ -116,7 +116,7 @@ const liveRefreshElements = [
 
 const windowMock = {
   document: documentMock,
-  location: { href: 'https://192.168.10.135:8443/images?show=attention' },
+  location: { href: 'https://192.0.2.10:8443/images?show=attention' },
   fetch: (url, opts) => {
     fetchCalls.push({ url, opts });
     return Promise.resolve({
@@ -162,7 +162,7 @@ assert(windowMock.OMB && typeof windowMock.OMB.refresh === 'function', 'window.O
 // Test 1: Programmatic refresh via window.OMB.refresh()
 windowMock.OMB.refresh();
 assert.strictEqual(fetchCalls.length, 1, 'refresh() should trigger 1 fetch call');
-assert.strictEqual(fetchCalls[0].url, 'https://192.168.10.135:8443/images?show=attention', 'url should preserve query params');
+assert.strictEqual(fetchCalls[0].url, 'https://192.0.2.10:8443/images?show=attention', 'url should preserve query params');
 
 // Wait for promise resolution
 setTimeout(() => {

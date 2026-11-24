@@ -531,10 +531,10 @@ upgrade() {
     $allow_channel_switch || fail 'missing flag'
     printf '%s|%s|%s\n' "$1" "$2" "$address"
 }
-main update --allow-channel-switch /tmp/repo /tmp/key.pem 192.168.10.135
+main update --allow-channel-switch /tmp/repo /tmp/key.pem 192.0.2.10
 SH
     out=$(bash "$work/parse-update.sh" "$repo" "$work")
-    test "$out" = '/tmp/repo|/tmp/key.pem|192.168.10.135'
+    test "$out" = '/tmp/repo|/tmp/key.pem|192.0.2.10'
 
     # install accepts 3 (interactive), 4 (management IP), and 5 (management IP + PXE interface) args.
     mkdir -p "$work/stub-scripts"
@@ -554,14 +554,14 @@ SH
     out3=$(bash "$work/parse-install.sh" "$repo" "$work" /tmp/repo /tmp/key.pem)
     test "$out3" = 'FRESH:2:/tmp/repo /tmp/key.pem'
 
-    out4=$(bash "$work/parse-install.sh" "$repo" "$work" /tmp/repo /tmp/key.pem 192.168.10.135)
-    test "$out4" = $'CHECK_ADDR:192.168.10.135\nFRESH:4:/tmp/repo /tmp/key.pem 192.168.10.135 none'
+    out4=$(bash "$work/parse-install.sh" "$repo" "$work" /tmp/repo /tmp/key.pem 192.0.2.10)
+    test "$out4" = $'CHECK_ADDR:192.0.2.10\nFRESH:4:/tmp/repo /tmp/key.pem 192.0.2.10 none'
 
-    out5=$(bash "$work/parse-install.sh" "$repo" "$work" /tmp/repo /tmp/key.pem 192.168.10.135 ens19)
-    test "$out5" = $'CHECK_ADDR:192.168.10.135\nFRESH:4:/tmp/repo /tmp/key.pem 192.168.10.135 ens19'
+    out5=$(bash "$work/parse-install.sh" "$repo" "$work" /tmp/repo /tmp/key.pem 192.0.2.10 ens19)
+    test "$out5" = $'CHECK_ADDR:192.0.2.10\nFRESH:4:/tmp/repo /tmp/key.pem 192.0.2.10 ens19'
 
     # Invalid install argument counts (too few / too many) exit with code 2.
-    for bad_install in "install /tmp/repo" "install /tmp/repo /tmp/key.pem 192.168.10.135 ens19 extra"; do
+    for bad_install in "install /tmp/repo" "install /tmp/repo /tmp/key.pem 192.0.2.10 ens19 extra"; do
         set +e
         # shellcheck disable=SC2086
         bash "$repo/scripts/offline-deploy.sh" $bad_install >/dev/null 2>&1

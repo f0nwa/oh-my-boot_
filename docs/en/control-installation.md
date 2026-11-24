@@ -1,8 +1,8 @@
 # OMB Control and the HTTPS dashboard
 
-Current OMB operations guide. The existing stand is at **https://192.168.10.135:8443**. The first-installation commands below are for a new server; do not recreate accounts, databases, certificates or configuration on the running stand.
+Current OMB control panel operations guide. The initial setup commands below are for a new server; do not recreate accounts, databases, certificates, or configuration on an already running server.
 
-[Русская версия](../control-installation.md). Past rollout reports and previous-version instructions are preserved in the [project history](../project-history.md). The technical transition is recorded in the [migration report](../research/2026-10-31-omb-technical-migration.md).
+[Русская версия](../control-installation.md). Past rollout reports and previous-version instructions are preserved in the repository commit history. The technical transition is recorded in the project documentation.
 
 ## Services and paths
 
@@ -24,7 +24,7 @@ Boot serves `http://10.30.0.10:8080/boot/menu.ipxe` to clients. Agent manages th
 
 ## First Control installation
 
-Prepare Boot and Agent using the [server guide](../installation.md), install Images using the [storage guide](images-installation.md), and start PostgreSQL first. The `omb-images` group must exist: the Control unit names it in `SupplementaryGroups`. These examples use `ens19` for boot traffic and `192.168.10.135` for management; use your own values on another server.
+Prepare Boot and Agent using the [server guide](../installation.md), install Images using the [storage guide](images-installation.md), and start PostgreSQL first. The `omb-images` group must exist: the Control unit names it in `SupplementaryGroups`. These examples use `ens19` for boot traffic and `192.0.2.10` for management; use your own values on another server.
 
 Build from the repository root:
 
@@ -61,7 +61,7 @@ For a lab server, a self-signed certificate can include the management IP in its
   test ! -e /var/lib/omb-control/control.key
   openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 90 \
     -subj '/CN=omb-control' \
-    -addext 'subjectAltName=IP:192.168.10.135' \
+    -addext 'subjectAltName=IP:192.0.2.10' \
     -keyout /var/lib/omb-control/control.key \
     -out /var/lib/omb-control/control.crt
   chown omb-control:omb-control /var/lib/omb-control/control.crt /var/lib/omb-control/control.key
@@ -81,7 +81,7 @@ Create `/etc/omb/control.env` on the first installation. The initial check prote
   set -eu
   test ! -e /etc/omb/control.env
   cat > /etc/omb/control.env <<'ENV'
-OMB_CONTROL_LISTEN=192.168.10.135:8443
+OMB_CONTROL_LISTEN=192.0.2.10:8443
 OMB_CONTROL_INTERFACES=ens19
 OMB_CONTROL_DATABASE_URL="host=/var/run/postgresql dbname=omb_control user=omb-control"
 OMB_CONTROL_BOOT_BASE_URL=http://10.30.0.10:8080
@@ -149,11 +149,11 @@ Under **Library → ISO images**, the table can be searched by title, file, type
 
 ### Updating an existing server
 
-Moving to multiple Ubuntu ISOs requires a coordinated Control, Agent and Boot update. Back up the database, binaries, configuration, draft and active script first. Verify that the configured ISO matches the previous boot files with `scripts/preflight-legacy-ubuntu.sh` and `omb-ubuntu-source-check`; do not migrate without a verified match. With Control stopped, apply [2026-11-04-multi-ubuntu.sql](../../deploy/sql/2026-11-04-multi-ubuntu.sql) using the verified storage ID, relative path and SHA-256 in the session settings `omb.ubuntu_storage_id`, `omb.ubuntu_path`, and `omb.ubuntu_sha256`. Prepare that source with the new Agent and pin the legacy URLs to it before starting the new Boot. Verify the old and new URLs, active menu checksum and network settings, then start Control. If a step fails, keep Control stopped and restore the previous schema and files from backup. The [acceptance record](../research/2026-11-04-image-to-menu-acceptance.md) documents the checks on the test server.
+Moving to multiple Ubuntu ISOs requires a coordinated Control, Agent and Boot update. Back up the database, binaries, configuration, draft and active script first. Verify that the configured ISO matches the previous boot files with `scripts/preflight-legacy-ubuntu.sh` and `omb-ubuntu-source-check`; do not migrate without a verified match. With Control stopped, apply `2026-11-04-multi-ubuntu.sql` (folded into `deploy/sql/control.sql`) using the verified storage ID, relative path and SHA-256 in the session settings `omb.ubuntu_storage_id`, `omb.ubuntu_path`, and `omb.ubuntu_sha256`. Prepare that source with the new Agent and pin the legacy URLs to it before starting the new Boot. Verify the old and new URLs, active menu checksum and network settings, then start Control. If a step fails, keep Control stopped and restore the previous schema and files from backup.
 
-Before starting the new Control, back up `omb_control`, stop `omb-control`, and apply [2026-11-03-download-components.sql](../../deploy/sql/2026-11-03-download-components.sql) and [2026-11-03-strelec-pxe.sql](../../deploy/sql/2026-11-03-strelec-pxe.sql) as the database owner. Update Control, Agent and `omb-winiso-prepare` together, then start the services. The first migration captures components for existing draft items and menu versions, preserving IDs, order and published scripts; the second adds the recovery ISO mode. Re-running them does not rewrite captured components. `deploy/sql/control.sql` defines the clean-install schema. Ubuntu Autoinstall files remain immutable; an entry's binding to an answer file is now editable.
+Before starting the new Control, back up `omb_control`, stop `omb-control`, and apply `2026-11-03-download-components.sql` and `2026-11-03-strelec-pxe.sql` (folded into `deploy/sql/control.sql`) as the database owner. Update Control, Agent and `omb-winiso-prepare` together, then start the services. The first migration captures components for existing draft items and menu versions, preserving IDs, order and published scripts; the second adds the recovery ISO mode. Re-running them does not rewrite captured components. `deploy/sql/control.sql` defines the clean-install schema. Ubuntu Autoinstall files remain immutable; an entry's binding to an answer file is now editable.
 
-When updating a server that already has boot entries and Strelec support, also apply [2026-11-03-download-deletion.sql](../../deploy/sql/2026-11-03-download-deletion.sql) as the database owner before starting the new Control, after backing up the database and stopping Control. The migration preserves entries, drafts and history, allowing deletion of entries referenced only by old menu versions. Control protects the active menu. Re-running the migration is safe. This change only requires updating Control; Agent and Boot do not need an update.
+When updating a server that already has boot entries and Strelec support, also apply `2026-11-03-download-deletion.sql` (folded into `deploy/sql/control.sql`) as the database owner before starting the new Control, after backing up the database and stopping Control. The migration preserves entries, drafts and history, allowing deletion of entries referenced only by old menu versions. Control protects the active menu. Re-running the migration is safe. This change only requires updating Control; Agent and Boot do not need an update.
 
 ## WinPE driver catalog
 
@@ -197,7 +197,7 @@ Individual changes are stored in PostgreSQL. Control sends a complete snapshot; 
 
 When Agent is unavailable, the page reports **Setting saved but not applied: Agent is unavailable**, and the audit result is `apply_error`. The database keeps the setting. The next individual rule change or Control startup retries the complete snapshot; after recovering Agent, save the choice again or restart Control. Restarting Agent alone does not request a snapshot from Control.
 
-For an update, back up binaries, configuration, the Agent unit and the Control database, apply only `deploy/sql/2026-11-02-network-driver-selection.sql`, then update Agent and Control together with the new unit. Use canonical `control.sql` for clean installations. Replace temporary manual MAC rules by regenerating the network configuration. Follow the [acceptance plan](../superpowers/plans/2026-11-02-network-driver-selection.md) for rollout and real client boot checks. WinPE error `0x80074005` remains a separate issue.
+For an update, back up binaries, configuration, the Agent unit and the Control database, apply only `deploy/sql/2026-11-02-network-driver-selection.sql`, then update Agent and Control together with the new unit. Use canonical `control.sql` for clean installations. Replace temporary manual MAC rules by regenerating the network configuration. Follow the internal acceptance plan for rollout and real client boot checks. WinPE error `0x80074005` remains a separate issue.
 
 ## Storage availability and recovery
 
@@ -253,7 +253,7 @@ Run as root:
 systemctl status omb-control.service omb-boot.service omb-agent.service omb-images.service omb-dnsmasq.service
 journalctl -u omb-control.service -u omb-boot.service -u omb-agent.service -n 100 --no-pager
 runuser -u omb-control -- psql -XAt --dbname=omb_control -c 'SELECT 1'
-curl --fail --cacert /var/lib/omb-control/control.crt https://192.168.10.135:8443/login
+curl --fail --cacert /var/lib/omb-control/control.crt https://192.0.2.10:8443/login
 curl --fail http://10.30.0.10:8080/boot/menu.ipxe
 ~~~
 
@@ -261,13 +261,13 @@ To stop only a broken dashboard, use `systemctl stop omb-control.service`. Boot,
 
 Before an update, preserve configuration, TLS material, binaries, units and the relevant databases. Changes to shared formats or relationships require a consistent backup of every affected database and file with writers stopped. Roll back a compatible set of code and schema; replacing one binary may be insufficient.
 
-Rollback of the technical migration has its own [procedure](../recovery.md). It restores the state at the saved backup, so preserve newer data first and arrange a maintenance window. The verified transition backup on the existing stand is `/root/omb-migration-20261031/backup`.
+Package rollback and backup restoration are described in the [offline release guide](offline-release.md).
 
 ## Verification limits
 
-The server passed file/database restoration, WinPE rebuild, TFTP, SMB/NAS and reboot checks. The user confirmed UEFI Secure Boot loading with XML and drivers. The full client regression pass is deferred until the main development work is finished; see the [migration report](../research/2026-10-31-omb-technical-migration.md).
+The server passed file/database restoration, WinPE rebuild, TFTP, SMB/NAS and reboot checks. The user confirmed UEFI Secure Boot loading with XML and drivers. The full client regression pass is deferred until the main development work is finished; see the project documentation.
 
-Past deployment dates, previous rollback commands and rollout checksums are in the [project history](../project-history.md).
+Past deployment dates, previous rollback commands and rollout checksums are in the repository commit history.
 
 ## External authentication: Active Directory / LDAP and Keycloak (OIDC)
 
@@ -287,6 +287,6 @@ chmod 600 /etc/omb/secrets.key
 
 Local sign-in and the last active local administrator always remain available even when AD or Keycloak is unreachable.
 
-On an existing server, stop Control and back up the `omb_control` database, the previous binary, and the integrations key. If the [November 20 external authentication migration](../../deploy/sql/2026-11-20-external-auth.sql) has not been applied, apply it first. Then run the [OIDC logout hash migration](../../deploy/sql/2026-11-21-oidc-logout-jti-hash.sql) as the database owner with `psql -v ON_ERROR_STOP=1`, and start the new Control.
+On an existing server, stop Control and back up the `omb_control` database, the previous binary, and the integrations key. If the external authentication migration (folded into `deploy/sql/control.sql`) has not been applied, apply it first. Then run the OIDC logout hash migration (folded into `deploy/sql/control.sql`) as the database owner with `psql -v ON_ERROR_STOP=1`, and start the new Control.
 
 The migration preserves existing hashes and expiration times. It hashes any identifiers stored in their original form. Unexpected table layouts cause the migration to stop. To roll back, stop Control and restore the previous binary together with its schema and data. Fresh installations use the correct schema from `deploy/sql/control.sql`.

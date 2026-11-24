@@ -4,7 +4,7 @@
 
 OMB is distributed and upgraded via a single self-contained signed local APT repository (`apt-repo`). Each release bundles the `omb_<version>_amd64.deb` package, all pinned transitive Ubuntu `.deb` dependencies, the `Packages.gz` index, `repo-manifest.json`, and an OpenSSL signature `repo-manifest.sig`.
 
-Delta `tar.gz` archives and `from_commit` pinning are not used: any installed OMB version can be upgraded directly to any newer version, including multi-release jumps. Historical rehearsal reports are kept in [the initial release rehearsal](../research/2026-11-21-ubuntu-offline-release-rehearsal.md) and [the `.deb` package rehearsal](../research/2026-11-22-deb-package-rehearsal.md).
+Delta `tar.gz` archives and `from_commit` pinning are not used: any installed OMB version can be upgraded directly to any newer version, including multi-release jumps.
 
 ## Building and verifying `apt-repo`
 

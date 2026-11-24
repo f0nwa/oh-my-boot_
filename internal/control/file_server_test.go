@@ -528,7 +528,7 @@ func TestAccountFilePasswordHandler(t *testing.T) {
 	srv := &Server{
 		Store:      store,
 		LocalSMB:   fakeSMB,
-		ListenAddr: "192.168.10.135:8443",
+		ListenAddr: "192.0.2.10:8443",
 	}
 	handler := srv.Handler()
 
@@ -641,7 +641,7 @@ func TestLifecycleHooksSyncLocalFileServer(t *testing.T) {
 		Store:      store,
 		Images:     fakeImg,
 		LocalSMB:   fakeSMB,
-		ListenAddr: "192.168.10.135:8443",
+		ListenAddr: "192.0.2.10:8443",
 	}
 	handler := srv.Handler()
 
@@ -760,20 +760,20 @@ func TestLocalFileServerState(t *testing.T) {
 
 	srv := &Server{
 		Store:      store,
-		ListenAddr: "192.168.10.135:8443",
+		ListenAddr: "192.0.2.10:8443",
 	}
 
-	state := srv.localFileServerState(context.Background(), "192.168.10.135:8443")
+	state := srv.localFileServerState(context.Background(), "192.0.2.10:8443")
 	if !state.SMBEnabled || !state.SFTPEnabled {
 		t.Fatalf("expected both SMB and SFTP enabled, got %+v", state)
 	}
 	if state.SFTPPort != 2022 {
 		t.Fatalf("expected port 2022, got %d", state.SFTPPort)
 	}
-	if state.SMBAddress != `\\192.168.10.135\iso` {
+	if state.SMBAddress != `\\192.0.2.10\iso` {
 		t.Fatalf("unexpected SMB address: %s", state.SMBAddress)
 	}
-	if state.SFTPAddress != "sftp://192.168.10.135:2022/" {
+	if state.SFTPAddress != "sftp://192.0.2.10:2022/" {
 		t.Fatalf("unexpected SFTP address: %s", state.SFTPAddress)
 	}
 	// Active users: admin (rw) + engineer (ro)

@@ -194,4 +194,3 @@ flowchart TD
 - [Images, ISO catalog and Windows profiles](images-installation.md)
 - [Secure Boot chain](secure-boot.md)
 - [Portable offline release and updates](offline-release.md)
-- [Server recovery](../recovery.md)

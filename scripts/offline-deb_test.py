@@ -360,6 +360,7 @@ class OfflineDebTestCase(unittest.TestCase):
             self.assertEqual(release_json["commit"], COMMIT_SHA)
             self.assertEqual(release_json["package"], "omb 0.2.0")
             self.assertNotIn("from_commit", release_json)
+            self.assertRegex(release_json["source_repo"], r"^[^/]+/[^/]+$")
 
             for sql_name in ("boot.sql", "images.sql", "control.sql"):
                 self.assertTrue((extracted / "usr/share/omb/bootstrap" / sql_name).is_file())
@@ -416,6 +417,46 @@ class OfflineDebTestCase(unittest.TestCase):
                 staged = extracted / "usr/share/omb/migrations" / entry["path"]
                 self.assertTrue(staged.is_file())
                 self.assertEqual(entry["sha256"], sha256_bytes(staged.read_bytes()))
+
+    def test_build_records_explicit_source_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload, license_file = self.make_payload(root)
+            repo = root / "apt-repo"
+            build = self.run_cli(
+                "build", str(payload), str(repo),
+                "--version", "0.2.0~dev.1",
+                "--channel", "dev",
+                "--commit", COMMIT_SHA,
+                "--license", str(license_file),
+                "--sign-key", str(self.private_key),
+                "--source-repo", "example-org/omb.fork",
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            deb = next(repo.glob("omb_*.deb"))
+            extracted = root / "extracted"
+            self.extract_deb(deb, extracted)
+            release_json = json.loads((extracted / "usr/share/omb/release.json").read_text(encoding="utf-8"))
+            self.assertEqual(release_json["source_repo"], "example-org/omb.fork")
+
+    def test_rejects_invalid_source_repo(self):
+        for bad in ("no-slash", "a/b/c", "https://github.com/a/b", "own er/repo", "owner/../x"):
+            with self.subTest(bad=bad), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                payload, license_file = self.make_payload(root)
+                repo = root / "apt-repo"
+                build = self.run_cli(
+                    "build", str(payload), str(repo),
+                    "--version", "0.2.0",
+                    "--channel", "stable",
+                    "--commit", COMMIT_SHA,
+                    "--license", str(license_file),
+                    "--sign-key", str(self.private_key),
+                    "--source-repo", bad,
+                )
+                self.assertNotEqual(build.returncode, 0)
+                self.assertIn("owner/repo", build.stderr.lower())
+                self.assertFalse(repo.exists())
 
     def test_rejects_invalid_migration_filename(self):
         for bad_name in ("2026-11-24-foo.sql", "01_foo.sql"):

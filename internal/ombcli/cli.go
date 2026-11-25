@@ -38,6 +38,7 @@ type ReleaseMeta struct {
 	Commit         string `json:"commit"`
 	DisplayVersion string `json:"display_version"`
 	Package        string `json:"package"`
+	SourceRepo     string `json:"source_repo"`
 	Version        string `json:"version"`
 }
 
@@ -208,11 +209,23 @@ func (a *App) downloadBaseURL() string {
 	return DefaultDownloadBaseURL
 }
 
+// defaultRepo returns the GitHub OWNER/REPO for releases: explicit App setting,
+// then source_repo recorded in the installed package's release.json, then DefaultRepo.
 func (a *App) defaultRepo() string {
 	if a.DefaultRepo != "" {
 		return a.DefaultRepo
 	}
+	if meta, err := a.ReadReleaseMeta(); err == nil {
+		if repo := strings.TrimSpace(meta.SourceRepo); validRepo(repo) {
+			return repo
+		}
+	}
 	return DefaultRepo
+}
+
+func validRepo(repo string) bool {
+	owner, name, ok := strings.Cut(repo, "/")
+	return ok && owner != "" && name != "" && !strings.ContainsAny(repo, " \t:?#") && !strings.Contains(name, "/") && !strings.Contains(repo, "..")
 }
 
 func (a *App) requireRoot() error {

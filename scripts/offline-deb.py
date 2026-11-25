@@ -82,6 +82,20 @@ def commit_id(value: str) -> str:
     return value
 
 
+DEFAULT_SOURCE_REPO = "f0nwa/oh-my-boot_"
+SOURCE_REPO_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$")
+
+
+def source_repo(value: str | None) -> str:
+    """Return the GitHub owner/repo recorded in release.json (used for update links)."""
+    repo = (value or "").strip()
+    if not repo:
+        repo = (os.environ.get("OMB_SOURCE_REPO") or os.environ.get("GITHUB_REPOSITORY") or DEFAULT_SOURCE_REPO).strip()
+    if not SOURCE_REPO_RE.fullmatch(repo) or repo.endswith((".", "/")) or ".." in repo:
+        raise ValueError(f"expected GitHub OWNER/REPO, got {repo!r}")
+    return repo
+
+
 def display_version(version: str) -> str:
     text = version.split(":", 1)[1] if ":" in version else version
     text = text.replace("~", "-")
@@ -326,6 +340,7 @@ def stage_package_tree(
     commit: str,
     license_path: Path,
     migrations: list[dict],
+    repo: str = DEFAULT_SOURCE_REPO,
 ) -> None:
     bin_dir = payload / "bin"
     if not bin_dir.is_dir() or bin_dir.is_symlink():
@@ -399,6 +414,7 @@ def stage_package_tree(
                 "commit": commit,
                 "display_version": display_version(version),
                 "package": f"omb {version}",
+                "source_repo": repo,
                 "version": version,
             },
             indent=2,
@@ -417,8 +433,9 @@ def build_package(
     commit: str,
     license_path: Path,
     migrations: list[dict],
+    repo: str = DEFAULT_SOURCE_REPO,
 ) -> tuple[dict, Path]:
-    stage_package_tree(package, payload, version, channel, commit, license_path, migrations)
+    stage_package_tree(package, payload, version, channel, commit, license_path, migrations, repo)
 
     control = package / "DEBIAN"
     control.mkdir()
@@ -464,6 +481,7 @@ def build_package(
 
 def build_repo(args: argparse.Namespace) -> None:
     commit = commit_id(args.commit)
+    repo = source_repo(args.source_repo)
     channel = resolve_channel(args.version, args.channel)
     subprocess.run(["dpkg", "--validate-version", args.version], check=True)
     require_regular_file(args.license, str(args.license))
@@ -503,6 +521,7 @@ def build_repo(args: argparse.Namespace) -> None:
             commit,
             args.license,
             migrations,
+            repo,
         )
 
         combined_index = base_index_text + "\n\n" + package_record(pkg_deb)
@@ -622,6 +641,11 @@ def main() -> None:
     build_cmd.add_argument("--commit", required=True)
     build_cmd.add_argument("--license", type=Path, required=True)
     build_cmd.add_argument("--sign-key", type=Path, required=True)
+    build_cmd.add_argument(
+        "--source-repo",
+        default=None,
+        help="GitHub OWNER/REPO for update links (default: $OMB_SOURCE_REPO, $GITHUB_REPOSITORY or f0nwa/oh-my-boot_)",
+    )
     build_cmd.add_argument("--go-mod", type=Path, default=default_go_mod if default_go_mod.is_file() else None)
     build_cmd.add_argument(
         "--unattend-upstream",

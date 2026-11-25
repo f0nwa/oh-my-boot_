@@ -2,7 +2,9 @@ package control
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -10,6 +12,14 @@ const (
 	DefaultReleaseInfoPath = "/usr/share/omb/release.json"
 	ChannelStable          = "stable"
 	ChannelDev             = "dev"
+	// DefaultSourceRepo is the GitHub OWNER/REPO used for update links when release.json has none.
+	DefaultSourceRepo = "f0nwa/oh-my-boot_"
+	githubBaseURL     = "https://github.com"
+)
+
+var (
+	sourceRepoRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$`)
+	releaseTagRe = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-dev\.[0-9]+)?$`)
 )
 
 // ReleaseInfo describes the running OMB build loaded from package metadata.
@@ -19,6 +29,7 @@ type ReleaseInfo struct {
 	Channel        string `json:"channel"`
 	Commit         string `json:"commit"`
 	Package        string `json:"package"`
+	SourceRepo     string `json:"source_repo"`
 }
 
 // FormatDisplayVersion turns a Debian package version into a display tag (e.g. 0.2.0~dev.1 -> v0.2.0-dev.1).
@@ -57,6 +68,10 @@ func NormalizeReleaseInfo(info ReleaseInfo) ReleaseInfo {
 	}
 	if info.Package == "" {
 		info.Package = "omb"
+	}
+	info.SourceRepo = strings.TrimSpace(info.SourceRepo)
+	if !validSourceRepo(info.SourceRepo) {
+		info.SourceRepo = DefaultSourceRepo
 	}
 	return info
 }
@@ -101,4 +116,29 @@ func (r ReleaseInfo) ShortCommit() string {
 		return r.Commit
 	}
 	return "—"
+}
+
+func validSourceRepo(repo string) bool {
+	return sourceRepoRe.MatchString(repo) && !strings.Contains(repo, "..") && !strings.HasSuffix(repo, ".")
+}
+
+// RepoURL returns the project page on GitHub. The server never requests it:
+// the administrator's browser opens it, so an isolated server is unaffected.
+func (r ReleaseInfo) RepoURL() string {
+	repo := r.SourceRepo
+	if !validSourceRepo(repo) {
+		repo = DefaultSourceRepo
+	}
+	return githubBaseURL + "/" + repo
+}
+
+// ReleasesURL returns the list of published releases.
+func (r ReleaseInfo) ReleasesURL() string { return r.RepoURL() + "/releases" }
+
+// ReleaseURL returns the page of the running release, or the releases list for local builds.
+func (r ReleaseInfo) ReleaseURL() string {
+	if releaseTagRe.MatchString(r.DisplayVersion) {
+		return r.ReleasesURL() + "/tag/" + url.PathEscape(r.DisplayVersion)
+	}
+	return r.ReleasesURL()
 }

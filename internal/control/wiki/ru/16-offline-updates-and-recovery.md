@@ -16,7 +16,7 @@ OMB спроектирован для серверов без доступа в 
 | **`stable`** | `main` | `vX.Y.Z` | `X.Y.Z` | Тихая шапка, версия и канал видны в карточке «Выпуск OMB» на `/system` |
 | **`dev`** | `dev` | `vX.Y.Z-dev.N` | `X.Y.Z~dev.N` | Янтарный бейдж `dev` рядом с логотипом в шапке + карточка на `/system` |
 
-Текущий канал сервера хранится в `/var/lib/omb-deployment/CHANNEL`, а метаданные пакета — в `/usr/share/omb/release.json` (`channel`, `commit`, `display_version`, `package`, `version`). Случайная смена канала при обновлении заблокирована и требует явного флага `--allow-channel-switch`.
+Текущий канал сервера хранится в `/var/lib/omb-deployment/CHANNEL`, а метаданные пакета — в `/usr/share/omb/release.json` (`channel`, `commit`, `display_version`, `package`, `source_repo`, `version`). Поле `source_repo` задаёт репозиторий GitHub: кнопка с иконкой GitHub в шапке и блок «Репозиторий» в карточке «Выпуск OMB» на странице «Система» ведут туда. Сервер сам GitHub не опрашивает — ссылку открывает браузер администратора, поэтому в закрытом контуре ничего не ломается. Случайная смена канала при обновлении заблокирована и требует явного флага `--allow-channel-switch`.
 
 ## Самодостаточный APT-репозиторий и `current.deb`
 

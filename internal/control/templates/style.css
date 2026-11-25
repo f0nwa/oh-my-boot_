@@ -1203,6 +1203,16 @@ html[data-theme="light"] .chan-pill.is-stable{background:rgba(13,148,104,.10);bo
 .wiki-top-btn:hover{color:var(--text);border-color:var(--line-strong)}
 .wiki-top-btn.active{background:var(--draft-bg);border-color:var(--draft-line);color:var(--accent-ink)}
 .wiki-top-btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* Ссылка на репозиторий GitHub (шапка и карточка «Выпуск OMB»); сервер сам ничего не запрашивает */
+.github-top-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text-2);text-decoration:none;flex:none}
+.github-top-btn:hover{color:var(--text);border-color:var(--line-strong)}
+.github-top-btn svg{width:16px;height:16px;fill:currentColor}
+.release-repo-link{color:var(--text-2);text-decoration:underline;text-decoration-color:var(--line-strong);text-underline-offset:2px}
+.release-repo-link:hover{color:var(--text)}
+.release-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.release-links .btn{min-height:28px;padding:0 10px;font-size:12px;margin:0;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.release-links .btn svg{width:14px;height:14px;fill:currentColor;flex:none}
+.release-hint{margin:8px 0 0;font-size:12px}
 .wiki-home{max-width:1200px;margin:0 auto}
 .wiki-home-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 24px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--line)}
 .wiki-home-title{flex:1 1 360px;min-width:0}

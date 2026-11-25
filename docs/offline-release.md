@@ -29,7 +29,7 @@ python3 scripts/offline-deb.py build <payload-dir> <apt-repo> \
 
 Команда `build` формирует:
 
-- пакет `omb_<версия>_amd64.deb` (бинарники в `/usr/bin/`, юниты в `/usr/lib/systemd/system/`, помощники в `/usr/lib/omb/`, начальные схемы в `/usr/share/omb/bootstrap/`, миграции и `/usr/share/omb/migrations/manifest.json`, метаданные `/usr/share/omb/release.json` с полями `channel`, `commit`, `display_version`, `package`, `version`);
+- пакет `omb_<версия>_amd64.deb` (бинарники в `/usr/bin/`, юниты в `/usr/lib/systemd/system/`, помощники в `/usr/lib/omb/`, начальные схемы в `/usr/share/omb/bootstrap/`, миграции и `/usr/share/omb/migrations/manifest.json`, метаданные `/usr/share/omb/release.json` с полями `channel`, `commit`, `display_version`, `package`, `source_repo`, `version`; `source_repo` — репозиторий GitHub `OWNER/REPO`, задаётся `offline-deb.py build --source-repo`, по умолчанию `$OMB_SOURCE_REPO`, `$GITHUB_REPOSITORY` или `f0nwa/oh-my-boot_`; из него веб-интерфейс строит ссылки на GitHub, а `omb update` — адрес выпусков);
 - объединённый индекс `Packages.gz` с пакетом `omb` и системными зависимостями;
 - `repo-manifest.json` (формат `2`, целевая ОС `ubuntu 26.04 amd64`, метаданные пакета, контрольные суммы `Packages.gz`, системных `.deb`, загрузочных файлов, модулей из `go.mod` и закреплённого коммита `internal/unattend/UPSTREAM.md`) и подпись `repo-manifest.sig`.
 

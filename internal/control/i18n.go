@@ -2279,4 +2279,14 @@ var englishMessages = map[string]string{
 	"Сбросить":                                                                                                                                           "Reset",
 	"Найдено статей":                                                                                                                                     "Articles found",
 	"По запросу ничего не найдено. Попробуйте другие ключевые слова.":                                                                                    "Nothing matched your query. Try different keywords.",
+
+	// Ссылка на репозиторий GitHub в шапке и карточке «Выпуск OMB».
+	"Репозиторий":                                           "Repository",
+	"Репозиторий OMB на GitHub (откроется в новой вкладке)": "OMB repository on GitHub (opens in a new tab)",
+	"Открыть на GitHub":                                     "Open on GitHub",
+	"Все выпуски":                                           "All releases",
+	"Сервер сам не проверяет обновления: ссылки открываются в вашем браузере.": "The server does not check for updates itself: links open in your browser.",
+	"Обновление:":       "Update:",
+	", без интернета —": ", offline —",
+	"файл":              "file",
 }

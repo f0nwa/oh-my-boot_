@@ -16,7 +16,7 @@ OMB is designed for servers with no internet access. Every release ships as a se
 | **`stable`** | `main` | `vX.Y.Z` | `X.Y.Z` | Quiet top bar; version and channel shown in the “OMB release” card on `/system` |
 | **`dev`** | `dev` | `vX.Y.Z-dev.N` | `X.Y.Z~dev.N` | Amber `dev` badge next to the logo in the top bar + card on `/system` |
 
-The server's current channel is stored in `/var/lib/omb-deployment/CHANNEL`, while package metadata lives in `/usr/share/omb/release.json` (`channel`, `commit`, `display_version`, `package`, `version`). Accidental channel switching during updates is blocked and requires the explicit `--allow-channel-switch` flag.
+The server's current channel is stored in `/var/lib/omb-deployment/CHANNEL`, while package metadata lives in `/usr/share/omb/release.json` (`channel`, `commit`, `display_version`, `package`, `source_repo`, `version`). The `source_repo` field names the GitHub repository: the GitHub icon button in the header and the “Repository” row of the “OMB release” card on the System page link there. The server never queries GitHub itself — the administrator's browser opens the link, so isolated networks are unaffected. Accidental channel switching during updates is blocked and requires the explicit `--allow-channel-switch` flag.
 
 ## Self-contained APT repository and `current.deb`
 

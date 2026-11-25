@@ -31,7 +31,7 @@ python3 scripts/offline-deb.py build <payload-dir> <apt-repo> \
 
 `offline-deb.py build` produces:
 
-- `omb_<version>_amd64.deb` (binaries under `/usr/bin/`, units under `/usr/lib/systemd/system/`, helpers under `/usr/lib/omb/`, bootstrap SQL under `/usr/share/omb/bootstrap/`, cumulative migrations and `/usr/share/omb/migrations/manifest.json`, and `/usr/share/omb/release.json` containing `channel`, `commit`, `display_version`, `package`, `version`);
+- `omb_<version>_amd64.deb` (binaries under `/usr/bin/`, units under `/usr/lib/systemd/system/`, helpers under `/usr/lib/omb/`, bootstrap SQL under `/usr/share/omb/bootstrap/`, cumulative migrations and `/usr/share/omb/migrations/manifest.json`, and `/usr/share/omb/release.json` containing `channel`, `commit`, `display_version`, `package`, `source_repo`, `version`; `source_repo` is the GitHub `OWNER/REPO` set by `offline-deb.py build --source-repo`, defaulting to `$OMB_SOURCE_REPO`, `$GITHUB_REPOSITORY` or `f0nwa/oh-my-boot_`; the web UI builds its GitHub links from it and `omb update` uses it as the releases repository);
 - a combined `Packages.gz` index covering `omb` and all system dependencies;
 - `repo-manifest.json` (`format: 2`, target `ubuntu 26.04 amd64`, package metadata, `Packages.gz` and system `.deb` digests, boot asset digests, Go version and modules from `go.mod`, and the pinned `internal/unattend/UPSTREAM.md` commit) signed into `repo-manifest.sig`.
 

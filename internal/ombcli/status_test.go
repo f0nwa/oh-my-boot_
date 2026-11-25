@@ -200,3 +200,33 @@ func TestStatusUFWActiveAndInactive(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultRepoFromReleaseJSON(t *testing.T) {
+	root := t.TempDir()
+	app := &App{RootDir: root}
+	if got := app.defaultRepo(); got != DefaultRepo {
+		t.Fatalf("without release.json: %q", got)
+	}
+	releasePath := filepath.Join(root, "usr", "share", "omb", "release.json")
+	if err := os.MkdirAll(filepath.Dir(releasePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(repo string) {
+		t.Helper()
+		if err := os.WriteFile(releasePath, []byte(`{"version":"0.2.0","source_repo":"`+repo+`"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("acme/omb")
+	if got := app.defaultRepo(); got != "acme/omb" {
+		t.Fatalf("from release.json: %q", got)
+	}
+	write("bad repo")
+	if got := app.defaultRepo(); got != DefaultRepo {
+		t.Fatalf("invalid source_repo must fall back: %q", got)
+	}
+	app.DefaultRepo = "explicit/repo"
+	if got := app.defaultRepo(); got != "explicit/repo" {
+		t.Fatalf("explicit DefaultRepo: %q", got)
+	}
+}

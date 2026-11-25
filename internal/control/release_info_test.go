@@ -102,3 +102,72 @@ func TestSystemPageRendersReleaseCardRUAndEN(t *testing.T) {
 		}
 	}
 }
+
+func TestReleaseInfoGitHubLinks(t *testing.T) {
+	info := NormalizeReleaseInfo(ReleaseInfo{Version: "0.2.5~dev.4", SourceRepo: "example-org/omb.fork"})
+	if got := info.RepoURL(); got != "https://github.com/example-org/omb.fork" {
+		t.Fatalf("RepoURL = %q", got)
+	}
+	if got := info.ReleasesURL(); got != "https://github.com/example-org/omb.fork/releases" {
+		t.Fatalf("ReleasesURL = %q", got)
+	}
+	if got := info.ReleaseURL(); got != "https://github.com/example-org/omb.fork/releases/tag/v0.2.5-dev.4" {
+		t.Fatalf("ReleaseURL = %q", got)
+	}
+
+	// Missing or unsafe source_repo falls back to the default repository.
+	for _, bad := range []string{"", "no-slash", "a/b/c", "https://evil.example/x", "owner/../x", "own er/repo"} {
+		got := NormalizeReleaseInfo(ReleaseInfo{SourceRepo: bad})
+		if got.SourceRepo != DefaultSourceRepo || got.RepoURL() != "https://github.com/"+DefaultSourceRepo {
+			t.Fatalf("source_repo %q: got %q / %q", bad, got.SourceRepo, got.RepoURL())
+		}
+	}
+
+	// Local builds without a release tag link to the releases list.
+	local := NormalizeReleaseInfo(ReleaseInfo{})
+	if got := local.ReleaseURL(); got != "https://github.com/"+DefaultSourceRepo+"/releases" {
+		t.Fatalf("local ReleaseURL = %q", got)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "release.json")
+	raw, _ := json.Marshal(map[string]string{"version": "0.2.0", "channel": "stable", "source_repo": "acme/omb"})
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoadReleaseInfo(path).RepoURL(); got != "https://github.com/acme/omb" {
+		t.Fatalf("LoadReleaseInfo RepoURL = %q", got)
+	}
+}
+
+func TestTopbarAndSystemCardRenderGitHubLinks(t *testing.T) {
+	s := &Server{
+		Store:   authOnlyStore{user: User{ID: 1, Username: "admin", Role: "admin", Enabled: true, Language: langRU}},
+		Release: &ReleaseInfo{Version: "0.2.5~dev.4", DisplayVersion: "v0.2.5-dev.4", Channel: ChannelDev, SourceRepo: "acme/omb"},
+	}
+	body := libraryGet(t, s, "/system")
+	for _, want := range []string{
+		`class="github-top-btn" href="https://github.com/acme/omb" target="_blank" rel="noopener noreferrer"`,
+		`aria-label="Репозиторий OMB на GitHub (откроется в новой вкладке)"`,
+		`class="release-repo-link" href="https://github.com/acme/omb"`,
+		`>acme/omb</a>`,
+		`href="https://github.com/acme/omb/releases/tag/v0.2.5-dev.4"`,
+		`href="https://github.com/acme/omb/releases"`,
+		"Открыть на GitHub", "Все выпуски", "sudo omb update --deb",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("/system missing %q", want)
+		}
+	}
+
+	sEN := &Server{
+		Store:   authOnlyStore{user: User{ID: 2, Username: "obs", Role: "observer", Enabled: true, Language: langEN}},
+		Release: &ReleaseInfo{Version: "0.2.0", DisplayVersion: "v0.2.0", Channel: ChannelStable},
+	}
+	bodyEN := libraryGet(t, sEN, "/")
+	for _, want := range []string{`class="github-top-btn" href="https://github.com/` + DefaultSourceRepo + `"`, "OMB repository on GitHub (opens in a new tab)"} {
+		if !strings.Contains(bodyEN, want) {
+			t.Fatalf("EN / missing %q", want)
+		}
+	}
+}

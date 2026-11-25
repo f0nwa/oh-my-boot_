@@ -47,7 +47,7 @@ func samplePageDataBase(lang string) pageData {
 	now := time.Date(2026, 10, 20, 1, 0, 0, 0, time.UTC)
 	cfg := network.Config{Mode: "proxy", Interface: "ens19", ServerIP: "10.30.0.10", Subnet: "10.30.0.0/24", DHCPStart: "10.30.0.100", DHCPEnd: "10.30.0.200", BootURL: "http://10.30.0.10:8080/boot/menu.ipxe", TFTPRoot: "/srv/omb/tftp"}
 	profile := WindowsProfile{ID: 2, WindowsProfileSource: WindowsProfileSource{StorageID: 6, Path: "win11.iso", Title: "Windows 11", Folder: "Windows"}, State: "unavailable", Error: "Исходный ISO изменился или недоступен"}
-	answer := WindowsAnswerVariant{ID: 3, Title: "Lab", Folder: "Windows/Tests", State: "error", Error: "Не удалось подготовить сценарий"}
+	answer := WindowsAnswerVariant{ID: 3, Title: "Lab", Folder: "Windows/Tests", State: "error", Error: "Не удалось подготовить скрипт"}
 	config := DriverConfig{ID: 4, ProfileID: 2, AnswerID: 3, Title: "VirtIO", Folder: "Windows/Tests", PackageINFs: []agent.SelectedINF{{PackageSHA256: "abc", INFPath: "netkvm.inf"}}, State: "error", Error: "Не удалось подготовить WinPE: недостаточно свободного места"}
 	return pageData{
 		Lang:       lang,

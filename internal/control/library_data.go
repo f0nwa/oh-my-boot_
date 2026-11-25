@@ -74,7 +74,7 @@ func (s *Server) answersLibraryData(r *http.Request) pageData {
 	authors := s.resourceAuthors(r.Context())
 	answers, err := s.Store.WindowsAnswers(r.Context())
 	if err != nil {
-		data.ImageError = "Не удалось прочитать сценарии Windows"
+		data.ImageError = "Не удалось прочитать скрипты Windows"
 	} else {
 		data.WindowsAnswerVariants = answers
 		for i := range data.WindowsAnswerVariants {

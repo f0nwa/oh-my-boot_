@@ -152,7 +152,7 @@ func TestLibraryPagesSkipUnrelatedAnswerAndMetadataFailures(t *testing.T) {
 			}
 			switch path {
 			case "/storages", "/system":
-				if !strings.Contains(body, "NAS") || strings.Contains(body, "Не удалось прочитать сценарии Windows") {
+				if !strings.Contains(body, "NAS") || strings.Contains(body, "Не удалось прочитать скрипты Windows") {
 					t.Errorf("storage content suppressed by unrelated failure: %.500s", body)
 				}
 			case "/usb":

@@ -183,11 +183,11 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	answer, err := s.Store.WindowsAnswer(r.Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		http.Error(w, "Сценарий не найден", http.StatusNotFound)
+		http.Error(w, "Скрипт не найден", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		http.Error(w, "Не удалось прочитать сценарий", http.StatusServiceUnavailable)
+		http.Error(w, "Не удалось прочитать скрипт", http.StatusServiceUnavailable)
 		return
 	}
 	active, err := s.activeMenuContains(r, installationComponent{answerID: id})
@@ -232,9 +232,9 @@ func (s *Server) windowsAnswerDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.delete", "ok", fmt.Sprintf("id=%d", id))
-	msg := "Сценарий удалён"
+	msg := "Скрипт удалён"
 	if answer.Title != "" {
-		msg = fmt.Sprintf("Сценарий «%s» удалён", answer.Title)
+		msg = fmt.Sprintf("Скрипт «%s» удалён", answer.Title)
 	}
 	http.Redirect(w, r, "/answers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }

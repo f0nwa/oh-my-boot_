@@ -106,7 +106,7 @@ func (s *Server) driverConfigCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	answers, err := s.Store.WindowsAnswers(r.Context())
 	if err != nil {
-		http.Error(w, "Сценарии Windows недоступны", http.StatusServiceUnavailable)
+		http.Error(w, "Скрипты Windows недоступны", http.StatusServiceUnavailable)
 		return
 	}
 	packages, err := s.Store.DriverPackages(r.Context())

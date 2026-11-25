@@ -170,7 +170,7 @@ func TestAnswerDeleteAvailability(t *testing.T) {
 		reason    string
 	}{
 		{name: "free", known: true},
-		{name: "used", known: true, downloads: []answerFileDownload{{ID: 9, Title: "Boot"}}, disabled: true, reason: "Сценарий используется загрузками"},
+		{name: "used", known: true, downloads: []answerFileDownload{{ID: 9, Title: "Boot"}}, disabled: true, reason: "Скрипт используется загрузками"},
 		{name: "unknown", disabled: true, reason: "Не удалось проверить использование"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -181,7 +181,7 @@ func TestAnswerDeleteAvailability(t *testing.T) {
 			if match == "" || strings.Contains(match, " disabled") != tc.disabled || (tc.reason != "" && !strings.Contains(match, tc.reason)) {
 				t.Fatalf("unexpected button: %s", match)
 			}
-			if !strings.Contains(match, ">Удалить сценарий</button>") {
+			if !strings.Contains(match, ">Удалить скрипт</button>") {
 				t.Fatalf("unexpected label: %s", match)
 			}
 			hasDialog := strings.Contains(body, `id="answer-delete-5"`)

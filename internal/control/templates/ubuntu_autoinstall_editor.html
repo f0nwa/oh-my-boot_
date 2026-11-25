@@ -1,7 +1,7 @@
 {{define "ubuntu_autoinstall_editor"}}{{template "top" .}}{{$info := .Info}}
 <p class="crumbs"><a href="/answers#ubuntu-autoinstall">← {{t "Файлы Ubuntu Autoinstall"}}</a></p>
 <h1>{{t "Конструктор Ubuntu Desktop"}}</h1>
-<p class="lead">{{t "Настройте рабочий компьютер, проверьте YAML и сохраните сценарий установки."}}</p>
+<p class="lead">{{t "Настройте рабочий компьютер, проверьте YAML и сохраните скрипт установки."}}</p>
 {{with .UbuntuEditor}}{{$v := .}}
 {{if .Message}}<div class="notice error" role="alert">{{t .Message}}</div>{{end}}
 {{if .File}}

@@ -10,7 +10,7 @@ var ubuntuEditorMessages = map[string]string{
 	"Исправьте поля на вкладке «Проверка».":      "Correct the fields on the Validation tab.",
 	"Проверка":                   "Validation",
 	"Конструктор Ubuntu Desktop": "Ubuntu Desktop answer editor",
-	"Настройте рабочий компьютер, проверьте YAML и сохраните сценарий установки.": "Configure a workstation, review the YAML and save an installation scenario.",
+	"Настройте рабочий компьютер, проверьте YAML и сохраните скрипт установки.": "Configure a workstation, review the YAML and save an installation script.",
 	"Проверен конструктором":  "Checked by the editor",
 	"Файл и источник":         "File and source",
 	"Пользователь":            "User",

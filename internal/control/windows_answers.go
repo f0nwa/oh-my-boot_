@@ -81,7 +81,7 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 	s.windowsMu.Lock()
 	defer s.windowsMu.Unlock()
 	if s.WindowsAnswers == nil {
-		http.Error(w, "Подготовка сценариев недоступна", http.StatusServiceUnavailable)
+		http.Error(w, "Подготовка скриптов недоступна", http.StatusServiceUnavailable)
 		return
 	}
 	title, folder := r.FormValue("title"), r.FormValue("folder")
@@ -97,16 +97,16 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, maxWindowsAnswerBytes+1))
 	if err != nil || ValidateWindowsAnswer(data) != nil {
-		http.Error(w, "Некорректный XML-файл сценария", http.StatusBadRequest)
+		http.Error(w, "Некорректный XML-файл скрипта", http.StatusBadRequest)
 		return
 	}
 	if _, status, message := s.saveWindowsAnswer(r, title, folder, data, false); status != 0 {
 		http.Error(w, message, status)
 		return
 	}
-	msg := "Сценарий загружен"
+	msg := "Скрипт загружен"
 	if title != "" {
-		msg = fmt.Sprintf("Сценарий «%s» загружен", title)
+		msg = fmt.Sprintf("Скрипт «%s» загружен", title)
 	}
 	http.Redirect(w, r, "/answers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }
@@ -120,11 +120,11 @@ func (s *Server) saveWindowsAnswer(r *http.Request, title, folder string, data [
 	digest := hex.EncodeToString(sum[:])
 	existing, err := s.Store.WindowsAnswers(r.Context())
 	if err != nil {
-		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось проверить сценарии"
+		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось проверить скрипты"
 	}
 	for _, answer := range existing {
 		if answer.SHA256 == digest {
-			return WindowsAnswerVariant{}, http.StatusConflict, fmt.Sprintf("Такой XML уже загружен: сценарий #%d «%s». Каталог в меню можно изменить при публикации.", answer.ID, answer.Title)
+			return WindowsAnswerVariant{}, http.StatusConflict, fmt.Sprintf("Такой XML уже загружен: скрипт #%d «%s». Каталог в меню можно изменить при публикации.", answer.ID, answer.Title)
 		}
 	}
 	var wipesDisk *bool
@@ -133,16 +133,16 @@ func (s *Server) saveWindowsAnswer(r *http.Request, title, folder string, data [
 	}
 	variant, err := s.Store.CreateWindowsAnswer(r.Context(), WindowsAnswerVariant{Title: title, Folder: folder, SHA256: digest, Size: int64(len(data)), WipesDisk: wipesDisk, Disk: SummarizeWindowsAnswerDisk(data), Target: SummarizeWindowsAnswerTarget(data)})
 	if err != nil {
-		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось сохранить сценарий"
+		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось сохранить скрипт"
 	}
 	request := agent.WindowsAnswerRequest{ID: variant.ID, SHA256: variant.SHA256, XML: data}
 	if err := s.WindowsAnswers.PrepareWindowsAnswer(r.Context(), request); err != nil {
 		_ = s.Store.SetWindowsAnswerState(r.Context(), variant.ID, "error", "Не удалось подготовить файл")
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.create", "error", fmt.Sprintf("id=%d", variant.ID))
-		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось подготовить сценарий"
+		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось подготовить скрипт"
 	}
 	if err := s.Store.SetWindowsAnswerState(r.Context(), variant.ID, "ready", ""); err != nil {
-		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось сохранить состояние сценария"
+		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось сохранить состояние скрипта"
 	}
 	detail := fmt.Sprintf("id=%d sha256=%s", variant.ID, variant.SHA256)
 	if editor {

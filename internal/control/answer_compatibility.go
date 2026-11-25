@@ -473,7 +473,7 @@ func EvaluateWindowsAnswerCompatibility(target WindowsAnswerTarget, wim agent.Wi
 	}
 	if lang := strings.TrimSpace(target.ImageLanguage); lang != "" && hasLanguageMetadata(matched) && !anyImageHasLanguage(matched, lang) {
 		res.Warnings = append(res.Warnings, fmt.Sprintf(
-			"Язык сценария %s не найден в образе (доступны: %s)",
+			"Язык скрипта %s не найден в образе (доступны: %s)",
 			lang,
 			joinUniqueLanguages(matched),
 		))

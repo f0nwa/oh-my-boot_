@@ -66,12 +66,12 @@ var diskpartScript = regexp.MustCompile(`(?i)diskpart(\.exe)?"?\s*(/s\s|<)`)
 func (s *Server) windowsAnswerInspect(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
-		http.Error(w, "Неверный сценарий", http.StatusBadRequest)
+		http.Error(w, "Неверный скрипт", http.StatusBadRequest)
 		return
 	}
 	answer, err := s.Store.WindowsAnswer(r.Context(), id)
 	if err != nil {
-		http.Error(w, "Сценарий не найден", http.StatusNotFound)
+		http.Error(w, "Скрипт не найден", http.StatusNotFound)
 		return
 	}
 	file, _, err := r.FormFile("file")
@@ -82,7 +82,7 @@ func (s *Server) windowsAnswerInspect(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, maxWindowsAnswerBytes+1))
 	if err != nil || int64(len(data)) > maxWindowsAnswerBytes {
-		http.Error(w, "Некорректный XML-файл сценария", http.StatusBadRequest)
+		http.Error(w, "Некорректный XML-файл скрипта", http.StatusBadRequest)
 		return
 	}
 	sum := sha256.Sum256(data)

@@ -661,17 +661,17 @@ func (s *Server) answerEditorNew(w http.ResponseWriter, r *http.Request) {
 func (s *Server) answerEditorEdit(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
-		http.Error(w, "Неверный сценарий", http.StatusBadRequest)
+		http.Error(w, "Неверный скрипт", http.StatusBadRequest)
 		return
 	}
 	answer, err := s.Store.WindowsAnswer(r.Context(), id)
 	if err != nil {
-		http.Error(w, "Сценарий не найден", http.StatusNotFound)
+		http.Error(w, "Скрипт не найден", http.StatusNotFound)
 		return
 	}
 	reader, ok := s.WindowsAnswers.(WindowsAnswerReader)
 	if !ok {
-		http.Error(w, "Подготовка сценариев недоступна", http.StatusServiceUnavailable)
+		http.Error(w, "Подготовка скриптов недоступна", http.StatusServiceUnavailable)
 		return
 	}
 	data, err := reader.WindowsAnswerXML(r.Context(), agent.WindowsAnswerCheck{ID: answer.ID, SHA256: answer.SHA256})
@@ -785,7 +785,7 @@ func (s *Server) answerEditorSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ValidateWindowsAnswer(xml) != nil {
-		fail(http.StatusUnprocessableEntity, "Некорректный XML-файл сценария")
+		fail(http.StatusUnprocessableEntity, "Некорректный XML-файл скрипта")
 		return
 	}
 	if !safeMenuText(v.Title, 80) || !isASCII(v.Title) || validateMenuFolder(v.Folder) != nil || !isASCII(v.Folder) {
@@ -795,7 +795,7 @@ func (s *Server) answerEditorSave(w http.ResponseWriter, r *http.Request) {
 	s.windowsMu.Lock()
 	defer s.windowsMu.Unlock()
 	if s.WindowsAnswers == nil {
-		fail(http.StatusServiceUnavailable, "Подготовка сценариев недоступна")
+		fail(http.StatusServiceUnavailable, "Подготовка скриптов недоступна")
 		return
 	}
 	variant, status, message := s.saveWindowsAnswer(r, v.Title, v.Folder, xml, true)

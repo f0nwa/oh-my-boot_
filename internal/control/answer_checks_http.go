@@ -98,7 +98,7 @@ func (s *Server) answerCheckRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	err = s.Store.SaveAnswerCheck(r.Context(), c)
 	if errors.Is(err, errAnswerCheckConflict) {
-		http.Error(w, "Файл изменён или не готов. Обновите страницу и проверьте сценарий заново.", 409)
+		http.Error(w, "Файл изменён или не готов. Обновите страницу и проверьте скрипт заново.", 409)
 		return
 	}
 	if errors.Is(err, pgx.ErrNoRows) {

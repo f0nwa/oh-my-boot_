@@ -227,7 +227,7 @@ func (s *Server) menuSources(ctx context.Context) ([]WindowsProfile, []WindowsAn
 	}
 	answers, err := s.Store.WindowsAnswers(ctx)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Не удалось прочитать сценарии Windows")
+		return nil, nil, nil, fmt.Errorf("Не удалось прочитать скрипты Windows")
 	}
 	configs, err := s.Store.DriverConfigs(ctx)
 	if err != nil {
@@ -652,11 +652,11 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		selected[ref.ProfileID] = true
 	}
 	if len(answerItems) != len(answerRefMap) {
-		return fmt.Errorf("ссылки на сценарии повреждены")
+		return fmt.Errorf("ссылки на скрипты повреждены")
 	}
 	for pair := range answerItems {
 		if _, ok := answerRefMap[pair]; !ok {
-			return fmt.Errorf("ссылки на сценарии повреждены")
+			return fmt.Errorf("ссылки на скрипты повреждены")
 		}
 	}
 	if len(driverItems) != len(driverRefs) {
@@ -707,10 +707,10 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 			if config.AnswerID > 0 {
 				answer, ok := answersByID[config.AnswerID]
 				if !ok || answer.State != "ready" || answer.SHA256 != ref.AnswerSHA256 || answer.Size <= 0 || s.WindowsAnswers == nil {
-					return fmt.Errorf("сценарий конфигурации драйверов %d недоступен", config.ID)
+					return fmt.Errorf("скрипт конфигурации драйверов %d недоступен", config.ID)
 				}
 				if err := s.WindowsAnswers.CheckWindowsAnswer(ctx, agent.WindowsAnswerCheck{ID: answer.ID, SHA256: answer.SHA256}); err != nil {
-					return fmt.Errorf("файлы сценария %d недоступны", answer.ID)
+					return fmt.Errorf("файлы скрипта %d недоступны", answer.ID)
 				}
 			}
 			for _, inf := range config.PackageINFs {
@@ -729,7 +729,7 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 	}
 	if len(answerRefs) > 0 {
 		if s.WindowsAnswers == nil {
-			return fmt.Errorf("служба сценариев недоступна")
+			return fmt.Errorf("служба скриптов недоступна")
 		}
 		answers, err := s.Store.WindowsAnswers(ctx)
 		if err != nil {
@@ -743,14 +743,14 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		for _, ref := range answerRefs {
 			answer, ok := answersByID[ref.ID]
 			if !ok {
-				return fmt.Errorf("сценарий отсутствует")
+				return fmt.Errorf("скрипт отсутствует")
 			}
 			if answer.State != "ready" || answer.SHA256 != ref.SHA256 || answer.Size <= 0 {
-				return fmt.Errorf("сценарий %d изменился или не подготовлен", answer.ID)
+				return fmt.Errorf("скрипт %d изменился или не подготовлен", answer.ID)
 			}
 			if !checkedAnswers[answer.ID] {
 				if err := s.WindowsAnswers.CheckWindowsAnswer(ctx, agent.WindowsAnswerCheck{ID: answer.ID, SHA256: answer.SHA256}); err != nil {
-					return fmt.Errorf("файлы сценария %d недоступны", answer.ID)
+					return fmt.Errorf("файлы скрипта %d недоступны", answer.ID)
 				}
 				checkedAnswers[answer.ID] = true
 			}

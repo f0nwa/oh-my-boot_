@@ -212,7 +212,7 @@
           var availLangs = uniqueNonEmpty([].concat.apply([], matched.map(function (img) { return img.languages || []; }))).join(", ");
           res.warnings.push(en
             ? "Script language " + targetLang + " not found in image (available: " + availLangs + ")"
-            : "Язык сценария " + targetLang + " не найден в образе (доступны: " + availLangs + ")");
+            : "Язык скрипта " + targetLang + " не найден в образе (доступны: " + availLangs + ")");
         }
       }
     }

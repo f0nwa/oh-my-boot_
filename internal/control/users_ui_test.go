@@ -339,6 +339,53 @@ func TestUserDeleteHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("protected built-in admin error in Russian and English", func(t *testing.T) {
+		secondAdmin := User{ID: 3, Username: "ivan", Role: "admin", Enabled: true, Language: langRU}
+		store := &userChangeMockStore{
+			authOnlyStore: authOnlyStore{user: secondAdmin},
+			users:         []User{admin, secondAdmin, other},
+			lastErr:       errProtectedAdmin,
+		}
+		res := httptest.NewRecorder()
+		(&Server{Store: store}).Handler().ServeHTTP(res, accountRequest(http.MethodPost, "/users/delete", url.Values{"id": {"1"}}))
+		if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "Нельзя удалить встроенную учётную запись admin") {
+			t.Fatalf("protected admin RU delete alert: %d %s", res.Code, res.Body.String())
+		}
+
+		secondAdmin.Language = langEN
+		store.authOnlyStore.user = secondAdmin
+		resEN := httptest.NewRecorder()
+		(&Server{Store: store}).Handler().ServeHTTP(resEN, accountRequest(http.MethodPost, "/users/delete", url.Values{"id": {"1"}}))
+		if resEN.Code != http.StatusBadRequest || !strings.Contains(resEN.Body.String(), "You cannot delete the built-in admin account") {
+			t.Fatalf("protected admin EN delete alert: %d %s", resEN.Code, resEN.Body.String())
+		}
+	})
+
+	t.Run("built-in admin row hides delete action even for another admin", func(t *testing.T) {
+		builtIn := User{ID: 1, Username: "admin", Role: "admin", Enabled: true}
+		secondAdmin := User{ID: 3, Username: "ivan", Role: "admin", Enabled: true, Language: langRU}
+		store := &userChangeMockStore{
+			authOnlyStore: authOnlyStore{user: secondAdmin},
+			users:         []User{builtIn, secondAdmin, other},
+		}
+		res := httptest.NewRecorder()
+		(&Server{Store: store}).Handler().ServeHTTP(res, accountRequest(http.MethodGet, "/users", nil))
+		if res.Code != http.StatusOK {
+			t.Fatalf("GET /users status = %d", res.Code)
+		}
+		body := res.Body.String()
+		if strings.Contains(body, `data-user-delete-id="1"`) {
+			t.Fatalf("built-in admin must not have delete action in /users")
+		}
+		if !strings.Contains(body, `data-user-delete-id="2"`) {
+			t.Fatalf("regular local user must keep delete action in /users")
+		}
+		// Built-in admin can still be disabled by another admin.
+		if !strings.Contains(body, `id="user-change-1"`) {
+			t.Fatalf("built-in admin should still allow role/enabled form for another admin")
+		}
+	})
+
 	t.Run("last admin error in English", func(t *testing.T) {
 		enAdmin := admin
 		enAdmin.Language = langEN

@@ -3,6 +3,7 @@ package control
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -78,6 +79,12 @@ func (s PasswordState) RequiresChange() bool {
 // IsLocal reports whether the account authenticates with a local password.
 func (u User) IsLocal() bool {
 	return u.AuthSource == "" || u.AuthSource == AuthSourceLocal
+}
+
+// IsBuiltInAdmin reports whether u is the built-in local admin account,
+// which cannot be deleted (it may still be disabled once another local admin exists).
+func (u User) IsBuiltInAdmin() bool {
+	return u.IsLocal() && strings.EqualFold(strings.TrimSpace(u.Username), "admin")
 }
 
 // NormalizePasswordMode maps empty or unknown mode values to the default policy mode.

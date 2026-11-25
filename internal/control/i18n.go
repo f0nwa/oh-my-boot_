@@ -902,6 +902,7 @@ var englishMessages = map[string]string{
 	"Удалить пользователя":                              "Delete user",
 	"Нельзя удалить свою учётную запись":                "You cannot delete your own account",
 	"Нельзя удалить последнего администратора":          "You cannot delete the last administrator",
+	"Нельзя удалить встроенную учётную запись admin":    "You cannot delete the built-in admin account",
 	"Не удалось удалить пользователя: %s":               "Could not delete the user: %s",
 	"Учётная запись будет удалена, а активные сеансы пользователя на всех устройствах немедленно завершатся. История его действий в журнале аудита сохранится.": "The account will be deleted and the user's active sessions on all devices will end immediately. Their activity history in the audit log will be preserved.",
 	"Пароль пользователя «%s» изменён":            "Password for user “%s” changed",

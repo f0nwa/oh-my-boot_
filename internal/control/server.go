@@ -1111,6 +1111,9 @@ func (s *Server) userDelete(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, errSelfDelete):
 		http.Error(w, "Нельзя удалить свою учётную запись", http.StatusBadRequest)
 		return
+	case errors.Is(err, errProtectedAdmin):
+		http.Error(w, "Нельзя удалить встроенную учётную запись admin", http.StatusBadRequest)
+		return
 	case errors.Is(err, errLastAdmin):
 		http.Error(w, "Нельзя удалить последнего администратора", http.StatusBadRequest)
 		return

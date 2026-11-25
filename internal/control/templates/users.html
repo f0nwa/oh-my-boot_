@@ -102,7 +102,7 @@
 {{if .TOTPEnabled}}<button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-reset-2fa-id="{{.ID}}" data-user-reset-2fa-name="{{.Username}}">{{t "Сбросить 2FA…"}}</button>{{end}}
 {{end}}
 <button type="button" class="row-menu-item" role="menuitem" data-close-popover data-user-fs-id="{{.ID}}" data-user-fs-name="{{.Username}}" data-user-fs-mode="{{.FSAccessMode}}" data-user-fs-has-pw="{{if .HasFSPassword}}true{{else}}false{{end}}">{{t "Доступ SMB / SFTP…"}}</button>
-{{if and $local (not $self)}}<hr class="row-menu-sep"><button type="button" class="row-menu-item row-menu-danger" role="menuitem" data-close-popover data-user-delete-id="{{.ID}}" data-user-delete-name="{{.Username}}">{{t "Удалить"}}</button>{{end}}
+{{if and $local (not $self) (not .IsBuiltInAdmin)}}<hr class="row-menu-sep"><button type="button" class="row-menu-item row-menu-danger" role="menuitem" data-close-popover data-user-delete-id="{{.ID}}" data-user-delete-name="{{.Username}}">{{t "Удалить"}}</button>{{end}}
 </div>
 </div>
 </td>

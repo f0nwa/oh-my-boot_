@@ -305,6 +305,7 @@ func (s Store) SetUserPasswordPolicy(ctx context.Context, id, actorID int64, mod
 var (
 	errSelfDemote         = errors.New("cannot remove your own administrator access")
 	errSelfDelete         = errors.New("cannot delete your own account")
+	errProtectedAdmin     = errors.New("cannot delete built-in admin account")
 	errLastAdmin          = errors.New("cannot disable the last administrator")
 	errUserNotFound       = errors.New("user not found")
 	errExternalUserAction = errors.New("operation is only allowed for local users")
@@ -335,6 +336,9 @@ func (s Store) DeleteUser(ctx context.Context, id, actorID int64) (string, error
 	}
 	if authSource != AuthSourceLocal {
 		return "", errExternalUserAction
+	}
+	if strings.EqualFold(strings.TrimSpace(username), "admin") {
+		return "", errProtectedAdmin
 	}
 	if role == "admin" && enabled {
 		var count int

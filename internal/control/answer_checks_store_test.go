@@ -177,6 +177,14 @@ func TestDeleteUserPreservesAnswerChecksAndProtectsAdmins(t *testing.T) {
 		t.Fatalf("expected errLastAdmin when deleting sole active admin, got %v", err)
 	}
 
+	var builtInAdminID int64
+	if err := store.Pool.QueryRow(ctx, `INSERT INTO users(username,password_hash,role,enabled) VALUES('admin','unused','admin',true) RETURNING id`).Scan(&builtInAdminID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DeleteUser(ctx, builtInAdminID, adminID); !errors.Is(err, errProtectedAdmin) {
+		t.Fatalf("expected errProtectedAdmin when deleting built-in admin, got %v", err)
+	}
+
 	deletedName, err := store.DeleteUser(ctx, user, adminID)
 	if err != nil || deletedName != "checker" {
 		t.Fatalf("DeleteUser(checker) = %q, %v", deletedName, err)

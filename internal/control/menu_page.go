@@ -389,7 +389,8 @@ func verifyUbuntuSourceReferences(script string, entries []menuProfile, legacySo
 				return fmt.Errorf("Ubuntu source snapshot ISO is invalid")
 			}
 		}
-		if kernels != 1 || len(initrds) != 1 || initrds[0] != "initrd "+base+assetsPath+"/initrd" || len(shims) != 1 || shims[0] != "shim "+base+assetsPath+"/bootx64.efi || goto "+entry.id+"_failed" {
+		validInitrd := len(initrds) == 1 && (initrds[0] == "initrd "+base+assetsPath+"/initrd || goto "+entry.id+"_failed" || initrds[0] == "initrd "+base+assetsPath+"/initrd")
+		if kernels != 1 || !validInitrd || len(shims) != 1 || shims[0] != "shim "+base+assetsPath+"/bootx64.efi || goto "+entry.id+"_failed" {
 			return fmt.Errorf("Ubuntu source snapshot assets are invalid")
 		}
 	}

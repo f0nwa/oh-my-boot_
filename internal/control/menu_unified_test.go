@@ -47,12 +47,12 @@ func TestUnifiedMenuPublishesOrderedInstallationsAndStructure(t *testing.T) {
 	script := (*published)[0]
 	for _, want := range []string{
 		"item install_71 Ubuntu Lab\n", "item install_72 Windows Lab\n", "item install_73 Ubuntu Recovery\n",
-		"kernel " + testBootURL + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + testBootURL + "/images/ubuntu-desktop.iso ---\n",
-		"initrd " + testBootURL + "/assets/ubuntu/initrd\n",
+		"kernel " + testBootURL + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + testBootURL + "/images/ubuntu-desktop.iso --- || goto install_71_failed\n",
+		"initrd " + testBootURL + "/assets/ubuntu/initrd || goto install_71_failed\n",
 		"iseq ${platform} efi && goto install_73_efi || goto install_73_boot\n",
 		"shim " + testBootURL + "/assets/ubuntu/bootx64.efi || goto install_73_failed\n",
-		"kernel " + testBootURL + "/assets/windows/wimboot\n",
-		"initrd " + testBootURL + "/assets/windows-profiles/17/boot.wim boot.wim\n",
+		"kernel " + testBootURL + "/assets/windows/wimboot || goto install_72_failed\n",
+		"initrd " + testBootURL + "/assets/windows-profiles/17/boot.wim boot.wim || goto install_72_failed\n",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("missing %q", want)

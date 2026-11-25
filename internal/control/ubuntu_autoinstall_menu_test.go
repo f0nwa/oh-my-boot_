@@ -144,18 +144,18 @@ func TestUbuntuAutoinstallMixedMenuStagesSelectedFilesBeforePublish(t *testing.T
 		block := installationScript(t, string(script), id)
 		t.Logf("automated Ubuntu installation %d:\n%s", id, block)
 		seed := s.BootBaseURL + seedPath(id, store.files[i])
-		want := "kernel " + s.BootBaseURL + "/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + s.BootBaseURL + "/images/ubuntu-desktop.iso autoinstall ds=nocloud-net;s=" + seed + " ---\n"
+		want := fmt.Sprintf("kernel %s/assets/ubuntu/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=%s/images/ubuntu-desktop.iso autoinstall ds=nocloud-net;s=%s --- || goto install_%d_failed\n", s.BootBaseURL, s.BootBaseURL, seed, id)
 		if !strings.Contains(block, want) {
 			t.Errorf("wrong kernel argument for %d:\n%s", id, block)
 		}
-		for _, want := range []string{"initrd " + s.BootBaseURL + "/assets/ubuntu/initrd\n", "shim " + s.BootBaseURL + "/assets/ubuntu/bootx64.efi"} {
+		for _, want := range []string{fmt.Sprintf("initrd %s/assets/ubuntu/initrd || goto install_%d_failed\n", s.BootBaseURL, id), "shim " + s.BootBaseURL + "/assets/ubuntu/bootx64.efi"} {
 			if !strings.Contains(block, want) {
 				t.Errorf("Ubuntu source changed: missing %s", want)
 			}
 		}
 		assertSeedAvailable(t, h, id, store.files[i])
 	}
-	for _, want := range []string{"kernel " + s.BootBaseURL + "/assets/windows/wimboot\n", "/assets/windows-profiles/17/boot.wim boot.wim\n", "/assets/windows-answers/31/omb-answer.xml"} {
+	for _, want := range []string{"kernel " + s.BootBaseURL + "/assets/windows/wimboot || goto ", "/assets/windows-profiles/17/boot.wim boot.wim || goto ", "/assets/windows-answers/31/omb-answer.xml"} {
 		if !strings.Contains(string(script), want) {
 			t.Errorf("Windows path changed: %s", want)
 		}

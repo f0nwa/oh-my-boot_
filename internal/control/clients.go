@@ -723,6 +723,15 @@ func (c *BootClient) SetMaintenance(ctx context.Context, state boot.MaintenanceS
 	return localCall(ctx, c.http, http.MethodPut, "/maintenance", body, nil)
 }
 
+// SetAccess pushes the allowed client subnet policy to omb-boot.
+func (c *BootClient) SetAccess(ctx context.Context, policy boot.ClientAccessPolicy) error {
+	body, err := json.Marshal(policy)
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, http.MethodPut, "/access", body, nil)
+}
+
 // BuildUEFICAUSB has the Agent build (or find in its cache) the
 // "enable the Microsoft UEFI CA key" USB stick archive of a profile.
 func (c *AgentClient) BuildUEFICAUSB(ctx context.Context, profileID int64, loader string) (ueficausb.Result, error) {

@@ -19,12 +19,12 @@ func windowsInjectedFiles(label string, files ...windowsInitrdFile) string {
 	out.WriteString("iseq ${platform} efi && goto " + label + "_efi_initrd || goto " + label + "_bios_initrd\n")
 	out.WriteString(":" + label + "_bios_initrd\n")
 	for _, file := range files {
-		out.WriteString("initrd " + file.url + " " + file.name + "\n")
+		out.WriteString("initrd " + file.url + " " + file.name + " || goto " + label + "_failed\n")
 	}
 	out.WriteString("goto " + label + "_initrd_done\n")
 	out.WriteString(":" + label + "_efi_initrd\n")
 	for _, file := range files {
-		out.WriteString("initrd -n " + file.name + " " + file.url + "\n")
+		out.WriteString("initrd -n " + file.name + " " + file.url + " || goto " + label + "_failed\n")
 	}
 	out.WriteString(":" + label + "_initrd_done\n")
 	return out.String()
@@ -65,8 +65,8 @@ func ubuntuBootScriptAt(label, seed, assetsURL, isoURL string) string {
 		args = " autoinstall ds=nocloud-net;s=" + seed
 	}
 	return ":" + label + "\n" +
-		"kernel " + assetsURL + "/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + isoURL + args + " ---\n" +
-		"initrd " + assetsURL + "/initrd\n" +
+		"kernel " + assetsURL + "/vmlinuz initrd=initrd boot=casper ip=dhcp iso-url=" + isoURL + args + " --- || goto " + label + "_failed\n" +
+		"initrd " + assetsURL + "/initrd || goto " + label + "_failed\n" +
 		"iseq ${platform} efi && goto " + label + "_efi || goto " + label + "_boot\n" +
 		":" + label + "_efi\n" +
 		"shim " + assetsURL + "/bootx64.efi || goto " + label + "_failed\n" +

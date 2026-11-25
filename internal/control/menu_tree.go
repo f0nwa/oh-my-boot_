@@ -391,9 +391,9 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			files = append(files, windowsInitrdFile{name: name, url: prefix + name})
 		}
 		out.WriteString(":" + profile.id + "\n" + choiceReport +
-			"kernel " + base + "/assets/windows/wimboot\n" +
+			"kernel " + base + "/assets/windows/wimboot || goto " + profile.id + "_failed\n" +
 			windowsInjectedFiles(profile.id, files...) +
-			"initrd " + wim + " boot.wim\n" +
+			"initrd " + wim + " boot.wim || goto " + profile.id + "_failed\n" +
 			"boot || goto " + profile.id + "_failed\n" +
 			":" + profile.id + "_failed\necho Service WinPE boot failed\nsleep 5\ngoto local\n")
 		return
@@ -409,9 +409,9 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			files = append(files, windowsInitrdFile{name: "omb-answer.xml", url: base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.driverAnswerID) + "/omb-answer.xml"})
 		}
 		out.WriteString(":" + profile.id + "\n" + choiceReport +
-			"kernel " + base + "/assets/windows/wimboot\n" +
+			"kernel " + base + "/assets/windows/wimboot || goto " + profile.id + "_failed\n" +
 			windowsInjectedFiles(profile.id, files...) +
-			"initrd " + base + "/assets/windows-driver-wims/" + profile.driverWIMKey + "/boot.wim boot.wim\n" +
+			"initrd " + base + "/assets/windows-driver-wims/" + profile.driverWIMKey + "/boot.wim boot.wim || goto " + profile.id + "_failed\n" +
 			"boot || goto " + profile.id + "_failed\n" +
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
 		return
@@ -429,9 +429,9 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			files = append(files, windowsInitrdFile{name: "omb-setup.cmd", url: startup})
 		}
 		out.WriteString(":" + profile.id + "\n" + choiceReport +
-			"kernel " + base + "/assets/windows/wimboot\n" +
+			"kernel " + base + "/assets/windows/wimboot || goto " + profile.id + "_failed\n" +
 			windowsInjectedFiles(profile.id, files...) +
-			"initrd " + prefix + "boot.wim boot.wim\n" +
+			"initrd " + prefix + "boot.wim boot.wim || goto " + profile.id + "_failed\n" +
 			"boot || goto " + profile.id + "_failed\n" +
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
 		return

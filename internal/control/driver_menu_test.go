@@ -102,9 +102,9 @@ func TestDriverMenuRendersSeparateEntriesAndFolders(t *testing.T) {
 		"item install_3001 Windows 11 Laptop A${sp",
 		"item install_3002 Windows 11 Laptop B${sp",
 		"item menu_root .. Back\n",
-		"initrd http://10.30.0.10:8080/assets/windows-driver-wims/" + configs[0].Build.WIMKey + "/boot.wim boot.wim\n",
-		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-driver-configs/2/omb-setup.cmd\n",
-		"initrd -n omb-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/omb-answer.xml\n",
+		"initrd http://10.30.0.10:8080/assets/windows-driver-wims/" + configs[0].Build.WIMKey + "/boot.wim boot.wim || goto install_3001_failed\n",
+		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-driver-configs/2/omb-setup.cmd || goto install_3002_failed\n",
+		"initrd -n omb-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/omb-answer.xml || goto install_3002_failed\n",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q", want)

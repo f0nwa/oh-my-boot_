@@ -48,7 +48,7 @@ func (a *Applier) UpdateWinPEScripts(ctx context.Context, attempts, retrySeconds
 	if a.WinPE == nil {
 		return nil, nil
 	}
-	updates, _, err := a.WinPE.apply(ctx, attempts, retrySeconds, exitAction)
+	updates, _, err := a.WinPE.apply(ctx, attempts, retrySeconds, exitAction, "")
 	return updates, err
 }
 
@@ -61,7 +61,7 @@ func (a *Applier) LastDriverUpdates() []DriverScriptUpdate {
 	return out
 }
 
-func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int, exitAction string) ([]DriverScriptUpdate, func() error, error) {
+func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int, exitAction, serverIP string) ([]DriverScriptUpdate, func() error, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -78,6 +78,10 @@ func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int
 	newTmpl, _, err = winpe.UpdateStartupExitAction(newTmpl, exitAction)
 	if err != nil {
 		return nil, nil, fmt.Errorf("update WinPE template exit action: %w", err)
+	}
+	newTmpl, _, err = winpe.UpdateStartupServerIP(newTmpl, serverIP)
+	if err != nil {
+		return nil, nil, fmt.Errorf("update WinPE template server IP: %w", err)
 	}
 	var oldCustom []byte
 	customExisted := false
@@ -103,13 +107,13 @@ func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int
 		})
 	}
 
-	profileMutations, err := planScriptDirUpdates(u.ProfileRoot, attempts, retrySeconds, exitAction)
+	profileMutations, err := planScriptDirUpdates(u.ProfileRoot, attempts, retrySeconds, exitAction, serverIP)
 	if err != nil {
 		return nil, nil, err
 	}
 	mutations = append(mutations, profileMutations...)
 
-	driverMutations, updates, err := planDriverConfigUpdates(u.DriverConfigRoot, attempts, retrySeconds, exitAction)
+	driverMutations, updates, err := planDriverConfigUpdates(u.DriverConfigRoot, attempts, retrySeconds, exitAction, serverIP)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -142,7 +146,7 @@ func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int
 	return updates, rollback, nil
 }
 
-func planScriptDirUpdates(root string, attempts, retrySeconds int, exitAction string) ([]fileMutation, error) {
+func planScriptDirUpdates(root string, attempts, retrySeconds int, exitAction, serverIP string) ([]fileMutation, error) {
 	if root == "" {
 		return nil, nil
 	}
@@ -176,7 +180,11 @@ func planScriptDirUpdates(root string, attempts, retrySeconds int, exitAction st
 			if err != nil {
 				return nil, fmt.Errorf("update %s exit action: %w", scriptPath, err)
 			}
-			if changedWait || changedExit {
+			newBytes, changedIP, err := winpe.UpdateStartupServerIP(newBytes, serverIP)
+			if err != nil {
+				return nil, fmt.Errorf("update %s server IP: %w", scriptPath, err)
+			}
+			if changedWait || changedExit || changedIP {
 				mutations = append(mutations, fileMutation{
 					path:       scriptPath,
 					mode:       info.Mode().Perm(),
@@ -190,7 +198,7 @@ func planScriptDirUpdates(root string, attempts, retrySeconds int, exitAction st
 	return mutations, nil
 }
 
-func planDriverConfigUpdates(root string, attempts, retrySeconds int, exitAction string) ([]fileMutation, []DriverScriptUpdate, error) {
+func planDriverConfigUpdates(root string, attempts, retrySeconds int, exitAction, serverIP string) ([]fileMutation, []DriverScriptUpdate, error) {
 	if root == "" {
 		return nil, nil, nil
 	}
@@ -246,6 +254,10 @@ func planDriverConfigUpdates(root string, attempts, retrySeconds int, exitAction
 		if err != nil {
 			return nil, nil, fmt.Errorf("update driver script %d exit action: %w", id, err)
 		}
+		newScript, changedIP, err := winpe.UpdateStartupServerIP(newScript, serverIP)
+		if err != nil {
+			return nil, nil, fmt.Errorf("update driver script %d server IP: %w", id, err)
+		}
 		newSum := sha256.Sum256(newScript)
 		newSHA := hex.EncodeToString(newSum[:])
 		updates = append(updates, DriverScriptUpdate{
@@ -253,7 +265,7 @@ func planDriverConfigUpdates(root string, attempts, retrySeconds int, exitAction
 			OldSHA:   oldSHA,
 			NewSHA:   newSHA,
 		})
-		if changedWait || changedExit {
+		if changedWait || changedExit || changedIP {
 			manifest.Result.ScriptSHA256 = newSHA
 			newManifest, err := json.Marshal(manifest)
 			if err != nil {

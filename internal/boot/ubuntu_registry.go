@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type ubuntuRegistryConfig struct {
@@ -42,6 +42,8 @@ type ubuntuRegistry struct {
 	loadSource   func(string, string) *UbuntuSource
 	transfers    *Transfers
 	maintenance  *MaintenanceManager
+	access       *AccessPolicyManager
+	record       func(Event)
 }
 
 // UbuntuRegistry shares verified source snapshots between the public and local APIs.
@@ -192,9 +194,11 @@ func (r *ubuntuRegistry) serve(w http.ResponseWriter, req *http.Request, iso boo
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	client, err := netip.ParseAddrPort(req.RemoteAddr)
-	if err != nil || !netip.MustParsePrefix("10.30.0.0/24").Contains(client.Addr()) {
+	if !r.access.Allows(req.RemoteAddr) {
 		http.NotFound(w, req)
+		if r.record != nil {
+			r.record(Event{Kind: "asset", Path: req.URL.Path, RemoteAddr: req.RemoteAddr, At: time.Now().UTC(), Status: http.StatusNotFound})
+		}
 		return
 	}
 	prefix := "/assets/ubuntu/"

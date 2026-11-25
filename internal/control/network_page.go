@@ -8,10 +8,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"omb/internal/agent"
+	"omb/internal/boot"
 	"omb/internal/network"
 )
 
@@ -28,15 +31,51 @@ func parseWinPEFormInt(raw string) int {
 }
 
 func networkForm(r *http.Request) network.Config {
+	clientAccess := strings.TrimSpace(r.FormValue("client_access"))
+	var allowedSubnets []string
+	if clientAccess == network.ClientAccessSubnets {
+		raw := r.FormValue("allowed_client_subnets")
+		if parsed, err := network.ParseAllowedSubnets(raw); err == nil {
+			allowedSubnets = parsed
+		} else {
+			allowedSubnets = strings.FieldsFunc(raw, func(r rune) bool {
+				return unicode.IsSpace(r) || r == ',' || r == ';'
+			})
+		}
+	}
 	return network.Config{
 		Mode: r.FormValue("mode"), Interface: r.FormValue("interface"), ServerIP: r.FormValue("server_ip"), Subnet: r.FormValue("subnet"),
-		DHCPStart: r.FormValue("dhcp_start"), DHCPEnd: r.FormValue("dhcp_end"), BootURL: r.FormValue("boot_url"), TFTPRoot: r.FormValue("tftp_root"),
+		ClientAccess:         clientAccess,
+		AllowedClientSubnets: allowedSubnets,
+		DHCPStart:            r.FormValue("dhcp_start"), DHCPEnd: r.FormValue("dhcp_end"), BootURL: r.FormValue("boot_url"), TFTPRoot: r.FormValue("tftp_root"),
 		DefaultDriver:        r.FormValue("default_driver"),
 		ReuseFirmwareNetwork: r.FormValue("reuse_firmware_network") == "true",
 		WinPETimeoutSeconds:  parseWinPEFormInt(r.FormValue("winpe_timeout")),
 		WinPERetrySeconds:    parseWinPEFormInt(r.FormValue("winpe_retry")),
 		WinPEExitAction:      strings.TrimSpace(r.FormValue("winpe_exit_action")),
 	}
+}
+
+func bootAccessPolicyFromNetwork(c network.Config) boot.ClientAccessPolicy {
+	if c.EffectiveClientAccess() == network.ClientAccessAny {
+		return boot.ClientAccessPolicy{Mode: boot.AccessModeAny}
+	}
+	return boot.ClientAccessPolicy{
+		Mode:    boot.AccessModeSubnets,
+		Subnets: c.EffectiveAllowedSubnets(),
+	}
+}
+
+// SyncBootAccess pushes the active network client access policy from Agent to Boot.
+func (s *Server) SyncBootAccess(ctx context.Context) error {
+	if s.Agent == nil || s.Boot == nil {
+		return nil
+	}
+	cfg, err := s.Agent.Config(ctx)
+	if err != nil || cfg.Subnet == "" {
+		return err
+	}
+	return s.Boot.SetAccess(ctx, bootAccessPolicyFromNetwork(cfg))
 }
 
 func networkConfirmation(token string, c network.Config) string {
@@ -157,6 +196,9 @@ func (s *Server) networkApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	updates, err := s.Agent.ApplyWithWinPE(r.Context(), c)
+	if err == nil && s.Boot != nil {
+		err = s.Boot.SetAccess(r.Context(), bootAccessPolicyFromNetwork(c))
+	}
 	if err == nil {
 		err = s.syncWinPEDriverScripts(r.Context(), updates)
 	}
@@ -164,7 +206,7 @@ func (s *Server) networkApply(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		result = "error"
 	}
-	_ = s.Store.Audit(r.Context(), info.User.ID, "network.apply", result, fmt.Sprintf("mode=%s interface=%s subnet=%s reuse_firmware_network=%t winpe_timeout=%d winpe_retry=%d winpe_exit_action=%s", c.Mode, c.Interface, c.Subnet, c.ReuseFirmwareNetwork, c.EffectiveWinPETimeout(), c.EffectiveWinPERetry(), c.EffectiveWinPEExitAction()))
+	_ = s.Store.Audit(r.Context(), info.User.ID, "network.apply", result, fmt.Sprintf("mode=%s interface=%s subnet=%s client_access=%s reuse_firmware_network=%t winpe_timeout=%d winpe_retry=%d winpe_exit_action=%s", c.Mode, c.Interface, c.Subnet, c.EffectiveClientAccess(), c.ReuseFirmwareNetwork, c.EffectiveWinPETimeout(), c.EffectiveWinPERetry(), c.EffectiveWinPEExitAction()))
 	active, readErr := s.Agent.Config(r.Context())
 	data := pageData{Info: info, Network: active, HasNetwork: readErr == nil}
 	if err != nil {
@@ -191,6 +233,23 @@ func (p pageData) NetworkChangedServerIP() bool {
 
 func (p pageData) NetworkChangedSubnet() bool {
 	return p.OldNetwork.Subnet != p.Network.Subnet
+}
+
+func (p pageData) NetworkChangedClientAccess() bool {
+	return p.OldNetwork.EffectiveClientAccess() != p.Network.EffectiveClientAccess() ||
+		!reflect.DeepEqual(p.OldNetwork.AllowedClientSubnets, p.Network.AllowedClientSubnets)
+}
+
+func (p pageData) AllowedClientSubnetsText() string {
+	return strings.Join(p.Network.AllowedClientSubnets, "\n")
+}
+
+func (p pageData) OldAllowedClientSubnetsText() string {
+	return strings.Join(p.OldNetwork.AllowedClientSubnets, ", ")
+}
+
+func (p pageData) NewAllowedClientSubnetsText() string {
+	return strings.Join(p.Network.AllowedClientSubnets, ", ")
 }
 
 func (p pageData) NetworkChangedDefaultDriver() bool {
@@ -239,6 +298,9 @@ func (p pageData) NetworkChangesCount() int {
 		count++
 	}
 	if p.NetworkChangedSubnet() {
+		count++
+	}
+	if p.NetworkChangedClientAccess() {
 		count++
 	}
 	if p.NetworkChangedDefaultDriver() {

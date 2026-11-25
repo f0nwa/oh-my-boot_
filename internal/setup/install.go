@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"omb/internal/winpe"
 )
 
 const (
@@ -473,8 +475,20 @@ func (in *Installer) Execute(ctx context.Context, opts Options) error {
 	// 6. Write service environment files.
 	in.progress("config", "Writing service configuration")
 	bootEnv := fmt.Sprintf("OMB_BOOT_BASE_URL=%s\nOMB_BOOT_DATABASE_URL=%q\n", bootURL, bootDSN)
+	if !opts.SkipPXE && opts.PXESubnet != "" {
+		bootEnv += fmt.Sprintf("OMB_BOOT_ALLOWED_SUBNETS=%s\n", opts.PXESubnet)
+	}
 	if err := writeFileAtomic(in.resolve("/etc/omb/boot.env"), []byte(bootEnv), 0o600); err != nil {
 		return fmt.Errorf("write boot.env: %w", err)
+	}
+	if !opts.SkipPXE && opts.PXEServerIP != "" {
+		if rawTmpl, err := os.ReadFile(in.resolve("/usr/share/omb/windows-profiles/omb-setup.cmd.in")); err == nil {
+			if updatedTmpl, _, err := winpe.UpdateStartupServerIP(rawTmpl, opts.PXEServerIP); err == nil {
+				if err := writeFileAtomic(in.resolve("/etc/omb/windows-profiles/omb-setup.cmd.in"), updatedTmpl, 0o644); err != nil {
+					return fmt.Errorf("write omb-setup.cmd.in: %w", err)
+				}
+			}
+		}
 	}
 	controlEnv := fmt.Sprintf("OMB_CONTROL_LISTEN=%s:8443\nOMB_CONTROL_INTERFACES=%s\nOMB_CONTROL_BOOT_BASE_URL=%s\nOMB_CONTROL_DATABASE_URL=%q\n",
 		opts.ManagementIP, allowedIfaces, bootURL, controlDSN)

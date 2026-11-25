@@ -19,6 +19,27 @@ type Publisher struct {
 	menu        []byte
 	hash        string
 	maintenance *MaintenanceManager
+	access      *AccessPolicyManager
+}
+
+// SetAccess attaches a client access policy manager used on private reads.
+func (p *Publisher) SetAccess(a *AccessPolicyManager) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.access = a
+	p.mu.Unlock()
+}
+
+// Access returns the attached client access policy manager, if any.
+func (p *Publisher) Access() *AccessPolicyManager {
+	if p == nil {
+		return nil
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.access
 }
 
 // SetMaintenance attaches an optional maintenance manager used on client reads.

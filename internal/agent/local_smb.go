@@ -118,25 +118,34 @@ func (m *LocalSMBManager) localISORoot() string {
 	return "/var/lib/omb-images/iso"
 }
 
-func (m *LocalSMBManager) readNetworkConfig() (iface, subnet string) {
+func (m *LocalSMBManager) readNetworkConfig() (iface, hostsAllow string) {
 	iface = "ens19"
-	subnet = "10.30.0.0/24"
+	hostsAllow = "10.30.0.0/24"
 
 	data, err := os.ReadFile(m.networkStatePath())
 	if err != nil {
-		return iface, subnet
+		return iface, hostsAllow
 	}
 	var cfg network.Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return iface, subnet
+		return iface, hostsAllow
 	}
 	if cfg.Interface != "" {
 		iface = cfg.Interface
 	}
-	if cfg.Subnet != "" {
-		subnet = cfg.Subnet
+	switch cfg.EffectiveClientAccess() {
+	case network.ClientAccessAny:
+		hostsAllow = ""
+	case network.ClientAccessSubnets:
+		if allowed := cfg.EffectiveAllowedSubnets(); len(allowed) > 0 {
+			hostsAllow = strings.Join(allowed, " ")
+		}
+	default:
+		if cfg.Subnet != "" {
+			hostsAllow = cfg.Subnet
+		}
 	}
-	return iface, subnet
+	return iface, hostsAllow
 }
 
 func (m *LocalSMBManager) ApplyConfig(ctx context.Context, cfg LocalSMBConfig) error {
@@ -324,7 +333,9 @@ func renderDisabledSMBConf(pxeIface, pxeSubnet string) string {
 	b.WriteString("   map to guest = Never\n")
 	fmt.Fprintf(&b, "   interfaces = lo %s\n", pxeIface)
 	b.WriteString("   bind interfaces only = yes\n")
-	fmt.Fprintf(&b, "   hosts allow = 127.0.0.1 %s\n", pxeSubnet)
+	if pxeSubnet != "" {
+		fmt.Fprintf(&b, "   hosts allow = 127.0.0.1 %s\n", pxeSubnet)
+	}
 	b.WriteString("   smb ports = 445\n")
 	b.WriteString("   server min protocol = SMB2_02\n")
 	b.WriteString("   server signing = mandatory\n")
@@ -339,7 +350,9 @@ func renderDisabledSMBConf(pxeIface, pxeSubnet string) string {
 	b.WriteString("   read only = yes\n")
 	b.WriteString("   guest ok = no\n")
 	b.WriteString("   valid users = omb-iso\n")
-	fmt.Fprintf(&b, "   hosts allow = 127.0.0.1 %s\n", pxeSubnet)
+	if pxeSubnet != "" {
+		fmt.Fprintf(&b, "   hosts allow = 127.0.0.1 %s\n", pxeSubnet)
+	}
 	return b.String()
 }
 
@@ -384,7 +397,9 @@ func renderEnabledSMBConf(opts renderSMBOptions) string {
 	b.WriteString("   read only = yes\n")
 	b.WriteString("   guest ok = no\n")
 	b.WriteString("   valid users = omb-iso\n")
-	fmt.Fprintf(&b, "   hosts allow = 127.0.0.1 %s\n", opts.pxeSubnet)
+	if opts.pxeSubnet != "" {
+		fmt.Fprintf(&b, "   hosts allow = 127.0.0.1 %s\n", opts.pxeSubnet)
+	}
 	b.WriteString("\n")
 	b.WriteString("[iso]\n")
 	fmt.Fprintf(&b, "   path = %s\n", opts.isoRoot)

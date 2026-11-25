@@ -51,10 +51,10 @@ func TestMenuFoldersProduceNestedNavigationAndBootEntries(t *testing.T) {
 			"boot || goto install_999_failed\n",
 		"item install_1001 Windows 10x64\n",
 		"item install_1002 Windows 11 x64\n",
-		"kernel http://10.30.0.10:8080/assets/windows/wimboot\n",
-		"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows-profiles/2/winpeshl.ini\n",
-		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/2/omb-setup.cmd\n",
-		"initrd http://10.30.0.10:8080/assets/windows-profiles/2/boot.wim boot.wim\n",
+		"kernel http://10.30.0.10:8080/assets/windows/wimboot || goto install_1001_failed\n",
+		"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows-profiles/2/winpeshl.ini || goto install_1002_failed\n",
+		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/2/omb-setup.cmd || goto install_1002_failed\n",
+		"initrd http://10.30.0.10:8080/assets/windows-profiles/2/boot.wim boot.wim || goto install_1002_failed\n",
 		"item local Boot local disk\n",
 	} {
 		if !strings.Contains(got, want) {

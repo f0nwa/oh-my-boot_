@@ -132,6 +132,9 @@ func main() {
 	if err := server.SyncBootDrivers(pingCtx); err != nil {
 		log.Printf("boot driver synchronization: %v", err)
 	}
+	if err := server.SyncBootAccess(pingCtx); err != nil {
+		log.Printf("boot access synchronization: %v", err)
+	}
 	if err := server.SyncMaintenance(pingCtx); err != nil {
 		log.Printf("maintenance synchronization: %v", err)
 	}

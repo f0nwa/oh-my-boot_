@@ -76,6 +76,28 @@ func controlMux(p *Publisher, events EventReader, transfers *Transfers, assets *
 		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(info)
 	})
+	mux.HandleFunc("GET /access", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(p.Access().Current())
+	})
+	mux.HandleFunc("PUT /access", func(w http.ResponseWriter, r *http.Request) {
+		a := p.Access()
+		if a == nil {
+			http.Error(w, "access policy unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var policy ClientAccessPolicy
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&policy); err != nil {
+			http.Error(w, "invalid access policy payload", http.StatusBadRequest)
+			return
+		}
+		if err := a.Set(policy); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(a.Current())
+	})
 	mux.HandleFunc("GET /maintenance", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(p.Maintenance().Current())

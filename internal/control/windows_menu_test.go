@@ -58,9 +58,9 @@ func TestWindowsMenuPublishesSeparateProfilesAndFolders(t *testing.T) {
 	got := string(script)
 	for _, want := range []string{
 		"menu oh my boot_ / Windows" + menuTitleSuffix + "\nitem menu_root .. Back\nitem --gap\nitem install_1017 Windows 10 x64\nitem install_1018 Windows 11 x64\n",
-		":install_1017\nimgfetch --name omb-choice http://10.30.0.10:8080/boot/choice?id=1017 && imgfree omb-choice || echo -n\nkernel http://10.30.0.10:8080/assets/windows/wimboot\n",
-		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-setup.cmd\n",
-		"initrd http://10.30.0.10:8080/assets/windows-profiles/18/boot.wim boot.wim\n",
+		":install_1017\nimgfetch --name omb-choice http://10.30.0.10:8080/boot/choice?id=1017 && imgfree omb-choice || echo -n\nkernel http://10.30.0.10:8080/assets/windows/wimboot || goto install_1017_failed\n",
+		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-setup.cmd || goto install_1017_failed\n",
+		"initrd http://10.30.0.10:8080/assets/windows-profiles/18/boot.wim boot.wim || goto install_1018_failed\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q", want)
@@ -83,14 +83,14 @@ func TestWindowsProfileMenuUsesPlainInitrdNamesForBIOS(t *testing.T) {
 	for _, want := range []string{
 		"iseq ${platform} efi && goto install_1017_efi_initrd || goto install_1017_bios_initrd\n",
 		":install_1017_bios_initrd\n" +
-			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini winpeshl.ini\n" +
-			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/omb-setup.cmd omb-setup.cmd\n" +
+			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini winpeshl.ini || goto install_1017_failed\n" +
+			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/omb-setup.cmd omb-setup.cmd || goto install_1017_failed\n" +
 			"goto install_1017_initrd_done\n",
 		":install_1017_efi_initrd\n" +
-			"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini\n" +
-			"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-setup.cmd\n" +
+			"initrd -n winpeshl.ini http://10.30.0.10:8080/assets/windows-profiles/17/winpeshl.ini || goto install_1017_failed\n" +
+			"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-setup.cmd || goto install_1017_failed\n" +
 			":install_1017_initrd_done\n" +
-			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim\n",
+			"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim || goto install_1017_failed\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in generated menu", want)
@@ -144,9 +144,9 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 		"item install_1017 Windows 11 x64\n",
 		"item install_2031 Windows 11 Lab A${sp",
 		"item install_2032 Windows 11 Lab B${sp",
-		"initrd -n omb-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/omb-answer.xml\n",
-		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-answer-setup.cmd\n",
-		"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim\n",
+		"initrd -n omb-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/omb-answer.xml || goto install_2031_failed\n",
+		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-answer-setup.cmd || goto install_2031_failed\n",
+		"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim || goto install_1017_failed\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q", want)

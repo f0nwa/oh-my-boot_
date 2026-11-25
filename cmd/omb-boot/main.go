@@ -35,6 +35,7 @@ func main() {
 		log.Fatal(err)
 	}
 	publisher.SetMaintenance(boot.NewMaintenanceManager(filepath.Join(filepath.Dir(*snapshot), "maintenance.json")))
+	publisher.SetAccess(boot.NewAccessPolicyManager(filepath.Join(filepath.Dir(*snapshot), "access.json"), os.Getenv("OMB_BOOT_ALLOWED_SUBNETS")))
 	var store boot.EventStore
 	var reader boot.EventReader
 	journal := &boot.Journal{Path: filepath.Join(filepath.Dir(*snapshot), "journal.json")}

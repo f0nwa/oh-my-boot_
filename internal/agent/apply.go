@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"time"
 
@@ -149,14 +150,18 @@ func (a *Applier) Apply(ctx context.Context, c network.Config) error {
 	winpeRollback := func() error { return nil }
 	if a.WinPE != nil {
 		var err error
-		updates, winpeRollback, err = a.WinPE.apply(ctx, c.WinPEAttempts(), c.EffectiveWinPERetry(), c.EffectiveWinPEExitAction())
+		updates, winpeRollback, err = a.WinPE.apply(ctx, c.WinPEAttempts(), c.EffectiveWinPERetry(), c.EffectiveWinPEExitAction(), c.ServerIP)
 		if err != nil {
 			return err
 		}
 	}
 
-	dnsmasqUnchanged := a.status.Applied && previousExists && string(previous) == content &&
-		(c.EffectiveWinPETimeout() != a.current.EffectiveWinPETimeout() || c.EffectiveWinPERetry() != a.current.EffectiveWinPERetry() || c.EffectiveWinPEExitAction() != a.current.EffectiveWinPEExitAction())
+	clientAccessChanged := c.EffectiveClientAccess() != a.current.EffectiveClientAccess() ||
+		!reflect.DeepEqual(c.EffectiveAllowedSubnets(), a.current.EffectiveAllowedSubnets())
+	winpeChanged := c.EffectiveWinPETimeout() != a.current.EffectiveWinPETimeout() ||
+		c.EffectiveWinPERetry() != a.current.EffectiveWinPERetry() ||
+		c.EffectiveWinPEExitAction() != a.current.EffectiveWinPEExitAction()
+	dnsmasqUnchanged := a.status.Applied && previousExists && string(previous) == content && (winpeChanged || clientAccessChanged)
 	if !dnsmasqUnchanged {
 		candidate, err := writeCandidate(a.configPath, []byte(content), 0o640)
 		if err != nil {
@@ -180,7 +185,7 @@ func (a *Applier) Apply(ctx context.Context, c network.Config) error {
 	if err := writeAtomic(a.statePath, state, 0o600); err != nil {
 		return errors.Join(fmt.Errorf("save agent state: %w", err), a.rollback(ctx, previous, previousExists), winpeRollback())
 	}
-	if !dnsmasqUnchanged && a.LocalSMB != nil {
+	if (!dnsmasqUnchanged || clientAccessChanged) && a.LocalSMB != nil {
 		if err := a.LocalSMB.SyncPXENetwork(ctx); err != nil {
 			return errors.Join(
 				fmt.Errorf("sync samba for PXE network: %w", err),

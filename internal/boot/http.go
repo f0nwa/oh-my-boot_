@@ -3,7 +3,6 @@ package boot
 import (
 	"fmt"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -74,6 +73,12 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 	}
 	if m := publisher.Maintenance(); m != nil {
 		ubuntuSources.maintenance = m
+	}
+	if a := publisher.Access(); a != nil {
+		ubuntuSources.access = a
+	}
+	if record != nil {
+		ubuntuSources.record = record
 	}
 	strictLegacyUbuntu := len(registries) > 0 && registries[0] != nil
 
@@ -208,9 +213,8 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 		}
 		private := privateWinPEScript(name) || validWindowsAnswerAsset(name) || autoinstall
 		if private {
-			client, err := netip.ParseAddrPort(r.RemoteAddr)
-			if err != nil || !netip.MustParsePrefix("10.30.0.0/24").Contains(client.Addr()) {
-				http.NotFound(w, r)
+			if !publisher.Access().Allows(r.RemoteAddr) {
+				notFound()
 				return
 			}
 			w.Header().Set("Cache-Control", "no-store")

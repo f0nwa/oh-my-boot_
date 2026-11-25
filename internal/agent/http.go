@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -337,6 +339,14 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(result)
 	})
+	mux.HandleFunc("GET /smb/accounts", func(w http.ResponseWriter, _ *http.Request) {
+		if manager == nil {
+			http.Error(w, "SMB unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(manager.ListAccounts())
+	})
 	mux.HandleFunc("POST /smb/mount", func(w http.ResponseWriter, r *http.Request) {
 		if manager == nil {
 			http.Error(w, "SMB unavailable", http.StatusServiceUnavailable)
@@ -350,9 +360,19 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 			http.Error(w, "invalid SMB request", http.StatusBadRequest)
 			return
 		}
+		var stoppedProfiles []string
+		if windows != nil && manager.MountRoot != "" && manager.UnitDir != "" {
+			target := filepath.Join(manager.MountRoot, req.Key)
+			if _, err := os.Lstat(filepath.Join(manager.UnitDir, smbUnitName(target))); err == nil {
+				stoppedProfiles, _ = windows.StopProfilesOn(r.Context(), []string{target})
+			}
+		}
 		if err := manager.Mount(r.Context(), req); err != nil {
 			http.Error(w, "SMB mount failed", http.StatusServiceUnavailable)
 			return
+		}
+		if windows != nil && len(stoppedProfiles) > 0 {
+			_, _ = windows.RecoverProfiles(r.Context())
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})

@@ -451,6 +451,14 @@ func (c *AgentClient) Mount(ctx context.Context, key, server, share, subpath, us
 	return localCall(ctx, c.http, "POST", "/smb/mount", body, nil)
 }
 
+func (c *AgentClient) SMBAccounts(ctx context.Context) (map[string]agent.SMBAccountInfo, error) {
+	var accounts map[string]agent.SMBAccountInfo
+	if err := localCall(ctx, c.http, "GET", "/smb/accounts", nil, &accounts); err != nil {
+		return nil, err
+	}
+	return accounts, nil
+}
+
 func (c *AgentClient) EnableUpload(ctx context.Context, key, server, share, subpath string) error {
 	body, err := json.Marshal(map[string]string{"key": key, "server": server, "share": share, "subpath": subpath})
 	if err != nil {

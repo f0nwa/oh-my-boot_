@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"omb/internal/agent"
 	"omb/internal/images"
 )
 
@@ -49,8 +50,13 @@ type fakeSMBMountAPI struct {
 	mountErr     error
 	uploadErr    error
 	removeErr    error
+	accounts     map[string]agent.SMBAccountInfo
 	mountStarted chan struct{}
 	mountRelease <-chan struct{}
+}
+
+func (f *fakeSMBMountAPI) SMBAccounts(_ context.Context) (map[string]agent.SMBAccountInfo, error) {
+	return f.accounts, nil
 }
 
 func (f *fakeSMBMountAPI) Mount(_ context.Context, _, _, _, _, _, _, _ string) error {
@@ -254,5 +260,49 @@ func TestSMBConnectionReportsWriteProbeFailure(t *testing.T) {
 				t.Fatalf("status=%d events=%v body=%s", res.Code, events, res.Body.String())
 			}
 		})
+	}
+}
+
+func TestStoragesPageDisplaysSMBAccountAndRetryAttributes(t *testing.T) {
+	api := &fakeImagesAPI{
+		catalog: images.Catalog{
+			Storages: []images.Storage{
+				{ID: 7, Name: "NAS-ISO", Kind: "smb", Key: "0123456789abcdef0123456789abcdef", Server: "10.206.42.54", Share: "ISO", State: "ready", Uploads: true},
+				{ID: 8, Name: "NAS-Corp", Kind: "smb", Key: "fedcba9876543210fedcba9876543210", Server: "10.206.42.10", Share: "share", Subpath: "iso", State: "ready", Uploads: true},
+			},
+		},
+	}
+	smbAPI := &fakeSMBMountAPI{
+		accounts: map[string]agent.SMBAccountInfo{
+			"0123456789abcdef0123456789abcdef": {Username: "omb-pxe"},
+			"fedcba9876543210fedcba9876543210": {Username: "svc-omb", Domain: "CORP"},
+		},
+	}
+	s := &Server{
+		Store:  authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
+		Images: api,
+		SMB:    smbAPI,
+	}
+	req := httptest.NewRequest(http.MethodGet, "/storages", nil)
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /storages status=%d body=%s", res.Code, res.Body.String())
+	}
+	body := res.Body.String()
+	for _, want := range []string{
+		`class="storage-smb-user"`,
+		`Пользователь:`,
+		`omb-pxe`,
+		`CORP\svc-omb`,
+		`data-smb-retry-user="omb-pxe"`,
+		`data-smb-retry-user="svc-omb" data-smb-retry-domain="CORP"`,
+		`id="smb-retry-current"`,
+		`Сейчас подключено как`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("/storages missing %q", want)
+		}
 	}
 }

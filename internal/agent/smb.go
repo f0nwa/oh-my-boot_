@@ -21,6 +21,11 @@ type SMBMountRequest struct {
 	Domain   string `json:"domain"`
 }
 
+type SMBAccountInfo struct {
+	Username string `json:"username"`
+	Domain   string `json:"domain,omitempty"`
+}
+
 type SMBSystemctl interface {
 	Run(context.Context, ...string) error
 }
@@ -245,6 +250,42 @@ func (m *SMBManager) Remove(ctx context.Context, key string) error {
 		return err
 	}
 	return nil
+}
+
+func (m *SMBManager) ListAccounts() map[string]SMBAccountInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]SMBAccountInfo)
+	if m.CredentialsDir == "" {
+		return out
+	}
+	files, err := filepath.Glob(filepath.Join(m.CredentialsDir, "*.cred"))
+	if err != nil {
+		return out
+	}
+	for _, path := range files {
+		key := strings.TrimSuffix(filepath.Base(path), ".cred")
+		if key == "" || strings.ContainsAny(key, "/\\") {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var info SMBAccountInfo
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimRight(line, "\r")
+			if strings.HasPrefix(line, "username=") {
+				info.Username = strings.TrimPrefix(line, "username=")
+			} else if strings.HasPrefix(line, "domain=") {
+				info.Domain = strings.TrimPrefix(line, "domain=")
+			}
+		}
+		if info.Username != "" {
+			out[key] = info
+		}
+	}
+	return out
 }
 
 func optionalDomain(domain string) string {

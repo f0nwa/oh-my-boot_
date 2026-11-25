@@ -10,9 +10,28 @@ import (
 	"strconv"
 	"strings"
 
+	"omb/internal/agent"
 	"omb/internal/images"
 	"omb/internal/smbstorage"
 )
+
+type smbAccountsAPI interface {
+	SMBAccounts(ctx context.Context) (map[string]agent.SMBAccountInfo, error)
+}
+
+func (s *Server) smbAccounts(ctx context.Context) map[string]agent.SMBAccountInfo {
+	if api, ok := s.SMB.(smbAccountsAPI); ok && api != nil {
+		if accounts, err := api.SMBAccounts(ctx); err == nil {
+			return accounts
+		}
+	}
+	if s.Agent != nil {
+		if accounts, err := s.Agent.SMBAccounts(ctx); err == nil {
+			return accounts
+		}
+	}
+	return nil
+}
 
 func newSMBKey() (string, error) {
 	buf := make([]byte, 16)
@@ -110,6 +129,10 @@ func (s *Server) imagesSMBRetry(w http.ResponseWriter, r *http.Request) {
 	}
 	if storage.State == "scanning" {
 		http.Error(w, "Дождитесь завершения сканирования", http.StatusConflict)
+		return
+	}
+	if counts := s.countActiveDrainClients(r.Context()); counts.byStorage[storage.ID] > 0 {
+		http.Error(w, "Нельзя переподключить хранилище: сейчас идёт установка на клиентах. Дождитесь завершения или включите режим обслуживания.", http.StatusConflict)
 		return
 	}
 	username, password, domain := r.FormValue("username"), r.FormValue("password"), r.FormValue("domain")

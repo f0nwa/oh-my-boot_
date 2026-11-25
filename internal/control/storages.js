@@ -332,6 +332,8 @@
       var id = retryBtn.getAttribute('data-smb-retry-id') || '';
       var name = retryBtn.getAttribute('data-smb-retry-name') || '';
       var path = retryBtn.getAttribute('data-smb-retry-path') || '';
+      var currentUser = retryBtn.getAttribute('data-smb-retry-user') || '';
+      var currentDomain = retryBtn.getAttribute('data-smb-retry-domain') || '';
 
       if (retryForm) {
         retryForm.reset();
@@ -345,9 +347,29 @@
       if (pathEl) {
         pathEl.textContent = path;
       }
+      var curBox = document.getElementById('smb-retry-current');
+      var curVal = document.getElementById('smb-retry-current-val');
+      if (curBox && curVal) {
+        if (currentUser) {
+          curVal.textContent = currentDomain ? (currentDomain + '\\' + currentUser) : currentUser;
+          curBox.hidden = false;
+        } else {
+          curVal.textContent = '';
+          curBox.hidden = true;
+        }
+      }
+      var retryDomainInput = retryDialog.querySelector('input[name="domain"]');
+      if (retryUserInput) {
+        retryUserInput.value = currentUser;
+      }
+      if (retryDomainInput) {
+        retryDomainInput.value = currentDomain;
+      }
       updateSmbRetrySubmit();
       retryDialog.showModal();
-      if (retryUserInput) {
+      if (currentUser && retryPwInput) {
+        retryPwInput.focus();
+      } else if (retryUserInput) {
         retryUserInput.focus();
       }
       return;

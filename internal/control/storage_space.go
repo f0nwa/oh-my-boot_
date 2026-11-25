@@ -68,6 +68,18 @@ type storageRowView struct {
 	Maintenance              bool
 	MaintenanceReason        string
 	MaintenanceActiveClients int
+	SMBUsername              string
+	SMBDomain                string
+}
+
+func (r storageRowView) SMBAccountDisplay() string {
+	if r.SMBUsername == "" {
+		return ""
+	}
+	if r.SMBDomain != "" {
+		return r.SMBDomain + `\` + r.SMBUsername
+	}
+	return r.SMBUsername
 }
 
 type artifactLink struct {
@@ -553,12 +565,19 @@ func (s *Server) loadStorageSpace(ctx context.Context, data *pageData, catalog *
 	view := buildStorageSpaceView(in)
 	lookup := s.loadMaintenanceLookup(ctx)
 	counts := s.countActiveDrainClients(ctx)
+	accounts := s.smbAccounts(ctx)
 	for i := range view.Storages {
 		id := view.Storages[i].ID
 		view.Storages[i].MaintenanceActiveClients = counts.byStorage[id]
 		if lock, ok := lookup.StorageLock(id); ok {
 			view.Storages[i].Maintenance = true
 			view.Storages[i].MaintenanceReason = lock.Reason
+		}
+		if view.Storages[i].Kind == "smb" && accounts != nil {
+			if acc, ok := accounts[view.Storages[i].Key]; ok {
+				view.Storages[i].SMBUsername = acc.Username
+				view.Storages[i].SMBDomain = acc.Domain
+			}
 		}
 	}
 	data.StorageSpace = &view

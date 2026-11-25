@@ -182,6 +182,68 @@ ExecStart=
 ExecStart=/usr/lib/systemd/systemd-networkd-wait-online --any --timeout=15
 EOF
 
+# Enable SSH password login (works with omb/omb after mandatory first-login password change
+# and with Cloud-Init passwords) and guarantee SSH host key generation without Cloud-Init.
+mkdir -p "$MNT_DIR/etc/ssh/sshd_config.d"
+if [[ -f "$MNT_DIR/etc/ssh/sshd_config.d/60-cloudimg-settings.conf" ]]; then
+    sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' "$MNT_DIR/etc/ssh/sshd_config.d/60-cloudimg-settings.conf"
+fi
+cat > "$MNT_DIR/etc/ssh/sshd_config.d/50-omb-ssh.conf" <<'EOF'
+PasswordAuthentication yes
+EOF
+
+cat > "$MNT_DIR/etc/systemd/system/omb-ssh-hostkeys.service" <<'EOF'
+[Unit]
+Description=Generate missing SSH host keys on first boot
+ConditionPathExistsGlob=!/etc/ssh/ssh_host_*_key
+Before=ssh.service ssh.socket
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Fallback DHCP netplan config when booted from OVA without Cloud-Init (skipped if any netplan YAML exists)
+cat > "$MNT_DIR/usr/local/sbin/omb-fallback-net" <<'EOF'
+#!/bin/sh
+set -eu
+cat > /etc/netplan/60-omb-dhcp.yaml <<'YAML'
+network:
+  version: 2
+  ethernets:
+    all-en:
+      match:
+        name: "en*"
+      dhcp4: true
+      optional: true
+YAML
+chmod 0600 /etc/netplan/60-omb-dhcp.yaml
+/usr/sbin/netplan apply
+EOF
+chmod 0755 "$MNT_DIR/usr/local/sbin/omb-fallback-net"
+
+cat > "$MNT_DIR/etc/systemd/system/omb-fallback-net.service" <<'EOF'
+[Unit]
+Description=Configure fallback DHCP on Ethernet NICs when Cloud-Init is absent
+After=cloud-init-local.service
+Before=systemd-networkd-wait-online.service
+ConditionPathExistsGlob=!/etc/netplan/*.yaml
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/omb-fallback-net
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+chroot "$MNT_DIR" systemctl enable omb-ssh-hostkeys.service omb-fallback-net.service
+
 # Add first-boot MOTD banner prompting sudo omb-setup until configured
 cat > "$MNT_DIR/etc/update-motd.d/99-oh-my-boot" <<'EOF'
 #!/bin/sh

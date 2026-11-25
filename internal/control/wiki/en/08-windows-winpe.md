@@ -4,7 +4,7 @@ section: os-scenarios
 order: 10
 title: Deploying Windows 10/11 via WinPE
 summary: How OMB prepares and boots Windows 10 and 11 images over the network using wimboot, WinPE, and an isolated Samba share.
-keywords: [windows, winpe, wimboot, omb-setup.cmd, ombisos, setup.exe, iso]
+keywords: [windows, winpe, wimboot, omb-setup.cmd, ombisos, setup.exe, iso, media not ready, retrying, wpeinit]
 ---
 
 OMB deploys Windows 10 and Windows 11 (verified including Windows 11 26H2) on Legacy BIOS and UEFI (with or without Secure Boot) without WDS and without modifying the original ISO files.
@@ -40,6 +40,30 @@ Under [System → Network](/network) in the **WinPE (Windows Setup)** section, t
 - **Action after Windows Setup exits:** reboot, shut down, or open a WinPE command prompt (useful for troubleshooting).
 
 When you save new values, `omb-agent` atomically updates the template, regenerates all prepared `omb-setup.cmd` scripts (including Strelec service images), recalculates their `script_sha256`, and refreshes the active menu without restarting `dnsmasq`.
+
+## Reading the WinPE console output (`omb-setup.cmd`)
+
+During WinPE startup, `omb-setup.cmd` prints each stage to the console:
+
+1. `OMB: initializing network...` — runs `wpeinit` and `wpeutil WaitForNetwork` (output is saved to `%SystemRoot%\System32\omb-network-wait.log`).
+2. `OMB: network is not ready yet; waiting for installation media...` — `WaitForNetwork` returned before an IP address or switch port was ready, so the script enters the retry loop.
+3. `OMB: connecting installation media...` followed by lines such as:
+   `OMB: media not ready (error <code>); retrying 10/45...`
+4. `OMB: starting Windows Setup...` — the share is mapped, `install.wim` / `install.esd` is found, and `setup.exe` has started.
+
+> [!NOTE]
+> Seeing `retrying 1/45...10/45` before Setup starts is **normal behavior**, not a failure. With the default 90 s timeout and 2 s retry interval, the script allows up to `45` attempts while the NIC driver initializes, the switch port finishes STP/PortFast, or DHCP responds. As soon as the share connects, Setup starts immediately.
+
+If the counter reaches the final attempt (`45/45`) and prints `OMB: installation media is unavailable or Setup failed.`, the script drops to a `cmd` prompt. Check the following:
+
+- **Error code in `error <N>`** (exit code from `net use` / Windows system error):
+  - `53` or `1231` — no network path, no IP address, missing NIC driver in `boot.wim`, or TCP 445 / PXE client access policy is blocking the client;
+  - `5`, `86`, or `1326` — Samba authentication failure for the `omb-iso` account;
+  - `net use` succeeded but the script jumped straight to `failed` — `sources\install.wim` / `install.esd` is missing (check the ISO mount on the server).
+- **Quick checks right inside that WinPE console:**
+  - `ipconfig /all` — verify whether the NIC is detected and has an IP address;
+  - `ping <OMB-IP>` — verify reachability of the PXE server;
+  - `type %SystemRoot%\System32\omb-network-wait.log` — inspect the `wpeutil WaitForNetwork` output.
 
 ## Common WinPE troubleshooting
 

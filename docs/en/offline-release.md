@@ -135,3 +135,13 @@ Use `sudo omb status` to inspect the installed version and channel on the server
 sudo bash scripts/offline-deploy.sh update --allow-channel-switch \
   <apt-repo> <public-key> <management-ip>
 ```
+
+## Quick offline update from a standalone `.deb` (`omb update --deb`)
+
+If the server is already installed, system dependencies have not changed, and you copied `omb_<version>_amd64.deb` and `SHA256SUMS` from a GitHub Release into a directory on the server, run a single command:
+
+```sh
+sudo omb update --deb ./omb_<version>_amd64.deb
+```
+
+The CLI automatically locates and verifies `SHA256SUMS` next to the package (or via `--checksums <path>`), backs up all three PostgreSQL databases and `/etc/omb` to `/var/backups/omb/local.<timestamp>`, installs the package, applies cumulative SQL migrations, runs `systemctl daemon-reload`, restarts services, updates `/var/lib/omb-deployment/`, and verifies HTTPS and `omb-boot` health. For full signed repository verification and automated `rollback`, use `offline-deploy.sh update` above.

@@ -365,3 +365,236 @@ func TestUpdateFullMockedExecutionDevChannelSwitch(t *testing.T) {
 		t.Errorf("current.deb content mismatch")
 	}
 }
+
+func TestLookupSHA256Sum(t *testing.T) {
+	debHash := sha256Hex([]byte("deb-content"))
+	ovaHash := sha256Hex([]byte("ova-content"))
+	sums := fmt.Sprintf("%s  omb_0.2.5_amd64.deb\n%s  *omb_0.2.5_ubuntu24.04_amd64.ova\n", debHash, ovaHash)
+
+	got, err := LookupSHA256Sum([]byte(sums), "omb_0.2.5_amd64.deb")
+	if err != nil || got != debHash {
+		t.Fatalf("LookupSHA256Sum(deb) = (%q, %v), want (%q, nil)", got, err, debHash)
+	}
+	got, err = LookupSHA256Sum([]byte(sums), "omb_0.2.5_ubuntu24.04_amd64.ova")
+	if err != nil || got != ovaHash {
+		t.Fatalf("LookupSHA256Sum(ova) = (%q, %v), want (%q, nil)", got, err, ovaHash)
+	}
+	if _, err := LookupSHA256Sum([]byte(sums), "omb_0.2.6_amd64.deb"); err == nil {
+		t.Fatalf("expected error for missing filename")
+	}
+	if _, err := LookupSHA256Sum([]byte("bad-digest  omb_0.2.5_amd64.deb\n"), "omb_0.2.5_amd64.deb"); err == nil {
+		t.Fatalf("expected error for invalid digest")
+	}
+}
+
+func TestUpdateLocalDebWithAutoSHA256Sums(t *testing.T) {
+	debBytes := []byte("local-stable-deb-bytes")
+	debSHA := sha256Hex(debBytes)
+	newCommit := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+	pkgDir := t.TempDir()
+	localDebPath := filepath.Join(pkgDir, "omb_0.2.5_amd64.deb")
+	if err := os.WriteFile(localDebPath, debBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Multi-entry SHA256SUMS (just like GitHub Releases with VM images).
+	sumsContent := fmt.Sprintf("%s  omb_0.2.5_amd64.deb\n%s  omb_0.2.5_ubuntu24.04_amd64.ova\n",
+		debSHA, sha256Hex([]byte("other-ova")))
+	if err := os.WriteFile(filepath.Join(pkgDir, "SHA256SUMS"), []byte(sumsContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	writeTestControlEnv(t, root)
+	stateDir := filepath.Join(root, "var", "lib", "omb-deployment")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "CHANNEL"), []byte("stable\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	migDir := filepath.Join(root, "usr", "share", "omb", "migrations")
+	if err := os.MkdirAll(migDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(migDir, "manifest.json"), []byte(`{"format":1,"migrations":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	releasePath := filepath.Join(root, "usr", "share", "omb", "release.json")
+	if err := os.WriteFile(releasePath, []byte(fmt.Sprintf(`{"channel":"stable","commit":%q,"version":"0.2.5"}`, newCommit)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var sawAptInstall, sawDaemonReload bool
+	runner := &mockRunner{
+		fn: func(_ context.Context, spec setup.CmdSpec) ([]byte, error) {
+			joined := strings.Join(spec.Args, " ")
+			switch {
+			case spec.Name == "dpkg-query":
+				return []byte("installed\t0.2.4\t0000000000000000000000000000000000000000\n"), nil
+			case spec.Name == "runuser" && strings.Contains(joined, "pg_dump"):
+				return []byte("PGDMP-mock"), nil
+			case spec.Name == "apt-get":
+				sawAptInstall = true
+				return nil, nil
+			case spec.Name == "systemctl" && joined == "daemon-reload":
+				sawDaemonReload = true
+				return nil, nil
+			}
+			return nil, nil
+		},
+	}
+
+	fixedTime := time.Date(2026, 11, 25, 18, 10, 0, 0, time.UTC)
+	var out bytes.Buffer
+	app := &App{
+		RootDir: root,
+		Lang:    "ru",
+		Out:     &out,
+		ErrOut:  &bytes.Buffer{},
+		Euid:    func() int { return 0 },
+		Now:     func() time.Time { return fixedTime },
+		Runner:  runner,
+		HealthCheck: func(_ context.Context, _ string) error {
+			return nil
+		},
+	}
+
+	if err := app.Update(context.Background(), UpdateOptions{DebPath: localDebPath, Yes: true}); err != nil {
+		t.Fatalf("local Update failed: %v", err)
+	}
+	if !sawAptInstall {
+		t.Error("expected apt-get install to be invoked")
+	}
+	if !sawDaemonReload {
+		t.Error("expected systemctl daemon-reload to be invoked")
+	}
+	if !strings.Contains(out.String(), "SHA-256 пакета подтверждён по SHA256SUMS") {
+		t.Errorf("expected SHA256SUMS confirmation in output, got:\n%s", out.String())
+	}
+
+	backupDir := filepath.Join(root, "var", "backups", "omb", "local.20261125T181000Z")
+	for _, f := range []string{"omb_boot.dump", "omb_images.dump", "omb_control.dump"} {
+		if _, err := os.Stat(filepath.Join(backupDir, f)); err != nil {
+			t.Errorf("expected backup file %s: %v", f, err)
+		}
+	}
+
+	checkState := func(name, want string) {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(stateDir, name))
+		if err != nil {
+			t.Fatalf("read state %s: %v", name, err)
+		}
+		if strings.TrimSpace(string(b)) != want {
+			t.Errorf("state %s = %q, want %q", name, strings.TrimSpace(string(b)), want)
+		}
+	}
+	checkState("CHANNEL", "stable")
+	checkState("PACKAGE", "0.2.5")
+	checkState("PACKAGE_SHA256", debSHA)
+	checkState("COMMIT", newCommit)
+}
+
+func TestUpdateLocalDebChecksumMismatchRejected(t *testing.T) {
+	pkgDir := t.TempDir()
+	localDebPath := filepath.Join(pkgDir, "omb_0.2.5_amd64.deb")
+	if err := os.WriteFile(localDebPath, []byte("actual-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wrongSHA := sha256Hex([]byte("different-bytes"))
+	if err := os.WriteFile(filepath.Join(pkgDir, "SHA256SUMS"), []byte(wrongSHA+"  omb_0.2.5_amd64.deb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{
+		RootDir: t.TempDir(),
+		Lang:    "en",
+		Out:     &bytes.Buffer{},
+		ErrOut:  &bytes.Buffer{},
+		Euid:    func() int { return 0 },
+		Runner:  &mockRunner{},
+	}
+
+	err := app.Update(context.Background(), UpdateOptions{DebPath: localDebPath, Yes: true})
+	if err == nil || !strings.Contains(err.Error(), "SHA-256 mismatch") {
+		t.Fatalf("expected SHA-256 mismatch error, got %v", err)
+	}
+}
+
+func TestUpdateLocalDebWithoutSHA256SumsWarnsAndInfersDevChannel(t *testing.T) {
+	pkgDir := t.TempDir()
+	debBytes := []byte("dev-deb-without-sums")
+	localDebPath := filepath.Join(pkgDir, "omb_0.2.5~dev.4_amd64.deb")
+	if err := os.WriteFile(localDebPath, debBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	writeTestControlEnv(t, root)
+	migDir := filepath.Join(root, "usr", "share", "omb", "migrations")
+	if err := os.MkdirAll(migDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(migDir, "manifest.json"), []byte(`{"format":1,"migrations":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	app := &App{
+		RootDir: root,
+		Lang:    "en",
+		Out:     &out,
+		ErrOut:  &bytes.Buffer{},
+		Euid:    func() int { return 0 },
+		Runner: &mockRunner{
+			fn: func(_ context.Context, spec setup.CmdSpec) ([]byte, error) {
+				if spec.Name == "runuser" && strings.Contains(strings.Join(spec.Args, " "), "pg_dump") {
+					return []byte("PGDMP"), nil
+				}
+				return nil, nil
+			},
+		},
+		HealthCheck: func(_ context.Context, _ string) error { return nil },
+	}
+
+	if err := app.Update(context.Background(), UpdateOptions{DebPath: localDebPath, Yes: true}); err != nil {
+		t.Fatalf("Update without SHA256SUMS failed: %v", err)
+	}
+	if !strings.Contains(out.String(), "skipping checksum verification") {
+		t.Errorf("expected checksum skip warning, got:\n%s", out.String())
+	}
+	ch, err := os.ReadFile(filepath.Join(root, "var", "lib", "omb-deployment", "CHANNEL"))
+	if err != nil || strings.TrimSpace(string(ch)) != "dev" {
+		t.Fatalf("CHANNEL = (%q, %v), want dev", strings.TrimSpace(string(ch)), err)
+	}
+}
+
+func TestUpdateLocalDebFlagValidation(t *testing.T) {
+	app := &App{
+		RootDir: t.TempDir(),
+		Lang:    "en",
+		Out:     &bytes.Buffer{},
+		ErrOut:  &bytes.Buffer{},
+		Euid:    func() int { return 0 },
+	}
+
+	if err := app.Update(context.Background(), UpdateOptions{Checksums: "/tmp/SHA256SUMS"}); err == nil {
+		t.Fatal("expected error for --checksums without --deb")
+	}
+	if err := app.Update(context.Background(), UpdateOptions{DebPath: "/tmp/omb_0.2.5_amd64.deb", Version: "v0.2.5"}); err == nil {
+		t.Fatal("expected error for --deb with --version")
+	}
+	if err := app.Update(context.Background(), UpdateOptions{DebPath: "/tmp/omb_0.2.5_amd64.deb", Repo: "a/b"}); err == nil {
+		t.Fatal("expected error for --deb with --repo")
+	}
+
+	badName := filepath.Join(t.TempDir(), "not-omb.deb")
+	if err := os.WriteFile(badName, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Update(context.Background(), UpdateOptions{DebPath: badName}); err == nil {
+		t.Fatal("expected error for invalid package filename")
+	}
+}

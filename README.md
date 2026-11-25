@@ -154,11 +154,12 @@ curl -fsSL https://raw.githubusercontent.com/f0nwa/oh-my-boot_/main/scripts/prox
 Для повседневного обслуживания сервера из консоли доступна утилита `omb`:
 
 ```sh
-sudo omb status                  # версия, канал, статус 7 служб и UFW
-sudo omb channel [stable|dev]    # просмотр и переключение канала обновлений
-sudo omb update                  # онлайн-обновление с бэкапом БД и проверкой SHA-256
-sudo omb reset-password [user]   # сброс пароля локальной учётной записи
-sudo omb reset-2fa [user]        # сброс 2FA (TOTP) пользователя
+sudo omb status                         # версия, канал, статус 7 служб и UFW
+sudo omb channel [stable|dev]           # просмотр и переключение канала обновлений
+sudo omb update                         # онлайн-обновление с бэкапом БД и проверкой SHA-256
+sudo omb update --deb ./omb_<ver>_amd64.deb  # обновление из локального .deb (+ SHA256SUMS рядом)
+sudo omb reset-password [user]          # сброс пароля локальной учётной записи
+sudo omb reset-2fa [user]               # сброс 2FA (TOTP) пользователя
 ```
 
 ---

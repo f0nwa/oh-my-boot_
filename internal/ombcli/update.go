@@ -35,6 +35,8 @@ type UpdateOptions struct {
 	Channel            string
 	Version            string
 	Repo               string
+	DebPath            string
+	Checksums          string
 	Yes                bool
 	AllowChannelSwitch bool
 }
@@ -110,6 +112,35 @@ func ParseSHA256Sums(content []byte) (debName, debSHA string, err error) {
 		return "", "", fmt.Errorf("SHA256SUMS does not contain a valid omb_*_amd64.deb entry")
 	}
 	return debName, debSHA, nil
+}
+
+// LookupSHA256Sum finds the expected lowercase SHA-256 digest for targetFilename
+// in a SHA256SUMS file (ignoring entries for other files, e.g. VM images).
+func LookupSHA256Sum(content []byte, targetFilename string) (string, error) {
+	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		digest := strings.ToLower(fields[0])
+		fname := strings.TrimPrefix(fields[1], "*")
+		if fname != targetFilename {
+			continue
+		}
+		if !sha256HexRe.MatchString(digest) {
+			return "", fmt.Errorf("invalid SHA-256 digest for %s in SHA256SUMS", fname)
+		}
+		return digest, nil
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	return "", fmt.Errorf("SHA256SUMS does not contain an entry for %s", targetFilename)
 }
 
 // PlanMigrations validates manifest integrity, checks applied migrations for missing entries,
@@ -259,38 +290,139 @@ func (a *App) ResolveReleaseTag(ctx context.Context, repo, channel, explicitVers
 	return "", fmt.Errorf("no dev release (v*-dev.*) found in %s", repo)
 }
 
-// Update downloads, verifies, backs up, installs, migrates, and verifies an online OMB update.
+// Update downloads (or reads a local --deb), verifies, backs up, installs, migrates, and verifies an OMB update.
 func (a *App) Update(ctx context.Context, opts UpdateOptions) error {
 	if err := a.requireRoot(); err != nil {
 		return err
 	}
 
-	currentChannel := a.CurrentChannel()
-	targetChannel := strings.ToLower(strings.TrimSpace(opts.Channel))
-	if targetChannel == "" {
-		targetChannel = currentChannel
-	}
-	if targetChannel != "stable" && targetChannel != "dev" {
+	localDeb := strings.TrimSpace(opts.DebPath)
+	explicitSums := strings.TrimSpace(opts.Checksums)
+	if localDeb == "" && explicitSums != "" {
 		return fmt.Errorf("%s", a.t(
-			fmt.Sprintf("неподдерживаемый канал %q (ожидается stable или dev)", targetChannel),
-			fmt.Sprintf("unsupported channel %q (expected stable or dev)", targetChannel),
+			"флаг --checksums можно использовать только вместе с --deb",
+			"--checksums can only be used together with --deb",
+		))
+	}
+	if localDeb != "" && (strings.TrimSpace(opts.Version) != "" || strings.TrimSpace(opts.Repo) != "") {
+		return fmt.Errorf("%s", a.t(
+			"флаг --deb нельзя сочетать с --version или --repo",
+			"--deb cannot be combined with --version or --repo",
 		))
 	}
 
-	repo := strings.TrimSpace(opts.Repo)
-	if repo == "" {
-		repo = a.defaultRepo()
-	}
+	currentChannel := a.CurrentChannel()
+	targetChannel := strings.ToLower(strings.TrimSpace(opts.Channel))
 
-	a.PrintHeader(a.t("онлайн-обновление OMB", "online OMB update"))
-	a.PrintStep(a.t(
-		fmt.Sprintf("Поиск выпуска (репозиторий: %s, канал: %s)...", repo, targetChannel),
-		fmt.Sprintf("Resolving release (repo: %s, channel: %s)...", repo, targetChannel),
-	))
+	var (
+		absDebPath    string
+		debName       string
+		targetVersion string
+		expectedSHA   string
+		releaseBase   string
+		sumsPath      string
+	)
 
-	tag, err := a.ResolveReleaseTag(ctx, repo, targetChannel, opts.Version)
-	if err != nil {
-		return err
+	if localDeb != "" {
+		var err error
+		absDebPath, err = filepath.Abs(localDeb)
+		if err != nil {
+			return fmt.Errorf("resolve --deb path: %w", err)
+		}
+		info, err := os.Stat(absDebPath)
+		if err != nil {
+			return fmt.Errorf("%s: %w", a.t("не удалось открыть файл пакета", "cannot access package file"), err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%s: %s", a.t("путь --deb должен указывать на обычный файл", "--deb must point to a regular file"), absDebPath)
+		}
+		debName = filepath.Base(absDebPath)
+		if !debFilenameRe.MatchString(debName) {
+			return fmt.Errorf("%s: %q", a.t("недопустимое имя файла пакета (ожидается omb_<версия>_amd64.deb)", "invalid package filename (expected omb_<version>_amd64.deb)"), debName)
+		}
+		targetVersion = strings.TrimSuffix(strings.TrimPrefix(debName, "omb_"), "_amd64.deb")
+		if targetChannel == "" {
+			if strings.Contains(targetVersion, "~dev.") {
+				targetChannel = "dev"
+			} else {
+				targetChannel = "stable"
+			}
+		}
+		if targetChannel != "stable" && targetChannel != "dev" {
+			return fmt.Errorf("%s", a.t(
+				fmt.Sprintf("неподдерживаемый канал %q (ожидается stable или dev)", targetChannel),
+				fmt.Sprintf("unsupported channel %q (expected stable or dev)", targetChannel),
+			))
+		}
+
+		if explicitSums != "" {
+			sumsPath, err = filepath.Abs(explicitSums)
+			if err != nil {
+				return fmt.Errorf("resolve --checksums path: %w", err)
+			}
+			sumsInfo, err := os.Stat(sumsPath)
+			if err != nil {
+				return fmt.Errorf("%s: %w", a.t("не удалось открыть файл контрольных сумм", "cannot access checksums file"), err)
+			}
+			if !sumsInfo.Mode().IsRegular() {
+				return fmt.Errorf("%s: %s", a.t("путь --checksums должен указывать на обычный файл", "--checksums must point to a regular file"), sumsPath)
+			}
+		} else {
+			candidate := filepath.Join(filepath.Dir(absDebPath), "SHA256SUMS")
+			if sumsInfo, err := os.Stat(candidate); err == nil && sumsInfo.Mode().IsRegular() {
+				sumsPath = candidate
+			}
+		}
+
+		if sumsPath != "" {
+			sumsBytes, err := os.ReadFile(sumsPath)
+			if err != nil {
+				return fmt.Errorf("read %s: %w", sumsPath, err)
+			}
+			expectedSHA, err = LookupSHA256Sum(sumsBytes, debName)
+			if err != nil {
+				return err
+			}
+		}
+
+		a.PrintHeader(a.t("обновление OMB из локального пакета", "local OMB package update"))
+	} else {
+		if targetChannel == "" {
+			targetChannel = currentChannel
+		}
+		if targetChannel != "stable" && targetChannel != "dev" {
+			return fmt.Errorf("%s", a.t(
+				fmt.Sprintf("неподдерживаемый канал %q (ожидается stable или dev)", targetChannel),
+				fmt.Sprintf("unsupported channel %q (expected stable or dev)", targetChannel),
+			))
+		}
+
+		repo := strings.TrimSpace(opts.Repo)
+		if repo == "" {
+			repo = a.defaultRepo()
+		}
+
+		a.PrintHeader(a.t("онлайн-обновление OMB", "online OMB update"))
+		a.PrintStep(a.t(
+			fmt.Sprintf("Поиск выпуска (репозиторий: %s, канал: %s)...", repo, targetChannel),
+			fmt.Sprintf("Resolving release (repo: %s, channel: %s)...", repo, targetChannel),
+		))
+
+		tag, err := a.ResolveReleaseTag(ctx, repo, targetChannel, opts.Version)
+		if err != nil {
+			return err
+		}
+
+		releaseBase = fmt.Sprintf("%s/%s/releases/download/%s", a.downloadBaseURL(), repo, tag)
+		sumsBytes, err := a.downloadBytes(ctx, releaseBase+"/SHA256SUMS", 1<<20)
+		if err != nil {
+			return fmt.Errorf("download SHA256SUMS: %w", err)
+		}
+		debName, expectedSHA, err = ParseSHA256Sums(sumsBytes)
+		if err != nil {
+			return err
+		}
+		targetVersion = strings.TrimSuffix(strings.TrimPrefix(debName, "omb_"), "_amd64.deb")
 	}
 
 	tmpDir, err := os.MkdirTemp("", "omb-update-*")
@@ -301,17 +433,6 @@ func (a *App) Update(ctx context.Context, opts UpdateOptions) error {
 	if err := os.Chmod(tmpDir, 0o755); err != nil {
 		return fmt.Errorf("chmod temp dir: %w", err)
 	}
-
-	releaseBase := fmt.Sprintf("%s/%s/releases/download/%s", a.downloadBaseURL(), repo, tag)
-	sumsBytes, err := a.downloadBytes(ctx, releaseBase+"/SHA256SUMS", 1<<20)
-	if err != nil {
-		return fmt.Errorf("download SHA256SUMS: %w", err)
-	}
-	debName, expectedSHA, err := ParseSHA256Sums(sumsBytes)
-	if err != nil {
-		return err
-	}
-	targetVersion := strings.TrimSuffix(strings.TrimPrefix(debName, "omb_"), "_amd64.deb")
 
 	installedVersion, _, installedOK := a.queryInstalledPackage(ctx)
 	channelChanged := targetChannel != currentChannel
@@ -326,10 +447,17 @@ func (a *App) Update(ctx context.Context, opts UpdateOptions) error {
 	if !opts.Yes {
 		reader := bufio.NewReader(a.in())
 		for {
-			a.printPrompt(a.t(
+			promptText := a.t(
 				fmt.Sprintf("Установить OMB %s (канал %s)?", targetVersion, targetChannel),
 				fmt.Sprintf("Install OMB %s (channel %s)?", targetVersion, targetChannel),
-			), "Y/n")
+			)
+			if localDeb != "" {
+				promptText = a.t(
+					fmt.Sprintf("Установить OMB %s (канал %s) из %s?", targetVersion, targetChannel, debName),
+					fmt.Sprintf("Install OMB %s (channel %s) from %s?", targetVersion, targetChannel, debName),
+				)
+			}
+			a.printPrompt(promptText, "Y/n")
 			ans, err := readLine(reader)
 			if err != nil {
 				return err
@@ -347,22 +475,52 @@ func (a *App) Update(ctx context.Context, opts UpdateOptions) error {
 		}
 	}
 
-	a.PrintStep(a.t(
-		fmt.Sprintf("Загрузка и проверка %s...", debName),
-		fmt.Sprintf("Downloading and verifying %s...", debName),
-	))
 	debPath := filepath.Join(tmpDir, debName)
-	actualSHA, err := a.downloadFile(ctx, releaseBase+"/"+debName, debPath, 0o644)
-	if err != nil {
-		return fmt.Errorf("download %s: %w", debName, err)
+	var actualSHA string
+	if localDeb != "" {
+		a.PrintStep(a.t(
+			fmt.Sprintf("Подготовка и проверка %s...", debName),
+			fmt.Sprintf("Staging and verifying %s...", debName),
+		))
+		actualSHA, err = copyFileWithSHA256(absDebPath, debPath, 0o644)
+		if err != nil {
+			return fmt.Errorf("stage %s: %w", debName, err)
+		}
+		if expectedSHA != "" {
+			if actualSHA != expectedSHA {
+				return fmt.Errorf("SHA-256 mismatch for %s: got %s, want %s", debName, actualSHA, expectedSHA)
+			}
+			a.PrintOK(a.t(
+				fmt.Sprintf("SHA-256 пакета подтверждён по %s.", filepath.Base(sumsPath)),
+				fmt.Sprintf("Package SHA-256 verified against %s.", filepath.Base(sumsPath)),
+			))
+		} else {
+			a.PrintWarn(a.t(
+				"Файл SHA256SUMS не найден рядом с пакетом — проверка контрольной суммы пропущена.",
+				"SHA256SUMS not found next to the package — skipping checksum verification.",
+			))
+		}
+	} else {
+		a.PrintStep(a.t(
+			fmt.Sprintf("Загрузка и проверка %s...", debName),
+			fmt.Sprintf("Downloading and verifying %s...", debName),
+		))
+		actualSHA, err = a.downloadFile(ctx, releaseBase+"/"+debName, debPath, 0o644)
+		if err != nil {
+			return fmt.Errorf("download %s: %w", debName, err)
+		}
+		if actualSHA != expectedSHA {
+			return fmt.Errorf("SHA-256 mismatch for %s: got %s, want %s", debName, actualSHA, expectedSHA)
+		}
+		a.PrintOK(a.t("SHA-256 пакета подтверждён.", "Package SHA-256 verified."))
 	}
-	if actualSHA != expectedSHA {
-		return fmt.Errorf("SHA-256 mismatch for %s: got %s, want %s", debName, actualSHA, expectedSHA)
-	}
-	a.PrintOK(a.t("SHA-256 пакета подтверждён.", "Package SHA-256 verified."))
 
 	// Backup databases and /etc/omb before modifying anything.
-	backupDir := filepath.Join(a.backupBaseDir(), "online."+a.now().Format("20060102T150405Z"))
+	backupPrefix := "online."
+	if localDeb != "" {
+		backupPrefix = "local."
+	}
+	backupDir := filepath.Join(a.backupBaseDir(), backupPrefix+a.now().Format("20060102T150405Z"))
 	a.PrintStep(a.t(
 		fmt.Sprintf("Резервное копирование БД и /etc/omb в %s...", backupDir),
 		fmt.Sprintf("Backing up databases and /etc/omb to %s...", backupDir),
@@ -400,7 +558,7 @@ func (a *App) Update(ctx context.Context, opts UpdateOptions) error {
 		"-o", "DPkg::Lock::Timeout=60",
 		"install", "-y", "--no-install-recommends",
 	}
-	if opts.AllowChannelSwitch || channelChanged || opts.Version != "" {
+	if opts.AllowChannelSwitch || channelChanged || opts.Version != "" || localDeb != "" {
 		aptArgs = append(aptArgs, "--allow-downgrades")
 	}
 	aptArgs = append(aptArgs, debPath)
@@ -688,6 +846,32 @@ func (a *App) downloadFile(ctx context.Context, rawURL, dst string, mode os.File
 		return "", err
 	}
 	if err := f.Close(); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func copyFileWithSHA256(src, dst string, mode os.FileMode) (string, error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(out, h), in); err != nil {
+		out.Close()
+		return "", err
+	}
+	if err := out.Chmod(mode); err != nil {
+		out.Close()
+		return "", err
+	}
+	if err := out.Close(); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil

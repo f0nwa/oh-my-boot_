@@ -87,9 +87,12 @@ sudo omb channel [stable|dev]
 
 # Update online from GitHub Releases (SHA-256 verification, DB backup, cumulative migrations)
 sudo omb update
+
+# Update offline from a locally copied .deb (+ SHA256SUMS in the same directory)
+sudo omb update --deb ./omb_<version>_amd64.deb
 ```
 
-For air-gapped servers without internet access, use the signed local APT repository and `offline-deploy.sh` above (`sudo omb status` and `sudo omb channel` work in both modes).
+For air-gapped servers requiring full signed repository verification and automated rollback, use the signed local APT repository and `offline-deploy.sh` above (`sudo omb status`, `sudo omb channel`, and `sudo omb update --deb` all work without internet access).
 
 ## Integrity check and system time (NTP)
 

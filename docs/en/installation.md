@@ -222,6 +222,7 @@ After installation, day-2 server administration is available through the unified
 - `sudo omb status` — display the installed version, release channel (`stable`/`dev`), install mode (`online`/`offline`), and status of all 7 services (`omb-control`, `omb-images`, `omb-boot`, `omb-agent`, `omb-dnsmasq`, `postgresql`, `smbd`);
 - `sudo omb channel [stable|dev]` — view or switch the release channel at any time;
 - `sudo omb update` — run an online update from GitHub Releases with SHA-256 verification, PostgreSQL backup, and cumulative SQL migrations;
+- `sudo omb update --deb ./omb_<version>_amd64.deb` — update an existing server from a locally copied `.deb` file without internet access: automatically verifies `SHA256SUMS` in the same directory (or via `--checksums <path>`), backs up all 3 PostgreSQL databases and `/etc/omb`, installs the package, applies cumulative SQL migrations, runs `daemon-reload` and restarts services, updates `/var/lib/omb-deployment/`, and verifies HTTPS and `omb-boot` health;
 - `sudo omb reset-password [username]` — recover a forgotten password for `admin` (default) or any local account;
 - `sudo omb reset-2fa [username]` — reset 2FA and revoke trusted browsers for any local account.
 

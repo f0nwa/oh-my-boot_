@@ -191,8 +191,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		ch := fs.String("channel", "", "release channel (stable or dev)")
 		ver := fs.String("version", "", "explicit release version or tag (e.g. v0.2.0)")
 		repo := fs.String("repo", "", "GitHub repository for releases (default: f0nwa/oh-my-boot_)")
+		debPath := fs.String("deb", "", "path to a local omb_*_amd64.deb file for offline/manual update")
+		checksums := fs.String("checksums", "", "path to SHA256SUMS for --deb (defaults to SHA256SUMS next to the .deb)")
 		yes := fs.Bool("yes", false, "skip confirmation prompt")
-		if err := fs.Parse(reorderArgs(rest, map[string]bool{"lang": true, "channel": true, "version": true, "repo": true})); err != nil {
+		if err := fs.Parse(reorderArgs(rest, map[string]bool{
+			"lang": true, "channel": true, "version": true, "repo": true, "deb": true, "checksums": true,
+		})); err != nil {
 			if err == flag.ErrHelp {
 				return 0
 			}
@@ -208,10 +212,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 			return 2
 		}
 		if err := app.Update(ctx, ombcli.UpdateOptions{
-			Channel: *ch,
-			Version: *ver,
-			Repo:    *repo,
-			Yes:     *yes,
+			Channel:   *ch,
+			Version:   *ver,
+			Repo:      *repo,
+			DebPath:   *debPath,
+			Checksums: *checksums,
+			Yes:       *yes,
 		}); err != nil {
 			app.PrintError(err.Error())
 			return 1
@@ -282,7 +288,7 @@ func printUsage(w io.Writer, lang string, color bool) {
   reset-password [username]    Сбросить пароль локальной учётной записи (admin и др.)
   reset-2fa [username]         Сбросить 2FA (TOTP) локальной учётной записи
   channel [stable|dev]         Показать или переключить канал обновлений (stable/dev)
-  update                       Выполнить онлайн-обновление OMB из GitHub Releases
+  update                       Выполнить обновление OMB из GitHub Releases или локального --deb
   version                      Показать версию утилиты omb
   help                         Показать эту справку
 
@@ -293,6 +299,7 @@ func printUsage(w io.Writer, lang string, color bool) {
   sudo omb reset-2fa admin
   sudo omb channel dev
   sudo omb update --yes
+  sudo omb update --deb ./omb_0.2.5_amd64.deb
 `)
 		return
 	}
@@ -306,7 +313,7 @@ Commands:
   reset-password [username]    Reset password for a local user account (admin, etc.)
   reset-2fa [username]         Reset 2FA (TOTP) for a local user account
   channel [stable|dev]         Show or switch the release channel (stable/dev)
-  update                       Perform an online OMB update from GitHub Releases
+  update                       Perform an OMB update from GitHub Releases or a local --deb
   version                      Print omb version
   help                         Show this help message
 
@@ -317,5 +324,6 @@ Examples:
   sudo omb reset-2fa admin
   sudo omb channel dev
   sudo omb update --yes
+  sudo omb update --deb ./omb_0.2.5_amd64.deb
 `)
 }

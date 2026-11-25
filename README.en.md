@@ -154,11 +154,12 @@ Once `omb-setup` completes, open `https://<server-ip>:8443` and sign in as `admi
 For day-2 server operations from the terminal, use the `omb` CLI:
 
 ```sh
-sudo omb status                  # version, channel, 7 services, and UFW status
-sudo omb channel [stable|dev]    # inspect or switch release channel
-sudo omb update                  # online update with DB backup and SHA-256 check
-sudo omb reset-password [user]   # reset a local account password
-sudo omb reset-2fa [user]        # reset a user's TOTP 2FA
+sudo omb status                         # version, channel, 7 services, and UFW status
+sudo omb channel [stable|dev]           # inspect or switch release channel
+sudo omb update                         # online update with DB backup and SHA-256 check
+sudo omb update --deb ./omb_<ver>_amd64.deb  # update from a local .deb (+ nearby SHA256SUMS)
+sudo omb reset-password [user]          # reset a local account password
+sudo omb reset-2fa [user]               # reset a user's TOTP 2FA
 ```
 
 ---

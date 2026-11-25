@@ -148,3 +148,13 @@ OMB поддерживает два параллельных канала вып
 sudo bash scripts/offline-deploy.sh update --allow-channel-switch \
   <apt-repo> <public-key> <management-ip>
 ```
+
+## Быстрое офлайн-обновление из одного `.deb` (`omb update --deb`)
+
+Если сервер уже развёрнут, системные зависимости не менялись, а новый `omb_<версия>_amd64.deb` и `SHA256SUMS` из релиза GitHub просто скопированы в каталог на сервере, обновление выполняется одной командой:
+
+```sh
+sudo omb update --deb ./omb_<версия>_amd64.deb
+```
+
+Утилита автоматически найдёт и проверит `SHA256SUMS` рядом с файлом (или по явному пути `--checksums <файл>`), создаст резервную копию всех трёх баз PostgreSQL и `/etc/omb` в `/var/backups/omb/local.<метка>`, установит пакет, применит кумулятивные SQL-миграции, выполнит `systemctl daemon-reload`, перезапустит службы, обновит `/var/lib/omb-deployment/` и проверит доступность HTTPS и `omb-boot`. Для полной криптографической проверки подписанного репозитория и автоматического отката по `rollback` используйте `offline-deploy.sh update` выше.

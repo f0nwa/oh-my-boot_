@@ -620,11 +620,37 @@ func isForcedPasswordAPIRequest(r *http.Request) bool {
 
 func requestInfo(r *http.Request) requestContext { return r.Context().Value(ctxKey{}).(requestContext) }
 
+const (
+	loginCSRFCookieName = "omb_login_csrf"
+	loginCSRFLifetime   = 12 * time.Hour
+	loginCSRFExpiredMsg = "Страница входа устарела. Попробуйте войти снова."
+)
+
+func isValidCSRFToken(v string) bool {
+	if len(v) != 43 {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
-	token, err := randomToken()
-	if err != nil {
-		http.Error(w, "Ошибка", 500)
-		return
+	w.Header().Set("Cache-Control", "no-store")
+	var token string
+	if c, err := r.Cookie(loginCSRFCookieName); err == nil && isValidCSRFToken(c.Value) {
+		token = c.Value
+	} else {
+		var err error
+		token, err = randomToken()
+		if err != nil {
+			http.Error(w, "Ошибка", 500)
+			return
+		}
 	}
 	var ldapEnabled, kcEnabled bool
 	if es := s.externalAuthStore(); es != nil {
@@ -635,7 +661,7 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 			kcEnabled = rec.Enabled
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: "omb_login_csrf", Value: token, Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 600})
+	http.SetCookie(w, &http.Cookie{Name: loginCSRFCookieName, Value: token, Path: "/login", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(loginCSRFLifetime.Seconds())})
 	render(w, "login", pageData{
 		Lang:            languageFromRequest(r),
 		CSRF:            token,
@@ -651,9 +677,9 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверная форма", 400)
 		return
 	}
-	cookie, err := r.Cookie("omb_login_csrf")
+	cookie, err := r.Cookie(loginCSRFCookieName)
 	if err != nil || cookie.Value == "" || !constantEqual(cookie.Value, r.FormValue("csrf")) {
-		http.Error(w, translate(languageFromRequest(r), "Недействительный токен формы"), 403)
+		http.Redirect(w, r, "/login?error="+url.QueryEscape(loginCSRFExpiredMsg), http.StatusSeeOther)
 		return
 	}
 	if r.FormValue("auth_mode") == AuthSourceLDAP {

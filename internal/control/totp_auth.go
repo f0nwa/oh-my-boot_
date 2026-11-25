@@ -75,6 +75,7 @@ func clear2FACookies(w http.ResponseWriter) {
 }
 
 func (s *Server) login2FAPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	ts := s.totpStore()
 	c, err := r.Cookie(login2FACookieName)
 	if ts == nil || err != nil || c.Value == "" {
@@ -90,12 +91,18 @@ func (s *Server) login2FAPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error="+url.QueryEscape("Сессия подтверждения истекла. Войдите снова."), http.StatusSeeOther)
 		return
 	}
-	csrf, err := randomToken()
-	if err != nil {
-		http.Error(w, "Ошибка", http.StatusInternalServerError)
-		return
+	var csrf string
+	if existing, err := r.Cookie(login2FACSRFCookie); err == nil && isValidCSRFToken(existing.Value) {
+		csrf = existing.Value
+	} else {
+		var err error
+		csrf, err = randomToken()
+		if err != nil {
+			http.Error(w, "Ошибка", http.StatusInternalServerError)
+			return
+		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: login2FACSRFCookie, Value: csrf, Path: "/login/2fa", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 300})
+	http.SetCookie(w, &http.Cookie{Name: login2FACSRFCookie, Value: csrf, Path: "/login/2fa", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(login2FAChallengeTTL.Seconds())})
 	lang := normalizeLanguage(ch.User.Language)
 	if lang == "" {
 		lang = languageFromRequest(r)
@@ -122,7 +129,7 @@ func (s *Server) login2FASubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	csrfCookie, err := r.Cookie(login2FACSRFCookie)
 	if err != nil || csrfCookie.Value == "" || !constantEqual(csrfCookie.Value, r.FormValue("csrf")) {
-		http.Error(w, translate(languageFromRequest(r), "Недействительный токен формы"), http.StatusForbidden)
+		http.Redirect(w, r, "/login/2fa?error="+url.QueryEscape(loginCSRFExpiredMsg), http.StatusSeeOther)
 		return
 	}
 	ch, err := ts.GetLogin2FAChallenge(r.Context(), c.Value)

@@ -2217,6 +2217,7 @@ var englishMessages = map[string]string{
 	"Сбросить 2FA":                                                                                                                                      "Reset 2FA",
 	"Требуется настройка двухфакторной аутентификации":                                                                                                  "Two-factor authentication setup is required",
 	"Сессия подтверждения истекла. Войдите снова.":                                                                                                      "Verification session expired. Please sign in again.",
+	"Страница входа устарела. Попробуйте войти снова.":                                                                                                  "The sign-in page expired. Please try again.",
 	"Превышено число попыток подтверждения 2FA. Войдите снова.":                                                                                         "Too many 2FA verification attempts. Please sign in again.",
 	"Неверный код подтверждения":                                                                                                                        "Invalid verification code",
 	"2FA доступна только для локальных учётных записей":                                                                                                 "2FA is available only for local accounts",

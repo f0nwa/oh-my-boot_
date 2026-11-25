@@ -77,6 +77,31 @@ type smbLive struct {
 	setup, wim        bool
 }
 
+var smbCreationTimeLayouts = []string{
+	time.RFC3339Nano,
+	"2006-01-02T15:04:05.999999999-0700",
+	"2006-01-02T15:04:05-0700",
+	"2006-01-02 15:04:05.999999999-0700",
+	"2006-01-02 15:04:05.999999999Z07:00",
+	"2006-01-02 15:04:05-0700",
+}
+
+// parseSMBCreationTime parses Samba's creation_time across versions:
+// Samba 4.19 (Ubuntu 24.04) emits "+0300" without a colon, while Samba 4.23+
+// emits RFC3339 "+03:00".
+func parseSMBCreationTime(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range smbCreationTimeLayouts {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
+}
+
 // parseSMBStatus reads `smbstatus --json` and keeps the sessions connected
 // to the install share.
 func parseSMBStatus(data []byte, share string, at time.Time) (smbSnapshot, error) {
@@ -123,11 +148,8 @@ func parseSMBStatus(data []byte, share string, at time.Time) (smbSnapshot, error
 		if !onShare[id] {
 			continue
 		}
-		started, _ := time.Parse(time.RFC3339Nano, s.CreationTime)
-		if started.IsZero() {
-			started = at
-		}
-		snap.sessions[id] = smbLive{ip: s.RemoteMachine, user: s.Username, pid: s.ServerID.PID, started: started.UTC()}
+		started, _ := parseSMBCreationTime(s.CreationTime)
+		snap.sessions[id] = smbLive{ip: s.RemoteMachine, user: s.Username, pid: s.ServerID.PID, started: started}
 		byProcess[s.ServerID] = id
 	}
 	for _, f := range raw.OpenFiles {
@@ -313,11 +335,31 @@ func (w *SMBWatcher) observe(snap smbSnapshot) {
 	}
 	seen := map[string]bool{}
 	for id, live := range snap.sessions {
-		key := id + "@" + live.started.Format(time.RFC3339Nano)
+		var key string
+		var s *SMBSession
+		started := live.started
+		if !started.IsZero() {
+			key = id + "@" + started.Format(time.RFC3339Nano)
+			s = w.sessions[key]
+		} else {
+			// Fallback when creation_time is missing or in an unknown format:
+			// keep updating the already-open session for this ID instead of
+			// splitting it into a new session every 10 seconds.
+			for k, existing := range w.sessions {
+				if existing.Ended == nil && existing.ID == id && (existing.IP == "" || live.ip == "" || existing.IP == live.ip) {
+					key = k
+					s = existing
+					break
+				}
+			}
+			if s == nil {
+				started = snap.at.UTC()
+				key = id + "@" + started.Format(time.RFC3339Nano)
+			}
+		}
 		seen[key] = true
-		s := w.sessions[key]
 		if s == nil {
-			s = &SMBSession{ID: id, IP: live.ip, User: live.user, Started: live.started}
+			s = &SMBSession{ID: id, IP: live.ip, User: live.user, Started: started}
 			w.sessions[key] = s
 		}
 		s.LastSeen = snap.at

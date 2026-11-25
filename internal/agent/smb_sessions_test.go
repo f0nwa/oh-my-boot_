@@ -262,3 +262,82 @@ func TestSMBWatcherTracksPIDLastIOAndDisconnects(t *testing.T) {
 		t.Fatalf("session should be marked ended after disconnect: %+v", got.Sessions)
 	}
 }
+
+func smbStatusJSONWithCreationTime(creationTime string, files ...string) []byte {
+	sid := map[string]any{"pid": "58474", "unique_id": "119"}
+	open := map[string]any{}
+	for _, f := range files {
+		open["/mnt/omb-iso/profiles/"+f] = map[string]any{"service_path": "/mnt/omb-iso/profiles", "filename": f, "opens": map[string]any{"58474/1": map[string]any{"server_id": sid}}}
+	}
+	v := map[string]any{
+		"sessions": map[string]any{
+			"1002": map[string]any{
+				"session_id":     "1002",
+				"server_id":      sid,
+				"username":       "omb-iso",
+				"remote_machine": "10.206.42.62",
+				"creation_time":  creationTime,
+			},
+		},
+		"tcons":      map[string]any{"35": map[string]any{"service": "ombisos", "session_id": "1002"}},
+		"open_files": open,
+	}
+	b, _ := json.Marshal(v)
+	return b
+}
+
+func TestSMBWatcherKeepsSingleSessionAcrossNonRFC3339AndMissingCreationTime(t *testing.T) {
+	cases := []struct {
+		name         string
+		creationTime string
+		wantStarted  string // empty means fallback to first poll time
+	}{
+		{name: "samba 4.19 +0300", creationTime: "2026-11-25T11:35:33.123456+0300", wantStarted: "2026-11-25T08:35:33Z"},
+		{name: "samba 4.19 +0000", creationTime: "2026-11-25T08:35:33.123456+0000", wantStarted: "2026-11-25T08:35:33Z"},
+		{name: "samba no micros +0300", creationTime: "2026-11-25T11:35:33+0300", wantStarted: "2026-11-25T08:35:33Z"},
+		{name: "unparseable creation_time fallback", creationTime: "not-a-timestamp", wantStarted: ""},
+		{name: "empty creation_time fallback", creationTime: "", wantStarted: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Date(2026, 11, 25, 8, 35, 33, 0, time.UTC)
+			var read int64 = 20 * mb
+			status := smbStatusJSONWithCreationTime(tc.creationTime, withWIM()...)
+			w := &SMBWatcher{
+				Share:     "ombisos",
+				Keep:      7 * 24 * time.Hour,
+				Now:       func() time.Time { return now },
+				Status:    func(context.Context) ([]byte, error) { return status, nil },
+				ReadBytes: func(string) (int64, bool) { return read, true },
+				SizeOf:    func(string) int64 { return 5 << 30 },
+			}
+			// 3 consecutive polls 10s apart with cumulative read crossing CopyStartBytes.
+			for i, rBytes := range []int64{20 * mb, 180 * mb, 340 * mb} {
+				read = rBytes
+				if i > 0 {
+					now = now.Add(10 * time.Second)
+				}
+				if err := w.Poll(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := w.Sessions()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Sessions) != 1 {
+				t.Fatalf("expected 1 continuous session, got %d: %+v", len(got.Sessions), got.Sessions)
+			}
+			s := got.Sessions[0]
+			if s.Ended != nil {
+				t.Fatalf("active session was prematurely marked ended: %+v", s)
+			}
+			if s.Copying == nil {
+				t.Fatalf("expected Copying to be set once CopyRead (%d) >= CopyStartBytes", s.CopyRead)
+			}
+			if tc.wantStarted != "" && s.Started.Format(time.RFC3339) != tc.wantStarted {
+				t.Fatalf("Started = %s, want %s", s.Started.Format(time.RFC3339), tc.wantStarted)
+			}
+		})
+	}
+}

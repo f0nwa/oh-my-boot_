@@ -1310,4 +1310,21 @@ html[data-theme="light"] .chan-pill.is-stable{background:rgba(13,148,104,.10);bo
 .storage-user-icon{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.85;flex:none}
 .storage-smb-user-val{color:var(--text-2)}
 .smb-retry-current{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;margin-bottom:12px;border-radius:7px;background:var(--bg);border:1px solid var(--line);font-size:12px}
+.toolbar-bulk{margin-left:auto;display:flex;align-items:center;gap:8px;padding:2px 2px 2px 10px;border:1px solid var(--draft-line);border-radius:6px;background:var(--draft-bg);min-height:32px}
+.toolbar-bulk .bulk-count{font-weight:600;color:var(--text);white-space:nowrap}
+.toolbar-bulk .btn{min-height:26px;padding:0 10px;font-size:12px;margin:0}
+.col-check{width:38px;padding-right:4px;text-align:center;vertical-align:middle}
+.col-check input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
+.col-check input[type=checkbox]:disabled{cursor:not-allowed;opacity:.35}
+tr.is-selected{background:var(--draft-bg)}
+.image-bulk-delete-dialog{width:min(520px,calc(100vw - 32px));text-align:left;white-space:normal}
+.bulk-dlg-warn{margin:10px 0;padding:10px 12px;border-radius:6px;border:1px solid var(--bad-line);background:var(--bad-bg);color:var(--bad-text);font-size:12.5px}
+.bulk-dlg-info{margin:10px 0;padding:10px 12px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--text-2);font-size:12.5px}
+.bulk-dlg-list{list-style:none;margin:10px 0 0;padding:0;max-height:210px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.bulk-dlg-list li{padding:7px 10px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12px}
+.bulk-dlg-list li:last-child{border-bottom:0}
+.bulk-dlg-path{overflow-wrap:anywhere}
+.bulk-dlg-tag{font-size:11px;padding:1px 6px;border-radius:4px;white-space:nowrap;flex:none}
+.bulk-dlg-tag-absent{background:var(--chip);color:var(--text-2)}
+.bulk-dlg-tag-disk{background:var(--bad-bg);color:var(--bad-text);border:1px solid var(--bad-line)}
 .hidden{display:none!important}

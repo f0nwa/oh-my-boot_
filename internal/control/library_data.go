@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -237,10 +238,19 @@ func sortUbuntuAutoinstalls(rows []UbuntuAutoinstallSummary, usage answerFileUsa
 
 func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	data := s.profileLibraryData(r)
-	data.Query = strings.TrimSpace(r.URL.Query().Get("q"))
-	data.Tab = r.URL.Query().Get("show")
-	data.Sort = r.URL.Query().Get("sort")
-	data.Dir = r.URL.Query().Get("dir")
+	q := r.URL.Query()
+	if r.Method == http.MethodPost {
+		data.ReturnTo = safeImagesReturnURL(r.PostFormValue("return_to"))
+		if u, err := url.Parse(data.ReturnTo); err == nil {
+			q = u.Query()
+		}
+	} else {
+		data.ReturnTo = safeImagesReturnURL(r.URL.RequestURI())
+	}
+	data.Query = strings.TrimSpace(q.Get("q"))
+	data.Tab = q.Get("show")
+	data.Sort = q.Get("sort")
+	data.Dir = q.Get("dir")
 	data.ImageCounts = map[string]int{}
 	catalog := s.loadLibraryCatalog(r.Context(), &data)
 	if catalog == nil {
@@ -320,6 +330,8 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 		row := imageRow{
 			Image:           image,
 			StorageName:     storage.Name,
+			StorageKind:     storage.Kind,
+			StorageUploads:  storage.Uploads,
 			StorageState:    storage.State,
 			Author:          authors.Images[imageAuthorKey(image.StorageID, image.Path)],
 			Kind:            kind,

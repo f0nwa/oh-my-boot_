@@ -22,7 +22,9 @@ type imageRow struct {
 	AddedAt             *time.Time
 	AddedVia            string
 	Image               images.Image
-	StorageName, Author string
+	StorageName, Author      string
+	StorageKind              string
+	StorageUploads           bool
 	StorageState             string
 	StorageUnavailable       bool
 	StorageScanning          bool
@@ -32,18 +34,43 @@ type imageRow struct {
 	MaintenanceReason        string
 	MaintenanceActiveClients int
 	DisplayName              string
-	Kind, Problem       string
-	Arch                string
-	ServerBytes         int64
-	ServerNote          string
-	CleanupProfileID    int64
-	Downloads           []imageDownload
-	DeleteBlockedReason string
-	ActiveMigration     *images.MigrationJob
+	Kind, Problem            string
+	Arch                     string
+	ServerBytes              int64
+	ServerNote               string
+	CleanupProfileID         int64
+	Downloads                []imageDownload
+	DeleteBlockedReason      string
+	ActiveMigration          *images.MigrationJob
 }
 
 func (r imageRow) StorageBlocked() bool {
 	return r.StorageUnavailable || r.StorageScanning || r.StorageUnknown
+}
+
+func (r imageRow) BulkDeleteBlockedReason() string {
+	if r.ActiveMigration != nil {
+		return "Образ перемещается в другое хранилище"
+	}
+	if r.StorageUnavailable {
+		return "Хранилище недоступно"
+	}
+	if r.StorageScanning {
+		return "Проверяется хранилище"
+	}
+	if r.StorageUnknown {
+		return "Хранилище не проверено"
+	}
+	if r.Maintenance {
+		return "Хранилище или образ в режиме обслуживания"
+	}
+	if r.DeleteBlockedReason != "" {
+		return r.DeleteBlockedReason
+	}
+	if r.Image.Present && r.StorageKind == "nfs" && !r.StorageUploads {
+		return "Хранилище доступно только для чтения"
+	}
+	return ""
 }
 
 func (r imageRow) MatchesTab(tab string) bool {
@@ -153,6 +180,7 @@ type pageData struct {
 	Tab                   string
 	Sort                  string
 	Dir                   string
+	ReturnTo              string
 	MACFilter             string
 	Machines              []machineRow
 	Sessions              []bootSession

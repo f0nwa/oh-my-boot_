@@ -87,5 +87,5 @@ func (s *Server) imageNameSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "image.name", "ok", fmt.Sprintf("storage=%d path=%s", id, path))
-	http.Redirect(w, r, "/images", http.StatusSeeOther)
+	http.Redirect(w, r, safeImagesReturnURL(r.FormValue("return_to")), http.StatusSeeOther)
 }

@@ -62,6 +62,7 @@
           results.replaceChildren.apply(results, Array.from(nextResults.childNodes));
           filters.replaceChildren.apply(filters, Array.from(nextFilters.childNodes));
           history.replaceState(null, '', url);
+          document.dispatchEvent(new CustomEvent('omb:images-updated'));
         })
         .catch(function (err) {
           if (current === sequence && err.name !== 'AbortError') error.hidden = false;

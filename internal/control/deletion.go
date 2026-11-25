@@ -311,7 +311,8 @@ func (s *Server) windowsProfileDelete(w http.ResponseWriter, r *http.Request) {
 	if name != "" {
 		msg = fmt.Sprintf("Профиль «%s» удалён", name)
 	}
-	http.Redirect(w, r, "/images?message="+url.QueryEscape(msg), http.StatusSeeOther)
+	target := safeImagesReturnURL(r.PostFormValue("return_to"))
+	redirectWithNotice(w, r, target, msg)
 }
 
 // rejectDeletion records a refused deletion in the audit log and reports it.

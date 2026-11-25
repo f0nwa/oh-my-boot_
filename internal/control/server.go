@@ -420,6 +420,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/image-migrate.js", imageMigrateScript)
 	mux.HandleFunc("POST /images/scan", s.protect("images", withPageErrors(s.storagesPage, s.imagesScan)))
 	mux.HandleFunc("POST /images/delete", s.protect("delete", withPageErrors(s.imagesPage, s.imageDelete)))
+	mux.HandleFunc("POST /images/delete-batch", s.protect("delete", withPageErrors(s.imagesPage, s.imageDeleteBatch)))
 	mux.HandleFunc("POST /images/migrate", s.protect("delete", withPageErrors(s.imagesPage, s.imageMigrate)))
 	mux.HandleFunc("GET /api/images/migrations", s.protect("view", s.imageMigrationsAPI))
 	mux.HandleFunc("POST /images/migrate/{id}/cancel", s.protect("delete", s.imageMigrateCancel))

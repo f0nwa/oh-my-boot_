@@ -292,3 +292,191 @@ func TestImagesPageShowsAbsentImageDeletionOnlyToAdmin(t *testing.T) {
 		}
 	}
 }
+
+func TestSafeImagesReturnURL(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", "/images"},
+		{"/images", "/images"},
+		{"/images?show=attention", "/images?show=attention"},
+		{"/images?show=attention&q=Win11&sort=size&dir=desc&message=old&extra=1", "/images?dir=desc&q=Win11&show=attention&sort=size"},
+		{"/storages?show=attention", "/images"},
+		{"https://evil.example/images?show=attention", "/images"},
+		{"//evil.example/images", "/images"},
+	}
+	for _, tc := range cases {
+		if got := safeImagesReturnURL(tc.in); got != tc.want {
+			t.Errorf("safeImagesReturnURL(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestImageDeletePreservesFilterReturnTo(t *testing.T) {
+	storage := images.Storage{ID: 7, Name: "Storage", Kind: "local", State: "ready"}
+	api := &fakeImagesAPI{catalog: images.Catalog{
+		Storages: []images.Storage{storage},
+		Images:   []images.Image{{StorageID: 7, Path: "absent.iso", Present: false}},
+	}}
+	store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
+	server := deletionTestServer(store, &deletionCleaner{})
+	server.Images = api
+
+	form := imageDeletionForm("7", "absent.iso")
+	form.Set("return_to", "/images?show=attention&q=absent&sort=size&dir=desc&message=stale")
+	res := submitImageDeletion(t, server, form)
+	if res.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+	}
+	loc, err := url.Parse(res.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loc.Path != "/images" {
+		t.Fatalf("path=%q, want /images", loc.Path)
+	}
+	q := loc.Query()
+	if q.Get("show") != "attention" || q.Get("q") != "absent" || q.Get("sort") != "size" || q.Get("dir") != "desc" {
+		t.Fatalf("lost filter params in redirect: %s", res.Header().Get("Location"))
+	}
+	if q.Get("message") != "Запись образа «absent.iso» удалена из библиотеки" {
+		t.Fatalf("message=%q", q.Get("message"))
+	}
+}
+
+func submitImageBatchDeletion(t *testing.T, server *Server, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	form.Set("csrf", CSRFToken("test-token"))
+	req := httptest.NewRequest(http.MethodPost, "/images/delete-batch", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	res := httptest.NewRecorder()
+	server.Handler().ServeHTTP(res, req)
+	return res
+}
+
+func TestImageDeleteBatchAbsentAndMixed(t *testing.T) {
+	t.Run("absent_only_preserves_filter_and_skips_smb_upload", func(t *testing.T) {
+		storage := images.Storage{ID: 7, Name: "NAS", Kind: "smb", Key: "nas1", Server: "10.0.0.5", Share: "ISO", State: "ready"}
+		api := &fakeImagesAPI{catalog: images.Catalog{
+			Storages: []images.Storage{storage},
+			Images: []images.Image{
+				{StorageID: 7, Path: "a.iso", Present: false},
+				{StorageID: 7, Path: "b.iso", Present: false},
+			},
+		}}
+		store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
+		events := []string{}
+		server := deletionTestServer(store, &deletionCleaner{})
+		server.Images = api
+		server.SMB = &fakeSMBMountAPI{events: &events}
+
+		form := url.Values{
+			"item":      {"7:a.iso", "7:b.iso", "7:a.iso"},
+			"return_to": {"/images?show=attention"},
+		}
+		res := submitImageBatchDeletion(t, server, form)
+		if res.Code != http.StatusSeeOther {
+			t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+		}
+		if len(api.deleted) != 2 {
+			t.Fatalf("deleted=%+v, want 2", api.deleted)
+		}
+		if len(events) != 0 {
+			t.Fatalf("SMB EnableUpload called for absent images: %v", events)
+		}
+		loc, _ := url.Parse(res.Header().Get("Location"))
+		if loc.Path != "/images" || loc.Query().Get("show") != "attention" {
+			t.Fatalf("redirect=%q", res.Header().Get("Location"))
+		}
+		if got, want := loc.Query().Get("message"), "Удалено записей из библиотеки: 2"; got != want {
+			t.Fatalf("message=%q, want %q", got, want)
+		}
+		if got := translate(langEN, loc.Query().Get("message")); got != "Removed library records: 2" {
+			t.Fatalf("en message=%q", got)
+		}
+	})
+
+	t.Run("mixed_with_partial_failure", func(t *testing.T) {
+		storage := images.Storage{ID: 7, Name: "NAS", Kind: "smb", Key: "nas1", Server: "10.0.0.5", Share: "ISO", State: "ready"}
+		api := &fakeImagesAPI{catalog: images.Catalog{
+			Storages: []images.Storage{storage},
+			Images: []images.Image{
+				{StorageID: 7, Path: "present.iso", Present: true},
+				{StorageID: 7, Path: "absent.iso", Present: false},
+				{StorageID: 7, Path: "used.iso", Present: true},
+			},
+		}}
+		base := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
+		store := &referencedDeletionStore{
+			deletionStore: base,
+			source: InstallationMenuSources{
+				BootProfiles:  []BootProfile{{ID: 90, Kind: BootProfileUbuntuISO, UbuntuStorageID: 7, UbuntuPath: "used.iso"}},
+				Installations: []Installation{{ID: 91, BootProfileID: 90}},
+			},
+		}
+		events := []string{}
+		server := deletionTestServer(base, &deletionCleaner{})
+		server.Store = store
+		server.Images = api
+		server.SMB = &fakeSMBMountAPI{events: &events}
+
+		form := url.Values{
+			"item":      {"7:present.iso", "7:absent.iso", "7:used.iso"},
+			"return_to": {"/images?show=free&q=iso"},
+		}
+		res := submitImageBatchDeletion(t, server, form)
+		if res.Code != http.StatusSeeOther {
+			t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+		}
+		if len(api.deleted) != 2 {
+			t.Fatalf("deleted=%+v, want 2", api.deleted)
+		}
+		if strings.Join(events, ",") != "enable-upload" {
+			t.Fatalf("SMB events=%v, want [enable-upload]", events)
+		}
+		loc, _ := url.Parse(res.Header().Get("Location"))
+		if loc.Query().Get("show") != "free" || loc.Query().Get("q") != "iso" {
+			t.Fatalf("redirect=%q", res.Header().Get("Location"))
+		}
+		if !strings.Contains(loc.Query().Get("message"), "Удалено образов: 2; не удалось удалить: 1") {
+			t.Fatalf("message=%q", loc.Query().Get("message"))
+		}
+	})
+
+	t.Run("validation_and_role_checks", func(t *testing.T) {
+		store := &deletionStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}}}
+		server := deletionTestServer(store, &deletionCleaner{})
+		server.Images = &fakeImagesAPI{}
+		if res := submitImageBatchDeletion(t, server, url.Values{}); res.Code != http.StatusBadRequest {
+			t.Fatalf("empty batch status=%d, want 400", res.Code)
+		}
+		if res := submitImageBatchDeletion(t, server, url.Values{"item": {"bad-item"}}); res.Code != http.StatusBadRequest {
+			t.Fatalf("bad item status=%d, want 400", res.Code)
+		}
+		store.user.Role = "operator"
+		if res := submitImageBatchDeletion(t, server, url.Values{"item": {"7:a.iso"}}); res.Code != http.StatusForbidden {
+			t.Fatalf("operator batch status=%d, want 403", res.Code)
+		}
+	})
+}
+
+func TestImagesPageRendersBulkCheckboxesForAdminOnly(t *testing.T) {
+	for _, role := range []string{"admin", "operator", "observer"} {
+		s, _ := setupImagesTableServer(t, role, langRU)
+		body := libraryGet(t, s, "/images?show=attention")
+		hasSelectAll := strings.Contains(body, `id="image-select-all"`)
+		hasBulkBar := strings.Contains(body, `id="image-bulk-bar"`)
+		hasBulkDialog := strings.Contains(body, `id="image-bulk-delete-dialog"`)
+		want := role == "admin"
+		if hasSelectAll != want || hasBulkBar != want || hasBulkDialog != want {
+			t.Fatalf("role=%s selectAll=%v bulkBar=%v bulkDialog=%v, want %v", role, hasSelectAll, hasBulkBar, hasBulkDialog, want)
+		}
+		if role == "admin" {
+			if !strings.Contains(body, `name="return_to" value="/images?show=attention"`) {
+				t.Fatal("missing preserved return_to in /images?show=attention forms")
+			}
+		}
+	}
+}

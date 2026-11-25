@@ -32,11 +32,15 @@
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
   }
 
+  function hasActiveSelection() {
+    return !!doc.querySelector('[data-bulk-select-row]:checked');
+  }
+
   var isFetching = false;
   var currentController = null;
 
   function refreshNow() {
-    if (doc.hidden || hasOpenOverlay() || hasActiveInput() || isFetching) return;
+    if (doc.hidden || hasOpenOverlay() || hasActiveInput() || hasActiveSelection() || isFetching) return;
     if (currentController && typeof currentController.abort === 'function') {
       currentController.abort();
     }
@@ -58,7 +62,7 @@
       .then(function (html) {
         isFetching = false;
         currentController = null;
-        if (!html || hasOpenOverlay() || hasActiveInput()) return;
+        if (!html || hasOpenOverlay() || hasActiveInput() || hasActiveSelection()) return;
 
         var parsed = new win.DOMParser().parseFromString(html, 'text/html');
         var nodes = doc.querySelectorAll('[data-live-refresh]');
@@ -97,7 +101,7 @@
   }
 
   var timer = win.setInterval(function () {
-    if (!doc.hidden && !hasOpenOverlay() && !hasActiveInput()) {
+    if (!doc.hidden && !hasOpenOverlay() && !hasActiveInput() && !hasActiveSelection()) {
       refreshNow();
     }
   }, minInterval * 1000);

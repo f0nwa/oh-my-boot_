@@ -386,6 +386,9 @@ func (s *Server) maintenanceEnable(w http.ResponseWriter, r *http.Request) {
 		fallback = "/images"
 	}
 	target := safeSessionReturnPath(r.PostFormValue("return_to"), fallback)
+	if target == "/images" {
+		target = safeImagesReturnURL(r.PostFormValue("return_to"))
+	}
 	msg := "Режим обслуживания включён"
 	if syncErr != nil {
 		msg = "Режим обслуживания сохранён, но не применён в Boot"
@@ -454,6 +457,9 @@ func (s *Server) maintenanceDisable(w http.ResponseWriter, r *http.Request) {
 		fallback = "/images"
 	}
 	target := safeSessionReturnPath(r.PostFormValue("return_to"), fallback)
+	if target == "/images" {
+		target = safeImagesReturnURL(r.PostFormValue("return_to"))
+	}
 	msg := "Режим обслуживания завершён"
 	if syncErr != nil {
 		msg = "Режим обслуживания снят, но не применён в Boot"

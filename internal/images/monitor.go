@@ -55,7 +55,7 @@ func (m *StorageMonitor) Run(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// CheckOnce probes every ready or unavailable storage once.
+// CheckOnce probes every ready, unavailable, or never-scanned (unknown) storage once.
 func (m *StorageMonitor) CheckOnce(ctx context.Context) {
 	storages, err := m.Repo.Storages(ctx)
 	if err != nil {
@@ -70,7 +70,7 @@ func (m *StorageMonitor) CheckOnce(ctx context.Context) {
 	}
 	var wg sync.WaitGroup
 	for _, storage := range storages {
-		if storage.State != "ready" && storage.State != "unavailable" {
+		if storage.State != "ready" && storage.State != "unavailable" && storage.State != "unknown" {
 			continue
 		}
 		wg.Add(1)
@@ -101,7 +101,7 @@ func (m *StorageMonitor) check(ctx context.Context, storage Storage, settings Ca
 		}
 		return
 	}
-	if storage.State == "unavailable" {
+	if storage.State == "unavailable" || storage.State == "unknown" {
 		if m.Rescan == nil {
 			return
 		}
@@ -117,10 +117,14 @@ func (m *StorageMonitor) check(ctx context.Context, storage Storage, settings Ca
 		m.lastRescan[storage.ID] = m.now()
 		m.mu.Unlock()
 		if err := m.Rescan(storage.ID); err != nil {
-			log.Printf("Images storage check: cannot rescan recovered storage %d: %v", storage.ID, err)
+			log.Printf("Images storage check: cannot scan storage %d (%s): %v", storage.ID, storage.State, err)
 			return
 		}
-		log.Printf("Images storage check: storage %d is reachable again, rescan started", storage.ID)
+		if storage.State == "unknown" {
+			log.Printf("Images storage check: storage %d initial scan started", storage.ID)
+		} else {
+			log.Printf("Images storage check: storage %d is reachable again, rescan started", storage.ID)
+		}
 		return
 	}
 	if storage.State == "ready" && settings.RescanEnabled && m.Rescan != nil {

@@ -154,6 +154,41 @@ func TestMonitorDoesNotRescanStorageThatStillFails(t *testing.T) {
 	}
 }
 
+func TestMonitorScansUnknownStorageOnStartup(t *testing.T) {
+	repo := &monitorRepository{storages: []Storage{
+		{ID: 1, Name: "Local", Kind: "local", Root: "/var/lib/omb-images/iso", State: "unknown"},
+		{ID: 2, Name: "Unready", Kind: "local", Root: "/var/lib/omb-images/missing", State: "unknown"},
+	}}
+	rescan := &recordingRescan{}
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	m := &StorageMonitor{
+		Repo:          repo,
+		Rescan:        rescan.start,
+		Timeout:       time.Second,
+		RescanBackoff: 10 * time.Minute,
+		Now:           func() time.Time { return now },
+		Probe: func(s Storage) error {
+			if s.ID == 2 {
+				return errors.New("missing")
+			}
+			return nil
+		},
+	}
+
+	m.CheckOnce(context.Background())
+	if rescan.count() != 1 || rescan.ids[0] != 1 {
+		t.Fatalf("unknown storage initial scan = %v, want [1]", rescan.ids)
+	}
+	// Within backoff, do not re-trigger.
+	m.CheckOnce(context.Background())
+	if rescan.count() != 1 {
+		t.Fatalf("unknown storage rescans within backoff = %d, want 1", rescan.count())
+	}
+	if len(repo.marked) != 0 {
+		t.Fatalf("unexpected unavailable mark on unknown storage: %v", repo.marked)
+	}
+}
+
 func TestMonitorTreatsHungProbeAsUnavailableAndDoesNotStackProbes(t *testing.T) {
 	repo := &monitorRepository{storages: []Storage{{ID: 6, Kind: "smb", Root: "/mnt/nas", State: "ready"}}}
 	release := make(chan struct{})

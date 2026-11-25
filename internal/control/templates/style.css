@@ -1296,7 +1296,7 @@ html[data-theme="light"] .chan-pill.is-stable{background:rgba(13,148,104,.10);bo
 .net-warn-box{margin-top:10px;padding:10px 12px;border-radius:6px;border:1px solid var(--draft-line);border-left:3px solid var(--accent);background:var(--draft-bg);font-size:12px;color:var(--text)}
 .net-warn-box strong{color:var(--accent-ink)}
 .net-access-warn{color:var(--accent-ink);font-weight:500}
-.storage-smb-user{display:inline-flex;align-items:center;gap:5px;margin-top:4px;font-size:12px;color:var(--muted)}
+.storage-smb-user{display:flex;align-items:center;gap:5px;margin-top:4px;font-size:12px;color:var(--muted)}
 .storage-user-icon{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.85;flex:none}
 .storage-smb-user-val{color:var(--text-2)}
 .smb-retry-current{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;margin-bottom:12px;border-radius:7px;background:var(--bg);border:1px solid var(--line);font-size:12px}

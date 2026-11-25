@@ -85,6 +85,7 @@ type pageData struct {
 	UbuntuChecks          map[int64]AnswerCheck
 	WindowsProfileChecks  map[int64][]AnswerCheck
 	SelectedWIM           agent.WindowsWIMInfo
+	MenuFolders           []string
 	EventsAsync           bool
 	UbuntuEditor          *ubuntuAutoinstallEditorView
 	UbuntuAutoinstalls    []UbuntuAutoinstallSummary

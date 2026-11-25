@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -231,17 +232,11 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 		for _, profile := range data.BootProfileChoices {
 			if (selected != "" && selected == profile.Value) || (selected == "" && profile.Selectable()) {
 				data.Form.Set("boot_profile_id", profile.Value)
-				if profile.Kind == BootProfileWinPEISO {
-					data.Form.Set("folder", "Tools")
-				} else if profile.Kind == BootProfileWindowsISO {
-					data.Form.Set("folder", "Windows")
-				} else {
-					data.Form.Set("folder", "Linux")
-				}
 				break
 			}
 		}
 	}
+	data.MenuFolders = collectMenuFolders(sources.Installations, nil)
 	for _, profile := range data.BootProfileChoices {
 		if data.Form.Get("boot_profile_id") == profile.Value {
 			data.SelectedBootKind = profile.Kind
@@ -250,6 +245,27 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 	}
 	normalizeDriverForm(data.Form, data.PackageChoices)
 	render(w, "installation_new", data)
+}
+
+func collectMenuFolders(items []Installation, rows []menuDraftRow) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(folder string) {
+		folder = strings.TrimSpace(folder)
+		if folder == "" || seen[folder] {
+			return
+		}
+		seen[folder] = true
+		out = append(out, folder)
+	}
+	for _, item := range items {
+		add(item.Folder)
+	}
+	for _, row := range rows {
+		add(row.Folder)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func normalizeDriverForm(form url.Values, choices []packageChoice) {

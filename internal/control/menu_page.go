@@ -63,6 +63,7 @@ func (s *Server) menuPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Draft = draft
 	data.DraftRows = menuDraftRows(draft, profiles, answers, configs, sources)
+	data.MenuFolders = collectMenuFolders(sources.Installations, data.DraftRows)
 	installs := installationRows(profiles, answers, configs, draft, active, sources)
 	s.applyMenuStorageStatus(r.Context(), data.DraftRows, installs)
 	data.Changes = diffMenuDraft(active, draft)

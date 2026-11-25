@@ -8,10 +8,48 @@
   var en = document.documentElement.lang === "en";
   var title = form.querySelector('input[name="title"]');
   var folder = form.querySelector('input[name="folder"]');
+  var titleError = document.getElementById("i-title-error");
+  var folderError = document.getElementById("i-folder-error");
+  var asciiRe = /^[\x20-\x7E]*$/;
   var submitBtn = document.getElementById("install-submit") || form.querySelector('button[type="submit"], button.btn-primary');
   var defaultSubmitLabel = submitBtn ? submitBtn.textContent : "";
   var titleEdited = title.value !== "";
   title.addEventListener("input", function () { titleEdited = true; });
+
+  function validateMenuText(val, isFolder) {
+    if (!asciiRe.test(val)) {
+      return en
+        ? "Use Latin letters, digits, and basic punctuation — the boot console cannot show Cyrillic"
+        : "Только латиница, цифры и базовые знаки — консоль загрузки не показывает кириллицу";
+    }
+    if (isFolder) {
+      var trimmed = val.trim();
+      if (trimmed !== "") {
+        var parts = trimmed.split("/");
+        for (var i = 0; i < parts.length; i++) {
+          var seg = parts[i].trim();
+          if (!seg || seg === "." || seg === "..") {
+            return en
+              ? "Invalid folder path (use names separated by “/”, without “..” or empty segments)"
+              : "Некорректный путь каталога (используйте имена через «/», без «..» и пустых сегментов)";
+          }
+        }
+      }
+    }
+    return "";
+  }
+
+  function applyFieldValidation(input, errEl, isFolder) {
+    if (!input) return true;
+    var msg = validateMenuText(input.value, isFolder);
+    input.classList.toggle("is-invalid", !!msg);
+    input.setAttribute("aria-invalid", msg ? "true" : "false");
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.hidden = !msg;
+    }
+    return !msg;
+  }
 
   function composeMenuTitle(osTitle, scriptTitle) {
     osTitle = (osTitle || "").trim();
@@ -430,6 +468,9 @@
     if (!titleEdited) {
       title.value = composeMenuTitle(osTitle, scriptTitle);
     }
+    var titleValid = applyFieldValidation(title, titleError, false);
+    var folderValid = applyFieldValidation(folder, folderError, true);
+    var hasInvalidMenuFields = !titleValid || !folderValid;
     var drivers = winpe && form.querySelectorAll('input[name="package"]:checked, input[name="inf"]:checked').length > 0;
     var wipes = (answer && answer.dataset.wipes === "true") || (autoinstall && autoinstall.dataset.wipes === "true");
     text("preview-title", (title.value || "Windows 11 x64"));
@@ -440,7 +481,7 @@
     text("summary-build", (drivers || profile && profile.dataset.prepare === "true") ? (en ? "needed, a few minutes" : "нужна, несколько минут") : (en ? "not needed" : "не нужна"));
 
     if (submitBtn && !submitBtn.dataset.submitting) {
-      submitBtn.disabled = blockedByUnconfirmedWarning;
+      submitBtn.disabled = blockedByUnconfirmedWarning || hasInvalidMenuFields;
       submitBtn.textContent = defaultSubmitLabel;
     }
   }
@@ -456,7 +497,14 @@
 
   form.addEventListener("change", update);
   form.addEventListener("input", update);
-  form.addEventListener("submit", function () {
+  form.addEventListener("submit", function (e) {
+    var titleValid = applyFieldValidation(title, titleError, false);
+    var folderValid = applyFieldValidation(folder, folderError, true);
+    if (!titleValid || !folderValid) {
+      e.preventDefault();
+      if (!titleValid) title.focus(); else folder.focus();
+      return;
+    }
     if (submitBtn) {
       submitBtn.dataset.submitting = "1";
       submitBtn.disabled = true;

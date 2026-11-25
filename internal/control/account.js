@@ -203,15 +203,6 @@
     }
   });
 
-  [dialog, fsPwDialog].forEach(function (d) {
-    if (!d) return;
-    d.addEventListener('click', function (event) {
-      if (event.target === d && typeof d.close === 'function') {
-        d.close();
-      }
-    });
-  });
-
   if (dialog && dialog.getAttribute('data-auto-open') === 'true') {
     openDialog(false);
   }
@@ -439,15 +430,6 @@
       window.location.reload();
       return;
     }
-  });
-
-  [setup2FADialog, regen2FADialog, disable2FADialog].forEach(function (d) {
-    if (!d) return;
-    d.addEventListener('click', function (event) {
-      if (event.target === d && typeof d.close === 'function') {
-        d.close();
-      }
-    });
   });
 
   if (disable2FADialog && disable2FADialog.getAttribute('data-auto-open') === 'true' && typeof disable2FADialog.showModal === 'function') {

@@ -69,11 +69,6 @@
       if (dialog) dialog.close();
       return;
     }
-    if (event.target.tagName === 'DIALOG') {
-      const rect = event.target.getBoundingClientRect();
-      if (event.clientX < rect.left || event.clientX > rect.right ||
-          event.clientY < rect.top || event.clientY > rect.bottom) event.target.close();
-    }
   });
   document.querySelectorAll('[data-driver-config-form]').forEach(form => {
     const titleInput = form.querySelector('input[name="title"]');

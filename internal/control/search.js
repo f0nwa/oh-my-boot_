@@ -137,8 +137,6 @@
     else if (event.key === "ArrowUp") { event.preventDefault(); choose(active - 1); }
     else if (event.key === "Enter" && active >= 0) { event.preventDefault(); location.href = options()[active].href; }
   });
-  // A click on the backdrop closes the dialog.
-  dialog.addEventListener("click", function (event) { if (event.target === dialog) dialog.close(); });
   dialog.addEventListener("close", function () {
     clearTimeout(timer);
     clearTimeout(loadTimer);

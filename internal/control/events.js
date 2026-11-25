@@ -13,18 +13,6 @@
         }
       });
     });
-
-    dlg.addEventListener('click', (e) => {
-      if (e.target !== dlg) return;
-      const rect = dlg.getBoundingClientRect();
-      const isInDialog = (
-        rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
-        rect.left <= e.clientX && e.clientX <= rect.left + rect.width
-      );
-      if (!isInDialog && typeof dlg.close === 'function') {
-        dlg.close();
-      }
-    });
   }
 
   function initJournal() {
@@ -154,11 +142,6 @@
           if (typeof dlg.close === 'function') dlg.close();
           else dlg.removeAttribute('open');
         }
-        return;
-      }
-      const dlg = document.getElementById('system-events-clear-dialog');
-      if (dlg && event.target === dlg && typeof dlg.close === 'function') {
-        dlg.close();
         return;
       }
 

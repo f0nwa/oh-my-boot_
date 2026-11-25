@@ -457,9 +457,5 @@
       }
       return;
     }
-
-    if (event.target && event.target.nodeName === 'DIALOG' && typeof event.target.close === 'function') {
-      event.target.close();
-    }
   });
 })();

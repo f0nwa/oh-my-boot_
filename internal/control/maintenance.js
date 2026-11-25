@@ -45,9 +45,5 @@
       closeDialog(closeBtn.closest('dialog'));
       return;
     }
-
-    if (event.target && event.target.id === 'maintenance-enable-dialog') {
-      closeDialog(event.target);
-    }
   });
 })();

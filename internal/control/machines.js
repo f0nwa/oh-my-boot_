@@ -178,10 +178,6 @@
       }
       return;
     }
-
-    if (ev.target && ev.target.nodeName === 'DIALOG' && typeof ev.target.close === 'function') {
-      ev.target.close();
-    }
   });
 
   // Saves a machine row edited via dialog without reloading the page.

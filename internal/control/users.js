@@ -656,20 +656,5 @@
       }
       return;
     }
-
-    // Backdrop click: clicking directly on the dialog background
-    if (event.target && event.target.nodeName === 'DIALOG' && typeof event.target.close === 'function') {
-      event.target.close();
-    }
-  });
-
-  // Direct click listener for dialog backdrop close
-  [pwDialog, createDialog, deleteDialog, reset2FADialog, policyDialog, expiryDialog, userFsDialog].forEach(function (dialog) {
-    if (!dialog) return;
-    dialog.addEventListener('click', function (event) {
-      if (event.target === dialog && typeof dialog.close === 'function') {
-        dialog.close();
-      }
-    });
   });
 })();

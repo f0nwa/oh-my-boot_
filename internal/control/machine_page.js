@@ -13,9 +13,6 @@
         else dlg.removeAttribute('open');
       });
     });
-    dlg.addEventListener('click', function(e) {
-      if (e.target === dlg && typeof dlg.close === 'function') dlg.close();
-    });
   }
   setupDialog('[data-machine-edit-open]', 'machine-edit-dialog');
   setupDialog('[data-machine-delete-open]', 'machine-delete-dialog');

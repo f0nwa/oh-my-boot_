@@ -59,18 +59,6 @@
       }
       return;
     }
-
-    if (event.target && event.target.nodeName === 'DIALOG') {
-      var rect = event.target.getBoundingClientRect();
-      var isInDialog =
-        rect.top <= event.clientY &&
-        event.clientY <= rect.top + rect.height &&
-        rect.left <= event.clientX &&
-        event.clientX <= rect.left + rect.width;
-      if (!isInDialog && typeof event.target.close === 'function') {
-        event.target.close();
-      }
-    }
   });
 })();
 

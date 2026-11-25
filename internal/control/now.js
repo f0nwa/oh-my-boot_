@@ -116,9 +116,5 @@
       showDialog(dlg);
       return;
     }
-
-    if (event.target.tagName === 'DIALOG') {
-      closeDialog(event.target);
-    }
   });
 })();

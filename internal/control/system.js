@@ -255,10 +255,4 @@
       timeDialog.close();
     });
   }
-
-  timeDialog.addEventListener("click", function (e) {
-    if (e.target === timeDialog) {
-      timeDialog.close();
-    }
-  });
 })();

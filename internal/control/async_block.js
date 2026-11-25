@@ -95,6 +95,7 @@
 
   function onDialogOpen(dlg) {
     if (!dlg) return;
+    enableLightDismiss(dlg);
     var blocks = dlg.querySelectorAll('[data-async-url]');
     blocks.forEach(function (el) {
       if (el.dataset.loaded !== 'true' && el.dataset.loading !== 'true') {
@@ -102,6 +103,47 @@
       }
     });
   }
+
+  var supportsClosedBy = typeof HTMLDialogElement !== 'undefined' && 'closedBy' in HTMLDialogElement.prototype;
+  var backdropDownDialog = null;
+
+  function enableLightDismiss(dlg) {
+    if (!dlg || dlg.tagName !== 'DIALOG') return;
+    if (supportsClosedBy && typeof dlg.hasAttribute === 'function' && !dlg.hasAttribute('closedby')) {
+      dlg.setAttribute('closedby', 'any');
+    }
+  }
+
+  function isBackdropPoint(dlg, ev) {
+    if (!dlg || ev.target !== dlg || !dlg.open) return false;
+    if (typeof dlg.getBoundingClientRect !== 'function') return false;
+    var rect = dlg.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return false;
+    return (
+      ev.clientX < rect.left ||
+      ev.clientX > rect.right ||
+      ev.clientY < rect.top ||
+      ev.clientY > rect.bottom
+    );
+  }
+
+  function onBackdropPointerDown(ev) {
+    if (typeof ev.button === 'number' && ev.button !== 0) {
+      backdropDownDialog = null;
+      return;
+    }
+    if (ev.target && ev.target.tagName === 'DIALOG' && isBackdropPoint(ev.target, ev)) {
+      backdropDownDialog = ev.target;
+    } else {
+      backdropDownDialog = null;
+    }
+  }
+
+  var backdropDownEvent = (typeof window !== 'undefined' && 'PointerEvent' in window) ? 'pointerdown' : 'mousedown';
+  document.addEventListener(backdropDownEvent, onBackdropPointerDown, true);
+  window.addEventListener('blur', function () {
+    backdropDownDialog = null;
+  });
 
   function onDialogClose(dlg) {
     if (!dlg) return;
@@ -133,6 +175,9 @@
 
   // Делегированный обработчик открытия диалога версий меню и закрытия диалогов
   document.addEventListener('click', function (ev) {
+    var downDlg = backdropDownDialog;
+    backdropDownDialog = null;
+
     var rollbackBtn = ev.target.closest('[data-menu-rollback-open]');
     if (rollbackBtn) {
       var rollbackDialog = document.getElementById('menu-rollback-dialog');
@@ -173,17 +218,15 @@
     }
 
     if (ev.target && ev.target.tagName === 'DIALOG' && ev.target.open) {
-      var rect = ev.target.getBoundingClientRect();
-      var isInDialog = (
-        rect.top <= ev.clientY &&
-        ev.clientY <= rect.top + rect.height &&
-        rect.left <= ev.clientX &&
-        ev.clientX <= rect.left + rect.width
-      );
-      if (!isInDialog) {
-        if (typeof ev.target.close === 'function') ev.target.close();
-        else ev.target.removeAttribute('open');
-        onDialogClose(ev.target);
+      if (supportsClosedBy && ev.target.closedBy === 'any') return;
+      if (typeof ev.target.getAttribute === 'function' && ev.target.getAttribute('closedby') === 'none') return;
+      if (ev.target === downDlg && isBackdropPoint(ev.target, ev)) {
+        var cancelEv = typeof Event === 'function' ? new Event('cancel', { cancelable: true }) : null;
+        if (!cancelEv || ev.target.dispatchEvent(cancelEv)) {
+          if (typeof ev.target.close === 'function') ev.target.close();
+          else ev.target.removeAttribute('open');
+          onDialogClose(ev.target);
+        }
       }
     }
   });
@@ -193,6 +236,7 @@
     var origShowModal = HTMLDialogElement.prototype.showModal;
     if (origShowModal) {
       HTMLDialogElement.prototype.showModal = function () {
+        enableLightDismiss(this);
         origShowModal.apply(this, arguments);
         onDialogOpen(this);
       };
@@ -208,6 +252,7 @@
 
   // Событие close у нативных диалогов
   document.addEventListener('close', function (ev) {
+    backdropDownDialog = null;
     if (ev.target && ev.target.tagName === 'DIALOG') {
       onDialogClose(ev.target);
     }

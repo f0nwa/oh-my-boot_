@@ -75,18 +75,6 @@
         }
       });
     });
-    dialog.addEventListener("click", function (ev) {
-      if (ev.target !== dialog) return;
-      var rect = dialog.getBoundingClientRect();
-      var inside =
-        ev.clientX >= rect.left &&
-        ev.clientX <= rect.right &&
-        ev.clientY >= rect.top &&
-        ev.clientY <= rect.bottom;
-      if (!inside && typeof dialog.close === "function") {
-        dialog.close();
-      }
-    });
   }
 
   function wireTestButton(btnId, formId, endpoint, outId) {

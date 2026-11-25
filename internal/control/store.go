@@ -912,6 +912,19 @@ func (s Store) ResolveSystemEvents(ctx context.Context, sourceKey string, resolv
 	return err
 }
 
+// ResolveOrphanStorageEvents marks active error and warning events for deleted
+// storages (source_key like 'storage:%' not present in activeSourceKeys) as resolved.
+func (s Store) ResolveOrphanStorageEvents(ctx context.Context, activeSourceKeys []string, resolvedAt time.Time) error {
+	if resolvedAt.IsZero() {
+		resolvedAt = time.Now().UTC()
+	}
+	if activeSourceKeys == nil {
+		activeSourceKeys = []string{}
+	}
+	_, err := s.Pool.Exec(ctx, `UPDATE system_events SET resolved_at = $1 WHERE category = 'storage' AND source_key LIKE 'storage:%' AND resolved_at IS NULL AND severity IN ('error', 'warning') AND NOT (source_key = ANY($2::text[]))`, resolvedAt, activeSourceKeys)
+	return err
+}
+
 // PruneSystemEvents removes system events older than the given cutoff.
 func (s Store) PruneSystemEvents(ctx context.Context, olderThan time.Time) error {
 	_, err := s.Pool.Exec(ctx, `DELETE FROM system_events WHERE occurred_at < $1`, olderThan)

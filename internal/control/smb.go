@@ -176,6 +176,7 @@ func (s *Server) imagesSMBRemove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Подключение снято, но запись не удалена. Повторите удаление.", http.StatusServiceUnavailable)
 		return
 	}
+	s.resolveStorageSystemEvents(r.Context(), storage.ID)
 	s.auditSMB(r, "smb.remove", "ok", storage.ID)
 	http.Redirect(w, r, "/storages?message="+url.QueryEscape(fmt.Sprintf("Хранилище «%s» удалено", storage.Name)), http.StatusSeeOther)
 }

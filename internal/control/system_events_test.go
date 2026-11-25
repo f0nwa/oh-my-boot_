@@ -80,6 +80,21 @@ func (m *sysEventTestStore) ResolveSystemEvents(_ context.Context, sourceKey str
 	return nil
 }
 
+func (m *sysEventTestStore) ResolveOrphanStorageEvents(_ context.Context, activeSourceKeys []string, resolvedAt time.Time) error {
+	active := make(map[string]bool, len(activeSourceKeys))
+	for _, k := range activeSourceKeys {
+		active[k] = true
+	}
+	for i := range m.events {
+		ev := &m.events[i]
+		if ev.Category == "storage" && strings.HasPrefix(ev.SourceKey, "storage:") && ev.ResolvedAt == nil && (ev.Severity == "error" || ev.Severity == "warning") && !active[ev.SourceKey] {
+			t := resolvedAt
+			ev.ResolvedAt = &t
+		}
+	}
+	return nil
+}
+
 func (m *sysEventTestStore) PruneSystemEvents(_ context.Context, _ time.Time) error {
 	m.pruned++
 	return nil
@@ -369,5 +384,118 @@ func TestSystemEventMonitorCheckAgentUsesStatusEndpoint(t *testing.T) {
 
 	if len(store.events) != 0 {
 		t.Fatalf("expected 0 errors when agent /status is 200 and /config is 404, got: %+v", store.events)
+	}
+}
+
+func TestSystemEventMonitorResolvesOrphanStorageEvents(t *testing.T) {
+	now := time.Date(2026, 11, 25, 11, 0, 0, 0, time.UTC)
+	store := &sysEventTestStore{
+		authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
+		events: []SystemEvent{
+			// Pre-existing orphan event from a storage deleted before monitor restart.
+			{ID: 1, OccurredAt: now.Add(-1 * time.Hour), Severity: "error", Category: "storage", SourceKey: "storage:99", Title: "Хранилище «//truenas.local/ISO» недоступно"},
+			// Unrelated active service error must not be resolved by storage cleanup.
+			{ID: 2, OccurredAt: now.Add(-30 * time.Minute), Severity: "error", Category: "service", SourceKey: "service:omb-boot", Title: "Служба omb-boot недоступна"},
+		},
+	}
+	imgAPI := &switchableImagesAPI{
+		catalog: images.Catalog{
+			Storages: []images.Storage{
+				{ID: 1, Name: "local", Kind: "local", State: "ready"},
+				{ID: 2, Name: "//10.206.42.2/iso_share/iso", Kind: "smb", State: "unavailable", Error: "not mounted"},
+			},
+		},
+	}
+	s := &Server{Store: store, Images: imgAPI}
+	mon := NewSystemEventMonitor(s)
+
+	// 1. First tick: orphan storage:99 resolved, storage:2 recorded as active, service:omb-boot untouched.
+	mon.CheckOnce(context.Background(), now)
+	if store.events[0].ResolvedAt == nil {
+		t.Fatalf("expected pre-existing orphan storage:99 event to be resolved")
+	}
+	if store.events[1].ResolvedAt != nil {
+		t.Fatalf("expected unrelated service event to remain active")
+	}
+	if len(store.events) != 3 || store.events[2].SourceKey != "storage:2" || store.events[2].ResolvedAt != nil {
+		t.Fatalf("expected active event for storage:2, got %+v", store.events)
+	}
+
+	// 2. Storage 2 is deleted from catalog -> next tick resolves storage:2 so it can be pruned.
+	imgAPI.catalog.Storages = imgAPI.catalog.Storages[:1]
+	mon.CheckOnce(context.Background(), now.Add(30*time.Second))
+	if store.events[2].ResolvedAt == nil {
+		t.Fatalf("expected deleted storage:2 event to be resolved")
+	}
+	deleted, err := store.PruneResolvedSystemEvents(context.Background())
+	if err != nil || deleted != 2 {
+		t.Fatalf("PruneResolvedSystemEvents = %d, %v; want 2, nil", deleted, err)
+	}
+}
+
+func TestRemoveSMBAndNFSResolvesStorageSystemEvents(t *testing.T) {
+	now := time.Now().UTC()
+	store := &sysEventTestStore{
+		authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
+		events: []SystemEvent{
+			{ID: 1, OccurredAt: now.Add(-10 * time.Minute), Severity: "error", Category: "storage", SourceKey: "storage:7", Title: "Хранилище «//truenas.local/ISO» недоступно"},
+			{ID: 2, OccurredAt: now.Add(-5 * time.Minute), Severity: "error", Category: "storage", SourceKey: "storage:8", Title: "Хранилище «nfs-bad» недоступно"},
+		},
+	}
+	smbKey := "0123456789abcdef0123456789abcdef"
+	nfsKey := "fedcba9876543210fedcba9876543210"
+	var events []string
+	imgAPI := &fakeNFSImages{
+		fakeImagesAPI: fakeImagesAPI{
+			catalog: images.Catalog{
+				Storages: []images.Storage{
+					{ID: 7, Key: smbKey, Name: "//truenas.local/ISO", Kind: "smb", Server: "truenas.local", Share: "ISO", State: "unavailable"},
+					{ID: 8, Key: nfsKey, Name: "nfs-bad", Kind: "nfs", Server: "192.0.2.20", ExportPath: "/iso", NFSVersion: "4.1", State: "unavailable"},
+				},
+			},
+		},
+		events: &events,
+	}
+	s := &Server{
+		Store:  store,
+		Images: imgAPI,
+		SMB:    &fakeSMBMountAPI{events: &events},
+		NFS:    &fakeNFSMountAPI{events: &events},
+	}
+	h := s.Handler()
+	token := "admin-token"
+
+	// Remove SMB storage 7
+	form := url.Values{"csrf": {CSRFToken(token)}}
+	req := httptest.NewRequest("POST", "/images/smb/7/remove", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: token})
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusSeeOther {
+		t.Fatalf("POST /images/smb/7/remove = %d (%s), want 303", res.Code, res.Body.String())
+	}
+	if store.events[0].ResolvedAt == nil {
+		t.Fatalf("expected SMB removal to resolve storage:7 event immediately")
+	}
+	if store.events[1].ResolvedAt != nil {
+		t.Fatalf("expected storage:8 event to remain active until NFS removal")
+	}
+
+	// Remove NFS storage 8
+	req = httptest.NewRequest("POST", "/images/nfs/8/remove", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: token})
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusSeeOther {
+		t.Fatalf("POST /images/nfs/8/remove = %d (%s), want 303", res.Code, res.Body.String())
+	}
+	if store.events[1].ResolvedAt == nil {
+		t.Fatalf("expected NFS removal to resolve storage:8 event immediately")
+	}
+	active, _ := store.CountActiveSystemErrors(context.Background())
+	if active != 0 {
+		t.Fatalf("CountActiveSystemErrors = %d, want 0", active)
 	}
 }

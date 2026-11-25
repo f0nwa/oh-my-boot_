@@ -44,6 +44,7 @@ type SystemEventStore interface {
 	CountRecentSystemErrors(ctx context.Context, since time.Time) (int, error)
 	CountActiveSystemErrors(ctx context.Context) (int, error)
 	ResolveSystemEvents(ctx context.Context, sourceKey string, resolvedAt time.Time) error
+	ResolveOrphanStorageEvents(ctx context.Context, activeSourceKeys []string, resolvedAt time.Time) error
 	PruneSystemEvents(ctx context.Context, olderThan time.Time) error
 	PruneResolvedSystemEvents(ctx context.Context) (int64, error)
 	ClearAllSystemEvents(ctx context.Context) (int64, error)
@@ -58,6 +59,13 @@ func (s *Server) recordSystemEvent(ctx context.Context, ev SystemEvent) {
 		ev.OccurredAt = time.Now().UTC()
 	}
 	_ = store.RecordSystemEvent(ctx, ev)
+}
+
+func (s *Server) resolveStorageSystemEvents(ctx context.Context, storageID int64) {
+	if store, ok := s.Store.(SystemEventStore); ok {
+		_ = store.ResolveSystemEvents(ctx, fmt.Sprintf("storage:%d", storageID), time.Now().UTC())
+	}
+	s.RefreshNavBadges(ctx)
 }
 
 func (s *Server) activeSystemErrorCount(ctx context.Context) int {
@@ -292,8 +300,10 @@ func (m *SystemEventMonitor) checkImagesAndStorages(ctx context.Context, store S
 	m.recordServiceTransition(ctx, store, "omb-images", "omb-images", true, "", now)
 
 	seen := map[int64]bool{}
+	activeKeys := make([]string, 0, len(catalog.Storages))
 	for _, st := range catalog.Storages {
 		seen[st.ID] = true
+		activeKeys = append(activeKeys, fmt.Sprintf("storage:%d", st.ID))
 		prev, known := m.storageState[st.ID]
 		m.storageState[st.ID] = st.State
 		m.storageName[st.ID] = st.Name
@@ -351,6 +361,7 @@ func (m *SystemEventMonitor) checkImagesAndStorages(ctx context.Context, store S
 			delete(m.storageName, id)
 		}
 	}
+	_ = store.ResolveOrphanStorageEvents(ctx, activeKeys, now.UTC())
 }
 
 func (m *SystemEventMonitor) allowAlert(key string, now time.Time) bool {

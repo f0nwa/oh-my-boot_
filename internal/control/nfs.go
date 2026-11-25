@@ -207,6 +207,7 @@ func (s *Server) imagesNFSRemove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Подключение снято, но запись не удалена. Повторите удаление.", http.StatusServiceUnavailable)
 		return
 	}
+	s.resolveStorageSystemEvents(r.Context(), storage.ID)
 	s.auditNFS(r, "nfs.remove", "ok", storage.ID)
 	http.Redirect(w, r, "/storages?message="+url.QueryEscape(fmt.Sprintf("Хранилище «%s» удалено", storage.Name)), http.StatusSeeOther)
 }

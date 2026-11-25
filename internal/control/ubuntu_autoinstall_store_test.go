@@ -84,14 +84,27 @@ func TestUbuntuAutoinstallStore(t *testing.T) {
 		t.Fatal("duplicate digest accepted")
 	}
 	for _, query := range []string{
-		`UPDATE ubuntu_autoinstall_files SET title='changed' WHERE id=$1`,
 		`UPDATE ubuntu_autoinstall_files SET user_data='changed' WHERE id=$1`,
 		`UPDATE ubuntu_autoinstall_files SET sha256=repeat('b',64) WHERE id=$1`,
 		`UPDATE ubuntu_autoinstall_files SET "values"='{}' WHERE id=$1`,
+		`UPDATE ubuntu_autoinstall_files SET disk_mode='interactive', disk_serial='' WHERE id=$1`,
 	} {
 		if _, err := store.Pool.Exec(ctx, query, saved.ID); err == nil {
 			t.Fatalf("mutable library: %s", query)
 		}
+	}
+	if err := store.SetUbuntuAutoinstallTitle(ctx, saved.ID, "Новое имя Ubuntu"); err != nil {
+		t.Fatalf("rename title: %v", err)
+	}
+	renamed, err := store.UbuntuAutoinstall(ctx, saved.ID)
+	if err != nil || renamed.Title != "Новое имя Ubuntu" || renamed.SHA256 != saved.SHA256 {
+		t.Fatalf("after rename=%+v err=%v", renamed, err)
+	}
+	if err := store.SetUbuntuAutoinstallTitle(ctx, saved.ID, saved.Title); err != nil {
+		t.Fatalf("restore title: %v", err)
+	}
+	if err := store.SetUbuntuAutoinstallTitle(ctx, 999999, "Missing"); err == nil {
+		t.Fatal("expected error for missing ubuntu autoinstall id")
 	}
 	for _, mutate := range []func(*UbuntuAutoinstallFile){
 		func(f *UbuntuAutoinstallFile) { f.UserData = []byte("plaintext") },

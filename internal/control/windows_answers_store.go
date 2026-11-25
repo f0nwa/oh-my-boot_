@@ -63,6 +63,17 @@ func (s Store) DeleteWindowsAnswer(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (s Store) SetWindowsAnswerTitle(ctx context.Context, id int64, title string) error {
+	tag, err := s.Pool.Exec(ctx, `UPDATE windows_answer_variants SET title=$2 WHERE id=$1`, id, title)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func (s Store) SetWindowsAnswerWipesDisk(ctx context.Context, id int64, wipes bool) error {
 	tag, err := s.Pool.Exec(ctx, `UPDATE windows_answer_variants SET wipes_disk=$2 WHERE id=$1`, id, wipes)
 	if err != nil {

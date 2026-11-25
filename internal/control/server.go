@@ -59,6 +59,7 @@ type Storage interface {
 	CreateUbuntuAutoinstall(context.Context, UbuntuAutoinstallFile) (UbuntuAutoinstallFile, error)
 	UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstallSummary, error)
 	UbuntuAutoinstall(context.Context, int64) (UbuntuAutoinstallFile, error)
+	SetUbuntuAutoinstallTitle(context.Context, int64, string) error
 	CreateWindowsProfile(context.Context, WindowsProfileSource) (WindowsProfile, error)
 	WindowsProfile(context.Context, int64) (WindowsProfile, error)
 	WindowsProfiles(context.Context) ([]WindowsProfile, error)
@@ -70,6 +71,7 @@ type Storage interface {
 	WindowsAnswers(context.Context) ([]WindowsAnswerVariant, error)
 	WindowsAnswer(context.Context, int64) (WindowsAnswerVariant, error)
 	DeleteWindowsAnswer(context.Context, int64) error
+	SetWindowsAnswerTitle(context.Context, int64, string) error
 	SetWindowsAnswerWipesDisk(context.Context, int64, bool) error
 	CreateDriverPackage(context.Context, drivers.Inventory) (bool, error)
 	DeleteDriverPackage(context.Context, string) error
@@ -395,6 +397,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ubuntu-autoinstall/{id}/download", s.protect("view", s.ubuntuAutoinstallFile))
 	mux.HandleFunc("GET /ubuntu-autoinstall/{id}/copy", s.protect("images", s.ubuntuAutoinstallFile))
 	mux.HandleFunc("GET /answers", s.protect("view", s.answersPage))
+	mux.HandleFunc("POST /answers/{kind}/{id}/rename", s.protect("images", withPageErrors(s.answersPage, s.answerRename)))
 	mux.HandleFunc("GET /storages", s.protect("view", s.storagesPage))
 	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))
 	mux.HandleFunc("POST /system/time", s.protect("network", withPageErrors(s.systemPage, s.systemTimeUpdate)))

@@ -2,6 +2,25 @@
   'use strict';
 
   var uploadDialog = document.getElementById('answer-upload-dialog');
+  var renameDialog = document.getElementById('answer-rename-dialog');
+  var renameForm = renameDialog ? renameDialog.querySelector('form') : null;
+  var renameInput = document.getElementById('answer-rename-input');
+  var renameSave = renameDialog ? renameDialog.querySelector('[data-answer-rename-save]') : null;
+  var renameKind = document.getElementById('answer-rename-kind');
+  var renameID = document.getElementById('answer-rename-id');
+  var renameSHA = document.getElementById('answer-rename-sha');
+  var renameInitial = '';
+
+  function syncRenameSubmit() {
+    if (!renameInput || !renameSave) return;
+    var val = renameInput.value.trim();
+    var len = Array.from(val).length;
+    renameSave.disabled = !val || len > 80 || val === renameInitial;
+  }
+
+  if (renameInput) {
+    renameInput.addEventListener('input', syncRenameSubmit);
+  }
 
   var searchForm = document.querySelector('[data-answers-search]');
   if (searchForm) {
@@ -22,6 +41,27 @@
   }
 
   document.addEventListener('click', function (event) {
+    var renameBtn = event.target.closest('[data-answer-rename-open]');
+    if (renameBtn && renameDialog && renameForm && renameInput && typeof renameDialog.showModal === 'function') {
+      var renameMenu = renameBtn.closest('[popover]');
+      if (renameMenu && typeof renameMenu.hidePopover === 'function') renameMenu.hidePopover();
+      var kind = renameBtn.getAttribute('data-rename-kind') || 'windows';
+      var id = renameBtn.getAttribute('data-rename-id') || '0';
+      var title = (renameBtn.getAttribute('data-rename-title') || '').trim();
+      var sha = (renameBtn.getAttribute('data-rename-sha') || '').trim();
+      renameForm.action = '/answers/' + encodeURIComponent(kind) + '/' + encodeURIComponent(id) + '/rename';
+      if (renameKind) renameKind.textContent = kind === 'ubuntu' ? 'Ubuntu' : 'Windows';
+      if (renameID) renameID.textContent = '№ ' + id;
+      if (renameSHA) renameSHA.textContent = sha.slice(0, 8);
+      renameInitial = title;
+      renameInput.value = title;
+      syncRenameSubmit();
+      renameDialog.showModal();
+      renameInput.focus();
+      renameInput.select();
+      return;
+    }
+
     var deleteBtn = event.target.closest('[data-answer-delete-open]');
     if (deleteBtn) {
       var deleteDialog = document.getElementById(deleteBtn.getAttribute('data-answer-delete-open'));

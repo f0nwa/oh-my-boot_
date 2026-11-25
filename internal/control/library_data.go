@@ -96,6 +96,7 @@ func (s *Server) answersLibraryData(r *http.Request) pageData {
 	data.Query = strings.TrimSpace(r.URL.Query().Get("q"))
 	data.Sort = r.URL.Query().Get("sort")
 	data.Dir = r.URL.Query().Get("dir")
+	data.ReturnTo = safeAnswersReturnURL(r.URL.RequestURI())
 	if data.Query != "" {
 		q := strings.ToLower(data.Query)
 		filteredWin := []WindowsAnswerVariant{}

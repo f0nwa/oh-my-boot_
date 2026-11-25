@@ -40,6 +40,12 @@ func (a authOnlyStore) DriverConfigs(context.Context) ([]DriverConfig, error) {
 func (a authOnlyStore) SetDriverConfigTitle(context.Context, int64, string) error {
 	return nil
 }
+func (a authOnlyStore) SetWindowsAnswerTitle(context.Context, int64, string) error {
+	return nil
+}
+func (a authOnlyStore) SetUbuntuAutoinstallTitle(context.Context, int64, string) error {
+	return nil
+}
 func (a authOnlyStore) DriverPackages(context.Context) ([]DriverPackage, error) {
 	return []DriverPackage{}, nil
 }

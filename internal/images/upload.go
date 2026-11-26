@@ -29,12 +29,26 @@ var (
 
 type UploadResult struct {
 	Path   string `json:"path"`
+	Kind   string `json:"kind,omitempty"`
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256"`
 }
 
-func ValidISOName(name string) bool {
-	if name == "" || len(name) > 240 || !utf8.ValidString(name) || !strings.EqualFold(filepath.Ext(name), ".iso") ||
+// ValidExpectedKind reports whether expectedKind is a valid expected_kind
+// parameter for POST /upload.
+func ValidExpectedKind(expectedKind string) bool {
+	switch expectedKind {
+	case "", ImageKindISO, ImageKindWIM, ImageKindESD, "wim_or_esd":
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidImageName reports whether name is a safe file name matching expectedKind.
+// Supported expectedKind values: "" or "iso", "wim", "esd", "wim_or_esd", "any".
+func ValidImageName(name, expectedKind string) bool {
+	if name == "" || len(name) > 240 || !utf8.ValidString(name) ||
 		strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") || strings.ContainsAny(name, `/\:*?"<>|`) {
 		return false
 	}
@@ -43,7 +57,28 @@ func ValidISOName(name string) bool {
 			return false
 		}
 	}
-	return true
+	kind, ok := ImageKindFromPath(name)
+	if !ok {
+		return false
+	}
+	switch expectedKind {
+	case "", ImageKindISO:
+		return kind == ImageKindISO
+	case ImageKindWIM:
+		return kind == ImageKindWIM
+	case ImageKindESD:
+		return kind == ImageKindESD
+	case "wim_or_esd":
+		return kind == ImageKindWIM || kind == ImageKindESD
+	case "any":
+		return true
+	default:
+		return false
+	}
+}
+
+func ValidISOName(name string) bool {
+	return ValidImageName(name, ImageKindISO)
 }
 
 func existingFolder(root, relative string) (string, error) {
@@ -115,9 +150,14 @@ func ListFolders(root string) ([]string, error) {
 }
 
 func ReceiveISO(ctx context.Context, root, folder, name string, body io.Reader, size int64) (UploadResult, error) {
-	if !ValidISOName(name) || size <= 0 || size > MaxISOBytes {
+	return ReceiveImage(ctx, root, folder, name, ImageKindISO, body, size)
+}
+
+func ReceiveImage(ctx context.Context, root, folder, name, expectedKind string, body io.Reader, size int64) (UploadResult, error) {
+	if !ValidExpectedKind(expectedKind) || !ValidImageName(name, expectedKind) || size <= 0 || size > MaxISOBytes {
 		return UploadResult{}, ErrInvalidISO
 	}
+	kind, _ := ImageKindFromPath(name)
 	directory, err := existingFolder(root, folder)
 	if err != nil {
 		return UploadResult{}, fmt.Errorf("%w: %v", ErrInvalidFolder, err)
@@ -173,7 +213,7 @@ func ReceiveISO(ctx context.Context, root, folder, name string, body io.Reader, 
 	if folder != "" {
 		path = folder + "/" + name
 	}
-	return UploadResult{Path: path, Size: size, SHA256: hex.EncodeToString(hash.Sum(nil))}, nil
+	return UploadResult{Path: path, Kind: kind, Size: size, SHA256: hex.EncodeToString(hash.Sum(nil))}, nil
 }
 
 type contextReader struct {

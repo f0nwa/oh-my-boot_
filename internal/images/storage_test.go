@@ -40,3 +40,27 @@ func TestValidateStorageRejectsRelativePathAndInvalidKind(t *testing.T) {
 		t.Fatal("unknown kind accepted")
 	}
 }
+
+func TestImageKindFromPath(t *testing.T) {
+	cases := []struct {
+		name string
+		kind string
+		ok   bool
+	}{
+		{"win11.iso", "iso", true},
+		{"Windows/Server.ISO", "iso", true},
+		{"boot.wim", "wim", true},
+		{"sources/BOOT.WIM", "wim", true},
+		{"install.esd", "esd", true},
+		{"sources/INSTALL.ESD", "esd", true},
+		{"readme.txt", "", false},
+		{"archive.tar.gz", "", false},
+		{"noext", "", false},
+	}
+	for _, tc := range cases {
+		got, ok := ImageKindFromPath(tc.name)
+		if got != tc.kind || ok != tc.ok {
+			t.Errorf("ImageKindFromPath(%q) = (%q, %v), want (%q, %v)", tc.name, got, ok, tc.kind, tc.ok)
+		}
+	}
+}

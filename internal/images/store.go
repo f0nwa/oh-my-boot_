@@ -194,7 +194,7 @@ func (s Store) Catalog(ctx context.Context) (Catalog, error) {
 	if err != nil {
 		return result, err
 	}
-	rows, err = s.Pool.Query(ctx, "SELECT storage_id,path,size_bytes,modified_at,present,first_seen_at FROM images ORDER BY storage_id,path")
+	rows, err = s.Pool.Query(ctx, "SELECT storage_id,path,kind,size_bytes,modified_at,present,first_seen_at FROM images ORDER BY storage_id,path")
 	if err != nil {
 		return result, err
 	}
@@ -202,7 +202,7 @@ func (s Store) Catalog(ctx context.Context) (Catalog, error) {
 	isoBytes := map[int64]int64{}
 	for rows.Next() {
 		var image Image
-		if err := rows.Scan(&image.StorageID, &image.Path, &image.Size, &image.Modified, &image.Present, &image.FirstSeenAt); err != nil {
+		if err := rows.Scan(&image.StorageID, &image.Path, &image.Kind, &image.Size, &image.Modified, &image.Present, &image.FirstSeenAt); err != nil {
 			return result, err
 		}
 		if image.Present {
@@ -243,9 +243,17 @@ func (s Store) SaveScan(ctx context.Context, id int64, found []Image, otherBytes
 		return err
 	}
 	for _, image := range found {
+		kind := image.Kind
+		if kind == "" {
+			if detected, ok := ImageKindFromPath(image.Path); ok {
+				kind = detected
+			} else {
+				kind = ImageKindISO
+			}
+		}
 		if _, err := tx.Exec(ctx,
-			"INSERT INTO images (storage_id,path,size_bytes,modified_at,present) VALUES ($1,$2,$3,$4,TRUE) ON CONFLICT (storage_id,path) DO UPDATE SET size_bytes=EXCLUDED.size_bytes,modified_at=EXCLUDED.modified_at,present=TRUE",
-			id, image.Path, image.Size, image.Modified,
+			"INSERT INTO images (storage_id,path,kind,size_bytes,modified_at,present) VALUES ($1,$2,$3,$4,$5,TRUE) ON CONFLICT (storage_id,path) DO UPDATE SET kind=EXCLUDED.kind,size_bytes=EXCLUDED.size_bytes,modified_at=EXCLUDED.modified_at,present=TRUE",
+			id, image.Path, kind, image.Size, image.Modified,
 		); err != nil {
 			return err
 		}
@@ -257,9 +265,17 @@ func (s Store) SaveScan(ctx context.Context, id int64, found []Image, otherBytes
 }
 
 func (s Store) RecordUpload(ctx context.Context, image Image) error {
+	kind := image.Kind
+	if kind == "" {
+		if detected, ok := ImageKindFromPath(image.Path); ok {
+			kind = detected
+		} else {
+			kind = ImageKindISO
+		}
+	}
 	_, err := s.Pool.Exec(ctx,
-		"INSERT INTO images (storage_id,path,size_bytes,modified_at,present) VALUES ($1,$2,$3,$4,TRUE) ON CONFLICT (storage_id,path) DO UPDATE SET size_bytes=EXCLUDED.size_bytes,modified_at=EXCLUDED.modified_at,present=TRUE",
-		image.StorageID, image.Path, image.Size, image.Modified,
+		"INSERT INTO images (storage_id,path,kind,size_bytes,modified_at,present) VALUES ($1,$2,$3,$4,$5,TRUE) ON CONFLICT (storage_id,path) DO UPDATE SET kind=EXCLUDED.kind,size_bytes=EXCLUDED.size_bytes,modified_at=EXCLUDED.modified_at,present=TRUE",
+		image.StorageID, image.Path, kind, image.Size, image.Modified,
 	)
 	return err
 }

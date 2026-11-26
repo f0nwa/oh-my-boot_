@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS storages (
 CREATE TABLE IF NOT EXISTS images (
  storage_id BIGINT NOT NULL REFERENCES storages(id) ON DELETE CASCADE,
  path TEXT NOT NULL,
+ kind TEXT NOT NULL DEFAULT 'iso' CHECK (kind IN ('iso','wim','esd')),
  size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0),
  modified_at TIMESTAMPTZ NOT NULL,
  present BOOLEAN NOT NULL DEFAULT TRUE,
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS images (
  PRIMARY KEY (storage_id, path)
 );
 CREATE INDEX IF NOT EXISTS images_present_idx ON images (storage_id, present, path);
+CREATE INDEX IF NOT EXISTS images_present_kind_idx ON images (storage_id, present, kind, path);
 
 CREATE TABLE IF NOT EXISTS catalog_settings (
  id SMALLINT PRIMARY KEY CHECK (id = 1),

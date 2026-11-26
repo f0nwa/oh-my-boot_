@@ -238,9 +238,14 @@ func (e *MigrationEngine) runCopy(ctx context.Context, job *MigrationJob, tempFi
 	}
 
 	// Record upload in catalog
+	kind, ok := ImageKindFromPath(job.Path)
+	if !ok {
+		kind = ImageKindISO
+	}
 	img := Image{
 		StorageID: job.TargetStorageID,
 		Path:      job.Path,
+		Kind:      kind,
 		Size:      job.TotalBytes,
 		Modified:  time.Now(),
 		Present:   true,

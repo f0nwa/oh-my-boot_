@@ -17,7 +17,7 @@ func DeleteISO(root, relative string) error {
 		folder = ""
 	}
 	name := path.Base(relative)
-	if !ValidISOName(name) {
+	if !ValidImageName(name, "any") {
 		return ErrInvalidISO
 	}
 	directory, err := existingFolder(root, folder)

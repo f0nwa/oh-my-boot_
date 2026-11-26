@@ -30,8 +30,8 @@ type Storage struct {
 	Total   int64 `json:"total,omitempty"`
 	Free    int64 `json:"free,omitempty"`
 	Uploads bool  `json:"uploads,omitempty"`
-	// ISOBytes sums present ISO files in the catalog; OtherBytes is the size of
-	// other regular files recorded during the latest scan.
+	// ISOBytes sums present image files (ISO, WIM, ESD) in the catalog;
+	// OtherBytes is the size of other regular files recorded during the latest scan.
 	ISOBytes   int64 `json:"iso_bytes,omitempty"`
 	OtherBytes int64 `json:"other_bytes,omitempty"`
 }
@@ -40,6 +40,7 @@ type Image struct {
 	FirstSeenAt *time.Time `json:"first_seen_at,omitempty"`
 	StorageID   int64      `json:"storage_id"`
 	Path        string     `json:"path"`
+	Kind        string     `json:"kind"`
 	Size        int64      `json:"size"`
 	Modified    time.Time  `json:"modified"`
 	Present     bool       `json:"present"`
@@ -101,7 +102,8 @@ func Scan(root string) (ScanResult, error) {
 		if !fileInfo.Mode().IsRegular() {
 			return nil
 		}
-		if !strings.EqualFold(filepath.Ext(name), ".iso") {
+		kind, ok := ImageKindFromPath(name)
+		if !ok {
 			if strings.HasPrefix(name, ".omb-upload-") && strings.HasSuffix(name, ".part") {
 				return nil
 			}
@@ -112,7 +114,7 @@ func Scan(root string) (ScanResult, error) {
 		if err != nil {
 			return err
 		}
-		images = append(images, Image{Path: filepath.ToSlash(rel), Size: fileInfo.Size(), Modified: fileInfo.ModTime(), Present: true})
+		images = append(images, Image{Path: filepath.ToSlash(rel), Kind: kind, Size: fileInfo.Size(), Modified: fileInfo.ModTime(), Present: true})
 		return nil
 	})
 	if err != nil {

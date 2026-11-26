@@ -7,6 +7,27 @@ import (
 	"strings"
 )
 
+const (
+	ImageKindISO = "iso"
+	ImageKindWIM = "wim"
+	ImageKindESD = "esd"
+)
+
+// ImageKindFromPath returns the catalog image kind ("iso", "wim", "esd") for a
+// file name or path based on its extension.
+func ImageKindFromPath(name string) (string, bool) {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".iso":
+		return ImageKindISO, true
+	case ".wim":
+		return ImageKindWIM, true
+	case ".esd":
+		return ImageKindESD, true
+	default:
+		return "", false
+	}
+}
+
 func ValidateStorage(name, kind, root string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 120 || (kind != "local" && kind != "mounted") || !filepath.IsAbs(root) {

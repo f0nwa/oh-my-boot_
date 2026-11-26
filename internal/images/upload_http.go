@@ -122,9 +122,11 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "storage unavailable", status)
 		return
 	}
-	name, folder := r.URL.Query().Get("name"), r.URL.Query().Get("folder")
-	if !ValidISOName(name) || r.ContentLength <= 0 || r.ContentLength > MaxISOBytes {
-		http.Error(w, "invalid ISO name or size", http.StatusBadRequest)
+	name := r.URL.Query().Get("name")
+	folder := r.URL.Query().Get("folder")
+	expectedKind := r.URL.Query().Get("expected_kind")
+	if !ValidExpectedKind(expectedKind) || !ValidImageName(name, expectedKind) || r.ContentLength <= 0 || r.ContentLength > MaxISOBytes {
+		http.Error(w, "invalid image name, kind or size", http.StatusBadRequest)
 		return
 	}
 	// An SMB or NFS upload goes through its own mount; it must not change under
@@ -151,9 +153,9 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 		delete(s.uploads, storage.ID)
 		s.mu.Unlock()
 	}()
-	result, err := ReceiveISO(r.Context(), uploadRoot, folder, name, r.Body, r.ContentLength)
+	result, err := ReceiveImage(r.Context(), uploadRoot, folder, name, expectedKind, r.Body, r.ContentLength)
 	if err != nil {
-		http.Error(w, "ISO upload failed: "+safeUploadError(err), uploadErrorStatus(err))
+		http.Error(w, "image upload failed: "+safeUploadError(err), uploadErrorStatus(err))
 		return
 	}
 	if mountAfter, ok := s.mountIdentity(uploadRoot); separateMount && (!ok || mountAfter != mountBefore) {
@@ -162,11 +164,11 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 	}
 	file, err := os.Stat(filepath.Join(uploadRoot, filepath.FromSlash(result.Path)))
 	if err != nil {
-		http.Error(w, "uploaded ISO unavailable", http.StatusServiceUnavailable)
+		http.Error(w, "uploaded image unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if err := s.repo.RecordUpload(r.Context(), Image{StorageID: storage.ID, Path: result.Path, Size: file.Size(), Modified: file.ModTime(), Present: true}); err != nil {
-		http.Error(w, "ISO saved; refresh storage catalog", http.StatusServiceUnavailable)
+	if err := s.repo.RecordUpload(r.Context(), Image{StorageID: storage.ID, Path: result.Path, Kind: result.Kind, Size: file.Size(), Modified: file.ModTime(), Present: true}); err != nil {
+		http.Error(w, "image saved; refresh storage catalog", http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

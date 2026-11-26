@@ -280,6 +280,10 @@ CREATE TABLE IF NOT EXISTS image_inspections (
  size_bytes BIGINT NOT NULL CHECK (size_bytes > 0),
  modified_at TIMESTAMPTZ NOT NULL,
  kind TEXT NOT NULL CHECK (kind IN ('windows','strelec','ubuntu','unsupported','error')),
+ version TEXT NOT NULL DEFAULT '',
+ arch TEXT NOT NULL DEFAULT '',
+ summary TEXT NOT NULL DEFAULT '',
+ wim_info JSONB NOT NULL DEFAULT '{}'::jsonb,
  PRIMARY KEY (storage_id,path)
 );
 CREATE TABLE IF NOT EXISTS answer_installation_checks (

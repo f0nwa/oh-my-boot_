@@ -184,12 +184,11 @@ func TestImagesTableLayoutAndNoDetailsOrUTC(t *testing.T) {
 		">Файл ISO</a></th>",
 		">Образ</a></th>",
 		">Размер</a></th>",
-		">Хранилище</a></th>",
 		">Добавлен</a></th>",
 		">Загрузки и состояние</a></th>",
 		`<th class="iso-actions">Действия</th>`,
 		"Windows 11 Pro",
-		"NAS-Share",
+		" · NAS-Share",
 		"Локальный",
 		"Загружен · vlad",
 		"Обнаружен",
@@ -210,7 +209,7 @@ func TestImagesTableLayoutAndNoDetailsOrUTC(t *testing.T) {
 		t.Fatal("missing #image-results")
 	}
 	resultsHTML := page[resultsIdx:]
-	for _, unwanted := range []string{"<details", "<summary", ">Автор<", ">Файл ответа и драйверы<", "UTC+", "UTC-"} {
+	for _, unwanted := range []string{"<details", "<summary", ">Автор<", ">Файл ответа и драйверы<", ">Хранилище</a></th>", "UTC+", "UTC-"} {
 		if strings.Contains(resultsHTML, unwanted) {
 			t.Fatalf("unexpected %q in /images results", unwanted)
 		}
@@ -328,7 +327,6 @@ func TestImagesTableEnglishTranslation(t *testing.T) {
 		">ISO file</a></th>",
 		">Image</a></th>",
 		">Size</a></th>",
-		">Storage</a></th>",
 		">Added</a></th>",
 		">Boot entries &amp; status</a></th>",
 		"on server:",
@@ -515,7 +513,6 @@ func TestImagesPageRendersISOBootAndInstallTabs(t *testing.T) {
 		"boot.wim · Windows 11 Pro",
 		"Отдельный файл",
 		"Из ISO (без копии)",
-		"Есть setup.exe",
 		"Только WinPE · нужен ISO",
 		"10.0.26100",
 		"Отдельные",
@@ -524,6 +521,9 @@ func TestImagesPageRendersISOBootAndInstallTabs(t *testing.T) {
 		if !strings.Contains(bootPage, want) {
 			t.Fatalf("boot.wim tab missing %q", want)
 		}
+	}
+	if strings.Contains(bootPage, "<th>Windows Setup</th>") || strings.Contains(bootPage, "Есть setup.exe") {
+		t.Fatalf("boot.wim tab must not render dedicated Windows Setup column or noisy setup.exe badge")
 	}
 	if strings.Contains(bootPage, "<details") || strings.Contains(bootPage, "<summary") {
 		t.Fatalf("boot.wim tab must not contain <details>/<summary>")
@@ -544,10 +544,14 @@ func TestImagesPageRendersISOBootAndInstallTabs(t *testing.T) {
 		"ESD",
 		".wim",
 		".esd",
+		" · NAS",
 	} {
 		if !strings.Contains(instPage, want) {
 			t.Fatalf("install.wim tab missing %q", want)
 		}
+	}
+	if strings.Contains(instPage, "<th>Хранилище</th>") {
+		t.Fatalf("install.wim tab must not render separate Storage column")
 	}
 	if strings.Contains(instPage, "<details") || strings.Contains(instPage, "<summary") {
 		t.Fatalf("install.wim tab must not contain <details>/<summary>")

@@ -421,7 +421,28 @@ func TestISOInspectionDetectsWindowsAndUbuntu(t *testing.T) {
 			if err != nil || got.Kind != tc.kind {
 				t.Fatalf("got=%+v err=%v", got, err)
 			}
+			if tc.kind == "ubuntu" && (got.Version != "26.04" || got.Arch != "x64") {
+				t.Fatalf("expected ubuntu version 26.04 / x64, got %+v", got)
+			}
 		})
+	}
+}
+
+func TestParseUbuntuDiskInfoAndWIMInspectionMetadata(t *testing.T) {
+	ver, arch, sum := parseUbuntuDiskInfo(`Ubuntu 24.04.3 LTS "Noble Numbat" - Release amd64 (20250805.1)`)
+	if ver != "24.04.3 LTS" || arch != "x64" || !strings.Contains(sum, "Noble Numbat") {
+		t.Fatalf("parseUbuntuDiskInfo = (%q, %q, %q)", ver, arch, sum)
+	}
+	var res ISOInspection
+	fillWIMInspectionMetadata(&res, WindowsWIMInfo{
+		Known: true,
+		Images: []WindowsWIMImage{
+			{Index: 1, Name: "Windows 11 Home", Architecture: "amd64", Build: 26100},
+			{Index: 2, Name: "Windows 11 Pro", Architecture: "amd64", Build: 26100},
+		},
+	}, "install.wim")
+	if res.Version != "10.0.26100" || res.Arch != "x64" || !strings.Contains(res.Summary, "Windows 11 Pro") || !strings.Contains(res.Summary, "install.wim") {
+		t.Fatalf("fillWIMInspectionMetadata = %+v", res)
 	}
 }
 

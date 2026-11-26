@@ -25,9 +25,9 @@ func TestImageActionsAreInTheLastColumn(t *testing.T) {
 		t.Fatal("missing end of image row")
 	}
 	row = row[:end]
-	action := strings.Index(row, `action="/images/iso/inspect"`)
-	if action < 0 || action < strings.LastIndex(row, "<td") || strings.Count(row, `action="/images/iso/inspect"`) != 1 {
-		t.Fatalf("image action must appear once, in the last cell: %s", row)
+	lastCell := row[strings.LastIndex(row, "<td"):]
+	if !strings.Contains(lastCell, `action="/images/iso/inspect"`) || !strings.Contains(lastCell, `>Создать загрузку</button>`) || !strings.Contains(lastCell, `name="mode" value="inspect"`) {
+		t.Fatalf("inspect and create actions must appear in the last cell: %s", row)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"omb/internal/agent"
 	"omb/internal/images"
 )
 
@@ -11,6 +12,8 @@ import (
 type ImageInspection struct {
 	StorageID               int64
 	Path, StorageRoot, Kind string
+	Version, Arch, Summary  string
+	WIMInfo                 agent.WindowsWIMInfo
 	Size                    int64
 	Modified                time.Time
 }
@@ -23,11 +26,21 @@ type imageInspectionStore interface {
 func inspectionRecord(source WindowsProfileSource, kind string) ImageInspection {
 	return ImageInspection{StorageID: source.StorageID, Path: source.Path, StorageRoot: source.StorageRoot, Size: source.Size, Modified: source.Modified, Kind: kind}
 }
+func inspectionRecordFromResult(source WindowsProfileSource, kind string, result agent.ISOInspection) ImageInspection {
+	rec := inspectionRecord(source, kind)
+	if kind != "error" && kind != "unsupported" {
+		rec.Version = result.Version
+		rec.Arch = result.Arch
+		rec.Summary = result.Summary
+		rec.WIMInfo = result.WIMInfo
+	}
+	return rec
+}
 func (record ImageInspection) Matches(source WindowsProfileSource) bool {
 	return record.StorageID == source.StorageID && record.Path == source.Path && record.StorageRoot == source.StorageRoot && record.Size == source.Size && record.Modified.Truncate(time.Microsecond).Equal(source.Modified.Truncate(time.Microsecond))
 }
 func (s Store) ImageInspections(ctx context.Context) (map[string]ImageInspection, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT storage_id,path,storage_root,size_bytes,modified_at,kind FROM image_inspections")
+	rows, err := s.Pool.Query(ctx, "SELECT storage_id,path,storage_root,size_bytes,modified_at,kind,version,arch,summary,wim_info FROM image_inspections")
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +48,7 @@ func (s Store) ImageInspections(ctx context.Context) (map[string]ImageInspection
 	records := map[string]ImageInspection{}
 	for rows.Next() {
 		var r ImageInspection
-		if err := rows.Scan(&r.StorageID, &r.Path, &r.StorageRoot, &r.Size, &r.Modified, &r.Kind); err != nil {
+		if err := rows.Scan(&r.StorageID, &r.Path, &r.StorageRoot, &r.Size, &r.Modified, &r.Kind, &r.Version, &r.Arch, &r.Summary, &r.WIMInfo); err != nil {
 			return nil, err
 		}
 		records[imageAuthorKey(r.StorageID, r.Path)] = r
@@ -43,7 +56,7 @@ func (s Store) ImageInspections(ctx context.Context) (map[string]ImageInspection
 	return records, rows.Err()
 }
 func (s Store) SetImageInspection(ctx context.Context, r ImageInspection) error {
-	_, err := s.Pool.Exec(ctx, `INSERT INTO image_inspections(storage_id,path,storage_root,size_bytes,modified_at,kind) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(storage_id,path) DO UPDATE SET storage_root=EXCLUDED.storage_root,size_bytes=EXCLUDED.size_bytes,modified_at=EXCLUDED.modified_at,kind=EXCLUDED.kind`, r.StorageID, r.Path, r.StorageRoot, r.Size, r.Modified, r.Kind)
+	_, err := s.Pool.Exec(ctx, `INSERT INTO image_inspections(storage_id,path,storage_root,size_bytes,modified_at,kind,version,arch,summary,wim_info) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(storage_id,path) DO UPDATE SET storage_root=EXCLUDED.storage_root,size_bytes=EXCLUDED.size_bytes,modified_at=EXCLUDED.modified_at,kind=EXCLUDED.kind,version=EXCLUDED.version,arch=EXCLUDED.arch,summary=EXCLUDED.summary,wim_info=EXCLUDED.wim_info`, r.StorageID, r.Path, r.StorageRoot, r.Size, r.Modified, r.Kind, r.Version, r.Arch, r.Summary, r.WIMInfo)
 	return err
 }
 func (s Store) DeleteImageInspection(ctx context.Context, id int64, path string) error {

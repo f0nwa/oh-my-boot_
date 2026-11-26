@@ -1343,4 +1343,8 @@ tr.is-selected{background:var(--draft-bg)}
 .compat-ok{background:var(--panel);border:1px solid var(--ok);color:var(--ok)}
 .compat-warn{background:var(--draft-bg);border:1px solid var(--draft-line);color:var(--accent-ink)}
 .compat-bad{background:var(--bad-bg);border:1px solid var(--bad-line);color:var(--bad-text)}
+.boot-origin-sub{margin-top:5px}
+.inspect-inline-form{margin:4px 0 0}
+.inspect-inline{display:inline-flex;align-items:center;gap:4px;min-height:24px;padding:2px 8px;border-radius:5px;border:1px dashed var(--line-strong);background:transparent;color:var(--text-2);font:500 11.5px/1.2 var(--sans);cursor:pointer}
+.inspect-inline:hover{border-color:var(--accent);color:var(--text);background:var(--draft-bg)}
 .hidden{display:none!important}

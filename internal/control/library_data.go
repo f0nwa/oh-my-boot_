@@ -327,6 +327,18 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	}
 
 	catalogByKey := make(map[string]images.Image, len(catalog.Images))
+	bootByProfileID := map[int64]WindowsBootImage{}
+	if data.ImageTab == "iso" {
+		if wimStore, ok := s.windowsWIMStore(); ok {
+			if list, err := wimStore.ListWindowsBootImages(r.Context()); err == nil {
+				for _, b := range list {
+					if b.SourceKind == WIMSourceKindISO && b.WindowsProfileID > 0 {
+						bootByProfileID[b.WindowsProfileID] = b
+					}
+				}
+			}
+		}
+	}
 	var catalogWIMs []images.Image
 	for _, image := range catalog.Images {
 		key := imageAuthorKey(image.StorageID, image.Path)
@@ -342,8 +354,24 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 			continue
 		}
 		kind, problem, arch := inspectionLabel("")
+		var versionArch, summary string
+		inspected := false
 		if record, ok := inspections[key]; ok {
 			kind, problem, arch = inspectionLabel(record.Kind)
+			if record.Arch != "" {
+				arch = record.Arch
+			}
+			inspected = record.Kind != "" && record.Kind != "error"
+			summary = record.Summary
+			if record.Version != "" {
+				if arch != "" && arch != "—" {
+					versionArch = record.Version + " · " + arch
+				} else {
+					versionArch = record.Version
+				}
+			} else if record.WIMInfo.Known {
+				versionArch = wimVersionSummary(record.WIMInfo)
+			}
 		}
 		storage, storageFound := storagesByID[image.StorageID]
 		row := imageRow{
@@ -357,6 +385,9 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 			Problem:         problem,
 			DisplayName:     namesByImage[key],
 			Arch:            arch,
+			VersionArch:     versionArch,
+			Summary:         summary,
+			Inspected:       inspected,
 			ActiveMigration: activeMigrations[key],
 		}
 		switch {
@@ -385,6 +416,32 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 			row.DeleteBlockedReason = "Образ используется загрузками"
 		}
 		if p, ok := byPath[key]; ok {
+			sameProfileFile := p.State == "ready" && p.Size == image.Size && p.Modified.Truncate(time.Microsecond).Equal(image.Modified.Truncate(time.Microsecond))
+			if sameProfileFile {
+				if row.Kind == "Не проверен" {
+					if p.BootMode == agent.ISOStrelecMode {
+						row.Kind = "WinPE Strelec"
+					} else {
+						row.Kind = "Windows"
+					}
+					row.Arch = "x64"
+					row.Inspected = true
+				}
+				if row.VersionArch == "" && p.WIMInfo.Known {
+					row.VersionArch = wimVersionSummary(p.WIMInfo)
+				}
+				if row.Summary == "" && p.WIMInfo.Known {
+					ed := wimEditionsSummary(p.WIMInfo)
+					if ed != "" && p.InstallFile != "" {
+						row.Summary = ed + " · " + p.InstallFile
+					} else if ed != "" {
+						row.Summary = ed
+					}
+				}
+				if bi, ok := bootByProfileID[p.ID]; ok && bi.WIMInfo.Known {
+					row.BootBuild = wimVersionSummary(bi.WIMInfo)
+				}
+			}
 			if row.DeleteBlockedReason == "" {
 				row.CleanupProfileID = p.ID
 			}
@@ -392,6 +449,11 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 				row.ServerBytes += diskReport.WindowsProfiles[p.ID]
 				row.ServerNote = "boot.wim"
 			}
+		}
+		if len(ubuntuSourceIDs[key]) > 0 && row.Kind == "Не проверен" {
+			row.Kind = "Ubuntu"
+			row.Arch = "x64"
+			row.Inspected = true
 		}
 		if diskReport != nil {
 			for _, srcID := range ubuntuSourceIDs[key] {
@@ -792,6 +854,8 @@ func imageMatchesQuery(row imageRow, query string) bool {
 		row.Kind,
 		translate(langEN, row.Kind),
 		row.Arch,
+		row.VersionArch,
+		row.Summary,
 		row.StorageName,
 		row.Author,
 		row.AddedVia,

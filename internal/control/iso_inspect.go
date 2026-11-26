@@ -56,21 +56,36 @@ func (s *Server) inspectISO(w http.ResponseWriter, r *http.Request) {
 	}
 	persistCtx, persistCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer persistCancel()
-	if err := store.SetImageInspection(persistCtx, inspectionRecord(selected, kind)); err != nil {
+	if err := store.SetImageInspection(persistCtx, inspectionRecordFromResult(selected, kind, result)); err != nil {
 		http.Error(w, "Не удалось сохранить результат проверки ISO", http.StatusServiceUnavailable)
 		return
 	}
+	inspectOnly := r.FormValue("mode") == "inspect"
 	switch kind {
 	case "error":
 		http.Error(w, "Не удалось определить поддерживаемый образ. Проверьте ISO и доступность хранилища.", http.StatusUnprocessableEntity)
 		return
 	case "unsupported":
+		if inspectOnly {
+			_ = s.Store.Audit(ctx, requestInfo(r).User.ID, "iso.inspect", "ok", fmt.Sprintf("storage=%d path=%s kind=unsupported", storageID, selected.Path))
+			redirectWithNotice(w, r, safeImagesReturnURL(r.FormValue("return_to")), "Поддерживаемая структура ISO не найдена")
+			return
+		}
 		http.Error(w, "Поддерживаемая структура ISO не найдена", http.StatusUnprocessableEntity)
 		return
 	case "windows", "strelec":
 		_ = s.Store.Audit(ctx, requestInfo(r).User.ID, "iso.inspect", "ok", fmt.Sprintf("storage=%d path=%s kind=%s", storageID, selected.Path, kind))
+		if inspectOnly {
+			redirectWithNotice(w, r, safeImagesReturnURL(r.FormValue("return_to")), "ISO проверен")
+			return
+		}
 		target := url.Values{"storage_id": {strconv.FormatInt(storageID, 10)}, "path": {selected.Path}}
 		http.Redirect(w, r, "/installations/new?"+target.Encode(), http.StatusSeeOther)
+		return
+	}
+	if inspectOnly {
+		_ = s.Store.Audit(ctx, requestInfo(r).User.ID, "iso.inspect", "ok", fmt.Sprintf("storage=%d path=%s kind=ubuntu", storageID, selected.Path))
+		redirectWithNotice(w, r, safeImagesReturnURL(r.FormValue("return_to")), "ISO проверен")
 		return
 	}
 	writer, ok := s.Store.(ubuntuSourceCreator)

@@ -440,8 +440,8 @@ func (c *MigrationCoordinator) ProcessCompletedMigration(ctx context.Context, jo
 
 	// Move image inspection
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO image_inspections(storage_id, path, storage_root, size_bytes, modified_at, kind)
-		SELECT $1, path, $2, size_bytes, modified_at, kind FROM image_inspections WHERE storage_id=$3 AND path=$4
+		INSERT INTO image_inspections(storage_id, path, storage_root, size_bytes, modified_at, kind, version, arch, summary, wim_info)
+		SELECT $1, path, $2, size_bytes, modified_at, kind, version, arch, summary, wim_info FROM image_inspections WHERE storage_id=$3 AND path=$4
 		ON CONFLICT(storage_id, path) DO UPDATE SET storage_root=EXCLUDED.storage_root, size_bytes=EXCLUDED.size_bytes, modified_at=EXCLUDED.modified_at, kind=EXCLUDED.kind`,
 		job.TargetStorageID, targetRoot, job.SourceStorageID, job.Path); err != nil {
 		return fmt.Errorf("не удалось обновить image_inspections: %w", err)

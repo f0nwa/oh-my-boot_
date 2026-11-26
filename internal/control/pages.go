@@ -36,6 +36,10 @@ type imageRow struct {
 	DisplayName              string
 	Kind, Problem            string
 	Arch                     string
+	VersionArch              string
+	Summary                  string
+	BootBuild                string
+	Inspected                bool
 	ServerBytes              int64
 	ServerNote               string
 	CleanupProfileID         int64

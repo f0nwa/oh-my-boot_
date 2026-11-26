@@ -60,8 +60,12 @@ type UbuntuISOInspection struct {
 }
 
 type ISOInspection struct {
-	Kind   string              `json:"kind"`
-	Ubuntu UbuntuISOInspection `json:"ubuntu"`
+	Kind    string              `json:"kind"`
+	Version string              `json:"version,omitempty"`
+	Arch    string              `json:"arch,omitempty"`
+	Summary string              `json:"summary,omitempty"`
+	WIMInfo WindowsWIMInfo      `json:"wim_info,omitempty"`
+	Ubuntu  UbuntuISOInspection `json:"ubuntu"`
 }
 
 func (m *UbuntuISOManager) Inspect(ctx context.Context, req WindowsISORequest) (UbuntuISOInspection, error) {
@@ -131,14 +135,22 @@ func (m *UbuntuISOManager) inspect(ctx context.Context, req WindowsISORequest, d
 		}
 	}()
 	if detect {
-		if _, err := inspectMountedWindowsISO(mountRoot); err == nil {
+		if installFile, err := inspectMountedWindowsISO(mountRoot); err == nil {
 			result.Kind = "windows"
+			result.Arch = "x64"
+			if info, wimErr := inspectWindowsWIMInfo(ctx, m.Runner, filepath.Join(mountRoot, "sources", installFile)); wimErr == nil && info.Known {
+				fillWIMInspectionMetadata(&result, info, installFile)
+			}
 			return result, nil
 		} else if !errors.Is(err, errUnsupportedISO) {
 			return result, err
 		}
-		if _, err := inspectMountedStrelecISO(mountRoot); err == nil {
+		if strelecWIM, err := inspectMountedStrelecISO(mountRoot); err == nil {
 			result.Kind = "strelec"
+			result.Arch = "x64"
+			if info, wimErr := inspectWindowsWIMInfo(ctx, m.Runner, filepath.Join(mountRoot, filepath.FromSlash(strelecWIM))); wimErr == nil && info.Known {
+				fillWIMInspectionMetadata(&result, info, path.Base(strelecWIM))
+			}
 			return result, nil
 		} else if !errors.Is(err, errUnsupportedISO) {
 			return result, err
@@ -152,6 +164,9 @@ func (m *UbuntuISOManager) inspect(ctx context.Context, req WindowsISORequest, d
 		}
 		return result, err
 	}
+	if infoData, err := readUbuntuISOFile(mountRoot, ".disk/info", 4096); err == nil {
+		result.Version, result.Arch, result.Summary = parseUbuntuDiskInfo(string(infoData))
+	}
 	result.Ubuntu.Sources = sources
 	hash := sha256.New()
 	if _, err := io.Copy(hash, ubuntuContextReader{ctx: ctx, reader: iso}); err != nil {
@@ -160,6 +175,81 @@ func (m *UbuntuISOManager) inspect(ctx context.Context, req WindowsISORequest, d
 	result.Kind = "ubuntu"
 	result.Ubuntu.SHA256 = hex.EncodeToString(hash.Sum(nil))
 	return result, nil
+}
+
+func fillWIMInspectionMetadata(result *ISOInspection, info WindowsWIMInfo, wimFile string) {
+	result.WIMInfo = info
+	if !info.Known || len(info.Images) == 0 {
+		return
+	}
+	chosen := info.Images[0]
+	for _, img := range info.Images {
+		if img.Build > chosen.Build {
+			chosen = img
+		}
+	}
+	if chosen.Build > 0 {
+		result.Version = "10.0." + strconv.Itoa(chosen.Build)
+	}
+	switch strings.ToLower(strings.TrimSpace(chosen.Architecture)) {
+	case "amd64", "x86_64", "x64":
+		result.Arch = "x64"
+	case "arm64", "aarch64":
+		result.Arch = "arm64"
+	case "x86", "i386", "i686":
+		result.Arch = "x86"
+	}
+	seen := make(map[string]bool, len(info.Images))
+	var names []string
+	for _, img := range info.Images {
+		name := strings.TrimSpace(img.DisplayName)
+		if name == "" {
+			name = strings.TrimSpace(img.Name)
+		}
+		if name != "" && !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	if len(names) > 3 {
+		names = append(names[:3], "…")
+	}
+	summary := strings.Join(names, ", ")
+	if wimFile != "" {
+		if summary != "" {
+			summary += " · " + wimFile
+		} else {
+			summary = wimFile
+		}
+	}
+	result.Summary = summary
+}
+
+func parseUbuntuDiskInfo(raw string) (version, arch, summary string) {
+	line := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(raw, "\r", " "), "\n", " "))
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return "", "", ""
+	}
+	summary = line
+	if len(summary) > 160 {
+		summary = strings.TrimSpace(summary[:160])
+	}
+	for i, word := range fields {
+		switch word {
+		case "amd64", "x86_64":
+			arch = "x64"
+		case "arm64", "aarch64":
+			arch = "arm64"
+		}
+		if version == "" && i > 0 && len(word) >= 4 && word[0] >= '0' && word[0] <= '9' && strings.Contains(word, ".") {
+			version = word
+			if i+1 < len(fields) && fields[i+1] == "LTS" {
+				version += " LTS"
+			}
+		}
+	}
+	return version, arch, summary
 }
 
 func inspectMountedUbuntuISO(mountRoot string) ([]autoinstall.SourceOption, error) {

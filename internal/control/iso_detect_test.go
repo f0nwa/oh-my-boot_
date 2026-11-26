@@ -12,8 +12,11 @@ import (
 
 type genericISOAgent struct {
 	inspectUbuntuAgent
-	kind string
-	err  error
+	kind    string
+	version string
+	arch    string
+	summary string
+	err     error
 }
 
 func (a *genericISOAgent) InspectISO(ctx context.Context, r agent.WindowsISORequest) (agent.ISOInspection, error) {
@@ -21,7 +24,7 @@ func (a *genericISOAgent) InspectISO(ctx context.Context, r agent.WindowsISORequ
 		return agent.ISOInspection{}, a.err
 	}
 	u, _ := a.InspectUbuntuISO(ctx, r)
-	return agent.ISOInspection{Kind: a.kind, Ubuntu: u}, nil
+	return agent.ISOInspection{Kind: a.kind, Version: a.version, Arch: a.arch, Summary: a.summary, Ubuntu: u}, nil
 }
 
 func TestLibraryCreatesDownloadByContent(t *testing.T) {
@@ -50,5 +53,34 @@ func TestLibraryCreatesDownloadByContent(t *testing.T) {
 				t.Fatalf("status=%d location=%s creates=%d body=%s", res.Code, res.Header().Get("Location"), store.creates, res.Body.String())
 			}
 		})
+	}
+}
+
+func TestInspectISOModeInspectStaysOnImagesAndStoresMetadata(t *testing.T) {
+	s, base, _ := downloadsServer(t)
+	store := &ubuntuInspectStore{newInstallStore: base.newInstallStore}
+	s.Store = store
+	s.UbuntuISO = &genericISOAgent{
+		kind:    "windows",
+		version: "10.0.26100",
+		arch:    "x64",
+		summary: "Windows 11 Pro · install.wim",
+	}
+	res := menuPost(t, s, "/images/iso/inspect", url.Values{
+		"storage_id": {"7"},
+		"path":       {"Windows-new.iso"},
+		"mode":       {"inspect"},
+		"return_to":  {"/images?show=free"},
+	})
+	if res.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+	}
+	loc := res.Header().Get("Location")
+	if !strings.HasPrefix(loc, "/images?show=free") || strings.Contains(loc, "/installations/new") {
+		t.Fatalf("expected redirect back to /images?show=free, got %q", loc)
+	}
+	page := libraryGet(t, s, "/images")
+	if !strings.Contains(page, "10.0.26100 · x64") || !strings.Contains(page, "Windows 11 Pro · install.wim") {
+		t.Fatalf("expected inspected version and summary on /images page")
 	}
 }

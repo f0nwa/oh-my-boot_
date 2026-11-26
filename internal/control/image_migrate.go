@@ -410,6 +410,22 @@ func (c *MigrationCoordinator) ProcessCompletedMigration(ctx context.Context, jo
 		return fmt.Errorf("не удалось обновить ubuntu_sources: %w", err)
 	}
 
+	if _, err := tx.Exec(ctx, `
+		UPDATE windows_boot_images
+		SET storage_id=$1, storage_root=$2
+		WHERE source_kind='file' AND storage_id=$3 AND path=$4`,
+		job.TargetStorageID, targetRoot, job.SourceStorageID, job.Path); err != nil {
+		return fmt.Errorf("не удалось обновить windows_boot_images: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE windows_install_images
+		SET storage_id=$1, storage_root=$2
+		WHERE storage_id=$3 AND path=$4`,
+		job.TargetStorageID, targetRoot, job.SourceStorageID, job.Path); err != nil {
+		return fmt.Errorf("не удалось обновить windows_install_images: %w", err)
+	}
+
 	// Move image display name
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO image_names(storage_id, path, name)
@@ -448,9 +464,6 @@ func (c *MigrationCoordinator) ProcessCompletedMigration(ctx context.Context, jo
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("не удалось зафиксировать транзакцию перепривязки: %w", err)
-	}
-	if err := c.store.RebindWIMImageStorage(ctx, job.SourceStorageID, job.Path, job.TargetStorageID, targetRoot); err != nil {
-		return fmt.Errorf("не удалось перепривязать WIM-образы к новому хранилищу: %w", err)
 	}
 	if c.onRebind != nil {
 		c.onRebind()

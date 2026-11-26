@@ -558,3 +558,125 @@ func TestWIMMaintenanceLockSync(t *testing.T) {
 		t.Fatalf("expected both [201, 202] locked for boot.wim, got %+v", capture.state.InstallationIDs)
 	}
 }
+
+func TestWIMDeleteFileChecksStorageAndSurfacesErrors(t *testing.T) {
+	t.Run("readonly_nfs_blocked_before_agent_or_db_delete", func(t *testing.T) {
+		s, store, api := newFakeWIMStore(t, "admin")
+		s.Images.(*fakeImagesAPI).catalog.Storages = []images.Storage{{ID: 7, Name: "RO NFS", Kind: "nfs", State: "ready", Uploads: false}}
+		s.Images.(*fakeImagesAPI).catalog.Images = []images.Image{{StorageID: 7, Path: "wim/boot.wim", Present: true, Kind: images.ImageKindWIM}}
+		store.bootImages = []WindowsBootImage{{ID: 11, SourceKind: WIMSourceKindFile, StorageID: 7, Path: "wim/boot.wim", Title: "RO Boot", State: "ready"}}
+
+		res := wimPost(t, s, "/images/boot/delete", url.Values{"id": {"11"}, "delete_file": {"1"}})
+		if res.Code != http.StatusForbidden || len(api.removedBootIDs) != 0 || len(store.bootImages) != 1 {
+			t.Fatalf("expected 403 and no deletion, got status=%d removed=%v left=%d body=%s", res.Code, api.removedBootIDs, len(store.bootImages), res.Body.String())
+		}
+	})
+
+	t.Run("smb_enables_upload_and_deletes_file", func(t *testing.T) {
+		s, store, api := newFakeWIMStore(t, "admin")
+		s.Images.(*fakeImagesAPI).catalog.Storages = []images.Storage{{ID: 7, Name: "NAS", Kind: "smb", Key: "nas1", Server: "10.0.0.5", Share: "ISO", State: "ready"}}
+		s.Images.(*fakeImagesAPI).catalog.Images = []images.Image{{StorageID: 7, Path: "wim/install.wim", Present: true, Kind: images.ImageKindWIM}}
+		store.installImages = []WindowsInstallImage{{ID: 21, StorageID: 7, Path: "wim/install.wim", Title: "NAS Install", State: "ready"}}
+		events := []string{}
+		s.SMB = &fakeSMBMountAPI{events: &events}
+
+		res := wimPost(t, s, "/images/install/delete", url.Values{"id": {"21"}, "delete_file": {"1"}})
+		if res.Code != http.StatusSeeOther || strings.Join(events, ",") != "enable-upload" || len(api.removedInstallIDs) != 1 || len(s.Images.(*fakeImagesAPI).deleted) != 1 || len(store.installImages) != 0 {
+			t.Fatalf("smb delete_file failed: status=%d events=%v removed=%v deleted=%+v left=%d body=%s", res.Code, events, api.removedInstallIDs, s.Images.(*fakeImagesAPI).deleted, len(store.installImages), res.Body.String())
+		}
+	})
+
+	t.Run("storage_delete_error_is_surfaced_not_ignored", func(t *testing.T) {
+		s, store, _ := newFakeWIMStore(t, "admin")
+		imgAPI := s.Images.(*fakeImagesAPI)
+		imgAPI.catalog.Storages = []images.Storage{{ID: 7, Name: "Local", Kind: "local", State: "ready"}}
+		imgAPI.catalog.Images = []images.Image{{StorageID: 7, Path: "wim/boot.wim", Present: true, Kind: images.ImageKindWIM}}
+		imgAPI.deleteErr = errors.New("permission denied")
+		store.bootImages = []WindowsBootImage{{ID: 12, SourceKind: WIMSourceKindFile, StorageID: 7, Path: "wim/boot.wim", Title: "Err Boot", State: "ready"}}
+
+		res := wimPost(t, s, "/images/boot/delete", url.Values{"id": {"12"}, "delete_file": {"1"}})
+		if res.Code != http.StatusServiceUnavailable || len(store.bootImages) != 1 {
+			t.Fatalf("expected 503 and preserved record on DeleteImage failure, got status=%d left=%d body=%s", res.Code, len(store.bootImages), res.Body.String())
+		}
+	})
+}
+
+func TestInstallImageSwapWithDefaultISOBootChecksCompat(t *testing.T) {
+	s, store, _ := newFakeWIMStore(t, "operator")
+
+	// Base Windows 10 x64 ISO (profile ID 1, build 19041) with default ISO boot.wim.
+	for i := range store.profiles {
+		if store.profiles[i].ID == 1 {
+			store.profiles[i].WIMInfo = agent.WindowsWIMInfo{
+				Known: true,
+				Images: []agent.WindowsWIMImage{
+					{Index: 1, Name: "Windows 10 Pro", Architecture: "amd64", EditionID: "Professional", Build: 19041},
+				},
+			}
+		}
+	}
+	store.installations = []Installation{{
+		ID:            100,
+		BootProfileID: 50,
+		Title:         "Win10 ISO",
+	}}
+	store.installImages = []WindowsInstallImage{
+		{
+			ID:        21,
+			StorageID: 7,
+			Path:      "wim/win11-arm64.wim",
+			Title:     "Win11 ARM64",
+			State:     "ready",
+			WIMInfo: agent.WindowsWIMInfo{
+				Known: true,
+				Images: []agent.WindowsWIMImage{
+					{Index: 1, Name: "Windows 11 Pro ARM64", Architecture: "arm64", EditionID: "Professional", Build: 26100},
+				},
+			},
+		},
+		{
+			ID:        22,
+			StorageID: 7,
+			Path:      "wim/win11-x64.wim",
+			Title:     "Win11 x64",
+			State:     "ready",
+			WIMInfo: agent.WindowsWIMInfo{
+				Known: true,
+				Images: []agent.WindowsWIMImage{
+					{Index: 1, Name: "Windows 11 Pro", Architecture: "amd64", EditionID: "Professional", Build: 26100},
+				},
+			},
+		},
+	}
+
+	// Architecture mismatch (x64 ISO boot.wim + arm64 install.wim) must be rejected with 400.
+	resArch := wimPost(t, s, "/installations/100", url.Values{
+		"boot_profile_id":  {"50"},
+		"title":            {"Win10 ISO"},
+		"install_image_id": {"21"},
+	})
+	if resArch.Code != http.StatusBadRequest || !strings.Contains(resArch.Body.String(), "Несовместимая пара") {
+		t.Fatalf("expected 400 for arch mismatch with default ISO boot.wim, got %d body=%s", resArch.Code, resArch.Body.String())
+	}
+
+	// Older ISO boot.wim (19041) + newer Win11 install.wim (26100) requires confirm_warnings=1.
+	resWarn := wimPost(t, s, "/installations/100", url.Values{
+		"boot_profile_id":  {"50"},
+		"title":            {"Win10 ISO"},
+		"install_image_id": {"22"},
+	})
+	if resWarn.Code != http.StatusBadRequest || !strings.Contains(resWarn.Body.String(), "Подтвердите предупреждения") {
+		t.Fatalf("expected 400 warning confirmation for older ISO boot.wim, got %d body=%s", resWarn.Code, resWarn.Body.String())
+	}
+
+	// With confirm_warnings=1 it succeeds.
+	resConfirm := wimPost(t, s, "/installations/100", url.Values{
+		"boot_profile_id":  {"50"},
+		"title":            {"Win10 ISO"},
+		"install_image_id": {"22"},
+		"confirm_warnings": {"1"},
+	})
+	if resConfirm.Code != http.StatusSeeOther || store.installations[0].InstallImageID != 22 {
+		t.Fatalf("expected 303 with confirm_warnings=1, got %d inst=%+v body=%s", resConfirm.Code, store.installations[0], resConfirm.Body.String())
+	}
+}

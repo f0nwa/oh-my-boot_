@@ -396,6 +396,64 @@ func (s *Server) renameInstallWIM(w http.ResponseWriter, r *http.Request) {
 	redirectWithNotice(w, r, safeWIMReturnURL(r.FormValue("return_to"), "install"), "Название install.wim обновлено")
 }
 
+func (s *Server) prepareWIMSourceFileDelete(r *http.Request, action string, id, storageID int64, imagePath string) (int, string) {
+	if s.Images == nil {
+		return http.StatusServiceUnavailable, "Сервис образов недоступен"
+	}
+	catalog, err := s.Images.Catalog(r.Context())
+	if err != nil {
+		return http.StatusServiceUnavailable, "Сервис образов недоступен"
+	}
+	var storage images.Storage
+	storageFound := false
+	for _, st := range catalog.Storages {
+		if st.ID == storageID {
+			storage = st
+			storageFound = true
+			break
+		}
+	}
+	if storageFound && storage.State != "ready" {
+		return http.StatusConflict, "Хранилище недоступно"
+	}
+	var image images.Image
+	imageFound := false
+	for _, img := range catalog.Images {
+		if img.StorageID == storageID && img.Path == imagePath {
+			image = img
+			imageFound = true
+			break
+		}
+	}
+	if !storageFound || !imageFound || (storage.Kind != "local" && storage.Kind != "mounted" && storage.Kind != "smb" && storage.Kind != "nfs") {
+		return http.StatusNotFound, "Файл образа не найден"
+	}
+	if storage.Kind == "nfs" && !storage.Uploads && image.Present {
+		return http.StatusForbidden, "Хранилище доступно только для чтения"
+	}
+	if image.Present {
+		if storage.Kind == "smb" {
+			if s.SMB == nil {
+				return http.StatusServiceUnavailable, "Служба хранилищ недоступна"
+			}
+			if err := s.SMB.EnableUpload(r.Context(), storage.Key, storage.Server, storage.Share, storage.Subpath); err != nil {
+				_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, action, "error", fmt.Sprintf("id=%d %d %s mount", id, storageID, imagePath))
+				return http.StatusServiceUnavailable, "Не удалось подключить хранилище для записи. Проверьте права SMB."
+			}
+		}
+		if storage.Kind == "nfs" {
+			if s.NFS == nil {
+				return http.StatusServiceUnavailable, "Служба хранилищ недоступна"
+			}
+			if err := s.NFS.EnableNFSUpload(r.Context(), storage.Key, storage.Server, storage.ExportPath, storage.NFSVersion); err != nil {
+				_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, action, "error", fmt.Sprintf("id=%d %d %s mount", id, storageID, imagePath))
+				return http.StatusServiceUnavailable, "Не удалось подключить хранилище для записи. Проверьте права NFS."
+			}
+		}
+	}
+	return 0, ""
+}
+
 func (s *Server) deleteBootWIM(w http.ResponseWriter, r *http.Request) {
 	s.draftMu.Lock()
 	defer s.draftMu.Unlock()
@@ -403,6 +461,10 @@ func (s *Server) deleteBootWIM(w http.ResponseWriter, r *http.Request) {
 	defer s.menuMu.Unlock()
 	s.windowsMu.Lock()
 	defer s.windowsMu.Unlock()
+	s.smbMu.Lock()
+	defer s.smbMu.Unlock()
+	s.nfsMu.Lock()
+	defer s.nfsMu.Unlock()
 
 	store, ok := s.windowsWIMStore()
 	api := s.windowsWIMAPI()
@@ -443,18 +505,29 @@ func (s *Server) deleteBootWIM(w http.ResponseWriter, r *http.Request) {
 		s.rejectDeletion(w, r, "boot-wim.delete", id, reason, message)
 		return
 	}
+	deleteFile := r.FormValue("delete_file") == "1" && rec.StorageID > 0 && rec.Path != ""
+	if deleteFile {
+		if status, errMsg := s.prepareWIMSourceFileDelete(r, "boot-wim.delete", id, rec.StorageID, rec.Path); status != 0 {
+			http.Error(w, errMsg, status)
+			return
+		}
+	}
 	if err := api.RemoveBootImage(r.Context(), id); err != nil {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "boot-wim.delete", "error", fmt.Sprintf("id=%d cleanup", id))
 		http.Error(w, "Не удалось удалить подготовленные файлы boot.wim", http.StatusServiceUnavailable)
 		return
 	}
+	if deleteFile {
+		if err := s.Images.DeleteImage(r.Context(), rec.StorageID, rec.Path); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "boot-wim.delete", "error", fmt.Sprintf("id=%d %d %s storage", id, rec.StorageID, rec.Path))
+			http.Error(w, "Не удалось удалить файл образа. Проверьте доступность хранилища и права на запись.", http.StatusServiceUnavailable)
+			return
+		}
+	}
 	if err := store.DeleteWindowsBootImage(r.Context(), id); err != nil {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "boot-wim.delete", "error", fmt.Sprintf("id=%d database", id))
 		http.Error(w, "Не удалось удалить запись boot.wim", http.StatusServiceUnavailable)
 		return
-	}
-	if r.FormValue("delete_file") == "1" && s.Images != nil && rec.StorageID > 0 && rec.Path != "" {
-		_ = s.Images.DeleteImage(r.Context(), rec.StorageID, rec.Path)
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "boot-wim.delete", "ok", fmt.Sprintf("id=%d", id))
 	msg := fmt.Sprintf("Образ boot.wim «%s» удалён", rec.Title)
@@ -468,6 +541,10 @@ func (s *Server) deleteInstallWIM(w http.ResponseWriter, r *http.Request) {
 	defer s.menuMu.Unlock()
 	s.windowsMu.Lock()
 	defer s.windowsMu.Unlock()
+	s.smbMu.Lock()
+	defer s.smbMu.Unlock()
+	s.nfsMu.Lock()
+	defer s.nfsMu.Unlock()
 
 	store, ok := s.windowsWIMStore()
 	api := s.windowsWIMAPI()
@@ -504,18 +581,29 @@ func (s *Server) deleteInstallWIM(w http.ResponseWriter, r *http.Request) {
 		s.rejectDeletion(w, r, "install-wim.delete", id, reason, message)
 		return
 	}
+	deleteFile := r.FormValue("delete_file") == "1" && rec.StorageID > 0 && rec.Path != ""
+	if deleteFile {
+		if status, errMsg := s.prepareWIMSourceFileDelete(r, "install-wim.delete", id, rec.StorageID, rec.Path); status != 0 {
+			http.Error(w, errMsg, status)
+			return
+		}
+	}
 	if err := api.RemoveInstallImage(r.Context(), id); err != nil {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "install-wim.delete", "error", fmt.Sprintf("id=%d cleanup", id))
 		http.Error(w, "Не удалось удалить подготовленные файлы install.wim", http.StatusServiceUnavailable)
 		return
 	}
+	if deleteFile {
+		if err := s.Images.DeleteImage(r.Context(), rec.StorageID, rec.Path); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "install-wim.delete", "error", fmt.Sprintf("id=%d %d %s storage", id, rec.StorageID, rec.Path))
+			http.Error(w, "Не удалось удалить файл образа. Проверьте доступность хранилища и права на запись.", http.StatusServiceUnavailable)
+			return
+		}
+	}
 	if err := store.DeleteWindowsInstallImage(r.Context(), id); err != nil {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "install-wim.delete", "error", fmt.Sprintf("id=%d database", id))
 		http.Error(w, "Не удалось удалить запись install.wim", http.StatusServiceUnavailable)
 		return
-	}
-	if r.FormValue("delete_file") == "1" && s.Images != nil && rec.StorageID > 0 && rec.Path != "" {
-		_ = s.Images.DeleteImage(r.Context(), rec.StorageID, rec.Path)
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "install-wim.delete", "ok", fmt.Sprintf("id=%d", id))
 	msg := fmt.Sprintf("Образ install.wim «%s» удалён", rec.Title)

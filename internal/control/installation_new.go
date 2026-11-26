@@ -431,13 +431,40 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			}
 			activeWIM = selectedInstallImg.WIMInfo
 		}
+		var pairBoot WindowsBootImage
+		checkPair := false
 		if bootImageID > 0 {
 			selectedBootImg, err = wimStore.GetWindowsBootImage(r.Context(), bootImageID)
 			if err != nil || selectedBootImg.State != "ready" {
 				http.Error(w, "Выбранный boot.wim не найден или не готов", http.StatusBadRequest)
 				return
 			}
-			pairCompat := CheckBootInstallCompat(selectedBootImg, activeWIM, shared.Kind == BootProfileWindowsISO)
+			pairBoot = selectedBootImg
+			checkPair = true
+		} else if installImageID > 0 && shared.Kind == BootProfileWindowsISO {
+			pairBoot = WindowsBootImage{
+				SourceKind:       WIMSourceKindISO,
+				WindowsProfileID: profile.ID,
+				HasSetupExe:      true,
+				WIMInfo:          profile.WIMInfo,
+			}
+			if list, err := wimStore.ListWindowsBootImages(r.Context()); err == nil {
+				for _, candidate := range list {
+					if candidate.SourceKind == WIMSourceKindISO && candidate.WindowsProfileID == profile.ID {
+						if candidate.WIMInfo.Known {
+							pairBoot = candidate
+						} else {
+							pairBoot.ID = candidate.ID
+							pairBoot.HasSetupExe = candidate.HasSetupExe
+						}
+						break
+					}
+				}
+			}
+			checkPair = true
+		}
+		if checkPair {
+			pairCompat := CheckBootInstallCompat(pairBoot, activeWIM, shared.Kind == BootProfileWindowsISO)
 			if pairCompat.Status == "incompatible" {
 				http.Error(w, fmt.Sprintf("Несовместимая пара boot.wim и install.wim: %s", strings.Join(pairCompat.Errors, "; ")), http.StatusBadRequest)
 				return

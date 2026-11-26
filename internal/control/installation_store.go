@@ -174,7 +174,7 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 		return Installation{}, fmt.Errorf("selected boot.wim does not contain setup.exe")
 	}
 	activeWIM := winProfile.WIMInfo
-	if item.InstallImageID > 0 && installImgWIM.Known {
+	if item.InstallImageID > 0 {
 		activeWIM = installImgWIM
 	}
 	if len(answers) > 0 && activeWIM.Known {

@@ -518,6 +518,12 @@ CREATE INDEX IF NOT EXISTS windows_installation_options_boot_image_idx
 CREATE INDEX IF NOT EXISTS windows_installation_options_install_image_idx
 	ON windows_installation_options (install_image_id) WHERE install_image_id IS NOT NULL;
 
+INSERT INTO windows_boot_images (source_kind, windows_profile_id, title, has_setup_exe, state)
+SELECT 'iso', id, COALESCE(NULLIF(btrim(title), ''), 'Windows ISO #' || id::text), TRUE, 'ready'
+FROM windows_profiles
+WHERE boot_mode = '' AND state = 'ready'
+ON CONFLICT (windows_profile_id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
     id TEXT PRIMARY KEY,
     sha256 TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),

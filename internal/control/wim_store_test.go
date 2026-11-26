@@ -436,6 +436,56 @@ func TestWIMStoreInstallationSwapAndStandalone(t *testing.T) {
 	if len(list) != 1 || list[0].BootImageID != bootWithSetup2.ID || list[0].InstallImageID != instImg.ID {
 		t.Fatalf("installations after swap = %+v", list)
 	}
+
+	// Overriding install_image_id with an unknown wim_info must NOT fall back to the base ISO's wim_info.
+	isoProfile, err := store.CreateWindowsProfile(ctx, WindowsProfileSource{
+		StorageID: 1, Path: "win-arm64.iso", StorageRoot: "/iso", Size: 2048, Modified: now, Title: "Win ARM64",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetWindowsProfileWIMInfo(ctx, isoProfile.ID, agent.WindowsWIMInfo{
+		Known:  true,
+		Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 11 Pro ARM64", Architecture: "arm64", EditionID: "Professional"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var isoBootProfileID int64
+	if err := store.Pool.QueryRow(ctx, `SELECT boot_profile_id FROM windows_boot_profiles WHERE windows_profile_id=$1`, isoProfile.ID).Scan(&isoBootProfileID); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := store.CreateWindowsAnswer(ctx, WindowsAnswerVariant{
+		Title:  "AMD64 Answer",
+		SHA256: strings.Repeat("c", 64),
+		Size:   100,
+		Target: WindowsAnswerTarget{Architectures: []string{"amd64"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Without install_image_id override, the base ISO (arm64) rejects the amd64 answer.
+	if _, err := store.CreateInstallation(ctx, Installation{
+		BootProfileID: isoBootProfileID,
+		Title:         "Bad Base Arch",
+		AnswerID:      answer.ID,
+	}); err == nil {
+		t.Fatal("expected compatibility error against arm64 base ISO")
+	}
+	// With install_image_id whose wim_info is unknown, CreateInstallation must NOT fall back to the arm64 base ISO.
+	unknownInstImg, err := store.UpsertWindowsInstallImage(ctx, WindowsInstallImageSource{
+		StorageID: 1, Path: "unknown-install.wim", StorageRoot: "/iso", InstallFile: "install.wim", Size: 1000, Modified: now, Title: "Unknown Install",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateInstallation(ctx, Installation{
+		BootProfileID:  isoBootProfileID,
+		Title:          "Override Unknown WIM",
+		AnswerID:       answer.ID,
+		InstallImageID: unknownInstImg.ID,
+	}); err != nil {
+		t.Fatalf("expected override with unknown wim_info to skip base ISO fallback, got error: %v", err)
+	}
 }
 
 func TestWIMStoreAgentClientMethods(t *testing.T) {

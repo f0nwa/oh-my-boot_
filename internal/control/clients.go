@@ -329,10 +329,21 @@ func (c *ImagesClient) UploadISO(ctx context.Context, id int64, folder, name str
 }
 
 func (c *ImagesClient) UploadImage(ctx context.Context, id int64, folder, name, expectedKind string, body io.Reader, size int64) (images.UploadResult, error) {
+	return c.UploadImageWithOptions(ctx, id, folder, name, expectedKind, body, size, images.ReceiveOptions{})
+}
+
+func (c *ImagesClient) UploadImageWithOptions(ctx context.Context, id int64, folder, name, expectedKind string, body io.Reader, size int64, opts images.ReceiveOptions) (images.UploadResult, error) {
 	var result images.UploadResult
 	query := url.Values{"folder": {folder}, "name": {name}}
 	if expectedKind != "" {
 		query.Set("expected_kind", expectedKind)
+	}
+	if size < 0 {
+		query.Set("stream", "1")
+	}
+	if opts.ChecksumAlgo != "" {
+		query.Set("checksum_algo", opts.ChecksumAlgo)
+		query.Set("checksum_value", opts.ChecksumValue)
 	}
 	path := "/storages/" + strconv.FormatInt(id, 10) + "/upload?" + query.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix"+path, io.NopCloser(body))

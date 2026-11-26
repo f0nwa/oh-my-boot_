@@ -16,6 +16,8 @@ func uploadErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, ErrInvalidISO), errors.Is(err, ErrInvalidFolder):
 		return http.StatusBadRequest
+	case errors.Is(err, ErrChecksumMismatch):
+		return http.StatusUnprocessableEntity
 	case errors.Is(err, ErrISOExists), errors.Is(err, os.ErrExist):
 		return http.StatusConflict
 	case errors.Is(err, ErrInsufficientSpace):
@@ -31,6 +33,8 @@ func safeUploadError(err error) string {
 		return "invalid ISO file"
 	case errors.Is(err, ErrInvalidFolder):
 		return "folder unavailable"
+	case errors.Is(err, ErrChecksumMismatch):
+		return "checksum mismatch"
 	case errors.Is(err, ErrISOExists), errors.Is(err, os.ErrExist):
 		return "file already exists"
 	case errors.Is(err, ErrInsufficientSpace):
@@ -125,7 +129,21 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	folder := r.URL.Query().Get("folder")
 	expectedKind := r.URL.Query().Get("expected_kind")
-	if !ValidExpectedKind(expectedKind) || !ValidImageName(name, expectedKind) || r.ContentLength <= 0 || r.ContentLength > MaxISOBytes {
+	streamMode := r.URL.Query().Get("stream") == "1"
+	checksumAlgo := r.URL.Query().Get("checksum_algo")
+	checksumValue := r.URL.Query().Get("checksum_value")
+	if _, _, err := ValidateChecksum(checksumAlgo, checksumValue); err != nil {
+		http.Error(w, "invalid checksum parameters", http.StatusBadRequest)
+		return
+	}
+	size := r.ContentLength
+	if streamMode && size < 0 {
+		size = -1
+	} else if size <= 0 || size > MaxISOBytes {
+		http.Error(w, "invalid image name, kind or size", http.StatusBadRequest)
+		return
+	}
+	if !ValidExpectedKind(expectedKind) || !ValidImageName(name, expectedKind) {
 		http.Error(w, "invalid image name, kind or size", http.StatusBadRequest)
 		return
 	}
@@ -153,7 +171,10 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 		delete(s.uploads, storage.ID)
 		s.mu.Unlock()
 	}()
-	result, err := ReceiveImage(r.Context(), uploadRoot, folder, name, expectedKind, r.Body, r.ContentLength)
+	result, err := ReceiveImageWithOptions(r.Context(), uploadRoot, folder, name, expectedKind, r.Body, size, ReceiveOptions{
+		ChecksumAlgo:  checksumAlgo,
+		ChecksumValue: checksumValue,
+	})
 	if err != nil {
 		http.Error(w, "image upload failed: "+safeUploadError(err), uploadErrorStatus(err))
 		return

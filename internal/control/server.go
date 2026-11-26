@@ -228,6 +228,8 @@ type Server struct {
 	ubuntuCache       *ubuntuReadinessCache
 	authorsCache      resourceAuthorsCache
 	navBadgesCache    navBadgeCache
+	urlDownloads      *URLDownloadManager
+	urlDownloadClient func(insecureTLS bool, timeout time.Duration) *http.Client
 }
 
 type requestContext struct {
@@ -432,6 +434,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/driver-upload.js", s.driverUploadScript)
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))
+	mux.HandleFunc("POST /images/url/probe", s.protect("images", s.imagesURLProbe))
+	mux.HandleFunc("POST /images/url/download", s.protect("images", s.imagesURLDownloadStart))
+	mux.HandleFunc("GET /images/url/downloads", s.protect("view", s.imagesURLDownloadsList))
+	mux.HandleFunc("POST /images/url/downloads/{id}/cancel", s.protect("images", s.imagesURLDownloadCancel))
+	mux.HandleFunc("POST /images/url/downloads/{id}/dismiss", s.protect("images", s.imagesURLDownloadDismiss))
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
 	mux.HandleFunc("GET /assets/image-delete.js", imageDeleteScript)
 	mux.HandleFunc("GET /assets/image-migrate.js", imageMigrateScript)

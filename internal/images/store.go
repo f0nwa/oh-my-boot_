@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -194,7 +195,10 @@ func (s Store) Catalog(ctx context.Context) (Catalog, error) {
 	if err != nil {
 		return result, err
 	}
-	rows, err = s.Pool.Query(ctx, "SELECT storage_id,path,kind,size_bytes,modified_at,present,first_seen_at FROM images ORDER BY storage_id,path")
+	rows, err = s.Pool.Query(ctx, `SELECT storage_id,path,kind,size_bytes,modified_at,present,first_seen_at,
+		CASE WHEN sha256 <> '' AND sha256_size_bytes = size_bytes AND sha256_modified_at = modified_at THEN sha256 ELSE '' END,
+		CASE WHEN sha256 <> '' AND sha256_size_bytes = size_bytes AND sha256_modified_at = modified_at THEN sha256_computed_at ELSE NULL END
+		FROM images ORDER BY storage_id,path`)
 	if err != nil {
 		return result, err
 	}
@@ -202,7 +206,7 @@ func (s Store) Catalog(ctx context.Context) (Catalog, error) {
 	isoBytes := map[int64]int64{}
 	for rows.Next() {
 		var image Image
-		if err := rows.Scan(&image.StorageID, &image.Path, &image.Kind, &image.Size, &image.Modified, &image.Present, &image.FirstSeenAt); err != nil {
+		if err := rows.Scan(&image.StorageID, &image.Path, &image.Kind, &image.Size, &image.Modified, &image.Present, &image.FirstSeenAt, &image.SHA256, &image.SHA256ComputedAt); err != nil {
 			return result, err
 		}
 		if image.Present {
@@ -273,6 +277,31 @@ func (s Store) RecordUpload(ctx context.Context, image Image) error {
 			kind = ImageKindISO
 		}
 	}
+	sha := strings.ToLower(strings.TrimSpace(image.SHA256))
+	if sha != "" {
+		if _, normalized, err := ValidateChecksum("sha256", sha); err == nil {
+			sha = normalized
+		} else {
+			sha = ""
+		}
+	}
+	if sha != "" {
+		_, err := s.Pool.Exec(ctx,
+			`INSERT INTO images (storage_id,path,kind,size_bytes,modified_at,present,sha256,sha256_size_bytes,sha256_modified_at,sha256_computed_at)
+			 VALUES ($1,$2,$3,$4,$5,TRUE,$6,$4,$5,now())
+			 ON CONFLICT (storage_id,path) DO UPDATE SET
+			   kind=EXCLUDED.kind,
+			   size_bytes=EXCLUDED.size_bytes,
+			   modified_at=EXCLUDED.modified_at,
+			   present=TRUE,
+			   sha256=EXCLUDED.sha256,
+			   sha256_size_bytes=EXCLUDED.sha256_size_bytes,
+			   sha256_modified_at=EXCLUDED.sha256_modified_at,
+			   sha256_computed_at=EXCLUDED.sha256_computed_at`,
+			image.StorageID, image.Path, kind, image.Size, image.Modified, sha,
+		)
+		return err
+	}
 	_, err := s.Pool.Exec(ctx,
 		"INSERT INTO images (storage_id,path,kind,size_bytes,modified_at,present) VALUES ($1,$2,$3,$4,$5,TRUE) ON CONFLICT (storage_id,path) DO UPDATE SET kind=EXCLUDED.kind,size_bytes=EXCLUDED.size_bytes,modified_at=EXCLUDED.modified_at,present=TRUE",
 		image.StorageID, image.Path, kind, image.Size, image.Modified,
@@ -330,11 +359,11 @@ func (s Store) MarkUnavailableIfReady(ctx context.Context, id int64, message str
 	return command.RowsAffected() > 0, nil
 }
 
-// Settings returns the current background catalog scanning settings.
+// Settings returns the current background catalog scanning and SHA-256 indexing settings.
 func (s Store) Settings(ctx context.Context) (CatalogSettings, error) {
 	var settings CatalogSettings
-	err := s.Pool.QueryRow(ctx, "SELECT rescan_enabled, rescan_interval_minutes, updated_at FROM catalog_settings WHERE id = 1").
-		Scan(&settings.RescanEnabled, &settings.RescanIntervalMinutes, &settings.UpdatedAt)
+	err := s.Pool.QueryRow(ctx, "SELECT rescan_enabled, rescan_interval_minutes, hash_index_enabled, hash_index_rate_mbps, updated_at FROM catalog_settings WHERE id = 1").
+		Scan(&settings.RescanEnabled, &settings.RescanIntervalMinutes, &settings.HashIndexEnabled, &settings.HashIndexRateMBps, &settings.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DefaultCatalogSettings(), nil
 	}
@@ -344,24 +373,97 @@ func (s Store) Settings(ctx context.Context) (CatalogSettings, error) {
 	return settings, nil
 }
 
-// UpdateSettings updates the background catalog scanning settings.
+// UpdateSettings updates the background catalog scanning and SHA-256 indexing settings.
 func (s Store) UpdateSettings(ctx context.Context, settings CatalogSettings) (CatalogSettings, error) {
 	if settings.RescanIntervalMinutes < 1 || settings.RescanIntervalMinutes > 1440 {
 		return CatalogSettings{}, errors.New("rescan_interval_minutes must be between 1 and 1440")
 	}
+	if settings.HashIndexRateMBps < 0 || settings.HashIndexRateMBps > 1000 {
+		return CatalogSettings{}, errors.New("hash_index_rate_mbps must be between 0 and 1000")
+	}
 	var updated CatalogSettings
 	err := s.Pool.QueryRow(ctx, `
-		INSERT INTO catalog_settings (id, rescan_enabled, rescan_interval_minutes, updated_at)
-		VALUES (1, $1, $2, now())
+		INSERT INTO catalog_settings (id, rescan_enabled, rescan_interval_minutes, hash_index_enabled, hash_index_rate_mbps, updated_at)
+		VALUES (1, $1, $2, $3, $4, now())
 		ON CONFLICT (id) DO UPDATE SET
 			rescan_enabled = EXCLUDED.rescan_enabled,
 			rescan_interval_minutes = EXCLUDED.rescan_interval_minutes,
+			hash_index_enabled = EXCLUDED.hash_index_enabled,
+			hash_index_rate_mbps = EXCLUDED.hash_index_rate_mbps,
 			updated_at = EXCLUDED.updated_at
-		RETURNING rescan_enabled, rescan_interval_minutes, updated_at
-	`, settings.RescanEnabled, settings.RescanIntervalMinutes).
-		Scan(&updated.RescanEnabled, &updated.RescanIntervalMinutes, &updated.UpdatedAt)
+		RETURNING rescan_enabled, rescan_interval_minutes, hash_index_enabled, hash_index_rate_mbps, updated_at
+	`, settings.RescanEnabled, settings.RescanIntervalMinutes, settings.HashIndexEnabled, settings.HashIndexRateMBps).
+		Scan(&updated.RescanEnabled, &updated.RescanIntervalMinutes, &updated.HashIndexEnabled, &updated.HashIndexRateMBps, &updated.UpdatedAt)
 	if err != nil {
 		return CatalogSettings{}, err
 	}
 	return updated, nil
+}
+
+// HashIndexCounts returns total, indexed, and pending present images across ready storages.
+func (s Store) HashIndexCounts(ctx context.Context) (HashIndexCounts, error) {
+	var c HashIndexCounts
+	err := s.Pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*)::int AS total,
+			COUNT(*) FILTER (WHERE i.sha256 <> '' AND i.sha256_size_bytes = i.size_bytes AND i.sha256_modified_at = i.modified_at)::int AS indexed
+		FROM images i
+		JOIN storages st ON st.id = i.storage_id
+		WHERE i.present = TRUE AND st.state = 'ready'
+	`).Scan(&c.Total, &c.Indexed)
+	if err != nil {
+		return HashIndexCounts{}, err
+	}
+	c.Pending = c.Total - c.Indexed
+	if c.Pending < 0 {
+		c.Pending = 0
+	}
+	return c, nil
+}
+
+// HashIndexCandidates returns present images on ready storages missing an up-to-date SHA-256,
+// prioritized by local storages first and smaller files first.
+func (s Store) HashIndexCandidates(ctx context.Context) ([]HashIndexCandidate, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT i.storage_id, st.name, st.kind, st.root, i.path, i.size_bytes, i.modified_at
+		FROM images i
+		JOIN storages st ON st.id = i.storage_id
+		WHERE i.present = TRUE
+		  AND st.state = 'ready'
+		  AND (i.sha256 = '' OR i.sha256_size_bytes IS DISTINCT FROM i.size_bytes OR i.sha256_modified_at IS DISTINCT FROM i.modified_at)
+		ORDER BY CASE WHEN st.kind = 'local' THEN 0 ELSE 1 END, i.size_bytes ASC, i.storage_id ASC, i.path ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []HashIndexCandidate{}
+	for rows.Next() {
+		var cand HashIndexCandidate
+		if err := rows.Scan(&cand.StorageID, &cand.StorageName, &cand.StorageKind, &cand.StorageRoot, &cand.Path, &cand.Size, &cand.Modified); err != nil {
+			return nil, err
+		}
+		result = append(result, cand)
+	}
+	return result, rows.Err()
+}
+
+// SaveImageSHA256 records the computed SHA-256 only if size and modified_at still match.
+func (s Store) SaveImageSHA256(ctx context.Context, storageID int64, path string, size int64, modified time.Time, sha256Hex string) error {
+	_, normalized, err := ValidateChecksum("sha256", sha256Hex)
+	if err != nil || normalized == "" {
+		return fmt.Errorf("invalid sha256")
+	}
+	_, err = s.Pool.Exec(ctx, `
+		UPDATE images
+		SET sha256 = $5,
+		    sha256_size_bytes = $3,
+		    sha256_modified_at = $4,
+		    sha256_computed_at = now()
+		WHERE storage_id = $1
+		  AND path = $2
+		  AND size_bytes = $3
+		  AND modified_at = $4
+	`, storageID, path, size, modified, normalized)
+	return err
 }

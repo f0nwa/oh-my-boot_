@@ -136,6 +136,7 @@ type bootWIMRow struct {
 	StorageBlocked           bool
 	Path                     string
 	Title                    string
+	SHA256                   string
 	Size                     int64
 	VersionArch              string
 	HasSetupExe              bool
@@ -169,6 +170,7 @@ type installWIMRow struct {
 	Title                    string
 	InstallFile              string
 	IsESD                    bool
+	SHA256                   string
 	Size                     int64
 	Editions                 string
 	IndexCount               int
@@ -389,6 +391,8 @@ type pageData struct {
 	RecoveryMinutes       int
 	RescanSettings        *images.CatalogSettings
 	RescanMinutes         int
+	HashIndexEnabled      bool
+	HashIndexRateMBps     int
 	Storages              []images.Storage
 	ISOImages             []imageRow
 	WindowsProfiles       []WindowsProfile

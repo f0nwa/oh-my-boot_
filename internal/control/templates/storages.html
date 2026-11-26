@@ -37,6 +37,22 @@
   </div>
   <p class="hint">{{t "Периодический поиск новых и удаление старых ISO во всех подключённых хранилищах."}}</p>
 </div>
+<div class="storage-task-row">
+  <div class="storage-task-main">
+    <label class="storage-task-title">
+      <input type="checkbox" name="hash_index_enabled" id="storage-hash-enabled" {{if $.HashIndexEnabled}}checked{{end}}>
+      <span>{{t "Индексация SHA-256 образов"}}</span>
+    </label>
+    <div class="storage-task-controls">
+      <label for="storage-hash-rate">{{t "лимит"}}</label>
+      <input id="storage-hash-rate" name="hash_index_rate_mbps" value="{{$.HashIndexRateMBps}}" type="number" min="0" max="1000" step="1" required>
+      <span>{{t "МБ/с"}}</span>
+      <span class="dot {{if $.HashIndexEnabled}}dot-ok{{else}}dot-off{{end}}" id="storage-hash-dot"></span>
+    </div>
+  </div>
+  <p class="hint">{{t "Последовательный расчёт SHA-256 по одному файлу в очереди (0 — без ограничения скорости)."}}</p>
+  <div id="storage-hash-index-live" class="storage-task-live" hidden data-label-running="{{t "Проиндексировано"}}" data-label-of="{{t "из"}}" data-label-done="{{t "Все образы проиндексированы"}}" data-label-empty="{{t "Образы для индексации не найдены"}}" data-label-paused="{{t "Приостановлено на время загрузки или сканирования"}}" data-label-disabled="{{t "Индексация выключена"}}" data-label-left="{{t "осталось"}}"></div>
+</div>
 </form>
 {{else}}
 <div class="storage-task-row">
@@ -62,6 +78,19 @@
     </div>
   </div>
   <p class="hint">{{t "Периодический поиск новых и удаление старых ISO во всех подключённых хранилищах."}}</p>
+</div>
+<div class="storage-task-row">
+  <div class="storage-task-main">
+    <div class="storage-task-title">
+      <span class="dot {{if $.HashIndexEnabled}}dot-ok{{else}}dot-off{{end}}"></span>
+      <span>{{t "Индексация SHA-256 образов"}}</span>
+    </div>
+    <div class="storage-task-controls">
+      <span class="muted">{{if $.HashIndexEnabled}}{{if gt $.HashIndexRateMBps 0}}{{t "лимит"}} {{$.HashIndexRateMBps}} {{t "МБ/с"}}{{else}}{{t "без ограничения"}}{{end}}{{else}}{{t "выключено"}}{{end}}</span>
+    </div>
+  </div>
+  <p class="hint">{{t "Последовательный расчёт SHA-256 по одному файлу в очереди (0 — без ограничения скорости)."}}</p>
+  <div id="storage-hash-index-live" class="storage-task-live" hidden data-label-running="{{t "Проиндексировано"}}" data-label-of="{{t "из"}}" data-label-done="{{t "Все образы проиндексированы"}}" data-label-empty="{{t "Образы для индексации не найдены"}}" data-label-paused="{{t "Приостановлено на время загрузки или сканирования"}}" data-label-disabled="{{t "Индексация выключена"}}" data-label-left="{{t "осталось"}}"></div>
 </div>
 {{end}}
 <div class="storage-recovery-status">

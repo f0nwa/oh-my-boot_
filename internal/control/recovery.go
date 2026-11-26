@@ -54,10 +54,14 @@ func (s *Server) loadStorageRecovery(ctx context.Context, data *pageData) {
 	data.Recovery = &status
 	data.RecoveryMinutes = max(1, status.IntervalSeconds/60)
 
+	data.HashIndexEnabled = true
+	data.HashIndexRateMBps = 50
 	if s.Images != nil {
 		if settings, err := s.Images.CatalogSettings(ctx); err == nil {
 			data.RescanSettings = &settings
 			data.RescanMinutes = settings.RescanIntervalMinutes
+			data.HashIndexEnabled = settings.HashIndexEnabled
+			data.HashIndexRateMBps = settings.HashIndexRateMBps
 		}
 	}
 	if data.RescanMinutes <= 0 {
@@ -92,23 +96,45 @@ func (s *Server) storageRecoverySettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if s.Images != nil && (r.Form.Has("rescan_interval_minutes") || r.Form.Has("rescan_enabled")) {
-		rescanMinStr := r.FormValue("rescan_interval_minutes")
-		rescanMin, err := strconv.Atoi(rescanMinStr)
-		if err != nil || rescanMin < 1 || rescanMin > 1440 {
-			http.Error(w, "Интервал сканирования должен быть от 1 до 1440 минут", http.StatusBadRequest)
-			return
+	hasRescan := r.Form.Has("rescan_interval_minutes") || r.Form.Has("rescan_enabled")
+	hasHash := r.Form.Has("hash_index_rate_mbps") || r.Form.Has("hash_index_enabled")
+	if s.Images != nil && (hasRescan || hasHash) {
+		current, err := s.Images.CatalogSettings(r.Context())
+		if err != nil {
+			current = images.DefaultCatalogSettings()
 		}
-		rescanCfg := images.CatalogSettings{
-			RescanEnabled:         r.FormValue("rescan_enabled") != "",
-			RescanIntervalMinutes: rescanMin,
+		rescanCfg := current
+		if hasRescan {
+			rescanMinStr := r.FormValue("rescan_interval_minutes")
+			rescanMin, err := strconv.Atoi(rescanMinStr)
+			if err != nil || rescanMin < 1 || rescanMin > 1440 {
+				http.Error(w, "Интервал сканирования должен быть от 1 до 1440 минут", http.StatusBadRequest)
+				return
+			}
+			rescanCfg.RescanEnabled = r.FormValue("rescan_enabled") != ""
+			rescanCfg.RescanIntervalMinutes = rescanMin
+		}
+		if hasHash {
+			rateStr := r.FormValue("hash_index_rate_mbps")
+			rateMBps, err := strconv.Atoi(rateStr)
+			if err != nil || rateMBps < 0 || rateMBps > 1000 {
+				http.Error(w, "Лимит скорости индексации должен быть от 0 до 1000 МБ/с", http.StatusBadRequest)
+				return
+			}
+			rescanCfg.HashIndexEnabled = r.FormValue("hash_index_enabled") != ""
+			rescanCfg.HashIndexRateMBps = rateMBps
 		}
 		if _, err := s.Images.SetCatalogSettings(r.Context(), rescanCfg); err != nil {
 			_ = s.Store.Audit(r.Context(), info.User.ID, "storage-recovery.update", "error", detail+" rescan=error")
 			http.Error(w, "Не удалось сохранить настройки сканирования ISO", http.StatusServiceUnavailable)
 			return
 		}
-		detail += fmt.Sprintf(" rescan_enabled=%t rescan_interval=%dm", rescanCfg.RescanEnabled, rescanMin)
+		if hasRescan {
+			detail += fmt.Sprintf(" rescan_enabled=%t rescan_interval=%dm", rescanCfg.RescanEnabled, rescanCfg.RescanIntervalMinutes)
+		}
+		if hasHash {
+			detail += fmt.Sprintf(" hash_index_enabled=%t hash_index_rate=%dMBps", rescanCfg.HashIndexEnabled, rescanCfg.HashIndexRateMBps)
+		}
 	}
 
 	_ = s.Store.Audit(r.Context(), info.User.ID, "storage-recovery.update", "ok", detail)

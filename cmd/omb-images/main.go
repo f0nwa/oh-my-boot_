@@ -75,6 +75,7 @@ func main() {
 		}
 		go monitor.Run(shutdownCtx, *checkInterval)
 	}
+	go api.RunHashIndexer(shutdownCtx)
 	go func() {
 		<-shutdownCtx.Done()
 		timeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)

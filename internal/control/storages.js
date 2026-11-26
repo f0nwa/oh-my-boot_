@@ -144,6 +144,8 @@
     var interval = recoveryForm.elements.interval_minutes;
     var rescanEnabled = recoveryForm.elements.rescan_enabled;
     var rescanInterval = recoveryForm.elements.rescan_interval_minutes;
+    var hashEnabled = recoveryForm.elements.hash_index_enabled;
+    var hashRate = recoveryForm.elements.hash_index_rate_mbps;
 
     var recDot = document.getElementById('storage-recovery-dot');
     if (recDot && enabled) {
@@ -153,14 +155,21 @@
     if (scanDot && rescanEnabled) {
       scanDot.className = 'dot ' + (rescanEnabled.checked ? 'dot-ok' : 'dot-off');
     }
+    var hashDot = document.getElementById('storage-hash-dot');
+    if (hashDot && hashEnabled) {
+      hashDot.className = 'dot ' + (hashEnabled.checked ? 'dot-ok' : 'dot-off');
+    }
 
     var changed = (enabled && enabled.checked !== enabled.defaultChecked) ||
       (interval && interval.valueAsNumber !== Number(interval.defaultValue)) ||
       (rescanEnabled && rescanEnabled.checked !== rescanEnabled.defaultChecked) ||
-      (rescanInterval && rescanInterval.valueAsNumber !== Number(rescanInterval.defaultValue));
+      (rescanInterval && rescanInterval.valueAsNumber !== Number(rescanInterval.defaultValue)) ||
+      (hashEnabled && hashEnabled.checked !== hashEnabled.defaultChecked) ||
+      (hashRate && hashRate.valueAsNumber !== Number(hashRate.defaultValue));
 
     var valid = (!interval || interval.validity.valid) &&
-      (!rescanInterval || rescanInterval.validity.valid);
+      (!rescanInterval || rescanInterval.validity.valid) &&
+      (!hashRate || hashRate.validity.valid);
 
     recoverySave.disabled = !changed || !valid;
   }
@@ -292,6 +301,7 @@
         updateRecoverySave();
       }
       recoveryDialog.showModal();
+      startHashIndexDialogPoll();
       return;
     }
 
@@ -480,4 +490,100 @@
       return;
     }
   });
+
+  var hashLiveEl = document.getElementById('storage-hash-index-live');
+  var hashPollTimer = null;
+
+  function formatHashSpeed(bps) {
+    if (!bps || bps <= 0) return '';
+    var mb = bps / (1024 * 1024);
+    var unit = (document.documentElement && document.documentElement.lang === 'en') ? 'MB/s' : 'МБ/с';
+    return (mb >= 10 ? Math.round(mb) : mb.toFixed(1)) + ' ' + unit;
+  }
+
+  function renderHashLive(st) {
+    if (!hashLiveEl || !st) return;
+    hashLiveEl.hidden = false;
+    hashLiveEl.textContent = '';
+
+    var dot = document.createElement('span');
+    var left = document.createElement('span');
+    var right = document.createElement('span');
+    right.className = 'mono muted';
+
+    var lblRunning = hashLiveEl.getAttribute('data-label-running') || 'Проиндексировано';
+    var lblOf = hashLiveEl.getAttribute('data-label-of') || 'из';
+    var lblDone = hashLiveEl.getAttribute('data-label-done') || 'Все образы проиндексированы';
+    var lblEmpty = hashLiveEl.getAttribute('data-label-empty') || 'Образы для индексации не найдены';
+    var lblPaused = hashLiveEl.getAttribute('data-label-paused') || 'Приостановлено на время загрузки или сканирования';
+    var lblDisabled = hashLiveEl.getAttribute('data-label-disabled') || 'Индексация выключена';
+    var lblLeft = hashLiveEl.getAttribute('data-label-left') || 'осталось';
+
+    if (!st.enabled || st.state === 'disabled') {
+      dot.className = 'dot dot-off';
+      left.appendChild(dot);
+      left.appendChild(document.createTextNode(' ' + lblDisabled + ' (' + (st.indexed_count || 0) + ' ' + lblOf + ' ' + (st.total_count || 0) + ')'));
+    } else if (st.state === 'running' && st.current) {
+      dot.className = 'dot dot-pulse';
+      left.appendChild(dot);
+      left.appendChild(document.createTextNode(' ' + lblRunning + ' ' + (st.indexed_count || 0) + ' ' + lblOf + ' ' + (st.total_count || 0) + ' · '));
+      var fileSpan = document.createElement('span');
+      fileSpan.className = 'mono';
+      fileSpan.textContent = st.current.path || '';
+      left.appendChild(fileSpan);
+      left.appendChild(document.createTextNode(' (' + (st.current.percent || 0) + '%)'));
+      right.textContent = formatHashSpeed(st.current.speed_bps);
+    } else if (st.state === 'paused' && st.pending_count > 0) {
+      dot.className = 'dot dot-accent';
+      left.appendChild(dot);
+      left.appendChild(document.createTextNode(' ' + lblPaused + ' (' + lblLeft + ' ' + st.pending_count + ')'));
+    } else if ((st.total_count || 0) === 0) {
+      dot.className = 'dot dot-off';
+      left.appendChild(dot);
+      left.appendChild(document.createTextNode(' ' + lblEmpty));
+    } else {
+      dot.className = 'dot dot-ok';
+      left.appendChild(dot);
+      left.appendChild(document.createTextNode(' ' + lblDone + ' (' + (st.indexed_count || 0) + ')'));
+    }
+
+    hashLiveEl.appendChild(left);
+    if (right.textContent) {
+      hashLiveEl.appendChild(right);
+    }
+  }
+
+  function pollHashIndexDialog() {
+    if (!recoveryDialog || !recoveryDialog.open || !hashLiveEl) {
+      clearTimeout(hashPollTimer);
+      return;
+    }
+    fetch('/images/hash-index/status', { credentials: 'same-origin' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('status');
+        return r.json();
+      })
+      .then(function (st) {
+        renderHashLive(st);
+        if (recoveryDialog && recoveryDialog.open) {
+          hashPollTimer = setTimeout(pollHashIndexDialog, st && st.state === 'running' ? 2000 : 5000);
+        }
+      })
+      .catch(function () {
+        if (recoveryDialog && recoveryDialog.open) {
+          hashPollTimer = setTimeout(pollHashIndexDialog, 5000);
+        }
+      });
+  }
+
+  function startHashIndexDialogPoll() {
+    clearTimeout(hashPollTimer);
+    pollHashIndexDialog();
+  }
+
+  if (recoveryDialog) {
+    recoveryDialog.addEventListener('close', function () {
+      clearTimeout(hashPollTimer);
+    });
+  }
 })();

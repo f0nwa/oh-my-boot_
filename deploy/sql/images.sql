@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS images (
  modified_at TIMESTAMPTZ NOT NULL,
  present BOOLEAN NOT NULL DEFAULT TRUE,
  first_seen_at TIMESTAMPTZ DEFAULT now(),
+ sha256 TEXT NOT NULL DEFAULT '' CHECK (sha256 = '' OR sha256 ~ '^[0-9a-f]{64}$'),
+ sha256_size_bytes BIGINT,
+ sha256_modified_at TIMESTAMPTZ,
+ sha256_computed_at TIMESTAMPTZ,
  PRIMARY KEY (storage_id, path)
 );
 CREATE INDEX IF NOT EXISTS images_present_idx ON images (storage_id, present, path);
@@ -33,11 +37,13 @@ CREATE TABLE IF NOT EXISTS catalog_settings (
  id SMALLINT PRIMARY KEY CHECK (id = 1),
  rescan_enabled BOOLEAN NOT NULL DEFAULT TRUE,
  rescan_interval_minutes INT NOT NULL DEFAULT 30 CHECK (rescan_interval_minutes BETWEEN 1 AND 1440),
+ hash_index_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+ hash_index_rate_mbps INT NOT NULL DEFAULT 50 CHECK (hash_index_rate_mbps BETWEEN 0 AND 1000),
  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-INSERT INTO catalog_settings (id, rescan_enabled, rescan_interval_minutes)
-VALUES (1, TRUE, 30)
+INSERT INTO catalog_settings (id, rescan_enabled, rescan_interval_minutes, hash_index_enabled, hash_index_rate_mbps)
+VALUES (1, TRUE, 30, TRUE, 50)
 ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS schema_migrations (

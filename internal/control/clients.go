@@ -469,6 +469,12 @@ func (c *ImagesClient) SetCatalogSettings(ctx context.Context, s images.CatalogS
 	return v, err
 }
 
+func (c *ImagesClient) HashIndexStatus(ctx context.Context) (images.HashIndexStatus, error) {
+	var v images.HashIndexStatus
+	err := localCall(ctx, c.http, "GET", "/hash-index/status", nil, &v)
+	return v, err
+}
+
 func (c *ImagesClient) StartMigration(ctx context.Context, srcID int64, path string, dstID int64) (*images.MigrationJob, error) {
 	body, err := json.Marshal(images.MigrateRequest{
 		SourceStorageID: srcID,

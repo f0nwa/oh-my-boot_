@@ -38,6 +38,7 @@ type APIRepository interface {
 type Server struct {
 	repo          APIRepository
 	migrations    *MigrationEngine
+	hashIndexer   *HashIndexer
 	mu            sync.Mutex
 	active        map[int64]bool
 	uploads       map[int64]bool
@@ -49,7 +50,7 @@ type Server struct {
 }
 
 func NewServer(repo APIRepository) *Server {
-	return &Server{
+	s := &Server{
 		repo:          repo,
 		migrations:    NewMigrationEngine(repo),
 		active:        map[int64]bool{},
@@ -59,6 +60,33 @@ func NewServer(repo APIRepository) *Server {
 		mountIdentity: MountIdentity,
 		writable:      Writable,
 		space:         Space,
+	}
+	if hr, ok := repo.(HashIndexRepository); ok {
+		s.hashIndexer = NewHashIndexer(hr, s.isStorageBusy)
+	}
+	return s
+}
+
+func (s *Server) isStorageBusy(storageID int64) bool {
+	s.mu.Lock()
+	busy := s.active[storageID] || s.uploads[storageID]
+	s.mu.Unlock()
+	if busy {
+		return true
+	}
+	return s.migrations != nil && s.migrations.HasActiveOnStorage(storageID)
+}
+
+func (s *Server) notifyHashIndexer() {
+	if s.hashIndexer != nil {
+		s.hashIndexer.Notify()
+	}
+}
+
+// RunHashIndexer runs the background SHA-256 indexing queue until ctx is canceled.
+func (s *Server) RunHashIndexer(ctx context.Context) {
+	if s.hashIndexer != nil {
+		s.hashIndexer.Run(ctx)
 	}
 }
 
@@ -325,7 +353,32 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /settings", s.getSettings)
 	mux.HandleFunc("PUT /settings", s.putSettings)
+	mux.HandleFunc("GET /hash-index/status", s.getHashIndexStatus)
 	return mux
+}
+
+func (s *Server) getHashIndexStatus(w http.ResponseWriter, r *http.Request) {
+	var status HashIndexStatus
+	if s.hashIndexer != nil {
+		status = s.hashIndexer.Status(r.Context())
+	} else {
+		settings, err := s.repo.Settings(r.Context())
+		if err != nil {
+			settings = DefaultCatalogSettings()
+		}
+		state := "idle"
+		if !settings.HashIndexEnabled {
+			state = "disabled"
+		}
+		status = HashIndexStatus{
+			Enabled:  settings.HashIndexEnabled,
+			RateMBps: settings.HashIndexRateMBps,
+			State:    state,
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(status)
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -339,21 +392,50 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
-	var input CatalogSettings
+	var raw struct {
+		RescanEnabled         bool   `json:"rescan_enabled"`
+		RescanIntervalMinutes int    `json:"rescan_interval_minutes"`
+		HashIndexEnabled      *bool  `json:"hash_index_enabled"`
+		HashIndexRateMBps     *int   `json:"hash_index_rate_mbps"`
+		UpdatedAt             string `json:"updated_at,omitempty"`
+	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil {
+	if err := decoder.Decode(&raw); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if input.RescanIntervalMinutes < 1 || input.RescanIntervalMinutes > 1440 {
+	if raw.RescanIntervalMinutes < 1 || raw.RescanIntervalMinutes > 1440 {
 		http.Error(w, "rescan_interval_minutes must be between 1 and 1440", http.StatusBadRequest)
+		return
+	}
+	current, err := s.repo.Settings(r.Context())
+	if err != nil {
+		current = DefaultCatalogSettings()
+	}
+	input := CatalogSettings{
+		RescanEnabled:         raw.RescanEnabled,
+		RescanIntervalMinutes: raw.RescanIntervalMinutes,
+		HashIndexEnabled:      current.HashIndexEnabled,
+		HashIndexRateMBps:     current.HashIndexRateMBps,
+	}
+	if raw.HashIndexEnabled != nil {
+		input.HashIndexEnabled = *raw.HashIndexEnabled
+	}
+	if raw.HashIndexRateMBps != nil {
+		input.HashIndexRateMBps = *raw.HashIndexRateMBps
+	}
+	if input.HashIndexRateMBps < 0 || input.HashIndexRateMBps > 1000 {
+		http.Error(w, "hash_index_rate_mbps must be between 0 and 1000", http.StatusBadRequest)
 		return
 	}
 	updated, err := s.repo.UpdateSettings(r.Context(), input)
 	if err != nil {
 		http.Error(w, "cannot update catalog settings", http.StatusInternalServerError)
 		return
+	}
+	if s.hashIndexer != nil {
+		s.hashIndexer.ApplySettings(updated)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(updated)
@@ -393,6 +475,8 @@ func (s *Server) StartScan(ctx context.Context, id int64) error {
 		defer cancel()
 		if err := ScanStorage(scanCtx, s.repo, id); err != nil {
 			log.Printf("Images scan for storage %d failed: %v", id, err)
+		} else {
+			s.notifyHashIndexer()
 		}
 	}()
 	return nil

@@ -2,6 +2,8 @@ package images
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -175,6 +177,7 @@ func (e *MigrationEngine) runCopy(ctx context.Context, job *MigrationJob, tempFi
 	defer srcFile.Close()
 
 	buf := make([]byte, 1024*1024) // 1MB buffer
+	hasher := sha256.New()
 	var lastTime = time.Now()
 	var lastBytes int64 = 0
 
@@ -197,6 +200,7 @@ func (e *MigrationEngine) runCopy(ctx context.Context, job *MigrationJob, tempFi
 				e.failJob(job, "short write")
 				return
 			}
+			_, _ = hasher.Write(buf[:nr])
 
 			e.mu.Lock()
 			job.CopiedBytes += int64(nw)
@@ -237,18 +241,25 @@ func (e *MigrationEngine) runCopy(ctx context.Context, job *MigrationJob, tempFi
 		return
 	}
 
-	// Record upload in catalog
+	// Record upload in catalog with actual stat mtime and on-the-fly SHA-256
 	kind, ok := ImageKindFromPath(job.Path)
 	if !ok {
 		kind = ImageKindISO
+	}
+	modTime := time.Now()
+	finalSize := job.TotalBytes
+	if st, statErr := os.Stat(job.dstFinalPath); statErr == nil {
+		modTime = st.ModTime()
+		finalSize = st.Size()
 	}
 	img := Image{
 		StorageID: job.TargetStorageID,
 		Path:      job.Path,
 		Kind:      kind,
-		Size:      job.TotalBytes,
-		Modified:  time.Now(),
+		Size:      finalSize,
+		Modified:  modTime,
 		Present:   true,
+		SHA256:    hex.EncodeToString(hasher.Sum(nil)),
 	}
 	if err := e.repo.RecordUpload(context.Background(), img); err != nil {
 		e.failJob(job, fmt.Sprintf("catalog record error: %v", err))
@@ -266,6 +277,24 @@ func (e *MigrationEngine) runCopy(ctx context.Context, job *MigrationJob, tempFi
 func (e *MigrationEngine) clearActiveLocked(job *MigrationJob) {
 	delete(e.active, fmt.Sprintf("%d:%s", job.SourceStorageID, job.Path))
 	delete(e.active, fmt.Sprintf("%d:%s", job.TargetStorageID, job.Path))
+}
+
+// HasActiveOnStorage reports whether any in-progress migration reads from or writes to storageID.
+func (e *MigrationEngine) HasActiveOnStorage(storageID int64) bool {
+	if e == nil || storageID <= 0 {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, job := range e.jobs {
+		if job.State != "copying" && job.State != "ready_to_rebind" && job.State != "rebinding" {
+			continue
+		}
+		if job.SourceStorageID == storageID || job.TargetStorageID == storageID {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *MigrationEngine) failJob(job *MigrationJob, errMsg string) {

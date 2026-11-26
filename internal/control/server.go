@@ -439,6 +439,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /images/url/downloads", s.protect("view", s.imagesURLDownloadsList))
 	mux.HandleFunc("POST /images/url/downloads/{id}/cancel", s.protect("images", s.imagesURLDownloadCancel))
 	mux.HandleFunc("POST /images/url/downloads/{id}/dismiss", s.protect("images", s.imagesURLDownloadDismiss))
+	mux.HandleFunc("GET /images/hash-index/status", s.protect("view", s.imagesHashIndexStatus))
+	mux.HandleFunc("GET /assets/hash-index.js", s.hashIndexScript)
 	mux.HandleFunc("GET /assets/iso-upload.js", s.isoUploadScript)
 	mux.HandleFunc("GET /assets/image-delete.js", imageDeleteScript)
 	mux.HandleFunc("GET /assets/image-migrate.js", imageMigrateScript)

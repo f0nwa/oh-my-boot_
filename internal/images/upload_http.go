@@ -188,10 +188,11 @@ func (s *Server) uploadISO(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "uploaded image unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if err := s.repo.RecordUpload(r.Context(), Image{StorageID: storage.ID, Path: result.Path, Kind: result.Kind, Size: file.Size(), Modified: file.ModTime(), Present: true}); err != nil {
+	if err := s.repo.RecordUpload(r.Context(), Image{StorageID: storage.ID, Path: result.Path, Kind: result.Kind, Size: file.Size(), Modified: file.ModTime(), Present: true, SHA256: result.SHA256}); err != nil {
 		http.Error(w, "image saved; refresh storage catalog", http.StatusServiceUnavailable)
 		return
 	}
+	s.notifyHashIndexer()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusCreated)

@@ -256,6 +256,13 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	data.Dir = q.Get("dir")
 	data.ImageCounts = map[string]int{}
 	data.ImageTabCounts = map[string]int{}
+	data.HashIndexEnabled = true
+	if s.Images != nil {
+		if settings, err := s.Images.CatalogSettings(r.Context()); err == nil {
+			data.HashIndexEnabled = settings.HashIndexEnabled
+			data.HashIndexRateMBps = settings.HashIndexRateMBps
+		}
+	}
 	catalog := s.loadLibraryCatalog(r.Context(), &data)
 	if catalog == nil {
 		return data
@@ -579,6 +586,7 @@ func (s *Server) populateWIMImageTabs(
 			StorageID:        b.StorageID,
 			Path:             b.Path,
 			Title:            b.Title,
+			SHA256:           b.SHA256,
 			Size:             b.Size,
 			VersionArch:      wimVersionSummary(b.WIMInfo),
 			HasSetupExe:      b.HasSetupExe,
@@ -610,6 +618,9 @@ func (s *Server) populateWIMImageTabs(
 			}
 			if cimg, ok := catalogByKey[key]; ok {
 				row.Present = cimg.Present
+				if cimg.SHA256 != "" {
+					row.SHA256 = cimg.SHA256
+				}
 				if row.Size == 0 {
 					row.Size = cimg.Size
 				}
@@ -646,6 +657,7 @@ func (s *Server) populateWIMImageTabs(
 			StorageBlocked: !stFound || st.State == "unavailable" || st.State == "scanning" || st.State == "unknown",
 			Path:           cimg.Path,
 			Title:          path.Base(cimg.Path),
+			SHA256:         cimg.SHA256,
 			Size:           cimg.Size,
 			State:          "uninspected",
 			Present:        cimg.Present,
@@ -684,6 +696,7 @@ func (s *Server) populateWIMImageTabs(
 		}
 		if cimg, ok := catalogByKey[key]; ok {
 			row.Present = cimg.Present
+			row.SHA256 = cimg.SHA256
 		} else {
 			row.Present = false
 		}
@@ -719,6 +732,7 @@ func (s *Server) populateWIMImageTabs(
 			Title:          path.Base(cimg.Path),
 			InstallFile:    installFile,
 			IsESD:          isESD,
+			SHA256:         cimg.SHA256,
 			Size:           cimg.Size,
 			State:          "uninspected",
 			Present:        cimg.Present,

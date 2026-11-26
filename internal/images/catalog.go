@@ -37,19 +37,23 @@ type Storage struct {
 }
 
 type Image struct {
-	FirstSeenAt *time.Time `json:"first_seen_at,omitempty"`
-	StorageID   int64      `json:"storage_id"`
-	Path        string     `json:"path"`
-	Kind        string     `json:"kind"`
-	Size        int64      `json:"size"`
-	Modified    time.Time  `json:"modified"`
-	Present     bool       `json:"present"`
+	FirstSeenAt      *time.Time `json:"first_seen_at,omitempty"`
+	StorageID        int64      `json:"storage_id"`
+	Path             string     `json:"path"`
+	Kind             string     `json:"kind"`
+	Size             int64      `json:"size"`
+	Modified         time.Time  `json:"modified"`
+	Present          bool       `json:"present"`
+	SHA256           string     `json:"sha256,omitempty"`
+	SHA256ComputedAt *time.Time `json:"sha256_computed_at,omitempty"`
 }
 
-// CatalogSettings configures background catalog scanning in omb-images.
+// CatalogSettings configures background catalog scanning and SHA-256 indexing in omb-images.
 type CatalogSettings struct {
 	RescanEnabled         bool      `json:"rescan_enabled"`
 	RescanIntervalMinutes int       `json:"rescan_interval_minutes"`
+	HashIndexEnabled      bool      `json:"hash_index_enabled"`
+	HashIndexRateMBps     int       `json:"hash_index_rate_mbps"`
 	UpdatedAt             time.Time `json:"updated_at,omitempty"`
 }
 
@@ -57,7 +61,49 @@ func DefaultCatalogSettings() CatalogSettings {
 	return CatalogSettings{
 		RescanEnabled:         true,
 		RescanIntervalMinutes: 30,
+		HashIndexEnabled:      true,
+		HashIndexRateMBps:     50,
 	}
+}
+
+// HashIndexCurrent describes the image currently being hashed by HashIndexer.
+type HashIndexCurrent struct {
+	StorageID   int64  `json:"storage_id"`
+	StorageName string `json:"storage_name"`
+	Path        string `json:"path"`
+	Size        int64  `json:"size"`
+	BytesDone   int64  `json:"bytes_done"`
+	Percent     int    `json:"percent"`
+	SpeedBPS    int64  `json:"speed_bps"`
+}
+
+// HashIndexStatus reports live background SHA-256 queue progress and settings.
+type HashIndexStatus struct {
+	Enabled      bool              `json:"enabled"`
+	RateMBps     int               `json:"rate_mbps"`
+	State        string            `json:"state"` // "idle", "running", "paused", "disabled"
+	TotalCount   int               `json:"total_count"`
+	IndexedCount int               `json:"indexed_count"`
+	PendingCount int               `json:"pending_count"`
+	Current      *HashIndexCurrent `json:"current,omitempty"`
+}
+
+// HashIndexCandidate is an image awaiting SHA-256 calculation.
+type HashIndexCandidate struct {
+	StorageID   int64
+	StorageName string
+	StorageKind string
+	StorageRoot string
+	Path        string
+	Size        int64
+	Modified    time.Time
+}
+
+// HashIndexCounts summarizes indexing coverage across ready storages.
+type HashIndexCounts struct {
+	Total   int
+	Indexed int
+	Pending int
 }
 
 // ScanResult holds the ISO inventory and total size of non-ISO regular files

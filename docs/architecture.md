@@ -17,7 +17,7 @@ flowchart LR
         Images["omb-images\n(Каталог ISO и сканирование)"]
         Agent["omb-agent (root)\n(Сеть, монтирование, WinPE, NTP)"]
         Dnsmasq["omb-dnsmasq\n(DHCP / Proxy DHCP :67, TFTP :69)"]
-        WinISO["omb-winiso@<id>\n(Loopback-монтирование ISO)"]
+        WinISO["omb-winiso@&lt;id&gt;\n(Loopback-монтирование ISO)"]
     end
 
     subgraph Infra ["Инфраструктура ОС"]
@@ -26,13 +26,13 @@ flowchart LR
         TFTP["/srv/omb/tftp\n(загрузчики, WIM, профили)"]
     end
 
-    Admin -->|HTTPS :8443| Control
-    Admin -.->|SFTP :2022| Control
-    Admin -.->|SMB [iso]| Samba
+    Admin -->|"HTTPS :8443"| Control
+    Admin -.->|"SFTP :2022"| Control
+    Admin -.->|"SMB [iso]"| Samba
 
-    Control -->|/run/omb-boot/control.sock| Boot
-    Control -->|/run/omb-images/images.sock| Images
-    Control -->|/run/omb/agent.sock| Agent
+    Control -->|"/run/omb-boot/control.sock"| Boot
+    Control -->|"/run/omb-images/images.sock"| Images
+    Control -->|"/run/omb/agent.sock"| Agent
 
     Control --> PG
     Images --> PG
@@ -42,12 +42,12 @@ flowchart LR
     Agent -->|запуск юнита| WinISO
     Agent -->|запись артефактов| TFTP
     Agent -->|конфиг шары| Samba
-    WinISO -->|mount -o loop,ro| Samba
+    WinISO -->|"mount -o loop,ro"| Samba
     Boot -->|чтение файлов| TFTP
 
-    Client -->|DHCP/Proxy + TFTP| Dnsmasq
-    Client -->|HTTP :8080| Boot
-    Client -->|SMB [ombisos] RO| Samba
+    Client -->|"DHCP/Proxy + TFTP"| Dnsmasq
+    Client -->|"HTTP :8080"| Boot
+    Client -->|"SMB [ombisos] RO"| Samba
 ```
 
 ### Роли служб
@@ -113,12 +113,12 @@ flowchart TD
     end
 
     subgraph L5 ["5. Runtime-раздача клиентам"]
-        SambaRO["Samba [ombisos] (RO)\n/mnt/omb-iso/profiles/<id>"]
+        SambaRO["Samba [ombisos] (RO)\n/mnt/omb-iso/profiles/&lt;id&gt;"]
         BootHTTP["omb-boot HTTP :8080\n/assets/ · /autoinstall/"]
-        WinISO -->|omb-winiso@id| SambaRO
-        Strelec -->|omb-winiso@id| SambaRO
-        UbuSrc -->|omb-agent| BootHTTP
-        WinPE -->|кэш /srv/omb/tftp| BootHTTP
+        WinISO -->|"omb-winiso@id"| SambaRO
+        Strelec -->|"omb-winiso@id"| SambaRO
+        UbuSrc -->|"omb-agent"| BootHTTP
+        WinPE -->|"кэш /srv/omb/tftp"| BootHTTP
     end
 
     subgraph L6 ["6. Физические хранилища"]
@@ -130,8 +130,8 @@ flowchart TD
         Strelec --- Local
     end
 
-    Client -.->|WinPE: net use I:| SambaRO
-    Client -.->|iPXE / cloud-init| BootHTTP
+    Client -.->|"WinPE: net use I:"| SambaRO
+    Client -.->|"iPXE / cloud-init"| BootHTTP
 ```
 
 ### Кратко по слоям

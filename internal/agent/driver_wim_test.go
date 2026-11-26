@@ -290,3 +290,70 @@ func TestDriverWIMBuildsFromStandaloneBootImage(t *testing.T) {
 		t.Fatalf("expected 1 wimlib update across standalone+ISO with identical boot.wim, got %d", updates)
 	}
 }
+
+func TestDriverWIMSplitInstallStartupAndFailFast(t *testing.T) {
+	m, hash := setupDriverBuild(t)
+	m.BootImageRoot = t.TempDir()
+	bootDir := filepath.Join(m.BootImageRoot, "9")
+	if err := os.MkdirAll(bootDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bootDir, "boot.wim"), []byte("standalone boot.wim"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Missing Template/Password/InstallFile must fail fast (never silently fall back to ISO omb-setup.cmd).
+	badReqISOOverride := DriverBuildRequest{
+		ConfigID:       30,
+		ProfileID:      17,
+		InstallImageID: 5,
+		InstallFile:    "install.wim",
+		PackageINFs:    []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}},
+	}
+	if _, err := m.PrepareConfig(context.Background(), badReqISOOverride); err == nil {
+		t.Fatal("expected error when Template/Password missing for InstallImageID > 0, got nil")
+	}
+
+	// 2. Configure Template & Password; missing InstallFile still fails fast.
+	m.Template = []byte("@echo off\r\nwpeinit\r\nnet use Y: \\\\10.30.0.10\\ombisos __OMB_ISO_PASSWORD__ /user:omb-iso\r\n:media_ready\r\nY:\\__OMB_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__OMB_PROFILE_ID__\\sources\\__OMB_INSTALL_FILE__\r\n:failed\r\ncmd /k\r\n")
+	m.Password = strings.Repeat("A", 32)
+	badReqNoFile := DriverBuildRequest{
+		ConfigID:       31,
+		BootImageID:    9,
+		InstallImageID: 5,
+		PackageINFs:    []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}},
+	}
+	if _, err := m.PrepareConfig(context.Background(), badReqNoFile); err == nil {
+		t.Fatal("expected error when InstallFile is empty for InstallImageID > 0, got nil")
+	}
+
+	// 3. Bare install.wim + standalone boot.wim (ProfileID == 0, BootImageID > 0, InstallImageID > 0) with answer.
+	bareReq := DriverBuildRequest{
+		ConfigID:       32,
+		BootImageID:    9,
+		InstallImageID: 5,
+		InstallFile:    "install.esd",
+		AnswerID:       7,
+		PackageINFs:    []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}},
+	}
+	res, err := m.PrepareConfig(context.Background(), bareReq)
+	if err != nil {
+		t.Fatalf("PrepareConfig for bare split install failed: %v", err)
+	}
+	if err := m.CheckConfig(context.Background(), bareReq, res); err != nil {
+		t.Fatalf("CheckConfig for bare split install failed: %v", err)
+	}
+	script, err := os.ReadFile(filepath.Join(m.ConfigRoot, "32", "omb-setup.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"drvload",
+		`X:\sources\setup.exe /InstallFrom:Y:\install-5\sources\install.esd /Unattend:X:\Windows\System32\omb-answer.xml`,
+		`net use I: \\10.30.0.10\ombisos\install-5`,
+	} {
+		if !strings.Contains(string(script), want) {
+			t.Fatalf("bare split driver script missing %q:\n%s", want, script)
+		}
+	}
+}

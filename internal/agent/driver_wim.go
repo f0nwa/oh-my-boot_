@@ -225,7 +225,10 @@ func (m *DriverManager) driverScript(req DriverBuildRequest) ([]byte, error) {
 	var base []byte
 	var err error
 	shareSubdir := ""
-	if req.InstallImageID > 0 && req.InstallFile != "" && len(m.Template) > 0 && m.Password != "" {
+	if req.InstallImageID > 0 {
+		if req.InstallFile == "" || len(m.Template) == 0 || m.Password == "" {
+			return nil, fmt.Errorf("split install driver startup requires install_file, WinPE template, and SMB password")
+		}
 		shareSubdir = installImageDirName(req.InstallImageID)
 		setupSource := `X:\sources\setup.exe`
 		if req.ProfileID > 0 {
@@ -246,24 +249,10 @@ func (m *DriverManager) driverScript(req DriverBuildRequest) ([]byte, error) {
 		}
 		shareSubdir = strconv.FormatInt(req.ProfileID, 10)
 	} else {
-		root := filepath.Join(m.bootImageRoot(), strconv.FormatInt(req.BootImageID, 10))
-		if err := requireRegularISOFile(root, "omb-setup.cmd"); err != nil {
-			return nil, err
-		}
-		base, err = os.ReadFile(filepath.Join(root, "omb-setup.cmd"))
-		if err != nil {
-			return nil, err
-		}
-		if req.InstallImageID > 0 {
-			shareSubdir = installImageDirName(req.InstallImageID)
-		}
+		return nil, fmt.Errorf("standalone boot image driver startup requires install_image_id or profile_id")
 	}
 	if req.AnswerID > 0 {
-		if shareSubdir != "" {
-			base, err = winpe.RenderAnswerStartupSubdir(base, shareSubdir)
-		} else {
-			base, err = winpe.RenderAnswerStartup(base, req.ProfileID)
-		}
+		base, err = winpe.RenderAnswerStartupSubdir(base, shareSubdir)
 		if err != nil {
 			return nil, err
 		}

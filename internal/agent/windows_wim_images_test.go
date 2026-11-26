@@ -378,6 +378,81 @@ func TestPrepareInstallImageMountsReadOnlyAndRejectsPureWinPE(t *testing.T) {
 	}
 }
 
+func TestPrepareInstallImageReprepareUnmountsStaleSourceAndSwitchExt(t *testing.T) {
+	base := canonicalTestDir(t)
+	smbRoot := filepath.Join(base, "smb")
+	storage := filepath.Join(smbRoot, "nas1")
+	mountRoot := filepath.Join(base, "mnt", "profiles")
+	configRoot := filepath.Join(base, "etc", "winiso")
+
+	wimSrc1, wimInfo1 := writeSourceWIM(t, storage, "v1/install.wim", []byte("install v1"))
+	wimSrc2, wimInfo2 := writeSourceWIM(t, storage, "v2/install.wim", []byte("install v2 longer"))
+	esdSrc, esdInfo := writeSourceWIM(t, storage, "v3/install.esd", []byte("install v3 esd"))
+
+	mounter := newFakeInstallMounter()
+	m := &WindowsISOManager{
+		SourceRoots:    []string{smbRoot},
+		MountRoot:      mountRoot,
+		ConfigRoot:     configRoot,
+		InstallMounter: mounter,
+		WIMCommands:    &fakeWIMImageRunner{infoOut: map[string]string{"*": sampleInstallWIMInfo}},
+	}
+
+	// Initial prepare: v1/install.wim
+	if _, err := m.PrepareInstallImage(context.Background(), WindowsInstallImageRequest{
+		ID:           9,
+		StorageRoot:  storage,
+		RelativePath: "v1/install.wim",
+		Size:         wimInfo1.Size(),
+		Modified:     wimInfo1.ModTime(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	wimTarget := filepath.Join(mountRoot, "install-9", "sources", "install.wim")
+	esdTarget := filepath.Join(mountRoot, "install-9", "sources", "install.esd")
+	if mounter.mounted[wimTarget] != wimSrc1 {
+		t.Fatalf("expected v1 mounted, got %+v", mounter.mounted)
+	}
+
+	// Re-prepare same ID with changed source v2/install.wim -> must unmount v1 and bind-mount v2.
+	if _, err := m.PrepareInstallImage(context.Background(), WindowsInstallImageRequest{
+		ID:           9,
+		StorageRoot:  storage,
+		RelativePath: "v2/install.wim",
+		Size:         wimInfo2.Size(),
+		Modified:     wimInfo2.ModTime(),
+	}); err != nil {
+		t.Fatalf("re-prepare with changed .wim source failed: %v", err)
+	}
+	if mounter.mounted[wimTarget] != wimSrc2 {
+		t.Fatalf("stale bind-mount kept v1 instead of v2: %+v", mounter.mounted)
+	}
+
+	// Re-prepare same ID switching .wim -> .esd -> must unmount and remove install.wim, bind-mount install.esd.
+	res, err := m.PrepareInstallImage(context.Background(), WindowsInstallImageRequest{
+		ID:           9,
+		StorageRoot:  storage,
+		RelativePath: "v3/install.esd",
+		Size:         esdInfo.Size(),
+		Modified:     esdInfo.ModTime(),
+	})
+	if err != nil {
+		t.Fatalf("re-prepare switching .wim -> .esd failed: %v", err)
+	}
+	if res.InstallFile != "install.esd" {
+		t.Fatalf("InstallFile = %q, want install.esd", res.InstallFile)
+	}
+	if _, staleWIM := mounter.mounted[wimTarget]; staleWIM {
+		t.Fatalf("old install.wim mount was left orphaned: %+v", mounter.mounted)
+	}
+	if _, err := os.Stat(wimTarget); !os.IsNotExist(err) {
+		t.Fatalf("old install.wim placeholder was not removed: %v", err)
+	}
+	if mounter.mounted[esdTarget] != esdSrc {
+		t.Fatalf("expected install.esd mounted from v3, got %+v", mounter.mounted)
+	}
+}
+
 func TestStopAndRecoverInstallImagesOnSMBReconnect(t *testing.T) {
 	base := canonicalTestDir(t)
 	smbRoot := filepath.Join(base, "smb")

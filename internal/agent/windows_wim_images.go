@@ -299,6 +299,17 @@ func (m *WindowsISOManager) PrepareInstallImage(ctx context.Context, req Windows
 	if err != nil {
 		return WindowsInstallImageResult{}, err
 	}
+	configPath := filepath.Join(configRoot, strconv.FormatInt(req.ID, 10)+".json")
+	if existingRaw, err := os.ReadFile(configPath); err == nil {
+		var existing storedInstallImage
+		if json.Unmarshal(existingRaw, &existing) != nil || !sameStoredInstallImage(existing, req, installFile) {
+			if err := m.unmountAndCleanInstallFiles(ctx, mountRoot, req.ID); err != nil {
+				return WindowsInstallImageResult{}, err
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return WindowsInstallImageResult{}, err
+	}
 	target, newMount, err := m.mountInstallImageFile(ctx, mountRoot, req.ID, installFile, source)
 	if err != nil {
 		return WindowsInstallImageResult{}, err
@@ -319,7 +330,6 @@ func (m *WindowsISOManager) PrepareInstallImage(ctx context.Context, req Windows
 		}
 		return WindowsInstallImageResult{}, err
 	}
-	configPath := filepath.Join(configRoot, strconv.FormatInt(req.ID, 10)+".json")
 	if err := writeAtomic(configPath, content, 0o600); err != nil {
 		if newMount {
 			_ = m.installMounter().Unmount(ctx, target)
@@ -327,6 +337,56 @@ func (m *WindowsISOManager) PrepareInstallImage(ctx context.Context, req Windows
 		return WindowsInstallImageResult{}, err
 	}
 	return WindowsInstallImageResult{InstallFile: installFile, WIMInfo: wimInfo}, nil
+}
+
+func sameStoredInstallImage(existing storedInstallImage, req WindowsInstallImageRequest, installFile string) bool {
+	return existing.InstallFile == installFile &&
+		existing.Request.ID == req.ID &&
+		existing.Request.StorageRoot == req.StorageRoot &&
+		existing.Request.RelativePath == req.RelativePath &&
+		existing.Request.Size == req.Size &&
+		existing.Request.Modified.Truncate(time.Microsecond).Equal(req.Modified.Truncate(time.Microsecond))
+}
+
+func (m *WindowsISOManager) unmountAndCleanInstallFiles(ctx context.Context, mountRoot string, id int64) error {
+	targetDir := filepath.Join(mountRoot, installImageDirName(id))
+	info, err := os.Lstat(targetDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("Windows install image mount target is unsafe")
+	}
+	mounter := m.installMounter()
+	for _, name := range []string{"install.wim", "install.esd"} {
+		fileTarget := filepath.Join(targetDir, "sources", name)
+		fi, statErr := os.Lstat(fileTarget)
+		if os.IsNotExist(statErr) {
+			continue
+		}
+		if statErr != nil {
+			return statErr
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("install image mount target is a symlink")
+		}
+		mounted, checkErr := mounter.IsMounted(ctx, fileTarget)
+		if checkErr != nil {
+			return checkErr
+		}
+		if mounted {
+			if err := mounter.Unmount(ctx, fileTarget); err != nil {
+				return err
+			}
+		}
+		if err := os.Remove(fileTarget); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // RemoveInstallImage unmounts and removes the bind-mounted install image and its config.

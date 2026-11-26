@@ -20,19 +20,25 @@ func (s *themeStore) SetUserTheme(_ context.Context, _ int64, theme string) erro
 }
 
 func TestPagesCarryUserTheme(t *testing.T) {
-	for _, tc := range []struct{ theme, current, next, label string }{
-		{"dark", "dark", "system", "Сейчас тёмная тема. Включить как в системе"},
-		{"light", "light", "dark", "Сейчас светлая тема. Включить тёмную"},
-		{"system", "system", "light", "Сейчас как в системе. Включить светлую"},
-		{"", "system", "light", "Сейчас как в системе. Включить светлую"},
-		{"blue", "system", "light", "Сейчас как в системе. Включить светлую"},
+	allIcons := []string{`class="theme-auto"`, `class="theme-sun"`, `class="theme-moon"`}
+	for _, tc := range []struct{ theme, current, next, label, icon string }{
+		{"dark", "dark", "system", "Сейчас тёмная тема. Включить как в системе", `class="theme-moon"`},
+		{"light", "light", "dark", "Сейчас светлая тема. Включить тёмную", `class="theme-sun"`},
+		{"system", "system", "light", "Сейчас как в системе. Включить светлую", `class="theme-auto"`},
+		{"", "system", "light", "Сейчас как в системе. Включить светлую", `class="theme-auto"`},
+		{"blue", "system", "light", "Сейчас как в системе. Включить светлую", `class="theme-auto"`},
 	} {
 		res := httptest.NewRecorder()
 		render(res, "account", pageData{Info: requestContext{User: User{ID: 1, Username: "admin", Role: "admin", Theme: tc.theme}, CSRF: "x", Path: "/account"}})
 		body := res.Body.String()
-		for _, want := range []string{`data-theme="` + tc.current + `"`, `action="/settings/theme"`, `name="theme" value="` + tc.next + `"`, `aria-label="` + tc.label + `"`} {
+		for _, want := range []string{`data-theme="` + tc.current + `"`, `action="/settings/theme"`, `name="theme" value="` + tc.next + `"`, `aria-label="` + tc.label + `"`, tc.icon} {
 			if !strings.Contains(body, want) {
 				t.Errorf("theme %q: page lacks %q", tc.theme, want)
+			}
+		}
+		for _, icon := range allIcons {
+			if icon != tc.icon && strings.Contains(body, icon) {
+				t.Errorf("theme %q: page must not render %q alongside %q", tc.theme, icon, tc.icon)
 			}
 		}
 	}
@@ -120,7 +126,7 @@ func TestStylesheetHasDarkTheme(t *testing.T) {
 	res := httptest.NewRecorder()
 	(&Server{}).Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/assets/style.css", nil))
 	css := res.Body.String()
-	for _, want := range []string{":root[data-theme=dark]{", "@media (prefers-color-scheme:dark){:root[data-theme=system]{", "color-scheme:dark"} {
+	for _, want := range []string{":root[data-theme=dark]{", "@media (prefers-color-scheme:dark){:root[data-theme=system]{", "color-scheme:dark", ".theme-form .theme-auto-fill{fill:currentColor;stroke:none}"} {
 		if !strings.Contains(css, want) {
 			t.Errorf("stylesheet lacks %q", want)
 		}

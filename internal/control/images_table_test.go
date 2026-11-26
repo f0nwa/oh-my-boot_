@@ -491,7 +491,7 @@ func TestImagesPageRendersISOBootAndInstallTabs(t *testing.T) {
 		`href="/images?tab=iso"`,
 		`href="/images?tab=boot"`,
 		`href="/images?tab=install"`,
-		`+ Загрузить ISO`,
+		`>Загрузить ISO</button>`,
 		`data-expected-kind="iso"`,
 		"win11.iso",
 	} {
@@ -506,7 +506,7 @@ func TestImagesPageRendersISOBootAndInstallTabs(t *testing.T) {
 	// 2. boot.wim tab
 	bootPage := libraryGet(t, s, "/images?tab=boot")
 	for _, want := range []string{
-		`+ Загрузить boot.wim`,
+		`>Загрузить boot.wim</button>`,
 		`data-expected-kind="wim"`,
 		"Win11 26H2 Universal Boot",
 		"ADK WinPE 11 (чистый)",
@@ -536,7 +536,7 @@ func TestImagesPageRendersISOBootAndInstallTabs(t *testing.T) {
 	// 3. install.wim tab
 	instPage := libraryGet(t, s, "/images?tab=install")
 	for _, want := range []string{
-		`+ Загрузить install.wim / .esd`,
+		`>Загрузить install.wim / .esd</button>`,
 		`data-expected-kind="wim_or_esd"`,
 		"Windows 11 Corp Gold",
 		"Windows 11 24H2 Multi",

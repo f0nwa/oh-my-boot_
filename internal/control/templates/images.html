@@ -1,6 +1,6 @@
 {{define "images"}}{{template "top" .}}
 {{$imgTab := .ImageTab}}{{if eq $imgTab ""}}{{$imgTab = "iso"}}{{end}}
-<div class="page-head"><div><h1>{{t "Образы"}}</h1><p class="lead">{{t "Образы ISO, среды загрузки WinPE (boot.wim) и образы установки Windows (install.wim / .esd) в подключённых хранилищах."}}</p></div>{{if and (not .ImageError) (ne .Info.User.Role "observer")}}<button type="button" class="btn btn-primary" id="iso-upload-open" aria-haspopup="dialog">{{if eq $imgTab "boot"}}+ {{t "Загрузить boot.wim"}}{{else if eq $imgTab "install"}}+ {{t "Загрузить install.wim / .esd"}}{{else}}+ {{t "Загрузить ISO"}}{{end}}</button>{{end}}</div>
+<div class="page-head"><div><h1>{{t "Образы"}}</h1><p class="lead">{{t "Образы ISO, среды загрузки WinPE (boot.wim) и образы установки Windows (install.wim / .esd) в подключённых хранилищах."}}</p></div>{{if and (not .ImageError) (ne .Info.User.Role "observer")}}<button type="button" class="btn btn-primary" id="iso-upload-open" aria-haspopup="dialog">{{if eq $imgTab "boot"}}{{t "Загрузить boot.wim"}}{{else if eq $imgTab "install"}}{{t "Загрузить install.wim / .esd"}}{{else}}{{t "Загрузить ISO"}}{{end}}</button>{{end}}</div>
 {{if .ImageError}}<section><p class="error">{{.ImageError}}</p></section>{{else}}
 <nav class="tabs" role="tablist" aria-label="{{t "Типы образов"}}">
   <a href="/images?tab=iso" role="tab"{{if eq $imgTab "iso"}} class="active" aria-selected="true"{{else}} aria-selected="false"{{end}}>ISO <span class="tab-count">{{index .ImageTabCounts "iso"}}</span></a>

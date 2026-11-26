@@ -79,7 +79,7 @@ func TestUsersPageToolbarAndTable(t *testing.T) {
 		`data-user-row`,
 		`data-user-pw-id="1"`,
 		`data-user-pw-name="admin"`,
-		`data-user-add`,
+		`data-user-add>Добавить пользователя</button>`,
 		`/users/change`,
 		`action="/users/create"`,
 		`action="/users/reset-password"`,

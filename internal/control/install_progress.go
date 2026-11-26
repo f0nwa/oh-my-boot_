@@ -96,7 +96,7 @@ func installEvents(v agent.SMBSessions, httpEvents []boot.Event) installLog {
 		}
 		if s.Ended != nil {
 			add(*s.Ended, "ended")
-		} else {
+		} else if s.Copied == nil {
 			add(s.LastSeen, "seen")
 		}
 	}

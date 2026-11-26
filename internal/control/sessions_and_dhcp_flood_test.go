@@ -168,6 +168,109 @@ func TestStaleSMBHTTPAndDHCPFloodDetection(t *testing.T) {
 	}
 }
 
+func TestCopiedSMBSessionIsNeverStaleOrLiveAfterCopy(t *testing.T) {
+	// Reproduces the production bug: WinPE finished copying install.wim and
+	// rebooted, but Samba kept the dead TCP/SMB session open (Ended == nil) for
+	// 38 minutes without I/O. The machine must stay "copied" (green), must not
+	// be flagged as "SMB зависла", must not raise alerts, and must leave "now".
+	t0 := time.Date(2026, 11, 26, 16, 37, 19, 0, time.UTC)
+	started := t0.Add(1*time.Minute + 21*time.Second)
+	copyingAt := t0.Add(2*time.Minute + 22*time.Second)
+	copiedAt := t0.Add(6*time.Minute + 23*time.Second)
+	now := copiedAt.Add(38 * time.Minute)
+	mac := "ac:91:a1:50:ee:55"
+	ip := "10.206.42.68"
+	const copyBytes int64 = 7 << 30
+
+	httpEvents := []boot.Event{
+		{At: t0.Add(-6 * time.Second), Kind: "choice", Path: "/boot/choice?id=4", RemoteAddr: ip + ":5001", MAC: mac, Status: 200},
+		{At: t0, Kind: "asset", Path: "/assets/windows-driver-wims/abc/boot.wim", RemoteAddr: ip + ":5002", MAC: mac, Status: 200},
+	}
+	sess := agent.SMBSession{
+		ID:       "2001",
+		IP:       ip,
+		PID:      "61234",
+		Profile:  "1",
+		Started:  started,
+		LastSeen: now, // watcher keeps updating LastSeen every 10s while smbd holds dead TCP
+		LastIOAt: &copiedAt,
+		Setup:    true,
+		WIMOpen:  false,
+		Copying:  &copyingAt,
+		Copied:   &copiedAt,
+		CopyRead: copyBytes,
+		Ended:    nil,
+	}
+	if eval := evaluateActiveSMB(sess, now); eval.Stale {
+		t.Fatalf("copied session must never be evaluated as stale: %+v", eval)
+	}
+
+	smb := agent.SMBSessions{
+		Since:    t0.Add(-time.Hour),
+		Sessions: []agent.SMBSession{sess},
+	}
+	install := installEvents(smb, httpEvents)
+	rows := machineRowsWith(httpEvents, nil, install, map[string]string{"install_4": "Windows 26H2 x64 test clean"}, now)
+	attachActiveSMBSessions(rows, smb, httpEvents, now)
+
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 machine row, got %d", len(rows))
+	}
+	row := rows[0]
+	if row.Stage != "copied" {
+		t.Fatalf("stage = %q, want copied", row.Stage)
+	}
+	if row.ActiveSMB != nil {
+		t.Fatalf("completed copy session must not stay attached as ActiveSMB: %+v", row.ActiveSMB)
+	}
+	if !row.LastSeen.Equal(copiedAt) {
+		t.Fatalf("LastSeen = %v, want copiedAt %v (must not be kept live by idle smbd)", row.LastSeen, copiedAt)
+	}
+
+	trail := machineTrail(row, false)
+	if trail[6].State != "done" || trail[6].Sub != "скопировано, перезагрузка" || trail[6].Bytes != copyBytes {
+		t.Fatalf("unexpected install trail step: %+v", trail[6])
+	}
+
+	if alerts := nowSessionAlerts(rows); len(alerts) != 0 {
+		t.Fatalf("expected no stale session alerts after copy, got %+v", alerts)
+	}
+
+	nowViewPage := &nowView{Show: "now"}
+	fillNowMachines(nowViewPage, rows, now)
+	if nowViewPage.Booting != 0 || nowViewPage.Failed != 0 || nowViewPage.Day != 1 || len(nowViewPage.Machines) != 0 {
+		t.Fatalf("unexpected nowView: booting=%d failed=%d day=%d machines=%d", nowViewPage.Booting, nowViewPage.Failed, nowViewPage.Day, len(nowViewPage.Machines))
+	}
+
+	failedView := &nowView{Show: "failed"}
+	fillNowMachines(failedView, rows, now)
+	if len(failedView.Machines) != 0 {
+		t.Fatalf("copied machine must not appear in failed filter: %+v", failedView.Machines)
+	}
+}
+
+func TestStaleSMBStillDetectedBeforeCopy(t *testing.T) {
+	now := time.Date(2026, 11, 26, 17, 30, 0, 0, time.UTC)
+	started := now.Add(-35 * time.Minute)
+	lastIO := now.Add(-31 * time.Minute)
+
+	// WinPE stuck on edition/disk screen before copying for >= 30m must still be stale.
+	winpeIdle := agent.SMBSession{
+		ID:       "3001",
+		IP:       "10.206.42.70",
+		PID:      "70001",
+		Profile:  "1",
+		Started:  started,
+		LastSeen: now,
+		LastIOAt: &lastIO,
+		Setup:    true,
+	}
+	eval := evaluateActiveSMB(winpeIdle, now)
+	if !eval.Stale || eval.Copying {
+		t.Fatalf("expected pre-copy WinPE session idle 31m to be stale, got %+v", eval)
+	}
+}
+
 func TestSessionResetAndDHCPIgnoreHandlersAndRBAC(t *testing.T) {
 	baseServer, baseStore := newInstallServer(t)
 	store := &dhcpIgnoreTestStore{newInstallStore: baseStore, machines: map[string]MachineInfo{}}

@@ -104,7 +104,10 @@ func evaluateActiveSMB(s agent.SMBSession, now time.Time) activeSMBSession {
 	if idle < 0 {
 		idle = 0
 	}
-	stale := idle >= limit
+	// Once install.wim has been copied and closed, Windows Setup reboots the
+	// machine and never reads from the share again. A lingering smbd session
+	// waiting on TCP keepalive is not a stalled installation.
+	stale := idle >= limit && (s.Copied == nil || s.WIMOpen)
 	return activeSMBSession{
 		ID:          s.ID,
 		IP:          s.IP,
@@ -129,7 +132,7 @@ func attachActiveSMBSessions(rows []machineRow, smb agent.SMBSessions, httpEvent
 	byMAC := map[string]*activeSMBSession{}
 	byIP := map[string]*activeSMBSession{}
 	for _, s := range smb.Sessions {
-		if s.Ended != nil {
+		if s.Ended != nil || (s.Copied != nil && !s.WIMOpen) {
 			continue
 		}
 		info := evaluateActiveSMB(s, now)

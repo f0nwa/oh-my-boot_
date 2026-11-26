@@ -119,6 +119,12 @@ func TestLocalSMBManagerDisabledKeepsOmbisosIsolated(t *testing.T) {
 	if !strings.Contains(confStr, "interfaces = lo ens19") {
 		t.Errorf("smb.conf missing 'interfaces = lo ens19', got:\n%s", confStr)
 	}
+	if !strings.Contains(confStr, "deadtime = 5") {
+		t.Errorf("smb.conf missing 'deadtime = 5', got:\n%s", confStr)
+	}
+	if !strings.Contains(confStr, "socket options = TCP_NODELAY SO_KEEPALIVE TCP_KEEPIDLE=60 TCP_KEEPINTVL=15 TCP_KEEPCNT=4") {
+		t.Errorf("smb.conf missing TCP keepalive socket options, got:\n%s", confStr)
+	}
 	if !strings.Contains(confStr, "bind interfaces only = yes") {
 		t.Errorf("smb.conf missing 'bind interfaces only = yes'")
 	}
@@ -711,6 +717,12 @@ func TestLocalSMBManagerSyncPXENetwork_DefaultDisabled(t *testing.T) {
 
 	if !strings.Contains(confStr, "interfaces = lo ens19") {
 		t.Errorf("smb.conf missing 'interfaces = lo ens19', got:\n%s", confStr)
+	}
+	if !strings.Contains(confStr, "deadtime = 5") {
+		t.Errorf("smb.conf missing 'deadtime = 5', got:\n%s", confStr)
+	}
+	if !strings.Contains(confStr, "socket options = TCP_NODELAY SO_KEEPALIVE TCP_KEEPIDLE=60 TCP_KEEPINTVL=15 TCP_KEEPCNT=4") {
+		t.Errorf("smb.conf missing TCP keepalive socket options, got:\n%s", confStr)
 	}
 	if !strings.Contains(confStr, "hosts allow = 127.0.0.1 10.30.0.0/24") {
 		t.Errorf("smb.conf missing 'hosts allow = 127.0.0.1 10.30.0.0/24', got:\n%s", confStr)

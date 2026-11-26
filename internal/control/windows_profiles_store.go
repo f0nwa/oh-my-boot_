@@ -62,15 +62,25 @@ func (s Store) WindowsProfile(ctx context.Context, id int64) (WindowsProfile, er
 }
 
 func (s Store) SetWindowsProfileResult(ctx context.Context, id int64, state, installFile, lastError string) error {
-	tag, err := s.Pool.Exec(ctx,
-		`UPDATE windows_profiles SET state=$2,install_file=$3,last_error=$4 WHERE id=$1`, id, state, installFile, lastError)
+	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+	defer tx.Rollback(ctx)
+
+	var bootMode, title string
+	if err := tx.QueryRow(ctx,
+		`UPDATE windows_profiles SET state=$2,install_file=$3,last_error=$4 WHERE id=$1 RETURNING boot_mode,title`,
+		id, state, installFile, lastError,
+	).Scan(&bootMode, &title); err != nil {
+		return err
 	}
-	return nil
+	if state == "ready" && bootMode == "" {
+		if _, err := upsertISOBootImageTx(ctx, tx, id, title, "", true, agent.WindowsWIMInfo{}, "ready"); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (s Store) SetWindowsProfileWIMInfo(ctx context.Context, id int64, info agent.WindowsWIMInfo) error {

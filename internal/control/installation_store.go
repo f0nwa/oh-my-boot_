@@ -12,7 +12,7 @@ import (
 )
 
 func (s Store) BootProfiles(ctx context.Context) ([]BootProfile, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0),COALESCE(u.id,0),COALESCE(u.storage_id,0),COALESCE(u.path,''),COALESCE(u.sha256,''),COALESCE(u.state,'') FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id LEFT JOIN ubuntu_sources u ON u.boot_profile_id=b.id ORDER BY b.id`)
+	rows, err := s.Pool.Query(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0),COALESCE(wi.install_image_id,0),COALESCE(u.id,0),COALESCE(u.storage_id,0),COALESCE(u.path,''),COALESCE(u.sha256,''),COALESCE(u.state,'') FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id LEFT JOIN windows_install_boot_profiles wi ON wi.boot_profile_id=b.id LEFT JOIN ubuntu_sources u ON u.boot_profile_id=b.id ORDER BY b.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -20,7 +20,7 @@ func (s Store) BootProfiles(ctx context.Context) ([]BootProfile, error) {
 	result := []BootProfile{}
 	for rows.Next() {
 		var profile BootProfile
-		if err := rows.Scan(&profile.ID, &profile.Kind, &profile.Title, &profile.WindowsProfileID, &profile.UbuntuSourceID, &profile.UbuntuStorageID, &profile.UbuntuPath, &profile.UbuntuSHA256, &profile.UbuntuState); err != nil {
+		if err := rows.Scan(&profile.ID, &profile.Kind, &profile.Title, &profile.WindowsProfileID, &profile.InstallImageID, &profile.UbuntuSourceID, &profile.UbuntuStorageID, &profile.UbuntuPath, &profile.UbuntuSHA256, &profile.UbuntuState); err != nil {
 			return nil, err
 		}
 		result = append(result, profile)
@@ -29,7 +29,7 @@ func (s Store) BootProfiles(ctx context.Context) ([]BootProfile, error) {
 }
 
 func (s Store) Installations(ctx context.Context) ([]Installation, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT i.id,i.boot_profile_id,i.title,i.folder,COALESCE(w.answer_id,0),COALESCE(w.driver_config_id,0),COALESCE(i.autoinstall_id,0) FROM installations i LEFT JOIN windows_installation_options w ON w.installation_id=i.id ORDER BY i.id`)
+	rows, err := s.Pool.Query(ctx, `SELECT i.id,i.boot_profile_id,i.title,i.folder,COALESCE(w.answer_id,0),COALESCE(w.driver_config_id,0),COALESCE(w.boot_image_id,0),COALESCE(w.install_image_id,0),COALESCE(i.autoinstall_id,0) FROM installations i LEFT JOIN windows_installation_options w ON w.installation_id=i.id ORDER BY i.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func (s Store) Installations(ctx context.Context) ([]Installation, error) {
 	result := []Installation{}
 	for rows.Next() {
 		var item Installation
-		if err := rows.Scan(&item.ID, &item.BootProfileID, &item.Title, &item.Folder, &item.AnswerID, &item.DriverConfigID, &item.AutoinstallID); err != nil {
+		if err := rows.Scan(&item.ID, &item.BootProfileID, &item.Title, &item.Folder, &item.AnswerID, &item.DriverConfigID, &item.BootImageID, &item.InstallImageID, &item.AutoinstallID); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -106,7 +106,7 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 		}
 	}
 	var profile BootProfile
-	err = tx.QueryRow(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0),COALESCE(u.id,0),COALESCE(u.storage_id,0),COALESCE(u.path,''),COALESCE(u.sha256,''),COALESCE(u.state,'') FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id LEFT JOIN ubuntu_sources u ON u.boot_profile_id=b.id WHERE b.id=$1 FOR SHARE OF b`, item.BootProfileID).Scan(&profile.ID, &profile.Kind, &profile.Title, &profile.WindowsProfileID, &profile.UbuntuSourceID, &profile.UbuntuStorageID, &profile.UbuntuPath, &profile.UbuntuSHA256, &profile.UbuntuState)
+	err = tx.QueryRow(ctx, `SELECT b.id,b.kind,b.title,COALESCE(w.windows_profile_id,0),COALESCE(wi.install_image_id,0),COALESCE(u.id,0),COALESCE(u.storage_id,0),COALESCE(u.path,''),COALESCE(u.sha256,''),COALESCE(u.state,'') FROM boot_profiles b LEFT JOIN windows_boot_profiles w ON w.boot_profile_id=b.id LEFT JOIN windows_install_boot_profiles wi ON wi.boot_profile_id=b.id LEFT JOIN ubuntu_sources u ON u.boot_profile_id=b.id WHERE b.id=$1 FOR SHARE OF b`, item.BootProfileID).Scan(&profile.ID, &profile.Kind, &profile.Title, &profile.WindowsProfileID, &profile.InstallImageID, &profile.UbuntuSourceID, &profile.UbuntuStorageID, &profile.UbuntuPath, &profile.UbuntuSHA256, &profile.UbuntuState)
 	if err != nil {
 		return Installation{}, err
 	}
@@ -121,6 +121,19 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 	var winProfile WindowsProfile
 	if isISOBootKind(profile.Kind) && profile.WindowsProfileID > 0 {
 		if err := tx.QueryRow(ctx, `SELECT id,wim_info FROM windows_profiles WHERE id=$1 FOR SHARE`, profile.WindowsProfileID).Scan(&winProfile.ID, &winProfile.WIMInfo); err != nil {
+			return Installation{}, err
+		}
+	}
+	// Lock selected Windows boot.wim / install.wim images while validating.
+	var bootImgHasSetup bool
+	if item.BootImageID > 0 {
+		if err := tx.QueryRow(ctx, `SELECT has_setup_exe FROM windows_boot_images WHERE id=$1 FOR SHARE`, item.BootImageID).Scan(&bootImgHasSetup); err != nil {
+			return Installation{}, err
+		}
+	}
+	var installImgWIM agent.WindowsWIMInfo
+	if item.InstallImageID > 0 {
+		if err := tx.QueryRow(ctx, `SELECT wim_info FROM windows_install_images WHERE id=$1 FOR SHARE`, item.InstallImageID).Scan(&installImgWIM); err != nil {
 			return Installation{}, err
 		}
 	}
@@ -157,8 +170,15 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 	if err := ValidateInstallation(item, profile, answers, configs, files); err != nil {
 		return Installation{}, err
 	}
-	if len(answers) > 0 && winProfile.WIMInfo.Known {
-		if res := EvaluateWindowsAnswerCompatibility(answers[0].Target, winProfile.WIMInfo); res.Status == "incompatible" {
+	if profile.Kind == BootProfileWindowsWIM && !bootImgHasSetup {
+		return Installation{}, fmt.Errorf("selected boot.wim does not contain setup.exe")
+	}
+	activeWIM := winProfile.WIMInfo
+	if item.InstallImageID > 0 && installImgWIM.Known {
+		activeWIM = installImgWIM
+	}
+	if len(answers) > 0 && activeWIM.Known {
+		if res := EvaluateWindowsAnswerCompatibility(answers[0].Target, activeWIM); res.Status == "incompatible" {
 			return Installation{}, fmt.Errorf("%s", strings.Join(res.Errors, "; "))
 		}
 	}
@@ -171,8 +191,8 @@ func (s Store) saveInstallation(ctx context.Context, item Installation, update b
 			return Installation{}, err
 		}
 	}
-	if isISOBootKind(profile.Kind) {
-		if _, err := tx.Exec(ctx, `INSERT INTO windows_installation_options(installation_id,answer_id,driver_config_id) VALUES($1,NULLIF($2,0),NULLIF($3,0)) ON CONFLICT(installation_id) DO UPDATE SET answer_id=EXCLUDED.answer_id,driver_config_id=EXCLUDED.driver_config_id`, item.ID, item.AnswerID, item.DriverConfigID); err != nil {
+	if isWindowsBootKind(profile.Kind) {
+		if _, err := tx.Exec(ctx, `INSERT INTO windows_installation_options(installation_id,answer_id,driver_config_id,boot_image_id,install_image_id) VALUES($1,NULLIF($2,0),NULLIF($3,0),NULLIF($4,0),NULLIF($5,0)) ON CONFLICT(installation_id) DO UPDATE SET answer_id=EXCLUDED.answer_id,driver_config_id=EXCLUDED.driver_config_id,boot_image_id=EXCLUDED.boot_image_id,install_image_id=EXCLUDED.install_image_id`, item.ID, item.AnswerID, item.DriverConfigID, item.BootImageID, item.InstallImageID); err != nil {
 			return Installation{}, err
 		}
 	}
@@ -192,5 +212,14 @@ func createWindowsBootProfile(ctx context.Context, tx pgx.Tx, profile WindowsPro
 		return err
 	}
 	_, err := tx.Exec(ctx, `INSERT INTO windows_boot_profiles(boot_profile_id,windows_profile_id) VALUES($1,$2)`, id, profile.ID)
+	return err
+}
+
+func createWindowsInstallBootProfile(ctx context.Context, tx pgx.Tx, img WindowsInstallImage) error {
+	var id int64
+	if err := tx.QueryRow(ctx, `INSERT INTO boot_profiles(kind,title) VALUES($1,$2) RETURNING id`, BootProfileWindowsWIM, img.Title).Scan(&id); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO windows_install_boot_profiles(boot_profile_id,install_image_id) VALUES($1,$2)`, id, img.ID)
 	return err
 }

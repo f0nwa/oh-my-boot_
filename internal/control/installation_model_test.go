@@ -21,6 +21,8 @@ import (
 func TestInstallationModelOptions(t *testing.T) {
 	windows := BootProfile{ID: 1, Kind: "windows_iso", Title: "Windows", WindowsProfileID: 42}
 	ubuntu := BootProfile{ID: 2, Kind: "ubuntu_builtin", Title: "Ubuntu Desktop"}
+	winpe := BootProfile{ID: 4, Kind: "winpe_iso", Title: "Strelec", WindowsProfileID: 44}
+	winWIM := BootProfile{ID: 5, Kind: "windows_wim", Title: "Standalone WIM", InstallImageID: 77}
 	answers := []WindowsAnswerVariant{{ID: 10}, {ID: 11}}
 	configs := []DriverConfig{{ID: 20, ProfileID: 42, AnswerID: 10}, {ID: 21, ProfileID: 43}, {ID: 22, ProfileID: 42, AnswerID: 99}}
 	for _, tc := range []struct {
@@ -33,7 +35,16 @@ func TestInstallationModelOptions(t *testing.T) {
 		{"Windows XML", windows, Installation{BootProfileID: 1, Title: "XML", AnswerID: 10}, true},
 		{"Windows shared XML", windows, Installation{BootProfileID: 1, Title: "Shared", AnswerID: 11}, true},
 		{"Windows drivers", windows, Installation{BootProfileID: 1, Title: "Drivers", DriverConfigID: 20}, true},
+		{"Windows ISO with WIM overrides", windows, Installation{BootProfileID: 1, Title: "Swapped", BootImageID: 5, InstallImageID: 77}, true},
+		{"Windows WIM standalone", winWIM, Installation{BootProfileID: 5, Title: "WIM", BootImageID: 5, InstallImageID: 77}, true},
+		{"Windows WIM standalone XML", winWIM, Installation{BootProfileID: 5, Title: "WIM XML", AnswerID: 10, BootImageID: 5, InstallImageID: 77}, true},
+		{"Windows WIM missing boot", winWIM, Installation{BootProfileID: 5, Title: "WIM NoBoot", InstallImageID: 77}, false},
+		{"Windows WIM missing install", winWIM, Installation{BootProfileID: 5, Title: "WIM NoInstall", BootImageID: 5}, false},
+		{"Windows WIM mismatched install", winWIM, Installation{BootProfileID: 5, Title: "WIM WrongInstall", BootImageID: 5, InstallImageID: 78}, false},
+		{"WinPE with WIM override", winpe, Installation{BootProfileID: 4, Title: "Bad Strelec", BootImageID: 5}, false},
 		{"Ubuntu manual", ubuntu, Installation{BootProfileID: 2, Title: "Ubuntu"}, true},
+		{"Ubuntu with WIM override", ubuntu, Installation{BootProfileID: 2, Title: "Bad Ubuntu", BootImageID: 5}, false},
+		{"negative WIM id", windows, Installation{BootProfileID: 1, Title: "Bad Neg", BootImageID: -1}, false},
 		{"two components", windows, Installation{BootProfileID: 1, Title: "Both", AnswerID: 10, DriverConfigID: 20}, false},
 		{"missing XML", windows, Installation{BootProfileID: 1, Title: "Missing", AnswerID: 99}, false},
 		{"foreign drivers", windows, Installation{BootProfileID: 1, Title: "Wrong", DriverConfigID: 21}, false},

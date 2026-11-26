@@ -142,6 +142,44 @@ func (c *AgentClient) PrepareWindowsISO(ctx context.Context, req agent.WindowsIS
 	return result, err
 }
 
+func (c *AgentClient) PrepareBootImage(ctx context.Context, req agent.WindowsBootImageRequest) (agent.WindowsBootImageResult, error) {
+	var result agent.WindowsBootImageResult
+	body, err := json.Marshal(req)
+	if err != nil {
+		return result, err
+	}
+	client := &http.Client{Transport: c.http.Transport, Timeout: 10 * time.Minute}
+	err = localCall(ctx, client, http.MethodPost, "/windows/boot-image/prepare", body, &result)
+	return result, err
+}
+
+func (c *AgentClient) RemoveBootImage(ctx context.Context, id int64) error {
+	body, err := json.Marshal(map[string]int64{"id": id})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, http.MethodPost, "/windows/boot-image/remove", body, nil)
+}
+
+func (c *AgentClient) PrepareInstallImage(ctx context.Context, req agent.WindowsInstallImageRequest) (agent.WindowsInstallImageResult, error) {
+	var result agent.WindowsInstallImageResult
+	body, err := json.Marshal(req)
+	if err != nil {
+		return result, err
+	}
+	client := &http.Client{Transport: c.http.Transport, Timeout: 10 * time.Minute}
+	err = localCall(ctx, client, http.MethodPost, "/windows/install-image/prepare", body, &result)
+	return result, err
+}
+
+func (c *AgentClient) RemoveInstallImage(ctx context.Context, id int64) error {
+	body, err := json.Marshal(map[string]int64{"id": id})
+	if err != nil {
+		return err
+	}
+	return localCall(ctx, c.http, http.MethodPost, "/windows/install-image/remove", body, nil)
+}
+
 func (c *AgentClient) InspectUbuntuISO(ctx context.Context, req agent.WindowsISORequest) (agent.UbuntuISOInspection, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -277,8 +315,15 @@ func (c *ImagesClient) Folders(ctx context.Context, id int64) ([]string, error) 
 }
 
 func (c *ImagesClient) UploadISO(ctx context.Context, id int64, folder, name string, body io.Reader, size int64) (images.UploadResult, error) {
+	return c.UploadImage(ctx, id, folder, name, images.ImageKindISO, body, size)
+}
+
+func (c *ImagesClient) UploadImage(ctx context.Context, id int64, folder, name, expectedKind string, body io.Reader, size int64) (images.UploadResult, error) {
 	var result images.UploadResult
 	query := url.Values{"folder": {folder}, "name": {name}}
+	if expectedKind != "" {
+		query.Set("expected_kind", expectedKind)
+	}
 	path := "/storages/" + strconv.FormatInt(id, 10) + "/upload?" + query.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix"+path, io.NopCloser(body))
 	if err != nil {

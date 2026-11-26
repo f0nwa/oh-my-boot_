@@ -133,6 +133,8 @@ CREATE TABLE IF NOT EXISTS mac_prefix_rules (
 
 CREATE TABLE IF NOT EXISTS winpe_driver_packages (
  sha256 TEXT PRIMARY KEY CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+ title TEXT NOT NULL DEFAULT '',
+ description TEXT NOT NULL DEFAULT '',
  inventory JSONB NOT NULL,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

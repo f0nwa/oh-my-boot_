@@ -24,14 +24,24 @@ type driverPageStore struct {
 	packages []DriverPackage
 }
 
-func (s *driverPageStore) CreateDriverPackage(_ context.Context, inventory drivers.Inventory) (bool, error) {
+func (s *driverPageStore) CreateDriverPackage(_ context.Context, inventory drivers.Inventory, title, description string) (bool, error) {
 	for _, existing := range s.packages {
 		if existing.SHA256 == inventory.SHA256 {
 			return false, nil
 		}
 	}
-	s.packages = append(s.packages, DriverPackage{SHA256: inventory.SHA256, Inventory: inventory})
+	s.packages = append(s.packages, DriverPackage{SHA256: inventory.SHA256, Title: title, Description: description, Inventory: inventory})
 	return true, nil
+}
+func (s *driverPageStore) UpdateDriverPackageMetadata(_ context.Context, hash, title, description string) error {
+	for i := range s.packages {
+		if s.packages[i].SHA256 == hash {
+			s.packages[i].Title = title
+			s.packages[i].Description = description
+			return nil
+		}
+	}
+	return os.ErrNotExist
 }
 func (s *driverPageStore) DriverPackages(context.Context) ([]DriverPackage, error) {
 	return s.packages, nil
@@ -399,5 +409,228 @@ assert.equal(folderSubmitBtn.disabled, true, 'folder submit should be disabled o
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Node.js test failed: %v\nOutput: %s", err, string(out))
+	}
+}
+
+func testDriverUploadWithMeta(t *testing.T, csrf, filename, title, description string, content []byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	for k, v := range map[string]string{
+		"csrf":        csrf,
+		"title":       title,
+		"description": description,
+	} {
+		if err := w.WriteField(k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f, err := w.CreateFormFile("zip", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/drivers/import", &body)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	return req
+}
+
+func TestDriverPackageMetadataUploadAndEdit(t *testing.T) {
+	store := &driverPageStore{authOnlyStore: authOnlyStore{user: User{ID: 1, Username: "admin", Role: "admin", Enabled: true}}}
+	agent := &fakeDriverAgent{}
+	server := &Server{Store: store, DriverPackages: agent}
+	handler := server.Handler()
+
+	csrf := CSRFToken("test-token")
+	zipBytes := oneDriverZIP(t)
+
+	// 1. Upload with title and description
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, testDriverUploadWithMeta(t, csrf, "dell.zip", "Dell Latitude 5440", "Сетевая карта Intel I219-LM\nWinPE x64", zipBytes))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("import with metadata status = %d, want 303 (%s)", rec.Code, rec.Body.String())
+	}
+	if len(store.packages) != 1 {
+		t.Fatalf("stored packages = %d, want 1", len(store.packages))
+	}
+	pkg := store.packages[0]
+	if pkg.Title != "Dell Latitude 5440" || pkg.Description != "Сетевая карта Intel I219-LM\nWinPE x64" {
+		t.Fatalf("stored metadata = (%q, %q)", pkg.Title, pkg.Description)
+	}
+
+	// 2. Duplicate upload must not overwrite existing metadata
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, testDriverUploadWithMeta(t, csrf, "other.zip", "Другое имя", "Другое описание", zipBytes))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("duplicate import status = %d, want 303", rec.Code)
+	}
+	if store.packages[0].Title != "Dell Latitude 5440" || store.packages[0].Description != "Сетевая карта Intel I219-LM\nWinPE x64" {
+		t.Fatalf("duplicate import overwrote metadata: (%q, %q)", store.packages[0].Title, store.packages[0].Description)
+	}
+
+	// 3. Rendered /drivers shows title, description and edit form for admin
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/drivers", nil)
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /drivers status = %d", rec.Code)
+	}
+	page := rec.Body.String()
+	for _, want := range []string{"Dell Latitude 5440", "Сетевая карта Intel I219-LM", "data-driver-package-form", "/drivers/packages/" + pkg.SHA256 + "/metadata"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("drivers page missing %q", want)
+		}
+	}
+
+	// 4. Operator can edit metadata
+	store.user = User{ID: 2, Username: "op", Role: "operator", Enabled: true}
+	opCSRF := CSRFToken("test-token")
+	form := url.Values{"csrf": {opCSRF}, "title": {"Intel I219-LM (обновлённый)"}, "description": {"Для Latitude 5440 и 5540"}}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/drivers/packages/"+pkg.SHA256+"/metadata", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("operator metadata update status = %d, want 303 (%s)", rec.Code, rec.Body.String())
+	}
+	if store.packages[0].Title != "Intel I219-LM (обновлённый)" || store.packages[0].Description != "Для Latitude 5440 и 5540" {
+		t.Fatalf("updated metadata = (%q, %q)", store.packages[0].Title, store.packages[0].Description)
+	}
+
+	// 5. Validation rejects too-long title or control characters
+	badForm := url.Values{"csrf": {opCSRF}, "title": {strings.Repeat("a", 101)}, "description": {"ok"}}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/drivers/packages/"+pkg.SHA256+"/metadata", strings.NewReader(badForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("long title status = %d, want 400", rec.Code)
+	}
+
+	// 6. Unknown package returns 404
+	missingForm := url.Values{"csrf": {opCSRF}, "title": {"ok"}, "description": {""}}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/drivers/packages/"+strings.Repeat("f", 64)+"/metadata", strings.NewReader(missingForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown package status = %d, want 404", rec.Code)
+	}
+
+	// 7. Observer gets 403 on update and read-only view on /drivers
+	store.user = User{ID: 3, Username: "obs", Role: "observer", Enabled: true}
+	obsCSRF := CSRFToken("test-token")
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/drivers/packages/"+pkg.SHA256+"/metadata", strings.NewReader(url.Values{"csrf": {obsCSRF}, "title": {"hack"}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("observer metadata update status = %d, want 403", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/drivers", nil)
+	req.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	handler.ServeHTTP(rec, req)
+	obsPage := rec.Body.String()
+	if !strings.Contains(obsPage, "Intel I219-LM (обновлённый)") || strings.Contains(obsPage, "data-driver-package-form") {
+		t.Fatalf("observer page should show read-only metadata without edit form")
+	}
+}
+
+func TestDriverPackageMetadataInInstallationFormAndSearch(t *testing.T) {
+	sha1 := strings.Repeat("1", 64)
+	sha2 := strings.Repeat("2", 64)
+	sha3 := strings.Repeat("3", 64)
+	packages := []DriverPackage{
+		{
+			SHA256:      sha1,
+			Title:       "Realtek USB-C Ethernet",
+			Description: "Для док-станций Dell WD19",
+			Inventory: drivers.Inventory{
+				SHA256: sha1,
+				INFs:   []drivers.INF{{Path: "Net/rtux64w10.inf", Architecture: "amd64", Class: "Net"}},
+			},
+		},
+		{
+			SHA256:      sha2,
+			Title:       "Intel VMD 20.0",
+			Description: "Контроллеры NVMe 12-14 Gen",
+			Inventory: drivers.Inventory{
+				SHA256: sha2,
+				INFs: []drivers.INF{
+					{Path: "VMD/iaStorVD.inf", Architecture: "amd64", Class: "SCSIAdapter"},
+					{Path: "AHCI/iaAHCIC.inf", Architecture: "amd64", Class: "hdc"},
+				},
+			},
+		},
+		{
+			SHA256: sha3,
+			Inventory: drivers.Inventory{
+				SHA256: sha3,
+				INFs:   []drivers.INF{{Path: "PRO1000/e1d68x64.inf", Architecture: "amd64", Class: "Net"}},
+			},
+		},
+	}
+
+	choices := packageChoices(packages)
+	if len(choices) != 3 {
+		t.Fatalf("choices = %d, want 3", len(choices))
+	}
+	if choices[0].Title != "Realtek USB-C Ethernet" || choices[0].Description != "Для док-станций Dell WD19" {
+		t.Fatalf("choice[0] = %+v", choices[0])
+	}
+	if choices[2].Title != "" || choices[2].Label != "e1d68x64" {
+		t.Fatalf("choice[2] fallback = %+v", choices[2])
+	}
+
+	// Render installation_new template directly for edit mode
+	rec := httptest.NewRecorder()
+	render(rec, "installation_new", pageData{
+		Info:               requestContext{User: User{ID: 1, Role: "admin", Enabled: true}, CSRF: "tok"},
+		EditInstallationID: 7,
+		SelectedBootKind:   "windows_iso",
+		PackageChoices:     choices,
+		Form:               url.Values{"boot_profile_id": {"1"}, "inf": {sha1 + ":Net/rtux64w10.inf"}},
+	})
+	html := rec.Body.String()
+	for _, want := range []string{
+		`<span class="choice-title">Realtek USB-C Ethernet</span>`,
+		`<small class="choice-desc">Для док-станций Dell WD19</small>`,
+		`<span class="choice-title">Intel VMD 20.0</span>`,
+		`<small class="choice-desc">Контроллеры NVMe 12-14 Gen</small>`,
+		`<span class="choice-title mono">e1d68x64</span>`,
+		`data-search="Realtek USB-C Ethernet Для док-станций Dell WD19 rtux64w10 Net/rtux64w10.inf · Net ` + sha1 + `"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("installation edit form missing %q", want)
+		}
+	}
+
+	// Global search finds package by title and description
+	store := &driverPageStore{
+		authOnlyStore: authOnlyStore{user: User{ID: 1, Username: "admin", Role: "admin", Enabled: true}},
+		packages:      packages,
+	}
+	server := &Server{Store: store}
+	srec := httptest.NewRecorder()
+	sreq := httptest.NewRequest(http.MethodGet, "/search?format=json&q=WD19", nil)
+	sreq.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	server.Handler().ServeHTTP(srec, sreq)
+	if srec.Code != http.StatusOK {
+		t.Fatalf("search status = %d", srec.Code)
+	}
+	if !strings.Contains(srec.Body.String(), "Realtek USB-C Ethernet") {
+		t.Fatalf("search response missing package title: %s", srec.Body.String())
 	}
 }

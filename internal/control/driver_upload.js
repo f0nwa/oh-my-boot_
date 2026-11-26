@@ -13,7 +13,36 @@
     return result;
   };
   const forms = document.querySelectorAll('[data-driver-upload]');
+  const uploadTitleInput = document.getElementById('driver-upload-title');
+  const uploadDescInput = document.getElementById('driver-upload-desc');
+  let uploadTitleManual = false;
+  if (uploadTitleInput) {
+    uploadTitleInput.addEventListener('input', () => {
+      uploadTitleManual = uploadTitleInput.value.trim() !== '';
+    });
+  }
+  const suggestTitleFromFiles = (kind, files) => {
+    if (!uploadTitleInput || uploadTitleManual || !files.length) return;
+    let name = '';
+    if (kind === 'folder') {
+      const rel = files[0].webkitRelativePath || '';
+      const slash = rel.indexOf('/');
+      name = slash > 0 ? rel.slice(0, slash) : '';
+    } else {
+      name = (files[0].name || '').replace(/\.zip$/i, '');
+    }
+    name = name.replace(/[_]+/g, ' ').trim();
+    if (name) {
+      uploadTitleInput.value = name.slice(0, 100);
+    }
+  };
   const resetUploadForms = () => {
+    const anyUploading = Array.from(forms).some(f => Boolean(f.dataset.uploading));
+    if (!anyUploading) {
+      if (uploadTitleInput) uploadTitleInput.value = '';
+      if (uploadDescInput) uploadDescInput.value = '';
+      uploadTitleManual = false;
+    }
     forms.forEach(form => {
       if (!form.dataset.uploading) {
         form.reset();
@@ -55,9 +84,21 @@
           if (titleInput) titleInput.value = titleInput.defaultValue;
           if (submitBtn) submitBtn.disabled = true;
         }
+        const pkgForm = dialog.querySelector('[data-driver-package-form]');
+        if (pkgForm) {
+          const titleInput = pkgForm.querySelector('input[name="title"]');
+          const descInput = pkgForm.querySelector('textarea[name="description"]');
+          const submitBtn = pkgForm.querySelector('button[type="submit"]');
+          if (titleInput) titleInput.value = titleInput.defaultValue;
+          if (descInput) descInput.value = descInput.defaultValue;
+          if (submitBtn) submitBtn.disabled = true;
+        }
         dialog.showModal();
         if (cfgForm) {
           const titleInput = cfgForm.querySelector('input[name="title"]');
+          if (titleInput) titleInput.focus();
+        } else if (pkgForm) {
+          const titleInput = pkgForm.querySelector('input[name="title"]');
           if (titleInput) titleInput.focus();
         }
       }
@@ -86,6 +127,25 @@
     });
     sync();
   });
+  document.querySelectorAll('[data-driver-package-form]').forEach(form => {
+    const titleInput = form.querySelector('input[name="title"]');
+    const descInput = form.querySelector('textarea[name="description"]');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (!titleInput || !descInput || !submitBtn) return;
+    const normDesc = value => value.replace(/\r\n?/g, '\n').trim();
+    const sync = () => {
+      const titleChanged = titleInput.value.trim() !== titleInput.defaultValue.trim();
+      const descChanged = normDesc(descInput.value) !== normDesc(descInput.defaultValue);
+      submitBtn.disabled = (!titleChanged && !descChanged) || !form.checkValidity();
+    };
+    titleInput.addEventListener('input', sync);
+    descInput.addEventListener('input', sync);
+    form.addEventListener('submit', event => {
+      sync();
+      if (submitBtn.disabled) event.preventDefault();
+    });
+    sync();
+  });
   forms.forEach(form => {
     const status = form.querySelector('[role="status"]');
     const progress = form.querySelector('progress');
@@ -101,8 +161,13 @@
     };
 
     if (fileInput) {
-      fileInput.addEventListener('change', syncSubmit);
-      fileInput.addEventListener('input', syncSubmit);
+      const onFileChange = () => {
+        syncSubmit();
+        const files = Array.from(fileInput.files || []);
+        suggestTitleFromFiles(form.dataset.driverUpload, files);
+      };
+      fileInput.addEventListener('change', onFileChange);
+      fileInput.addEventListener('input', onFileChange);
     }
     syncSubmit();
 
@@ -114,11 +179,15 @@
         if (cancel) cancel.hidden = false;
         if (progress) progress.parentElement.hidden = false;
         if (fileInput) fileInput.disabled = true;
+        if (uploadTitleInput) uploadTitleInput.disabled = true;
+        if (uploadDescInput) uploadDescInput.disabled = true;
       } else {
         delete form.dataset.uploading;
         if (cancel) cancel.hidden = true;
         if (progress) progress.parentElement.hidden = true;
         if (fileInput) fileInput.disabled = false;
+        if (uploadTitleInput) uploadTitleInput.disabled = false;
+        if (uploadDescInput) uploadDescInput.disabled = false;
         syncSubmit();
       }
     };
@@ -131,6 +200,8 @@
       if (!files.length) { if (status) status.textContent = tr('Выберите пакет драйвера.'); return; }
       const data = new FormData();
       data.append('csrf', form.dataset.csrf);
+      if (uploadTitleInput) data.append('title', uploadTitleInput.value.trim());
+      if (uploadDescInput) data.append('description', uploadDescInput.value.trim());
       if (form.dataset.driverUpload === 'folder') {
         files.forEach(file => {
           data.append('files[]', file, file.name);

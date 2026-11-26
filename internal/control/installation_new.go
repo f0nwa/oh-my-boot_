@@ -43,18 +43,24 @@ type installationEditorActions struct {
 
 func (a installationEditorActions) InMenu() bool { return a.InDraft || a.InActive }
 
-// packageChoice is a driver package offered on the installation form, named
-// by its x64 INF files because packages carry no name of their own.
+// packageChoice is a driver package offered on the installation form.
+// Label holds its x64 INF base names as a fallback when Title is empty.
 type packageChoice struct {
-	SHA256 string
-	Label  string
-	INFs   []infChoice
+	SHA256      string
+	Title       string
+	Description string
+	Label       string
+	INFs        []infChoice
 }
 
 func packageChoices(packages []DriverPackage) []packageChoice {
 	var out []packageChoice
 	for _, pkg := range packages {
-		choice := packageChoice{SHA256: pkg.SHA256}
+		choice := packageChoice{
+			SHA256:      pkg.SHA256,
+			Title:       pkg.Title,
+			Description: pkg.Description,
+		}
 		var names []string
 		for _, inf := range pkg.Inventory.INFs {
 			if inf.Architecture != "amd64" {

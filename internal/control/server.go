@@ -73,7 +73,8 @@ type Storage interface {
 	DeleteWindowsAnswer(context.Context, int64) error
 	SetWindowsAnswerTitle(context.Context, int64, string) error
 	SetWindowsAnswerWipesDisk(context.Context, int64, bool) error
-	CreateDriverPackage(context.Context, drivers.Inventory) (bool, error)
+	CreateDriverPackage(context.Context, drivers.Inventory, string, string) (bool, error)
+	UpdateDriverPackageMetadata(context.Context, string, string, string) error
 	DeleteDriverPackage(context.Context, string) error
 	DriverPackages(context.Context) ([]DriverPackage, error)
 	CreateDriverConfig(context.Context, DriverConfig) (DriverConfig, error)
@@ -420,6 +421,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/ubuntu_autoinstall_editor.js", ubuntuAutoinstallEditorScript)
 	mux.HandleFunc("POST /answers/upload", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
+	mux.HandleFunc("POST /drivers/packages/{sha}/metadata", s.protect("images", withPageErrors(s.driversPage, s.driverPackageUpdateMetadata)))
 	mux.HandleFunc("POST /drivers/packages/{sha}/delete", s.protect("delete", withPageErrors(s.driversPage, s.driverPackageDelete)))
 	mux.HandleFunc("POST /drivers/packages/delete-batch", s.protect("delete", withPageErrors(s.driversPage, s.driverPackagesDeleteBatch)))
 	mux.HandleFunc("POST /drivers/import", s.protect("images", s.driversImport))

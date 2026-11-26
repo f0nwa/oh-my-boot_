@@ -187,9 +187,22 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 		if packages, err := s.Store.DriverPackages(r.Context()); err == nil {
 			for _, pkg := range packages {
 				author := authors.Drivers[pkg.SHA256]
-				if searchMatch(query, author) || searchMatchSHA(query, pkg.SHA256) {
-					title := fmt.Sprintf("Пакет %s", shortSHA(pkg.SHA256))
-					sub := author
+				if searchMatch(query, pkg.Title, pkg.Description, author) || searchMatchSHA(query, pkg.SHA256) {
+					title := pkg.Title
+					if title == "" {
+						title = fmt.Sprintf("Пакет %s", shortSHA(pkg.SHA256))
+					}
+					var subParts []string
+					if pkg.Title != "" {
+						subParts = append(subParts, shortSHA(pkg.SHA256))
+					}
+					if pkg.Description != "" {
+						subParts = append(subParts, pkg.Description)
+					}
+					if author != "" {
+						subParts = append(subParts, author)
+					}
+					sub := strings.Join(subParts, " · ")
 					if sub == "" {
 						sub = pkg.SHA256[:min(12, len(pkg.SHA256))]
 					}

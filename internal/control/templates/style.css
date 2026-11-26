@@ -859,7 +859,12 @@ tr.is-migrating td{background:var(--draft-bg)}
 .menu-versions-dialog th,.menu-versions-dialog td{padding:10px 8px}
 .menu-versions-dialog td:nth-child(4){white-space:nowrap}
 .driver-upload-dialog{width:min(650px,calc(100vw - 32px))}
-.driver-upload-dialog p.driver-upload-intro{margin:0 0 4px}
+.driver-upload-dialog p.driver-upload-intro{margin:0 0 10px}
+.driver-upload-meta{display:flex;flex-direction:column;gap:10px;padding:0 0 14px;border-bottom:1px solid var(--line)}
+.driver-upload-meta label,.driver-package-meta-fields label{display:block;margin:0 0 4px;font-size:13px;font-weight:500;color:var(--text)}
+.driver-upload-meta input,.driver-upload-meta textarea,.driver-package-meta-fields input,.driver-package-meta-fields textarea{width:100%;max-width:none}
+.driver-upload-meta textarea,.driver-package-meta-fields textarea{resize:vertical;min-height:56px}
+.driver-upload-meta .hint{margin:4px 0 0;font-size:12px}
 .driver-upload-dialog .driver-upload-method{padding:16px 0;gap:10px}
 .driver-upload-method+.driver-upload-method{border-top:1px solid var(--line)}
 .driver-upload-dialog .driver-upload-method label{margin:0;font-size:14px;color:var(--text)}
@@ -876,6 +881,17 @@ tr.is-migrating td{background:var(--draft-bg)}
 .driver-upload-dialog .driver-upload-footer p{margin:0}
 @media(max-width:520px){.driver-upload-fields input[type="file"]{flex-basis:100%;width:100%}.driver-upload-fields{justify-content:flex-end}}
 .driver-package-dialog{width:min(720px,calc(100vw - 32px))}
+.driver-package-dialog .user-dialog-head{align-items:flex-start}
+.driver-package-dialog .user-dialog-head .hint{margin:4px 0 0}
+.driver-package-meta-fields{display:flex;flex-direction:column;gap:10px;margin:0 0 14px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.driver-package-meta-readonly{margin:0 0 12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.driver-package-ro-title{margin:0 0 4px}
+.driver-package-left{display:flex;align-items:flex-start;gap:10px;min-width:0;flex:1}
+.driver-package-body{min-width:0;flex:1}
+.driver-package-title-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.driver-package-name-link{font-weight:600;word-break:normal;cursor:pointer}
+.driver-package-desc{margin:4px 0 0;color:var(--text-2);font-size:12.5px;white-space:pre-line;overflow-wrap:anywhere;max-width:740px}
+.choice-desc{display:block;color:var(--text-2);font-size:12px;line-height:1.4;white-space:pre-line;overflow-wrap:anywhere;margin-top:2px}
 .driver-config-dialog{width:min(560px,calc(100vw - 32px))}
 .driver-config-name-link{word-break:normal;cursor:pointer}
 .driver-config-dialog .user-dialog-head{align-items:flex-start}

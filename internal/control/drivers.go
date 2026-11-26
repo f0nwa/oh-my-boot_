@@ -3,6 +3,7 @@ package control
 import (
 	"archive/zip"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,7 +12,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"omb/internal/agent"
 	"omb/internal/drivers"
 )
@@ -170,12 +174,85 @@ func sortDriverConfigs(configs []DriverConfig, usage driverUsage, sortBy, dir st
 	}
 }
 
+func normalizeDriverPackageTitle(raw string) (string, bool) {
+	title := strings.TrimSpace(raw)
+	if !utf8.ValidString(title) || utf8.RuneCountInString(title) > 100 {
+		return "", false
+	}
+	for _, r := range title {
+		if unicode.IsControl(r) {
+			return "", false
+		}
+	}
+	return title, true
+}
+
+func normalizeDriverPackageDescription(raw string) (string, bool) {
+	desc := strings.ReplaceAll(raw, "\r\n", "\n")
+	desc = strings.ReplaceAll(desc, "\r", "\n")
+	desc = strings.TrimSpace(desc)
+	if !utf8.ValidString(desc) || utf8.RuneCountInString(desc) > 400 {
+		return "", false
+	}
+	for _, r := range desc {
+		if unicode.IsControl(r) && r != '\n' {
+			return "", false
+		}
+	}
+	return desc, true
+}
+
+func (s *Server) driverPackageUpdateMetadata(w http.ResponseWriter, r *http.Request) {
+	hash := strings.TrimSpace(r.PathValue("sha"))
+	if !validAnswerHash(hash) {
+		http.Error(w, "Неверный пакет драйверов", http.StatusBadRequest)
+		return
+	}
+	title, ok := normalizeDriverPackageTitle(r.FormValue("title"))
+	if !ok {
+		http.Error(w, "Название пакета: до 100 символов без управляющих знаков", http.StatusBadRequest)
+		return
+	}
+	desc, ok := normalizeDriverPackageDescription(r.FormValue("description"))
+	if !ok {
+		http.Error(w, "Описание пакета: до 400 символов без управляющих знаков", http.StatusBadRequest)
+		return
+	}
+	if err := s.Store.UpdateDriverPackageMetadata(r.Context(), hash, title, desc); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, os.ErrNotExist) {
+			http.Error(w, "Пакет драйверов не найден", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Не удалось сохранить свойства пакета драйверов", http.StatusServiceUnavailable)
+		return
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver-package.update", "ok", fmt.Sprintf("sha256=%s title=%s", hash, title))
+	http.Redirect(w, r, "/drivers?message="+url.QueryEscape("Свойства пакета драйверов обновлены"), http.StatusSeeOther)
+}
+
 func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {
 	if s.DriverPackages == nil || r.MultipartForm == nil {
 		http.Error(w, "Импорт драйверов недоступен", http.StatusServiceUnavailable)
 		return
 	}
 	defer r.MultipartForm.RemoveAll()
+	var rawTitle, rawDesc string
+	if vals := r.MultipartForm.Value["title"]; len(vals) > 0 {
+		rawTitle = vals[0]
+	}
+	if vals := r.MultipartForm.Value["description"]; len(vals) > 0 {
+		rawDesc = vals[0]
+	}
+	title, ok := normalizeDriverPackageTitle(rawTitle)
+	if !ok {
+		http.Error(w, "Название пакета: до 100 символов без управляющих знаков", http.StatusBadRequest)
+		return
+	}
+	desc, ok := normalizeDriverPackageDescription(rawDesc)
+	if !ok {
+		http.Error(w, "Описание пакета: до 400 символов без управляющих знаков", http.StatusBadRequest)
+		return
+	}
 	archive, size, err := spoolDriverUpload(r)
 	if err != nil {
 		http.Error(w, "Некорректный пакет: "+err.Error(), http.StatusBadRequest)
@@ -195,16 +272,17 @@ func (s *Server) driversImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось проверить пакет драйвера: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	created, err := s.Store.CreateDriverPackage(r.Context(), inventory)
+	created, err := s.Store.CreateDriverPackage(r.Context(), inventory, title, desc)
 	if err != nil {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "driver.import", "error", "database")
 		http.Error(w, "Не удалось добавить пакет в каталог", http.StatusServiceUnavailable)
 		return
 	}
-	var pkgName string
-	if len(r.MultipartForm.File["zip"]) > 0 && r.MultipartForm.File["zip"][0].Filename != "" {
+	pkgName := title
+	if pkgName == "" && len(r.MultipartForm.File["zip"]) > 0 && r.MultipartForm.File["zip"][0].Filename != "" {
 		pkgName = r.MultipartForm.File["zip"][0].Filename
-	} else if len(inventory.SHA256) >= 8 {
+	}
+	if pkgName == "" && len(inventory.SHA256) >= 8 {
 		pkgName = inventory.SHA256[:8]
 	}
 	if !created {

@@ -41,7 +41,7 @@ func (c *countingAuthorsStore) WindowsAnswers(context.Context) ([]WindowsAnswerV
 	return []WindowsAnswerVariant{}, nil
 }
 
-func (c *countingAuthorsStore) CreateDriverPackage(context.Context, drivers.Inventory) (bool, error) {
+func (c *countingAuthorsStore) CreateDriverPackage(context.Context, drivers.Inventory, string, string) (bool, error) {
 	return true, nil
 }
 

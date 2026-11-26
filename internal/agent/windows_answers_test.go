@@ -26,19 +26,28 @@ func TestWindowsAnswerAssetsAreImmutableAndUnbound(t *testing.T) {
 	if err := m.CheckAnswer(context.Background(), check); err != nil {
 		t.Fatal(err)
 	}
-	asset, err := os.ReadFile(filepath.Join(answers, "4", "omb-answer.xml"))
+	asset, err := os.ReadFile(filepath.Join(answers, "4", req.SHA256, "omb-answer.xml"))
 	if err != nil || string(asset) != string(xml) {
 		t.Fatalf("wrong XML asset: %q %v", asset, err)
 	}
-	if _, err := os.Stat(filepath.Join(answers, "4", "omb-setup.cmd")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(answers, "4", req.SHA256, "omb-setup.cmd")); !os.IsNotExist(err) {
 		t.Fatalf("unbound answer unexpectedly created omb-setup.cmd: %v", err)
 	}
 	changed := req
 	changed.XML = []byte(`<unattend xmlns="urn:schemas-microsoft-com:unattend"><settings/></unattend>`)
 	if err := m.PrepareAnswer(context.Background(), changed); err == nil {
-		t.Fatal("accepted changed body under existing variant ID")
+		t.Fatal("accepted mismatched digest")
 	}
-	if err := os.WriteFile(filepath.Join(answers, "4", "omb-answer.xml"), []byte("<unattend/>"), 0640); err != nil {
+	// Staging a new version with its own SHA-256 preserves the old version side-by-side.
+	v2Sum := sha256.Sum256(changed.XML)
+	changed.SHA256 = hex.EncodeToString(v2Sum[:])
+	if err := m.PrepareAnswer(context.Background(), changed); err != nil {
+		t.Fatalf("prepare v2 failed: %v", err)
+	}
+	if err := m.CheckAnswer(context.Background(), check); err != nil {
+		t.Fatalf("v1 lost after staging v2: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(answers, "4", req.SHA256, "omb-answer.xml"), []byte("<unattend/>"), 0640); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.CheckAnswer(context.Background(), check); err == nil {

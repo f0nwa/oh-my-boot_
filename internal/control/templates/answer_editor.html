@@ -185,9 +185,16 @@
 </div>
 <div class="ed-warn" id="ed-wipes"{{if not $v.WipesDisk}} hidden{{end}}><b>{{t "Стирает диск."}}</b> {{t "Пункт меню с этим файлом получит метку «WIPES DISK»."}}</div>
 <div class="summary ed-save">{{if $v.CanSave}}<h2>{{t "Сохранить скрипт"}}</h2>
+{{if $v.SourceID}}<div class="ed-save-meta"><span class="chip">№ {{$v.SourceID}}</span>{{if $v.SourceSHA}}<span class="mono">{{shortSHA $v.SourceSHA}}</span>{{end}}{{if $v.MenuCount}}<span aria-hidden="true">·</span><span>{{t "В меню"}}: {{$v.MenuCount}}</span>{{end}}</div>{{end}}
 <label for="ed-title">{{t "Название скрипта"}}</label><input id="ed-title" name="title" value="{{$v.Title}}" maxlength="80" placeholder="Windows 11 Lab">
-<button class="btn btn-primary btn-wide ed-savebtn" formaction="/answers/editor/save" formnovalidate>{{if $v.SourceID}}{{t "Сохранить как новый файл"}}{{else}}{{t "Сохранить скрипт"}}{{end}}</button>
-<p class="hint">{{if $v.SourceID}}{{t "Исходный файл и пункт меню с ним не меняются."}} {{end}}{{t "Компьютеры в доверенном PXE-сегменте могут получить содержимое файла, включая пароли и ключи."}}</p>{{end}}
+{{if and $v.SourceID $v.MenuCount}}<p class="ed-draft-note">{{t "Скрипт используется в опубликованном меню. После сохранения текущее меню продолжит работать с прежней версией до публикации черновика."}}</p>{{end}}
+{{if $v.SourceID}}
+<button class="btn btn-primary btn-wide ed-savebtn" formaction="/answers/editor/save" name="save_mode" value="update" formnovalidate>{{t "Сохранить"}}</button>
+<button class="btn btn-wide ed-savebtn" formaction="/answers/editor/save" name="save_mode" value="new" formnovalidate>{{t "Сохранить как новый"}}</button>
+{{else}}
+<button class="btn btn-primary btn-wide ed-savebtn" formaction="/answers/editor/save" formnovalidate>{{t "Сохранить скрипт"}}</button>
+{{end}}
+<p class="hint">{{t "Компьютеры в доверенном PXE-сегменте могут получить содержимое файла, включая пароли и ключи."}}</p>{{end}}
 <button class="btn btn-wide" name="do" value="download" formnovalidate>{{t "Скачать autounattend.xml"}}</button></div>
 </aside>
 </form>

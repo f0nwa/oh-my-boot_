@@ -317,11 +317,15 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 
 func validWindowsAnswerAsset(name string) bool {
 	parts := strings.Split(name, "/")
-	if len(parts) != 3 || parts[0] != "windows-answers" || parts[2] != "omb-answer.xml" {
-		return false
+	if len(parts) == 4 && parts[0] == "windows-answers" && parts[3] == "omb-answer.xml" {
+		id, err := strconv.ParseUint(parts[1], 10, 63)
+		return err == nil && id > 0 && strconv.FormatUint(id, 10) == parts[1] && validSHA256(parts[2])
 	}
-	id, err := strconv.ParseUint(parts[1], 10, 63)
-	return err == nil && id > 0 && strconv.FormatUint(id, 10) == parts[1]
+	if len(parts) == 3 && parts[0] == "windows-answers" && parts[2] == "omb-answer.xml" {
+		id, err := strconv.ParseUint(parts[1], 10, 63)
+		return err == nil && id > 0 && strconv.FormatUint(id, 10) == parts[1]
+	}
+	return false
 }
 
 func privateWinPEScript(name string) bool {

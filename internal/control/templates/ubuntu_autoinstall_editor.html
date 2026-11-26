@@ -35,11 +35,14 @@
 {{else}}
 <form id="ubuntu-editor" class="ed ai-editor" method="post" action="/ubuntu-autoinstall/preview" novalidate data-download="{{t "Скачать user-data"}}" data-checked="{{t "Проверен конструктором"}}" data-stale="{{t "Предпросмотр устарел. Проверяем изменения…"}}" data-invalid="{{t "Исправьте поля на вкладке «Проверка»."}}" data-expired="{{t "Предпросмотр недоступен. Повторите проверку или войдите заново."}}" data-password-accepted="{{t "Пароль принят. В предпросмотре сохранён только хеш, поле очищено."}}">
 <input type="hidden" name="csrf" value="{{$info.CSRF}}">
+{{if .EditID}}<input type="hidden" name="edit_id" value="{{.EditID}}">{{end}}
 <input type="hidden" name="active_section" value="{{.Section}}"><input type="hidden" name="active_tab" value="{{.Tab}}">
 {{if .Token}}<input type="hidden" name="preview_token" value="{{.Token}}">{{end}}
 <nav class="ed-toc" aria-label="{{t "Разделы файла ответов"}}">{{range $i,$section := .Sections}}<button type="submit" name="section" value="{{.ID}}" formnovalidate class="ed-toc-item{{if eq .ID $v.Section}} on{{end}}" data-ai-section="{{.ID}}"><span class="ed-no">{{add1 $i}}</span><span class="ed-toc-title">{{t .Title}}</span></button>{{end}}</nav>
 <div class="ed-main">
 <fieldset class="step ed-section" data-ai-panel="source"{{if ne .Section "source"}} hidden{{end}}><legend>{{t "Файл и источник"}}</legend>
+{{if .EditID}}<div class="ed-save-meta"><span class="chip">№ {{.EditID}}</span>{{if .EditSHA}}<span class="mono">{{shortSHA .EditSHA}}</span>{{end}}{{if .MenuCount}}<span aria-hidden="true">·</span><span>{{t "В меню"}}: {{.MenuCount}}</span>{{end}}</div>{{end}}
+{{if and .EditID .MenuCount}}<p class="ed-draft-note">{{t "Скрипт используется в опубликованном меню. После сохранения текущее меню продолжит работать с прежней версией до публикации черновика."}}</p>{{end}}
 <label for="ai-title">{{t "Название"}}</label><input id="ai-title" name="title" value="{{.Title}}" maxlength="80" required>
 {{if .ISOProfiles}}<label for="ai-iso-source">{{t "Образ Ubuntu"}}</label><select id="ai-iso-source" name="iso_source_id"><option value="0"{{if not .ISOSelected}} selected{{end}}>{{t "Не выбран"}}</option>{{range .ISOProfiles}}<option value="{{.UbuntuSourceID}}"{{if eq .UbuntuSourceID $v.ISOSelected}} selected{{end}}>{{.Title}} · {{.UbuntuPath}}</option>{{end}}</select><button type="submit" name="section" value="source" formnovalidate class="secondary">{{t "Обновить доступные наборы"}}</button>{{end}}
 <label for="ai-source">{{t "Набор приложений"}}</label><select id="ai-source" name="source_id"><option value=""{{if eq .Form.SourceID ""}} selected{{end}}>{{t "Как в ISO"}}</option>{{range .Sources}}<option value="{{.ID}}"{{if eq .ID $v.Form.SourceID}} selected{{end}}>{{.Name}}</option>{{end}}{{if .UnknownSource}}<option value="{{.Form.SourceID}}" selected>{{.Form.SourceID}} · {{t "Недоступен"}}</option>{{end}}</select>
@@ -59,8 +62,8 @@
 <label for="ai-realname">{{t "Полное имя"}}</label><input id="ai-realname" type="text" name="realname" value="{{.Form.RealName}}">
 <label for="ai-username">{{t "Имя пользователя"}}</label><input id="ai-username" type="text" name="username" value="{{.Form.Username}}" required>
 <label for="ai-hostname">{{t "Имя компьютера"}}</label><input id="ai-hostname" type="text" name="hostname" value="{{.Form.Hostname}}" required>
-<label for="ai-password">{{t "Пароль создаваемого пользователя"}}</label><input id="ai-password" type="password" name="password" maxlength="1024" autocomplete="new-password">
-<p class="hint" id="ai-password-state" aria-live="polite">{{if .CanSave}}{{t "Пароль принят. В предпросмотре сохранён только хеш, поле очищено."}}{{end}}</p>
+<label for="ai-password">{{t "Пароль создаваемого пользователя"}}</label><input id="ai-password" type="password" name="password" maxlength="1024" autocomplete="new-password"{{if .EditID}} placeholder="{{t "Оставьте пустым, чтобы сохранить текущий пароль"}}"{{end}}>
+<p class="hint" id="ai-password-state" aria-live="polite">{{if .EditID}}{{t "Текущий хеш пароля сохранён. Введите новый пароль только если хотите его изменить."}}{{else if .CanSave}}{{t "Пароль принят. В предпросмотре сохранён только хеш, поле очищено."}}{{end}}</p>
 <p class="hint">{{t "Пароль нужен для первого предпросмотра. Действительный предпросмотр позволяет сохранять без повторного ввода."}}</p>
 <p class="hint">{{t "Хеш пароля доступен компьютерам PXE-сегмента. Используйте отдельный пароль и смените его после установки."}}</p>
 </fieldset>
@@ -98,7 +101,7 @@
 <p class="hint">{{t "До 16 КиБ. Выполняется до первого запуска через /bin/sh; ошибка останавливает установку."}}</p>
 <label for="ai-shutdown">{{t "После установки"}}</label><select id="ai-shutdown" name="shutdown"><option value=""{{if eq .Form.Shutdown ""}} selected{{end}}>{{t "Как в Ubuntu — перезагрузка"}}</option><option value="reboot"{{if eq .Form.Shutdown "reboot"}} selected{{end}}>{{t "Перезагрузить компьютер"}}</option><option value="poweroff"{{if eq .Form.Shutdown "poweroff"}} selected{{end}}>{{t "Выключить компьютер"}}</option></select>
 </fieldset>
-<div class="ed-foot"><button class="btn" type="submit">{{t "Предпросмотр YAML"}}</button><button class="btn btn-primary" id="ai-save" type="submit" formaction="/ubuntu-autoinstall"{{if not .CanSave}} disabled{{end}}>{{t "Сохранить файл"}}</button></div>
+<div class="ed-foot"><button class="btn" type="submit">{{t "Предпросмотр YAML"}}</button>{{if .EditID}}<button class="btn btn-primary" id="ai-save" type="submit" formaction="/ubuntu-autoinstall" name="save_mode" value="update"{{if not .CanSave}} disabled{{end}}>{{t "Сохранить"}}</button><button class="btn" id="ai-save-new" type="submit" formaction="/ubuntu-autoinstall" name="save_mode" value="new"{{if not .CanSave}} disabled{{end}}>{{t "Сохранить как новый"}}</button>{{else}}<button class="btn btn-primary" id="ai-save" type="submit" formaction="/ubuntu-autoinstall"{{if not .CanSave}} disabled{{end}}>{{t "Сохранить файл"}}</button>{{end}}</div>
 </div>
 <aside class="ed-side"><div class="step"><div class="ed-tabs">{{range list "summary" "yaml" "issues"}}<button type="submit" name="tab" value="{{.}}" data-ai-tab="{{.}}" formnovalidate>{{if eq . "summary"}}{{t "Что получится"}}{{else if eq . "yaml"}}YAML{{else}}{{t "Проверка"}}{{end}}</button>{{end}}</div>
 <div data-ai-tab-panel="summary"{{if ne .Tab "summary"}} hidden{{end}}><dl id="ai-summary">{{range .Summary}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl></div>

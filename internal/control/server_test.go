@@ -141,3 +141,9 @@ func (a authOnlyStore) Installations(context.Context) ([]Installation, error) { 
 func (a authOnlyStore) UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstallSummary, error) {
 	return nil, nil
 }
+func (a authOnlyStore) UpdateUbuntuAutoinstall(context.Context, UbuntuAutoinstallFile) (UbuntuAutoinstallFile, error) {
+	return UbuntuAutoinstallFile{}, nil
+}
+func (a authOnlyStore) UpdateWindowsAnswer(context.Context, WindowsAnswerVariant) (WindowsAnswerVariant, error) {
+	return WindowsAnswerVariant{}, nil
+}

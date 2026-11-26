@@ -96,6 +96,8 @@ type editorView struct {
 	// changed by hand since.
 	SourceID    int64
 	SourceTitle string
+	SourceSHA   string
+	MenuCount   int
 	Report      *unattend.ImportReport
 	// Saved variant defaults.
 	Title     string
@@ -280,7 +282,7 @@ func editorPreset(id string) (unattend.Config, bool) {
 }
 
 // editorControlFields are form fields of the page, not of the settings.
-var editorControlFields = map[string]bool{"csrf": true, "section": true, "do": true, "preset": true, "profile_id": true, "title": true, "folder": true, "source_id": true, "source_title": true, "add": true}
+var editorControlFields = map[string]bool{"csrf": true, "section": true, "do": true, "preset": true, "profile_id": true, "title": true, "folder": true, "source_id": true, "source_title": true, "add": true, "save_mode": true}
 
 // editorForm separates the settings fields of a posted form and drops rows
 // marked for removal.
@@ -690,12 +692,20 @@ func (s *Server) answerEditorEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := s.newEditorView(r, unattend.FormValues(cfg))
-	v.SourceID, v.SourceTitle, v.Report = answer.ID, answer.Title, &report
+	v.SourceID, v.SourceTitle, v.SourceSHA, v.Report = answer.ID, answer.Title, answer.SHA256, &report
 	v.Title, v.Folder = answer.Title, answer.Folder
 	s.renderEditor(w, r, v)
 }
 
 func (s *Server) renderEditor(w http.ResponseWriter, r *http.Request, v *editorView) {
+	if v.SourceID > 0 {
+		if v.SourceSHA == "" {
+			if existing, err := s.Store.WindowsAnswer(r.Context(), v.SourceID); err == nil {
+				v.SourceSHA = existing.SHA256
+			}
+		}
+		v.MenuCount = s.loadAnswerFileUsage(r.Context()).Windows[v.SourceID].Published
+	}
 	lang := normalizeLanguage(requestInfo(r).User.Language)
 	if v.Error == "" {
 		cfg, err := unattend.ParseFormValues(v.Form)
@@ -799,14 +809,31 @@ func (s *Server) answerEditorSave(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusServiceUnavailable, "Подготовка скриптов недоступна")
 		return
 	}
-	variant, status, message := s.saveWindowsAnswer(r, v.Title, "", xml, true)
+	saveMode := r.PostForm.Get("save_mode")
+	var (
+		variant WindowsAnswerVariant
+		status  int
+		message string
+		updated bool
+	)
+	if v.SourceID > 0 && saveMode == "update" {
+		variant, status, message = s.updateWindowsAnswer(r, v.SourceID, v.Title, xml)
+		updated = true
+	} else {
+		variant, status, message = s.saveWindowsAnswer(r, v.Title, "", xml, true)
+	}
 	if status != 0 {
 		fail(status, message)
 		return
 	}
-	msg := fmt.Sprintf("Файл ответов #%d сохранён", variant.ID)
-	if v.Title != "" {
-		msg = fmt.Sprintf("Файл ответов #%d «%s» сохранён", variant.ID, v.Title)
+	var msg string
+	if updated {
+		msg = fmt.Sprintf("Скрипт #%d «%s» обновлён", variant.ID, variant.Title)
+	} else {
+		msg = fmt.Sprintf("Файл ответов #%d сохранён", variant.ID)
+		if v.Title != "" {
+			msg = fmt.Sprintf("Файл ответов #%d «%s» сохранён", variant.ID, v.Title)
+		}
 	}
 	http.Redirect(w, r, "/answers?message="+url.QueryEscape(msg), http.StatusSeeOther)
 }

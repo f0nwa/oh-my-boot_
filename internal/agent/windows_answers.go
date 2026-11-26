@@ -43,13 +43,21 @@ func (m *WindowsISOManager) PrepareAnswer(_ context.Context, req WindowsAnswerRe
 	if err != nil || !root.IsDir() || root.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("answer asset root is unsafe")
 	}
-	final := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
+	parent := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
+	if err := os.MkdirAll(parent, 0750); err != nil {
+		return err
+	}
+	parentInfo, err := os.Lstat(parent)
+	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("answer asset directory is unsafe")
+	}
+	final := filepath.Join(parent, req.SHA256)
 	if _, err := os.Lstat(final); err == nil {
 		return m.checkAnswerAssets(check)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	stage, err := os.MkdirTemp(m.AnswerRoot, ".answer-")
+	stage, err := os.MkdirTemp(parent, ".answer-")
 	if err != nil {
 		return err
 	}
@@ -87,10 +95,26 @@ func validWindowsAnswerRequest(req WindowsAnswerCheck) error {
 	return nil
 }
 
-func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck) error {
-	final := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
-	info, err := os.Lstat(final)
+func (m *WindowsISOManager) answerAssetDir(req WindowsAnswerCheck) (string, error) {
+	parent := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
+	info, err := os.Lstat(parent)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errAnswerMissing
+	}
+	versioned := filepath.Join(parent, req.SHA256)
+	if vInfo, err := os.Lstat(versioned); err == nil && vInfo.IsDir() && vInfo.Mode()&os.ModeSymlink == 0 {
+		return versioned, nil
+	}
+	// Fallback to legacy unversioned directory (<id>/omb-answer.xml) for untouched pre-versioning answers.
+	if err := requireRegularISOFile(parent, "omb-answer.xml"); err == nil {
+		return parent, nil
+	}
+	return "", errAnswerMissing
+}
+
+func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck) error {
+	final, err := m.answerAssetDir(req)
+	if err != nil {
 		return fmt.Errorf("answer asset directory is unavailable")
 	}
 	if err := requireRegularISOFile(final, "omb-answer.xml"); err != nil {
@@ -120,9 +144,8 @@ func (m *WindowsISOManager) AnswerXML(_ context.Context, req WindowsAnswerCheck)
 	if err := validWindowsAnswerRequest(req); err != nil {
 		return nil, err
 	}
-	final := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
-	info, err := os.Lstat(final)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+	final, err := m.answerAssetDir(req)
+	if err != nil {
 		return nil, errAnswerMissing
 	}
 	if err := requireRegularISOFile(final, "omb-answer.xml"); err != nil {

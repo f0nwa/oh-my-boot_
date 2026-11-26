@@ -44,7 +44,7 @@ func TestWindowsAnswerXML(t *testing.T) {
 
 	other := check
 	other.SHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
-	if res := postAnswerXML(h, other); res.Code != http.StatusConflict {
+	if res := postAnswerXML(h, other); res.Code != http.StatusNotFound {
 		t.Fatalf("other hash: %d", res.Code)
 	}
 
@@ -63,7 +63,7 @@ func TestWindowsAnswerXML(t *testing.T) {
 
 func TestWindowsAnswerXMLRejectsSymlink(t *testing.T) {
 	m, check, _ := preparedAnswer(t)
-	final := filepath.Join(m.AnswerRoot, "4", "omb-answer.xml")
+	final := filepath.Join(m.AnswerRoot, "4", check.SHA256, "omb-answer.xml")
 	elsewhere := filepath.Join(t.TempDir(), "x.xml")
 	data, _ := os.ReadFile(final)
 	if err := os.WriteFile(elsewhere, data, 0644); err != nil {

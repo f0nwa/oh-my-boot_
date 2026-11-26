@@ -57,6 +57,7 @@ type Storage interface {
 	UpdateInstallation(context.Context, Installation) error
 	DeleteInstallation(context.Context, int64) error
 	CreateUbuntuAutoinstall(context.Context, UbuntuAutoinstallFile) (UbuntuAutoinstallFile, error)
+	UpdateUbuntuAutoinstall(context.Context, UbuntuAutoinstallFile) (UbuntuAutoinstallFile, error)
 	UbuntuAutoinstalls(context.Context) ([]UbuntuAutoinstallSummary, error)
 	UbuntuAutoinstall(context.Context, int64) (UbuntuAutoinstallFile, error)
 	SetUbuntuAutoinstallTitle(context.Context, int64, string) error
@@ -67,6 +68,7 @@ type Storage interface {
 	SetWindowsProfileWIMInfo(context.Context, int64, agent.WindowsWIMInfo) error
 	DeleteWindowsProfile(context.Context, int64) error
 	CreateWindowsAnswer(context.Context, WindowsAnswerVariant) (WindowsAnswerVariant, error)
+	UpdateWindowsAnswer(context.Context, WindowsAnswerVariant) (WindowsAnswerVariant, error)
 	SetWindowsAnswerState(context.Context, int64, string, string) error
 	WindowsAnswers(context.Context) ([]WindowsAnswerVariant, error)
 	WindowsAnswer(context.Context, int64) (WindowsAnswerVariant, error)

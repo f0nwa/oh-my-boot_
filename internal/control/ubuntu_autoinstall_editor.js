@@ -2,6 +2,11 @@
   const form = document.getElementById('ubuntu-editor');
   if (!form) return;
   const save = document.getElementById('ai-save');
+  const saveNew = document.getElementById('ai-save-new');
+  const setSaveDisabled = (disabled) => {
+    save.disabled = disabled;
+    if (saveNew) saveNew.disabled = disabled;
+  };
   const state = document.getElementById('ai-preview-state');
   const passwordState = document.getElementById('ai-password-state');
   const yaml = document.getElementById('autoinstall-yaml');
@@ -33,7 +38,7 @@
   }
   function invalidatePreview() {
     revision++; pending?.abort(); clearTimeout(timer);
-    save.disabled = true; state.textContent = form.dataset.stale;
+    setSaveDisabled(true); state.textContent = form.dataset.stale;
     download(false, '');
   }
   function selectSection(id) {
@@ -75,16 +80,17 @@
       }
       yaml.textContent = result.yaml || '';
       if (result.token) tokenField().value = result.token;
-      save.disabled = !response.ok || !result.ready;
-      state.textContent = !save.disabled ? form.dataset.checked : form.dataset.invalid;
-      if (!save.disabled) {
+      const disabled = !response.ok || !result.ready;
+      setSaveDisabled(disabled);
+      state.textContent = !disabled ? form.dataset.checked : form.dataset.invalid;
+      if (!disabled) {
         form.elements.password.value = '';
         passwordState.textContent = form.dataset.passwordAccepted;
       }
-      download(!save.disabled, result.token);
+      download(!disabled, result.token);
     } catch (error) {
       if (error.name === 'AbortError' || current !== revision) return;
-      save.disabled = true; state.textContent = form.dataset.expired; download(false, '');
+      setSaveDisabled(true); state.textContent = form.dataset.expired; download(false, '');
     }
   }
   function updateDiskWarnings() {
@@ -96,7 +102,10 @@
   form.addEventListener('input', () => { updateDiskWarnings(); invalidatePreview(); timer = setTimeout(preview, 350); });
   form.addEventListener('change', () => { updateDiskWarnings(); invalidatePreview(); timer = setTimeout(preview, 350); });
   form.addEventListener('submit', event => {
-    if (event.submitter?.id === 'ai-save') { if (save.disabled) event.preventDefault(); return; }
+    if (event.submitter?.id === 'ai-save' || event.submitter?.id === 'ai-save-new') {
+      if (event.submitter.disabled) event.preventDefault();
+      return;
+    }
     event.preventDefault(); invalidatePreview(); preview();
   });
 })();

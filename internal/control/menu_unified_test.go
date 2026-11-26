@@ -207,7 +207,7 @@ func TestUnifiedWindowsAnswerPublicationKeepsChecks(t *testing.T) {
 	if res.Code != http.StatusSeeOther || len(*published) != 1 {
 		t.Fatalf("answer publish=%d %s", res.Code, res.Body.String())
 	}
-	if !strings.Contains((*published)[0], "/assets/windows-answers/31/omb-answer.xml") || !strings.Contains((*published)[0], "goto install_72_failed") {
+	if !strings.Contains((*published)[0], "/assets/windows-answers/31/"+store.answers[0].SHA256+"/omb-answer.xml") || !strings.Contains((*published)[0], "goto install_72_failed") {
 		t.Fatal("answer boot path lost installation identity")
 	}
 	store.answers[0].SHA256 = strings.Repeat("f", 64)
@@ -240,7 +240,7 @@ func TestUnifiedWindowsDriverPublicationKeepsChecks(t *testing.T) {
 	if res.Code != http.StatusSeeOther || len(*published) != 1 {
 		t.Fatalf("driver publish=%d %s", res.Code, res.Body.String())
 	}
-	for _, want := range []string{"kernel " + testBootURL + "/assets/windows/wimboot", "/assets/windows-driver-wims/" + strings.Repeat("1", 64) + "/boot.wim", "/assets/windows-driver-configs/2/omb-setup.cmd", "/assets/windows-answers/31/omb-answer.xml"} {
+	for _, want := range []string{"kernel " + testBootURL + "/assets/windows/wimboot", "/assets/windows-driver-wims/" + strings.Repeat("1", 64) + "/boot.wim", "/assets/windows-driver-configs/2/omb-setup.cmd", "/assets/windows-answers/31/" + store.answers[0].SHA256 + "/omb-answer.xml"} {
 		if !strings.Contains((*published)[0], want) {
 			t.Errorf("missing %s", want)
 		}

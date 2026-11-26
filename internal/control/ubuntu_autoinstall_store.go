@@ -94,6 +94,42 @@ func (s Store) UbuntuAutoinstall(ctx context.Context, id int64) (UbuntuAutoinsta
 	return file, nil
 }
 
+func (s Store) UpdateUbuntuAutoinstall(ctx context.Context, file UbuntuAutoinstallFile) (UbuntuAutoinstallFile, error) {
+	if file.ID <= 0 || !safeMenuText(file.Title, 80) {
+		return UbuntuAutoinstallFile{}, fmt.Errorf("invalid Autoinstall title or id")
+	}
+	if file.State != "validated" {
+		return UbuntuAutoinstallFile{}, fmt.Errorf("Autoinstall file must be validated")
+	}
+	if file.SourceKind == "" {
+		file.SourceKind = "editor"
+	}
+	if file.SourceKind != "editor" {
+		return UbuntuAutoinstallFile{}, fmt.Errorf("only constructor Autoinstall files can be edited")
+	}
+	rendered, err := autoinstall.Render(file.Values)
+	if err != nil {
+		return UbuntuAutoinstallFile{}, err
+	}
+	if !bytes.Equal(rendered, file.UserData) || fmt.Sprintf("%x", sha256.Sum256(file.UserData)) != file.SHA256 {
+		return UbuntuAutoinstallFile{}, fmt.Errorf("Autoinstall content does not match its values and digest")
+	}
+	values, err := json.Marshal(file.Values)
+	if err != nil {
+		return UbuntuAutoinstallFile{}, err
+	}
+	file.DiskMode = file.Values.DiskMode
+	file.DiskSerial = file.Values.DiskSerial
+	err = s.Pool.QueryRow(ctx,
+		`UPDATE ubuntu_autoinstall_files SET title=$2,"values"=$3,user_data=$4,sha256=$5,disk_mode=$6,disk_serial=$7 WHERE id=$1 AND source_kind='editor' RETURNING created_at`,
+		file.ID, file.Title, values, file.UserData, file.SHA256, file.DiskMode, file.DiskSerial,
+	).Scan(&file.CreatedAt)
+	if err != nil {
+		return UbuntuAutoinstallFile{}, err
+	}
+	return file, nil
+}
+
 func (s Store) SetUbuntuAutoinstallTitle(ctx context.Context, id int64, title string) error {
 	tag, err := s.Pool.Exec(ctx, `UPDATE ubuntu_autoinstall_files SET title=$2 WHERE id=$1`, id, title)
 	if err != nil {

@@ -109,6 +109,14 @@ var ubuntuEditorMessages = map[string]string{
 	"В секции autoinstall требуется version: 1":      "The autoinstall section requires version: 1",
 	"Некорректный YAML-файл Ubuntu Autoinstall":      "Invalid Ubuntu Autoinstall YAML file",
 	"Такой скрипт Ubuntu Autoinstall уже загружен":   "This Ubuntu Autoinstall script is already uploaded",
+	"Сохранить как новый":                            "Save as new",
+	"Скрипт используется в опубликованном меню. После сохранения текущее меню продолжит работать с прежней версией до публикации черновика.": "This script is used in the published menu. After saving, the live menu continues serving the previous version until you publish the draft.",
+	"Оставьте пустым, чтобы сохранить текущий пароль": "Leave empty to keep the current password",
+	"Текущий хеш пароля сохранён. Введите новый пароль только если хотите его изменить.": "The current password hash is preserved. Enter a new password only if you want to change it.",
+	"Не удалось обновить файл Autoinstall":           "Could not update the Autoinstall file",
+	"Не удалось обновить скрипт":                     "Could not update the script",
+	"Скрипт #%d «%s» обновлён":                       "Script #%d “%s” updated",
+	"Такой XML уже загружен: скрипт #%d «%s».":        "This XML is already uploaded: script #%d “%s”.",
 }
 var _ = func() bool {
 	for k, v := range ubuntuEditorMessages {

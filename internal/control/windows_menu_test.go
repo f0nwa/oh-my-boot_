@@ -144,7 +144,7 @@ func TestWindowsMenuPublishesManualAndTwoAnswersForOneISO(t *testing.T) {
 		"item install_1017 Windows 11 x64\n",
 		"item install_2031 Windows 11 Lab A${sp",
 		"item install_2032 Windows 11 Lab B${sp",
-		"initrd -n omb-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/omb-answer.xml || goto install_2031_failed\n",
+		"initrd -n omb-answer.xml http://10.30.0.10:8080/assets/windows-answers/31/" + answers[0].SHA256 + "/omb-answer.xml || goto install_2031_failed\n",
 		"initrd -n omb-setup.cmd http://10.30.0.10:8080/assets/windows-profiles/17/omb-answer-setup.cmd || goto install_2031_failed\n",
 		"initrd http://10.30.0.10:8080/assets/windows-profiles/17/boot.wim boot.wim || goto install_1017_failed\n",
 	} {

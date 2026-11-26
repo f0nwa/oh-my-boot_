@@ -155,7 +155,7 @@ func TestUbuntuAutoinstallMixedMenuStagesSelectedFilesBeforePublish(t *testing.T
 		}
 		assertSeedAvailable(t, h, id, store.files[i])
 	}
-	for _, want := range []string{"kernel " + s.BootBaseURL + "/assets/windows/wimboot || goto ", "/assets/windows-profiles/17/boot.wim boot.wim || goto ", "/assets/windows-answers/31/omb-answer.xml"} {
+	for _, want := range []string{"kernel " + s.BootBaseURL + "/assets/windows/wimboot || goto ", "/assets/windows-profiles/17/boot.wim boot.wim || goto ", "/assets/windows-answers/31/" + store.answers[0].SHA256 + "/omb-answer.xml"} {
 		if !strings.Contains(string(script), want) {
 			t.Errorf("Windows path changed: %s", want)
 		}

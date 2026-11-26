@@ -154,3 +154,51 @@ func (s *Server) saveWindowsAnswer(r *http.Request, title, folder string, data [
 	variant.State = "ready"
 	return variant, 0, ""
 }
+
+// updateWindowsAnswer stages a new content-addressed XML version for an existing
+// answer ID and updates its database record. Previously staged SHA-256 versions
+// remain untouched so active published menus keep working until republished.
+func (s *Server) updateWindowsAnswer(r *http.Request, id int64, title string, data []byte) (WindowsAnswerVariant, int, string) {
+	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+	existing, err := s.Store.WindowsAnswers(r.Context())
+	if err != nil {
+		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось проверить скрипты"
+	}
+	found := false
+	for _, answer := range existing {
+		if answer.ID == id {
+			found = true
+			continue
+		}
+		if answer.SHA256 == digest {
+			return WindowsAnswerVariant{}, http.StatusConflict, fmt.Sprintf("Такой XML уже загружен: скрипт #%d «%s».", answer.ID, answer.Title)
+		}
+	}
+	if !found {
+		return WindowsAnswerVariant{}, http.StatusNotFound, "Скрипт не найден"
+	}
+	request := agent.WindowsAnswerRequest{ID: id, SHA256: digest, XML: data}
+	if err := s.WindowsAnswers.PrepareWindowsAnswer(r.Context(), request); err != nil {
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.update", "error", fmt.Sprintf("id=%d", id))
+		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось подготовить скрипт"
+	}
+	var wipesDisk *bool
+	if wipes, known := AnswerWipesDisk(data); known {
+		wipesDisk = &wipes
+	}
+	variant, err := s.Store.UpdateWindowsAnswer(r.Context(), WindowsAnswerVariant{
+		ID:        id,
+		Title:     title,
+		SHA256:    digest,
+		Size:      int64(len(data)),
+		WipesDisk: wipesDisk,
+		Disk:      SummarizeWindowsAnswerDisk(data),
+		Target:    SummarizeWindowsAnswerTarget(data),
+	})
+	if err != nil {
+		return WindowsAnswerVariant{}, http.StatusServiceUnavailable, "Не удалось обновить скрипт"
+	}
+	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "windows-answer.update", "ok", fmt.Sprintf("id=%d sha256=%s editor=1", variant.ID, variant.SHA256))
+	return variant, 0, ""
+}

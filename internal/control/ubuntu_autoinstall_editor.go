@@ -4,12 +4,16 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"omb/internal/autoinstall"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type ubuntuAutoinstallEditorView struct {
@@ -29,6 +33,17 @@ type ubuntuAutoinstallEditorView struct {
 	Keyboards                                                            []ubuntuKeyboardRow
 	ISOProfiles                                                          []BootProfile
 	ISOSelected                                                          int64
+	EditID                                                               int64
+	EditSHA                                                              string
+	MenuCount                                                            int
+}
+
+func parseUbuntuEditID(r *http.Request) int64 {
+	id, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("edit_id")), 10, 64)
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
 }
 
 func autoinstallForm(r *http.Request) autoinstall.Form {
@@ -105,8 +120,9 @@ func ubuntuAutoinstallEditorScript(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) ubuntuAutoinstallPreview(w http.ResponseWriter, r *http.Request) {
 	title := strings.TrimSpace(r.FormValue("title"))
+	editID := parseUbuntuEditID(r)
 	if r.FormValue("section") != "" || r.FormValue("tab") != "" {
-		view := &ubuntuAutoinstallEditorView{Title: title, Form: autoinstallForm(r), HasForm: true}
+		view := &ubuntuAutoinstallEditorView{Title: title, Form: autoinstallForm(r), HasForm: true, EditID: editID}
 		if payload, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token); ok {
 			view.Token = r.FormValue("preview_token")
 			id, digest, sourceErr := s.selectedUbuntuEditorSource(r)
@@ -131,13 +147,20 @@ func (s *Server) ubuntuAutoinstallPreview(w http.ResponseWriter, r *http.Request
 	if form.Password != "" {
 		values, data, err = autoinstall.Compile(form)
 	} else {
-		previous, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token)
-		if !ok {
+		var savedHash string
+		if previous, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token); ok {
+			savedHash = previous.Values.PasswordHash
+		} else if editID > 0 {
+			if existing, loadErr := s.Store.UbuntuAutoinstall(r.Context(), editID); loadErr == nil && !existing.IsUploaded() {
+				savedHash = existing.Values.PasswordHash
+			}
+		}
+		if savedHash == "" {
 			err = fmt.Errorf("password: required")
 		} else {
 			values, err = autoinstall.Normalize(form)
 			if err == nil {
-				values.PasswordHash = previous.Values.PasswordHash
+				values.PasswordHash = savedHash
 				data, err = autoinstall.Render(values)
 			}
 		}
@@ -160,7 +183,7 @@ func (s *Server) ubuntuAutoinstallPreview(w http.ResponseWriter, r *http.Request
 		http.Error(w, "Не удалось создать предпросмотр Autoinstall", http.StatusServiceUnavailable)
 		return
 	}
-	s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{Title: title, Values: values, YAML: string(data), Token: token, CanSave: true})
+	s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{Title: title, Values: values, YAML: string(data), Token: token, CanSave: true, EditID: editID})
 }
 
 func downloadAutoinstall(w http.ResponseWriter, data []byte) {
@@ -196,8 +219,39 @@ func (s *Server) ubuntuAutoinstallSave(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Предпросмотр недействителен", http.StatusBadRequest)
 		return
 	}
-	file, err := s.Store.CreateUbuntuAutoinstall(r.Context(), UbuntuAutoinstallFile{Title: payload.Title, Values: payload.Values, UserData: data, SHA256: payload.Digest, State: "validated"})
+	editID := parseUbuntuEditID(r)
+	saveMode := r.FormValue("save_mode")
+	if editID > 0 && saveMode == "update" {
+		updated, err := s.Store.UpdateUbuntuAutoinstall(r.Context(), UbuntuAutoinstallFile{
+			ID:         editID,
+			Title:      payload.Title,
+			SourceKind: "editor",
+			Values:     payload.Values,
+			UserData:   data,
+			SHA256:     payload.Digest,
+			State:      "validated",
+		})
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				http.Error(w, "Такой скрипт Ubuntu Autoinstall уже загружен", http.StatusConflict)
+				return
+			}
+			http.Error(w, "Не удалось обновить файл Autoinstall", http.StatusServiceUnavailable)
+			return
+		}
+		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "ubuntu-autoinstall.update", "ok", strconv.FormatInt(updated.ID, 10))
+		msg := fmt.Sprintf("Скрипт #%d «%s» обновлён", updated.ID, updated.Title)
+		http.Redirect(w, r, "/answers?message="+url.QueryEscape(msg)+"#ubuntu-autoinstall", http.StatusSeeOther)
+		return
+	}
+	file, err := s.Store.CreateUbuntuAutoinstall(r.Context(), UbuntuAutoinstallFile{Title: payload.Title, SourceKind: "editor", Values: payload.Values, UserData: data, SHA256: payload.Digest, State: "validated"})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			http.Error(w, "Такой скрипт Ubuntu Autoinstall уже загружен", http.StatusConflict)
+			return
+		}
 		http.Error(w, "Не удалось сохранить файл Autoinstall", http.StatusServiceUnavailable)
 		return
 	}
@@ -230,6 +284,25 @@ func (s *Server) ubuntuAutoinstallFile(w http.ResponseWriter, r *http.Request) {
 		values.PasswordHash = ""
 		s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{Title: file.Title, Values: values})
 	default:
+		if !file.IsUploaded() && Allowed(requestInfo(r).User.Role, "images") {
+			payload := autoinstallPreviewPayload{
+				Title:   file.Title,
+				Values:  file.Values,
+				Digest:  file.SHA256,
+				Expires: time.Now().Add(autoinstallPreviewLifetime).Unix(),
+			}
+			token, _ := signAutoinstallPreview(payload, requestInfo(r).Token)
+			s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{
+				Title:   file.Title,
+				Values:  file.Values,
+				YAML:    string(file.UserData),
+				Token:   token,
+				CanSave: token != "",
+				EditID:  file.ID,
+				EditSHA: file.SHA256,
+			})
+			return
+		}
 		s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{Title: file.Title, Values: file.Values, YAML: string(file.UserData), File: &file})
 	}
 }

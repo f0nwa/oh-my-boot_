@@ -84,14 +84,22 @@ func TestUbuntuAutoinstallStore(t *testing.T) {
 		t.Fatal("duplicate digest accepted")
 	}
 	for _, query := range []string{
-		`UPDATE ubuntu_autoinstall_files SET user_data='changed' WHERE id=$1`,
-		`UPDATE ubuntu_autoinstall_files SET sha256=repeat('b',64) WHERE id=$1`,
-		`UPDATE ubuntu_autoinstall_files SET "values"='{}' WHERE id=$1`,
-		`UPDATE ubuntu_autoinstall_files SET disk_mode='interactive', disk_serial='' WHERE id=$1`,
+		`UPDATE ubuntu_autoinstall_files SET source_kind='uploaded' WHERE id=$1`,
 	} {
 		if _, err := store.Pool.Exec(ctx, query, saved.ID); err == nil {
-			t.Fatalf("mutable library: %s", query)
+			t.Fatalf("mutable identity: %s", query)
 		}
+	}
+	edited := testAutoinstallFile(t, "lab-edited")
+	edited.ID = saved.ID
+	updated, err := store.UpdateUbuntuAutoinstall(ctx, edited)
+	if err != nil || updated.Title != "lab-edited" || updated.SHA256 != edited.SHA256 {
+		t.Fatalf("update constructor file: %+v err=%v", updated, err)
+	}
+	// Restore original values before remaining assertions.
+	saved.ID = updated.ID
+	if _, err := store.UpdateUbuntuAutoinstall(ctx, saved); err != nil {
+		t.Fatalf("restore constructor file: %v", err)
 	}
 	if err := store.SetUbuntuAutoinstallTitle(ctx, saved.ID, "Новое имя Ubuntu"); err != nil {
 		t.Fatalf("rename title: %v", err)

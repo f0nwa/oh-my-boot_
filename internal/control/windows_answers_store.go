@@ -15,6 +15,17 @@ func (s Store) CreateWindowsAnswer(ctx context.Context, variant WindowsAnswerVar
 	return variant, err
 }
 
+func (s Store) UpdateWindowsAnswer(ctx context.Context, variant WindowsAnswerVariant) (WindowsAnswerVariant, error) {
+	err := s.Pool.QueryRow(ctx,
+		`UPDATE windows_answer_variants
+		 SET title=$2,sha256=$3,size_bytes=$4,state='ready',last_error='',wipes_disk=$5,disk_summary=$6,target_summary=$7
+		 WHERE id=$1
+		 RETURNING id,title,folder,sha256,size_bytes,state,last_error,wipes_disk,created_at,disk_summary,target_summary`,
+		variant.ID, variant.Title, variant.SHA256, variant.Size, variant.WipesDisk, variant.Disk, variant.Target,
+	).Scan(&variant.ID, &variant.Title, &variant.Folder, &variant.SHA256, &variant.Size, &variant.State, &variant.Error, &variant.WipesDisk, &variant.CreatedAt, &variant.Disk, &variant.Target)
+	return variant, err
+}
+
 func (s Store) SetWindowsAnswerState(ctx context.Context, id int64, state, lastError string) error {
 	tag, err := s.Pool.Exec(ctx, `UPDATE windows_answer_variants SET state=$2,last_error=$3 WHERE id=$1`, id, state, lastError)
 	if err != nil {

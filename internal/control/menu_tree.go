@@ -455,7 +455,7 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			{name: "omb-setup.cmd", url: base + "/assets/windows-driver-configs/" + configID + "/omb-setup.cmd"},
 		}
 		if profile.driverAnswerID > 0 {
-			files = append(files, windowsInitrdFile{name: "omb-answer.xml", url: base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.driverAnswerID) + "/omb-answer.xml"})
+			files = append(files, windowsInitrdFile{name: "omb-answer.xml", url: windowsAnswerAssetURL(base, profile.driverAnswerID, profile.driverAnswerSHA256)})
 		}
 		out.WriteString(":" + profile.id + "\n" + choiceReport +
 			"kernel " + base + "/assets/windows/wimboot || goto " + profile.id + "_failed\n" +
@@ -474,8 +474,7 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			{name: "omb-setup.cmd", url: startup},
 		}
 		if profile.answerID > 0 {
-			answerPrefix := base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.answerID) + "/"
-			files = append(files, windowsInitrdFile{name: "omb-answer.xml", url: answerPrefix + "omb-answer.xml"})
+			files = append(files, windowsInitrdFile{name: "omb-answer.xml", url: windowsAnswerAssetURL(base, profile.answerID, profile.answerSHA256)})
 		}
 		out.WriteString(":" + profile.id + "\n" + choiceReport +
 			"kernel " + base + "/assets/windows/wimboot || goto " + profile.id + "_failed\n" +
@@ -543,6 +542,13 @@ func windowsBootWIMURL(base string, profile menuProfile) string {
 		return base + "/assets/windows-boot-images/" + fmt.Sprintf("%d", profile.bootImageID) + "/boot.wim"
 	}
 	return base + "/assets/windows-profiles/" + fmt.Sprintf("%d", profile.windowsISOID) + "/boot.wim"
+}
+
+func windowsAnswerAssetURL(base string, id int64, sha string) string {
+	if sha != "" {
+		return base + "/assets/windows-answers/" + fmt.Sprintf("%d", id) + "/" + sha + "/omb-answer.xml"
+	}
+	return base + "/assets/windows-answers/" + fmt.Sprintf("%d", id) + "/omb-answer.xml"
 }
 
 func ubuntuAutoinstallSeedPath(installationKey, digest string) string {

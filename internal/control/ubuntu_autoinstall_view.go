@@ -50,6 +50,14 @@ func (s *Server) prepareUbuntuView(r *http.Request, v *ubuntuAutoinstallEditorVi
 	if v.File != nil && v.File.IsUploaded() {
 		return
 	}
+	if v.EditID > 0 {
+		if v.EditSHA == "" {
+			if existing, err := s.Store.UbuntuAutoinstall(r.Context(), v.EditID); err == nil {
+				v.EditSHA = existing.SHA256
+			}
+		}
+		v.MenuCount = s.loadAnswerFileUsage(r.Context()).Ubuntu[v.EditID].Published
+	}
 	if !v.HasForm {
 		v.Form = ubuntuFormFromValues(v.Values)
 	}
@@ -209,7 +217,7 @@ func (s *Server) ubuntuFormError(w http.ResponseWriter, r *http.Request, title s
 		label = "Файл и источник"
 	}
 	message := fmt.Sprintf(translate(requestInfo(r).User.Language, "Проверьте поле «%s»."), translate(requestInfo(r).User.Language, label))
-	v := &ubuntuAutoinstallEditorView{Title: title, Form: form, HasForm: true, Section: section, Message: message, Issues: []ubuntuEditorIssue{{Section: section, Field: field, Message: message, Severity: "error"}}}
+	v := &ubuntuAutoinstallEditorView{Title: title, Form: form, HasForm: true, Section: section, Message: message, EditID: parseUbuntuEditID(r), Issues: []ubuntuEditorIssue{{Section: section, Field: field, Message: message, Severity: "error"}}}
 	if _, ok := verifyAutoinstallPreview(r.FormValue("preview_token"), requestInfo(r).Token); ok {
 		v.Token = r.FormValue("preview_token")
 	}

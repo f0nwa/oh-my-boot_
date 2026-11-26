@@ -353,9 +353,9 @@ func (m *SMBManager) mountTargets() []string {
 	return targets
 }
 
-// StopProfilesOn stops the active Windows ISO profile units whose ISO lives
-// under one of roots, so their loop mounts release the share. RecoverProfiles
-// starts them again once the share is back.
+// StopProfilesOn stops the active Windows ISO profile units and unmounts
+// standalone install images whose source lives under one of roots, so their
+// mounts release the share. RecoverProfiles restores them once the share is back.
 func (m *WindowsISOManager) StopProfilesOn(ctx context.Context, roots []string) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -400,10 +400,16 @@ func (m *WindowsISOManager) StopProfilesOn(ctx context.Context, roots []string) 
 		}
 		actions = append(actions, "stopped "+unit+" to release its share")
 	}
+	installActions, installErr := m.stopInstallImagesOn(ctx, roots)
+	actions = append(actions, installActions...)
+	if installErr != nil {
+		problems = append(problems, installErr)
+	}
 	return actions, errors.Join(problems...)
 }
 
-// RecoverProfiles restarts prepared Windows ISO profile units that are not active.
+// RecoverProfiles restarts prepared Windows ISO profile units that are not active
+// and restores standalone install-image bind mounts.
 func (m *WindowsISOManager) RecoverProfiles(ctx context.Context) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -433,6 +439,11 @@ func (m *WindowsISOManager) RecoverProfiles(ctx context.Context) ([]string, erro
 		if err != nil {
 			problems = append(problems, err)
 		}
+	}
+	installActions, installErr := m.recoverInstallImages(ctx)
+	actions = append(actions, installActions...)
+	if installErr != nil {
+		problems = append(problems, installErr)
 	}
 	return actions, errors.Join(problems...)
 }

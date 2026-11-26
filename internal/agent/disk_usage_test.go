@@ -26,6 +26,7 @@ func TestDiskUsageCollectorCountsDirectoriesAndDeduplicatesFilesystems(t *testin
 	root := t.TempDir()
 	roots := DiskUsageRoots{
 		WindowsProfiles:      filepath.Join(root, "tftp", "windows-profiles"),
+		WindowsBootImages:    filepath.Join(root, "tftp", "windows-boot-images"),
 		WindowsDriverWIMs:    filepath.Join(root, "tftp", "windows-driver-wims"),
 		WindowsDriverConfigs: filepath.Join(root, "tftp", "windows-driver-configs"),
 		WindowsAnswers:       filepath.Join(root, "tftp", "windows-answers"),
@@ -36,6 +37,7 @@ func TestDiskUsageCollectorCountsDirectoriesAndDeduplicatesFilesystems(t *testin
 	wimKey := strings.Repeat("a", 64)
 	writeBytes(t, filepath.Join(roots.WindowsProfiles, "17", "boot.wim"), 100)
 	writeBytes(t, filepath.Join(roots.WindowsProfiles, "not-a-number", "junk"), 999)
+	writeBytes(t, filepath.Join(roots.WindowsBootImages, "3", "boot.wim"), 175)
 	writeBytes(t, filepath.Join(roots.WindowsDriverWIMs, wimKey, "boot.wim"), 250)
 	writeBytes(t, filepath.Join(roots.WindowsDriverConfigs, "4", "omb-setup.cmd"), 30)
 	writeBytes(t, filepath.Join(roots.WindowsAnswers, "2", "omb-answer.xml"), 20)
@@ -65,6 +67,9 @@ func TestDiskUsageCollectorCountsDirectoriesAndDeduplicatesFilesystems(t *testin
 	}
 	if report.WindowsProfiles[17] != 100 || len(report.WindowsProfiles) != 1 {
 		t.Fatalf("WindowsProfiles = %+v", report.WindowsProfiles)
+	}
+	if report.WindowsBootImages[3] != 175 || len(report.WindowsBootImages) != 1 {
+		t.Fatalf("WindowsBootImages = %+v", report.WindowsBootImages)
 	}
 	if report.WindowsDriverWIMs[wimKey] != 250 || len(report.WindowsDriverWIMs) != 1 {
 		t.Fatalf("WindowsDriverWIMs = %+v", report.WindowsDriverWIMs)

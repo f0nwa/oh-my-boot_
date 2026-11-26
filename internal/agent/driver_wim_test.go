@@ -240,3 +240,53 @@ func TestDriverWIMWithAnswerRendersAnswerStartupFromProfile(t *testing.T) {
 		}
 	}
 }
+
+func TestDriverWIMBuildsFromStandaloneBootImage(t *testing.T) {
+	m, hash := setupDriverBuild(t)
+	m.BootImageRoot = t.TempDir()
+	// Place identical boot.wim bytes in standalone boot image 9 as in ISO profile 17
+	// to verify shared SHA-256 deduplication across ISO and standalone boot.wim.
+	bootDir := filepath.Join(m.BootImageRoot, "9")
+	if err := os.MkdirAll(bootDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bootDir, "boot.wim"), []byte("fake source WIM"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	reqStandalone := DriverBuildRequest{
+		ConfigID:    21,
+		ProfileID:   17,
+		BootImageID: 9,
+		PackageINFs: []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}},
+	}
+	resStandalone, err := m.PrepareConfig(context.Background(), reqStandalone)
+	if err != nil {
+		t.Fatalf("PrepareConfig from standalone boot.wim failed: %v", err)
+	}
+	if err := m.CheckConfig(context.Background(), reqStandalone, resStandalone); err != nil {
+		t.Fatalf("CheckConfig for standalone boot.wim failed: %v", err)
+	}
+
+	// Second config using ISO profile 17 (same boot.wim bytes) must reuse the exact same WIMKey.
+	reqISO := DriverBuildRequest{
+		ConfigID:    22,
+		ProfileID:   17,
+		PackageINFs: []SelectedINF{{PackageSHA256: hash, INFPath: "net.inf"}},
+	}
+	resISO, err := m.PrepareConfig(context.Background(), reqISO)
+	if err != nil {
+		t.Fatalf("PrepareConfig from ISO boot.wim failed: %v", err)
+	}
+	if resStandalone.WIMKey != resISO.WIMKey || resStandalone.WIMSHA256 != resISO.WIMSHA256 {
+		t.Fatalf("expected shared SHA-256 deduplication, got standalone=%+v iso=%+v", resStandalone, resISO)
+	}
+	updates := 0
+	for _, call := range m.Runner.(*fakeDriverRunner).calls {
+		if strings.Contains(call, " update ") {
+			updates++
+		}
+	}
+	if updates != 1 {
+		t.Fatalf("expected 1 wimlib update across standalone+ISO with identical boot.wim, got %d", updates)
+	}
+}

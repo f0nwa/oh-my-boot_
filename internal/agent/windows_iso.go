@@ -175,10 +175,19 @@ const LocalISORoot = "/var/lib/omb-images"
 // must be one mount directly under one of allowedRoots, or localRoot or a
 // directory inside it.
 func resolveWindowsISOSourceRoots(allowedRoots []string, req WindowsISORequest, localRoot ...string) (string, error) {
-	if (req.BootMode != "" && req.BootMode != ISOStrelecMode) || req.ID <= 0 || req.Size <= 0 || !filepath.IsAbs(req.StorageRoot) || req.RelativePath == "" || path.IsAbs(req.RelativePath) || path.Clean(req.RelativePath) != req.RelativePath || strings.ContainsAny(req.RelativePath, "\\\x00") || !strings.EqualFold(path.Ext(req.RelativePath), ".iso") {
+	if req.BootMode != "" && req.BootMode != ISOStrelecMode {
 		return "", fmt.Errorf("invalid Windows ISO source")
 	}
-	storage, err := filepath.EvalSymlinks(req.StorageRoot)
+	return resolveWindowsSourceFile(allowedRoots, req.ID, req.Size, req.Modified, req.StorageRoot, req.RelativePath, []string{".iso"}, localRoot...)
+}
+
+// resolveWindowsSourceFile validates and resolves an ISO/WIM/ESD source file
+// inside allowedRoots or localRoot, checking extension, symlinks, size, and mtime.
+func resolveWindowsSourceFile(allowedRoots []string, id, size int64, modified time.Time, storageRoot, relativePath string, allowedExts []string, localRoot ...string) (string, error) {
+	if id <= 0 || size <= 0 || !filepath.IsAbs(storageRoot) || relativePath == "" || path.IsAbs(relativePath) || path.Clean(relativePath) != relativePath || strings.ContainsAny(relativePath, "\\\x00") || !hasAllowedExt(relativePath, allowedExts) {
+		return "", fmt.Errorf("invalid Windows image source")
+	}
+	storage, err := filepath.EvalSymlinks(storageRoot)
 	if err != nil {
 		return "", err
 	}
@@ -200,14 +209,14 @@ func resolveWindowsISOSourceRoots(allowedRoots []string, req WindowsISORequest, 
 	}
 	if !inAllowedRoot {
 		if !insideLocalRoot(storage, localRoot) {
-			return "", fmt.Errorf("ISO storage is outside the managed SMB, NFS, and local roots")
+			return "", fmt.Errorf("image storage is outside the managed SMB, NFS, and local roots")
 		}
 	}
-	components := strings.Split(req.RelativePath, "/")
+	components := strings.Split(relativePath, "/")
 	candidate := storage
 	for _, component := range components {
 		if component == "" || component == "." || component == ".." {
-			return "", fmt.Errorf("invalid ISO path component")
+			return "", fmt.Errorf("invalid image path component")
 		}
 		candidate = filepath.Join(candidate, component)
 		info, err := os.Lstat(candidate)
@@ -215,15 +224,25 @@ func resolveWindowsISOSourceRoots(allowedRoots []string, req WindowsISORequest, 
 			return "", err
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("ISO source path contains a symlink")
+			return "", fmt.Errorf("image source path contains a symlink")
 		}
 	}
 	info, err := os.Stat(candidate)
 	// PostgreSQL stores the catalog timestamp to microsecond precision.
-	if err != nil || !info.Mode().IsRegular() || info.Size() != req.Size || !info.ModTime().Truncate(time.Microsecond).Equal(req.Modified.Truncate(time.Microsecond)) {
-		return "", fmt.Errorf("ISO source changed or is unavailable")
+	if err != nil || !info.Mode().IsRegular() || info.Size() != size || !info.ModTime().Truncate(time.Microsecond).Equal(modified.Truncate(time.Microsecond)) {
+		return "", fmt.Errorf("image source changed or is unavailable")
 	}
 	return candidate, nil
+}
+
+func hasAllowedExt(name string, exts []string) bool {
+	ext := path.Ext(name)
+	for _, allowed := range exts {
+		if strings.EqualFold(ext, allowed) {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveWindowsISOSource preserves backward compatibility for callers with a single root.

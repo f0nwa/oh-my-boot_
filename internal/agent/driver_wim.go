@@ -27,10 +27,13 @@ type SelectedINF struct {
 }
 
 type DriverBuildRequest struct {
-	ConfigID    int64         `json:"config_id"`
-	ProfileID   int64         `json:"profile_id"`
-	AnswerID    int64         `json:"answer_id"`
-	PackageINFs []SelectedINF `json:"package_infs"`
+	ConfigID       int64         `json:"config_id"`
+	ProfileID      int64         `json:"profile_id"`
+	BootImageID    int64         `json:"boot_image_id,omitempty"`
+	InstallImageID int64         `json:"install_image_id,omitempty"`
+	InstallFile    string        `json:"install_file,omitempty"`
+	AnswerID       int64         `json:"answer_id"`
+	PackageINFs    []SelectedINF `json:"package_infs"`
 }
 
 type DriverBuildResult struct {
@@ -68,14 +71,43 @@ func (ExecDriverCommandRunner) Run(ctx context.Context, input, name string, args
 
 var bootIndexLine = regexp.MustCompile(`(?m)^Boot Index:\s*([0-9]+)\s*$`)
 
+func (m *DriverManager) bootImageRoot() string {
+	if m.BootImageRoot != "" {
+		return m.BootImageRoot
+	}
+	if m.ProfileRoot != "" {
+		return filepath.Join(filepath.Dir(m.ProfileRoot), "windows-boot-images")
+	}
+	return ""
+}
+
+func (m *DriverManager) sourceBootWIM(req DriverBuildRequest) (string, error) {
+	if req.BootImageID > 0 {
+		root := m.bootImageRoot()
+		if root == "" {
+			return "", fmt.Errorf("boot image root is unavailable")
+		}
+		source := filepath.Join(root, strconv.FormatInt(req.BootImageID, 10), "boot.wim")
+		if err := requireRegularISOFile(filepath.Dir(source), "boot.wim"); err != nil {
+			return "", err
+		}
+		return source, nil
+	}
+	source := filepath.Join(m.ProfileRoot, strconv.FormatInt(req.ProfileID, 10), "boot.wim")
+	if err := requireRegularISOFile(filepath.Dir(source), "boot.wim"); err != nil {
+		return "", err
+	}
+	return source, nil
+}
+
 func (m *DriverManager) PrepareConfig(ctx context.Context, req DriverBuildRequest) (DriverBuildResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.validateBuildRequest(req); err != nil {
 		return DriverBuildResult{}, err
 	}
-	source := filepath.Join(m.ProfileRoot, strconv.FormatInt(req.ProfileID, 10), "boot.wim")
-	if err := requireRegularISOFile(filepath.Dir(source), "boot.wim"); err != nil {
+	source, err := m.sourceBootWIM(req)
+	if err != nil {
 		return DriverBuildResult{}, err
 	}
 	sourceHash, sourceSize, err := hashFile(source)
@@ -111,7 +143,10 @@ func (m *DriverManager) CheckConfig(ctx context.Context, req DriverBuildRequest,
 	if err := m.validateBuildRequest(req); err != nil {
 		return err
 	}
-	source := filepath.Join(m.ProfileRoot, strconv.FormatInt(req.ProfileID, 10), "boot.wim")
+	source, err := m.sourceBootWIM(req)
+	if err != nil {
+		return err
+	}
 	sourceHash, _, err := hashFile(source)
 	if err != nil {
 		return err
@@ -154,7 +189,7 @@ func (m *DriverManager) CheckConfig(ctx context.Context, req DriverBuildRequest,
 }
 
 func (m *DriverManager) validateBuildRequest(req DriverBuildRequest) error {
-	if req.ConfigID <= 0 || req.ProfileID <= 0 || req.AnswerID < 0 || len(req.PackageINFs) == 0 || len(req.PackageINFs) > 128 {
+	if req.ConfigID <= 0 || req.ProfileID < 0 || req.BootImageID < 0 || (req.ProfileID <= 0 && req.BootImageID <= 0) || req.InstallImageID < 0 || req.AnswerID < 0 || len(req.PackageINFs) == 0 || len(req.PackageINFs) > 128 {
 		return fmt.Errorf("invalid driver configuration")
 	}
 	for _, selected := range req.PackageINFs {
@@ -187,16 +222,48 @@ func (m *DriverManager) validateBuildRequest(req DriverBuildRequest) error {
 }
 
 func (m *DriverManager) driverScript(req DriverBuildRequest) ([]byte, error) {
-	root := filepath.Join(m.ProfileRoot, strconv.FormatInt(req.ProfileID, 10))
-	if err := requireRegularISOFile(root, "omb-setup.cmd"); err != nil {
-		return nil, err
-	}
-	base, err := os.ReadFile(filepath.Join(root, "omb-setup.cmd"))
-	if err != nil {
-		return nil, err
+	var base []byte
+	var err error
+	shareSubdir := ""
+	if req.InstallImageID > 0 && req.InstallFile != "" && len(m.Template) > 0 && m.Password != "" {
+		shareSubdir = installImageDirName(req.InstallImageID)
+		setupSource := `X:\sources\setup.exe`
+		if req.ProfileID > 0 {
+			setupSource = fmt.Sprintf(`Y:\%d\sources\setup.exe`, req.ProfileID)
+		}
+		base, err = winpe.RenderSplitInstallStartup(m.Template, m.Password, setupSource, shareSubdir, req.InstallFile)
+		if err != nil {
+			return nil, err
+		}
+	} else if req.ProfileID > 0 {
+		root := filepath.Join(m.ProfileRoot, strconv.FormatInt(req.ProfileID, 10))
+		if err := requireRegularISOFile(root, "omb-setup.cmd"); err != nil {
+			return nil, err
+		}
+		base, err = os.ReadFile(filepath.Join(root, "omb-setup.cmd"))
+		if err != nil {
+			return nil, err
+		}
+		shareSubdir = strconv.FormatInt(req.ProfileID, 10)
+	} else {
+		root := filepath.Join(m.bootImageRoot(), strconv.FormatInt(req.BootImageID, 10))
+		if err := requireRegularISOFile(root, "omb-setup.cmd"); err != nil {
+			return nil, err
+		}
+		base, err = os.ReadFile(filepath.Join(root, "omb-setup.cmd"))
+		if err != nil {
+			return nil, err
+		}
+		if req.InstallImageID > 0 {
+			shareSubdir = installImageDirName(req.InstallImageID)
+		}
 	}
 	if req.AnswerID > 0 {
-		base, err = winpe.RenderAnswerStartup(base, req.ProfileID)
+		if shareSubdir != "" {
+			base, err = winpe.RenderAnswerStartupSubdir(base, shareSubdir)
+		} else {
+			base, err = winpe.RenderAnswerStartup(base, req.ProfileID)
+		}
 		if err != nil {
 			return nil, err
 		}

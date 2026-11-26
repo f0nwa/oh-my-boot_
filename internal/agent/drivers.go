@@ -16,13 +16,16 @@ import (
 )
 
 type DriverManager struct {
-	mu          sync.Mutex
-	Root        string
-	WIMRoot     string
-	ConfigRoot  string
-	ProfileRoot string
-	Runner      DriverCommandRunner
-	FreeBytes   func(string) (uint64, error)
+	mu            sync.Mutex
+	Root          string
+	WIMRoot       string
+	ConfigRoot    string
+	ProfileRoot   string
+	BootImageRoot string
+	Template      []byte
+	Password      string
+	Runner        DriverCommandRunner
+	FreeBytes     func(string) (uint64, error)
 }
 
 func (m *DriverManager) Import(ctx context.Context, src io.Reader, size int64) (drivers.Inventory, error) {

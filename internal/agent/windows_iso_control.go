@@ -14,17 +14,21 @@ import (
 // WindowsISOManager persists one immutable source reference per profile and
 // starts a dedicated systemd unit to mount and prepare it.
 type WindowsISOManager struct {
-	mu          sync.Mutex
-	SourceRoot  string
-	SourceRoots []string
-	LocalRoot   string
-	ConfigRoot  string
-	MountRoot   string
-	AssetRoot   string
-	AnswerRoot  string
-	Systemctl   SMBSystemctl
-	Mounter     WindowsISOMounter
-	WIMCommands DriverCommandRunner
+	mu                sync.Mutex
+	SourceRoot        string
+	SourceRoots       []string
+	LocalRoot         string
+	ConfigRoot        string
+	MountRoot         string
+	AssetRoot         string
+	AnswerRoot        string
+	BootImageRoot     string
+	InstallConfigRoot string
+	InstallMountRoot  string
+	Systemctl         SMBSystemctl
+	Mounter           WindowsISOMounter
+	InstallMounter    InstallImageMounter
+	WIMCommands       DriverCommandRunner
 }
 
 func (m *WindowsISOManager) allowedRoots() []string {

@@ -31,6 +31,7 @@ type LocalFilesystem struct {
 type DiskUsageReport struct {
 	Filesystems          []LocalFilesystem `json:"filesystems"`
 	WindowsProfiles      map[int64]int64   `json:"windows_profiles"`
+	WindowsBootImages    map[int64]int64   `json:"windows_boot_images"`
 	WindowsDriverWIMs    map[string]int64  `json:"windows_driver_wims"`
 	WindowsDriverConfigs map[int64]int64   `json:"windows_driver_configs"`
 	WindowsAnswersBytes  int64             `json:"windows_answers_bytes"`
@@ -43,6 +44,7 @@ type DiskUsageReport struct {
 // DiskUsageRoots names the local directories owned by omb-agent.
 type DiskUsageRoots struct {
 	WindowsProfiles      string
+	WindowsBootImages    string
 	WindowsDriverWIMs    string
 	WindowsDriverConfigs string
 	WindowsAnswers       string
@@ -99,6 +101,7 @@ func (c *DiskUsageCollector) Collect(ctx context.Context) (DiskUsageReport, erro
 	report := DiskUsageReport{
 		Filesystems:          c.collectFilesystems(),
 		WindowsProfiles:      collectNumericChildBytes(ctx, c.Roots.WindowsProfiles),
+		WindowsBootImages:    collectNumericChildBytes(ctx, c.Roots.WindowsBootImages),
 		WindowsDriverWIMs:    collectKeyedChildBytes(ctx, c.Roots.WindowsDriverWIMs),
 		WindowsDriverConfigs: collectNumericChildBytes(ctx, c.Roots.WindowsDriverConfigs),
 		WindowsAnswersBytes:  collectDirBytes(ctx, c.Roots.WindowsAnswers),
@@ -125,6 +128,7 @@ func (c *DiskUsageCollector) collectFilesystems() []LocalFilesystem {
 	}
 	candidates := []string{
 		c.Roots.WindowsProfiles,
+		c.Roots.WindowsBootImages,
 		c.Roots.WindowsDriverWIMs,
 		c.Roots.UbuntuSources,
 		c.Roots.Drivers,
@@ -279,6 +283,10 @@ func cloneDiskUsageReport(r DiskUsageReport) DiskUsageReport {
 	for k, v := range r.WindowsProfiles {
 		out.WindowsProfiles[k] = v
 	}
+	out.WindowsBootImages = make(map[int64]int64, len(r.WindowsBootImages))
+	for k, v := range r.WindowsBootImages {
+		out.WindowsBootImages[k] = v
+	}
 	out.WindowsDriverWIMs = make(map[string]int64, len(r.WindowsDriverWIMs))
 	for k, v := range r.WindowsDriverWIMs {
 		out.WindowsDriverWIMs[k] = v
@@ -307,6 +315,8 @@ func (w *statusCaptureWriter) WriteHeader(code int) {
 func isArtifactMutationPath(path string) bool {
 	for _, prefix := range []string{
 		"/windows-iso/",
+		"/windows/boot-image/",
+		"/windows/install-image/",
 		"/winpe-drivers/",
 		"/ubuntu-iso/",
 		"/uefica-usb/",

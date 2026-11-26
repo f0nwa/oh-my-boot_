@@ -339,6 +339,98 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(result)
 	})
+	mux.HandleFunc("POST /windows/boot-image/prepare", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows boot image preparation unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req WindowsBootImageRequest
+		if !decodeSMBRequest(w, r, &req) {
+			return
+		}
+		if _, err := resolveWindowsSourceFile(windows.allowedRoots(), req.ID, req.Size, req.Modified, req.StorageRoot, req.RelativePath, []string{".wim"}, windows.LocalRoot); err != nil {
+			http.Error(w, "invalid Windows boot image source", http.StatusBadRequest)
+			return
+		}
+		result, err := windows.PrepareBootImage(r.Context(), req)
+		if err != nil {
+			if errors.Is(err, ErrInvalidWIMType) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			http.Error(w, "Windows boot image preparation failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
+	})
+	mux.HandleFunc("POST /windows/boot-image/remove", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows boot image unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			ID int64 `json:"id"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4096) {
+			return
+		}
+		if req.ID <= 0 {
+			http.Error(w, "invalid Windows boot image ID", http.StatusBadRequest)
+			return
+		}
+		if err := windows.RemoveBootImage(r.Context(), req.ID); err != nil {
+			http.Error(w, "Windows boot image cleanup failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /windows/install-image/prepare", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows install image preparation unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req WindowsInstallImageRequest
+		if !decodeSMBRequest(w, r, &req) {
+			return
+		}
+		if _, err := resolveWindowsSourceFile(windows.allowedRoots(), req.ID, req.Size, req.Modified, req.StorageRoot, req.RelativePath, []string{".wim", ".esd"}, windows.LocalRoot); err != nil {
+			http.Error(w, "invalid Windows install image source", http.StatusBadRequest)
+			return
+		}
+		result, err := windows.PrepareInstallImage(r.Context(), req)
+		if err != nil {
+			if errors.Is(err, ErrInvalidWIMType) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			http.Error(w, "Windows install image preparation failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
+	})
+	mux.HandleFunc("POST /windows/install-image/remove", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows install image unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			ID int64 `json:"id"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4096) {
+			return
+		}
+		if req.ID <= 0 {
+			http.Error(w, "invalid Windows install image ID", http.StatusBadRequest)
+			return
+		}
+		if err := windows.RemoveInstallImage(r.Context(), req.ID); err != nil {
+			http.Error(w, "Windows install image cleanup failed", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /smb/accounts", func(w http.ResponseWriter, _ *http.Request) {
 		if manager == nil {
 			http.Error(w, "SMB unavailable", http.StatusServiceUnavailable)

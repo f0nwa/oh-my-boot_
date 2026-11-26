@@ -47,6 +47,38 @@ func RenderProfileStartup(template []byte, password string, profileID int64, ins
 	return out, nil
 }
 
+var (
+	setupSourcePattern = regexp.MustCompile(`^(?:X:\\sources\\setup\.exe|Y:\\[1-9][0-9]*\\sources\\setup\.exe)$`)
+	shareSubdirPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+)
+
+// RenderSplitInstallStartup binds a WinPE script to a setup.exe source
+// ("X:\sources\setup.exe" for bare install.wim or "Y:\<iso_id>\sources\setup.exe"
+// for ISO with overridden install.wim) and an installation image located under
+// Y:\<installShareSubdir>\sources\<installFile>.
+func RenderSplitInstallStartup(template []byte, password string, setupSource string, installShareSubdir string, installFile string) ([]byte, error) {
+	if !setupSourcePattern.MatchString(setupSource) || !shareSubdirPattern.MatchString(installShareSubdir) || (installFile != "install.wim" && installFile != "install.esd") {
+		return nil, fmt.Errorf("invalid Windows split install configuration")
+	}
+	const setupToken = `Y:\__OMB_PROFILE_ID__\sources\setup.exe`
+	const idToken = "__OMB_PROFILE_ID__"
+	const fileToken = "__OMB_INSTALL_FILE__"
+	if bytes.Count(template, []byte(setupToken)) != 1 || !bytes.Contains(template, []byte(fileToken)) {
+		return nil, fmt.Errorf("WinPE profile template is incomplete")
+	}
+	out, err := renderPassword(template, password)
+	if err != nil {
+		return nil, err
+	}
+	out = bytes.Replace(out, []byte(setupToken), []byte(setupSource), 1)
+	if !bytes.Contains(out, []byte(idToken)) {
+		return nil, fmt.Errorf("WinPE profile template is incomplete")
+	}
+	out = bytes.ReplaceAll(out, []byte(idToken), []byte(installShareSubdir))
+	out = bytes.ReplaceAll(out, []byte(fileToken), []byte(installFile))
+	return out, nil
+}
+
 // answerImageLetter is the drive letter under which an answer variant maps
 // its profile folder, so that the profile's files lie at the drive root.
 const answerImageLetter = "I:"
@@ -62,39 +94,56 @@ var mediaMapping = regexp.MustCompile(`(?m)^net use Y: (\\\\[^ \r\n]+) ([^\r\n]*
 // so the profile folder is mapped once more as I: and the answer file is
 // copied to X:\autounattend.xml. Setup itself does not use either.
 func RenderAnswerStartup(base []byte, profileID int64) ([]byte, error) {
-	return renderAnswerStartup(base, profileID, true)
+	if profileID <= 0 {
+		return nil, fmt.Errorf("invalid Windows ISO profile")
+	}
+	return RenderAnswerStartupSubdir(base, strconv.FormatInt(profileID, 10))
+}
+
+// RenderAnswerStartupSubdir turns a prepared Windows Setup startup script
+// (ISO, ISO with overridden install.wim, or bare install.wim) into a strict
+// answer-file variant without changing its network credential or media binding.
+// shareSubdir names the folder under \\<IP>\ombisos containing sources\install.{wim,esd}.
+func RenderAnswerStartupSubdir(base []byte, shareSubdir string) ([]byte, error) {
+	return renderAnswerStartup(base, shareSubdir, true)
 }
 
 // RenderAnswerStartupLegacy is the variant script made before the I: mapping;
 // answer variants prepared then keep it.
 func RenderAnswerStartupLegacy(base []byte, profileID int64) ([]byte, error) {
-	return renderAnswerStartup(base, profileID, false)
-}
-
-func renderAnswerStartup(base []byte, profileID int64, peImage bool) ([]byte, error) {
 	if profileID <= 0 {
 		return nil, fmt.Errorf("invalid Windows ISO profile")
 	}
-	id := strconv.FormatInt(profileID, 10)
-	for _, installFile := range []string{"install.wim", "install.esd"} {
-		command := []byte("Y:\\" + id + "\\sources\\setup.exe /InstallFrom:Y:\\" + id + "\\sources\\" + installFile + "\r\n")
-		if bytes.Count(base, command) != 1 {
-			continue
-		}
-		var replacement []byte
-		if peImage {
-			if m := mediaMapping.FindSubmatch(base); m != nil {
-				// A failed mapping only matters to pe.cmd; Setup goes on.
-				replacement = append(replacement, []byte("net use "+answerImageLetter+" "+string(m[1])+"\\"+id+" "+strings.TrimSpace(string(m[2]))+"\r\n")...)
-			}
-			replacement = append(replacement, []byte("copy /y X:\\Windows\\System32\\omb-answer.xml X:\\autounattend.xml >nul\r\n")...)
-		}
-		replacement = append(replacement, []byte("if not exist X:\\Windows\\System32\\omb-answer.xml goto failed\r\n")...)
-		replacement = append(replacement, command[:len(command)-2]...)
-		replacement = append(replacement, []byte(" /Unattend:X:\\Windows\\System32\\omb-answer.xml\r\n")...)
-		return bytes.Replace(base, command, replacement, 1), nil
+	return renderAnswerStartup(base, strconv.FormatInt(profileID, 10), false)
+}
+
+func renderAnswerStartup(base []byte, shareSubdir string, peImage bool) ([]byte, error) {
+	if !shareSubdirPattern.MatchString(shareSubdir) {
+		return nil, fmt.Errorf("invalid Windows share subdir")
 	}
-	return nil, fmt.Errorf("prepared Windows Setup command is missing")
+	pattern := regexp.MustCompile(`(?m)^((?:Y:\\[1-9][0-9]*|X:)\\sources\\setup\.exe /InstallFrom:Y:\\` + regexp.QuoteMeta(shareSubdir) + `\\sources\\install\.(?:wim|esd))\r\n`)
+	matches := pattern.FindAllSubmatchIndex(base, -1)
+	if len(matches) != 1 {
+		return nil, fmt.Errorf("prepared Windows Setup command is missing")
+	}
+	match := matches[0]
+	command := base[match[0]:match[1]]
+	var replacement []byte
+	if peImage {
+		if m := mediaMapping.FindSubmatch(base); m != nil {
+			// A failed mapping only matters to pe.cmd; Setup goes on.
+			replacement = append(replacement, []byte("net use "+answerImageLetter+" "+string(m[1])+"\\"+shareSubdir+" "+strings.TrimSpace(string(m[2]))+"\r\n")...)
+		}
+		replacement = append(replacement, []byte("copy /y X:\\Windows\\System32\\omb-answer.xml X:\\autounattend.xml >nul\r\n")...)
+	}
+	replacement = append(replacement, []byte("if not exist X:\\Windows\\System32\\omb-answer.xml goto failed\r\n")...)
+	replacement = append(replacement, command[:len(command)-2]...)
+	replacement = append(replacement, []byte(" /Unattend:X:\\Windows\\System32\\omb-answer.xml\r\n")...)
+	out := make([]byte, 0, len(base)-len(command)+len(replacement))
+	out = append(out, base[:match[0]]...)
+	out = append(out, replacement...)
+	out = append(out, base[match[1]:]...)
+	return out, nil
 }
 
 // RenderDriverStartup adds selected INF loads before the prepared environment

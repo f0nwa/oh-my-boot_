@@ -115,3 +115,158 @@ func TestRenderAnswerStartupMapsProfileForPECmd(t *testing.T) {
 		t.Fatalf("legacy variant changed: %v\n%s", err, legacy)
 	}
 }
+
+func TestRenderSplitInstallStartupBareWIM(t *testing.T) {
+	template, err := os.ReadFile("../../deploy/boot-assets/windows-profiles/omb-setup.cmd.in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderSplitInstallStartup(template, strings.Repeat("A", 32), `X:\sources\setup.exe`, "install-5", "install.wim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(got)
+	if !strings.Contains(text, "if not exist Y:\\install-5\\sources\\install.wim goto failed\r\n") {
+		t.Fatalf("missing install.wim existence check:\n%s", text)
+	}
+	if !strings.Contains(text, "X:\\sources\\setup.exe /InstallFrom:Y:\\install-5\\sources\\install.wim\r\n") {
+		t.Fatalf("missing bare WIM setup command:\n%s", text)
+	}
+	if strings.Contains(text, "__OMB_") {
+		t.Fatalf("unreplaced template token remains:\n%s", text)
+	}
+	for _, bad := range []struct {
+		setupSource string
+		subdir      string
+		file        string
+	}{
+		{`C:\sources\setup.exe`, "install-5", "install.wim"},
+		{`Y:\0\sources\setup.exe`, "install-5", "install.wim"},
+		{`X:\sources\setup.exe & calc`, "install-5", "install.wim"},
+		{`X:\sources\setup.exe`, "", "install.wim"},
+		{`X:\sources\setup.exe`, "../install-5", "install.wim"},
+		{`X:\sources\setup.exe`, "install 5", "install.wim"},
+		{`X:\sources\setup.exe`, "install-5", "install.swm"},
+	} {
+		if _, err := RenderSplitInstallStartup(template, strings.Repeat("A", 32), bad.setupSource, bad.subdir, bad.file); err == nil {
+			t.Fatalf("accepted unsafe split install render: %+v", bad)
+		}
+	}
+}
+
+func TestRenderSplitInstallStartupISOOverride(t *testing.T) {
+	template, err := os.ReadFile("../../deploy/boot-assets/windows-profiles/omb-setup.cmd.in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderSplitInstallStartup(template, strings.Repeat("A", 32), `Y:\17\sources\setup.exe`, "install-5", "install.esd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(got)
+	if !strings.Contains(text, "if not exist Y:\\install-5\\sources\\install.esd goto failed\r\n") {
+		t.Fatalf("missing install.esd existence check:\n%s", text)
+	}
+	if !strings.Contains(text, "Y:\\17\\sources\\setup.exe /InstallFrom:Y:\\install-5\\sources\\install.esd\r\n") {
+		t.Fatalf("missing ISO override setup command:\n%s", text)
+	}
+	if strings.Contains(text, "__OMB_") {
+		t.Fatalf("unreplaced template token remains:\n%s", text)
+	}
+}
+
+func TestRenderAnswerStartupWorksWithBareWIMAndPECmd(t *testing.T) {
+	template, err := os.ReadFile("../../deploy/boot-assets/windows-profiles/omb-setup.cmd.in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name        string
+		setupSource string
+		installFile string
+	}{
+		{"bare-wim", `X:\sources\setup.exe`, "install.wim"},
+		{"iso-override", `Y:\17\sources\setup.exe`, "install.esd"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			base, err := RenderSplitInstallStartup(template, strings.Repeat("A", 32), tc.setupSource, "install-5", tc.installFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := RenderAnswerStartupSubdir(base, "install-5")
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(got)
+			mapping := `net use I: \\10.30.0.10\ombisos\install-5 %OMB_ISO_PASSWORD% /user:omb-iso /persistent:no >nul 2>&1` + "\r\n"
+			copyLine := `copy /y X:\Windows\System32\omb-answer.xml X:\autounattend.xml >nul` + "\r\n"
+			setupCmd := tc.setupSource + ` /InstallFrom:Y:\install-5\sources\` + tc.installFile + ` /Unattend:X:\Windows\System32\omb-answer.xml` + "\r\n"
+			ready, m, c, setup := strings.Index(text, ":media_ready"), strings.Index(text, mapping), strings.Index(text, copyLine), strings.Index(text, setupCmd)
+			if ready < 0 || m < ready || c < m || setup < c || strings.Count(text, "net use I:") != 1 {
+				t.Fatalf("unexpected answer startup layout:\n%s", text)
+			}
+			if !strings.Contains(text, "if not exist X:\\Windows\\System32\\omb-answer.xml goto failed\r\n") {
+				t.Fatalf("missing answer XML check:\n%s", text)
+			}
+			if _, err := RenderAnswerStartupSubdir(got, "install-5"); err == nil {
+				t.Fatal("accepted double answer startup injection")
+			}
+			if _, err := RenderAnswerStartupSubdir(base, "install-9"); err == nil {
+				t.Fatal("accepted mismatched share subdir")
+			}
+			if _, err := RenderAnswerStartupSubdir(base, "../install-5"); err == nil {
+				t.Fatal("accepted unsafe share subdir")
+			}
+		})
+	}
+}
+
+func TestSplitInstallScriptsWorkWithWaitExitAndServerIP(t *testing.T) {
+	template, err := os.ReadFile("../../deploy/boot-assets/windows-profiles/omb-setup.cmd.in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name        string
+		setupSource string
+		installFile string
+	}{
+		{"bare-wim", `X:\sources\setup.exe`, "install.wim"},
+		{"iso-override", `Y:\17\sources\setup.exe`, "install.esd"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, err := RenderSplitInstallStartup(template, strings.Repeat("A", 32), tc.setupSource, "install-5", tc.installFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			answer, err := RenderAnswerStartupSubdir(base, "install-5")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, script := range [][]byte{base, answer} {
+				updated, changed, err := UpdateStartupWait(script, 20, 5)
+				if err != nil || !changed {
+					t.Fatalf("UpdateStartupWait failed: changed=%v err=%v", changed, err)
+				}
+				updated, changed, err = UpdateStartupExitAction(updated, "reboot")
+				if err != nil || !changed {
+					t.Fatalf("UpdateStartupExitAction failed: changed=%v err=%v", changed, err)
+				}
+				if action, ok := ExitActionFromScript(updated); !ok || action != "reboot" {
+					t.Fatalf("ExitActionFromScript = (%q, %v), want (reboot, true)", action, ok)
+				}
+				updated, changed, err = UpdateStartupServerIP(updated, "192.168.10.135")
+				if err != nil || !changed {
+					t.Fatalf("UpdateStartupServerIP failed: changed=%v err=%v", changed, err)
+				}
+				if strings.Contains(string(updated), "10.30.0.10") {
+					t.Fatalf("old server IP still present:\n%s", updated)
+				}
+				if !strings.Contains(string(updated), `\\192.168.10.135\ombisos`) {
+					t.Fatalf("new server IP missing:\n%s", updated)
+				}
+			}
+		})
+	}
+}

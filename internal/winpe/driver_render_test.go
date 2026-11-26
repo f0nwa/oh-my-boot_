@@ -85,3 +85,28 @@ func TestServiceDriverFailureDoesNotSkipOtherDriversOrNetwork(t *testing.T) {
 		t.Fatal("per-INF result was not recorded")
 	}
 }
+
+func TestDriverStartupWorksWithSplitInstallModes(t *testing.T) {
+	template := []byte("@echo off\r\nset OMB_ISO_PASSWORD=__OMB_ISO_PASSWORD__\r\nwpeinit\r\nnet use Y: \\\\10.30.0.10\\ombisos %OMB_ISO_PASSWORD% /user:omb-iso /persistent:no >nul 2>&1\r\n:media_ready\r\nif not exist Y:\\__OMB_PROFILE_ID__\\sources\\__OMB_INSTALL_FILE__ goto failed\r\nY:\\__OMB_PROFILE_ID__\\sources\\setup.exe /InstallFrom:Y:\\__OMB_PROFILE_ID__\\sources\\__OMB_INSTALL_FILE__\r\n:failed\r\ncmd /k\r\n")
+	for _, setupSource := range []string{`X:\sources\setup.exe`, `Y:\17\sources\setup.exe`} {
+		base, err := RenderSplitInstallStartup(template, strings.Repeat("A", 32), setupSource, "install-5", "install.wim")
+		if err != nil {
+			t.Fatal(err)
+		}
+		answer, err := RenderAnswerStartupSubdir(base, "install-5")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, script := range [][]byte{base, answer} {
+			got, err := RenderDriverStartup(script, []string{"omb-drivers/abcdef/net/driver.inf"})
+			if err != nil {
+				t.Fatalf("RenderDriverStartup(%s): %v", setupSource, err)
+			}
+			text := string(got)
+			load := strings.Index(text, `drvload "X:\Windows\System32\omb-drivers\abcdef\net\driver.inf"`)
+			if load < 0 || load > strings.Index(text, "wpeinit") || strings.Index(text, "wpeinit") > strings.Index(text, setupSource) {
+				t.Fatalf("bad startup order for %s:\n%s", setupSource, text)
+			}
+		}
+	}
+}

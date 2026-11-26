@@ -13,7 +13,7 @@ oh my boot_ (OMB) is a self-contained network boot and operating system deployme
 
 - **Network boot:** serves an iPXE menu over Full DHCP or Proxy DHCP (`dnsmasq`) and HTTP (`omb-boot`), supporting UEFI network driver selection (`ipxe.efi` or `snponly.efi`) globally, by MAC prefix, and per machine.
 - **OS installation and maintenance:** deploys Windows 10 and 11 via WinPE with `autounattend.xml` answer files and driver injection, boots the Strelec service image (`SSTR`), and installs Ubuntu Desktop with NoCloud Autoinstall.
-- **Library management:** indexes ISO images on the local disk, SMB shares, and NFS storage, allows uploading ISOs through the browser, SMB `[iso]`, and built-in SFTP, and migrates images between storages without breaking boot items.
+- **Library management.** OMB indexes ISO, WIM, and ESD files on local and network storage. Add ISOs from your computer, from a URL, or over SMB `[iso]` and SFTP. [Storage and image uploads](/wiki/storages-and-file-server).
 - **Control and security:** enforces role-based access, supports local passwords with expiration policies and 2FA (TOTP), external sign-in via Active Directory (LDAP) and Keycloak (OIDC), and keeps a machine inventory, event logs, and an audit trail.
 
 ## Access roles

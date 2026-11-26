@@ -1,8 +1,8 @@
-# Images: OMB ISO catalog and storage
+# Images: OMB image catalog and storage
 
 [Русская версия](../images-installation.md). For boot entries and menu publishing, use the [Control guide](control-installation.md#boot-entries-and-menu).
 
-Images stores its catalog in `omb_images` and serves a local API at `/run/omb-images/images.sock`. Finding an ISO does not create a menu entry: create a boot entry from the image, then publish the menu. Preparation runs automatically when the entry is saved.
+Images catalogs ISO, WIM, and ESD files in `omb_images` and serves a local API at `/run/omb-images/images.sock`. To add an image to the menu, create a boot entry and publish the draft. Preparation starts when you save the entry.
 
 ## First installation
 
@@ -93,7 +93,12 @@ Operators and administrators can start scans; observers can view the catalog. Ba
 
 ## ISO upload
 
-In the library, select writable storage, an existing folder and an ISO up to 32 GiB. The complete ISO goes to the selected storage; its size and SHA-256 are checked afterwards. Existing files are not overwritten, and cancellation removes the temporary file. Menu publishing is a separate action.
+On “Library → Images → ISO”, click “Upload ISO”. Choose a writable storage and a folder if the folder selector is available. The maximum file size is 32 GiB.
+
+- **From computer.** Select a local file. You can minimize the dialog during the transfer. Keep the tab open until the upload finishes.
+- **From URL.** Enter an HTTP(S) address that the OMB server can reach. “Query URL” suggests a filename. If you have a checksum, select SHA-256, SHA-512, or MD5 and enter the value. The server downloads the file in the background. Track or cancel the job under “URL downloads” above the table.
+
+OMB saves the new file's SHA-256 during upload. The upload fails if the target folder already contains a file with the same name. Cancellation removes the temporary file. An administrator can enable sequential SHA-256 indexing for files without checksums and cap the read speed under “Storages” → “Background tasks”.
 
 SMB and NFS use separate mount points: `/mnt/omb-smb/<key>` or `/mnt/omb-nfs/<key>` for reading and `/mnt/omb-smb-upload/<key>` or `/mnt/omb-nfs-upload/<key>` for writing. The NAS account or directory permissions must permit writes. Local uploads use `/var/lib/omb-images/iso`; the `omb-images` group and service unit must permit writing there. Deleting an ISO from local, mounted, or network (SMB/NFS) storage also requires the `omb-images` user to have write permission in the corresponding directory. Free space refers to the selected storage filesystem.
 
@@ -106,7 +111,9 @@ Windows Setup delivery flow when using network storage:
 
 Preparation requires `omb-winiso-prepare`, the [profile unit](../../deploy/systemd/omb-winiso@.service), [templates](../../deploy/boot-assets/windows-profiles/) under `/usr/share/omb/windows-profiles`, [Samba configuration](../../deploy/samba/smb.conf) and `/etc/omb/omb-iso-password`. Mount and configuration directories are `/mnt/omb-iso/profiles` and `/etc/omb/winiso`. Install these through the [server bundle](offline-installation.md); installing Images alone does not supply them. Local source ISOs for Windows must be inside `/var/lib/omb-images` or on managed SMB or NFS storage.
 
-Upload a checked Windows XML under **Library → Answer files**, and INF files with their dependencies under **Library → Drivers**. When creating or editing a boot entry, select the ISO, XML and INF files, wait for preparation, then publish the menu. The source ISO stays unchanged. See the [WinPE driver catalog](control-installation.md#winpe-driver-catalog).
+Upload Windows XML under **Library → Installation scripts** and INF files with their dependencies under **Library → Drivers**. When creating or editing a boot entry, select the ISO and attach an XML script and drivers as needed. Wait for preparation, then publish the menu. [WinPE driver catalog](control-installation.md#winpe-driver-catalog).
+
+Upload standalone Windows images from the `boot.wim` and `install.wim` tabs. You can select each independently in a boot entry. To boot without a base ISO, use a `boot.wim` that contains `sources\setup.exe` and a standalone `install.wim` or `install.esd`. [WIM override rules in the embedded Wiki](../../internal/control/wiki/en/08-windows-winpe.md).
 
 XML may contain passwords and keys. Image startup scripts, driver configuration scripts and answer files are served only to the trusted PXE subnet `10.30.0.0/24`; requests from the management network receive 404.
 

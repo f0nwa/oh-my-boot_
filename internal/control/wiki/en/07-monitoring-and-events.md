@@ -15,7 +15,7 @@ The [Now](/) page refreshes automatically and shows:
 
 - **Active client activity:** which machines just requested DHCP, downloaded a bootloader, opened the menu, or picked an installation.
 - **Secure Boot diagnostics:** if a client downloads `ipxe-shim.efi` but does not request `ipxe.efi` within 30 s, OMB flags the row with “Firmware rejected bootloader”.
-- **Active SMB and HTTP transfers:** which machines are reading images from `[ombisos]` or downloading Ubuntu ISOs. Using the `☰` row menu, an operator or administrator can force-close a stuck SMB session or cancel a stale HTTP transfer.
+- **Active SMB and HTTP transfers.** See which machines are reading images from `[ombisos]` or downloading Ubuntu ISOs. An operator or administrator can force-close a stuck SMB session or cancel an HTTP transfer from the `☰` row menu. Once the installation image has been copied and WinPE has closed the file, the panel stops counting the SMB session as active even if the connection remains open.
 - **DHCP flood protection:** if a faulty NIC floods the server with requests, the DHCP event buffer caps entries at 50 per MAC, and the machine page lets you enable blocking (`<mac>,ignore` in `/var/lib/omb-dhcp/hosts`, applied via `SIGHUP` without restarting `dnsmasq`).
 - **Maintenance alerts:** when maintenance mode is active on a storage or image, a warning banner appears on Now.
 
@@ -42,7 +42,7 @@ Auto-cleanup retention and manual log clearing are grouped under “Log settings
 
 - **Problem badges:** the background `SystemEventMonitor` checks every 15 s for active system incidents, unavailable storages, and running migrations. A red or amber dot appears in the top bar, and a numeric pill appears on the relevant sub-tab.
 - **Background live refresh:** tables on `/images`, `/installations`, and `/storages` refresh seamlessly every 15 s without full page reloads (pausing when the tab is hidden, a dialog is open, or a search field has focus).
-- **Global search `⌘K` (or `Ctrl K`, or `/`):** searches simultaneously across MAC addresses, machine names, boots, ISO images, installation scripts, SHA-256 checksums, authors, users, panel sections, and Wiki articles.
+- **Global search `⌘K` (or `Ctrl K`, or `/`).** Searches MAC addresses, machine names, boots, images, installation scripts, SHA-256 checksums, driver package names and descriptions, authors, users, panel sections, and Wiki articles.
 
 ## Audit log (`/audit`) and server resources (`/system`)
 

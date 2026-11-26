@@ -1,20 +1,20 @@
 # Answer file editor
 
-“Library → Installation scripts → Create in editor” builds an `autounattend.xml` for Windows Setup. Every ready file in the list has an “Open in editor” button. The editor is a Go port of [cschneegans/unattend-generator](https://github.com/cschneegans/unattend-generator), the library behind [schneegans.de](https://schneegans.de/windows/unattend-generator/), so the settings and the output are those of the site.
+Under “Library → Installation scripts”, choose “Add script…” → Windows → “Create in editor” to build an `autounattend.xml` for Windows Setup. Click the title of a ready script in the table to open it. The editor uses a Go port of `cschneegans/unattend-generator`. [Upstream library](https://github.com/cschneegans/unattend-generator).
 
 ## The page
 
 - **Contents on the left:** 12 sections — language and region, disk and setup, edition and key, name and time, accounts, Explorer and Start, appearance, network and VMs, remove apps, tweaks and security, scripts, custom XML. Marks: “changed” — the section differs from Windows defaults; a number — how many apps, scripts or custom XML elements; “N notes” — the section has notes.
 - **One section in the middle.** Above it are presets: “Windows defaults”, “Language and key only — disk by hand”, “Lab: local account, automatic sign-in”. A preset replaces all settings.
 - **Tabs on the right:** “Result” — a plain summary; “XML” — the whole file with changed lines highlighted; “Notes” — for example, plain-text passwords or Windows protection turned off. “Wipes the disk” appears when the file partitions the disk itself; its menu item gets “WIPES DISK”.
-- **Save script** — menu item title in Latin letters and folder (not tied to a single ISO image). The script is saved to the shared Windows script library and can be attached to any compatible Windows image when creating or editing an installation in New boot. Editing an existing file **always saves a new file**: the original and existing menu items stay unchanged.
+- **Saving a script.** Enter a title for the library. You can attach the script to any compatible Windows boot entry. When editing, **“Save”** updates the current record and **“Save as new”** creates a separate one. The published menu serves the previous XML until you republish the draft.
 - **Download autounattend.xml** — the same file, for USB, ISO or checking.
 - The computer name field suggests names from the machine list.
 - Generator errors (“line longer than 255 characters”, “at least one administrator is needed” and so on) are shown above the form, and the input stays.
-- A file over 1 MB cannot be saved to the library but can be downloaded.
+- You can download a file larger than 1 MiB from the editor. The library accepts files up to 1 MiB.
 - The page works without JavaScript: moving between sections, presets and “another row” submit the form. With JavaScript, sections switch in place and the summary and XML follow every change.
 
-Permissions: everyone can open and download; administrators and operators can save scripts to the library. Audit: `windows-answer.create` marked `editor=1`. Computers in the trusted PXE segment can fetch the file, passwords and keys included; “Obscure passwords” is only base64 encoding.
+All roles can open and download scripts. Administrators and operators can save them. The audit log records `windows-answer.create` or `windows-answer.update` with `editor=1`. Computers in the trusted PXE segment can fetch the file, including passwords and keys. “Obscure passwords” encodes passwords in base64.
 
 ## Partitioning in network installs
 

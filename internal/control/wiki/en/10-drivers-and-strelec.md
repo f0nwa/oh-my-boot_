@@ -16,7 +16,9 @@ Under [Library → Drivers](/drivers), two upload methods are supported:
 - **Driver folder** — pick a local directory on your workstation; the browser uploads the full structure with `.inf`, `.sys`, and `.cat` files.
 - **ZIP archive** — upload a vendor driver pack (Dell WinPE Driver Pack, Lenovo, VirtIO, and others).
 
-OMB inspects the archive, indexes every `.inf` file, computes the package SHA-256, and stores the inventory in the database. Clicking any package opens its file list in a modal dialog.
+You can give the package a name and description when uploading it. Click its name in the catalog to open “Properties and contents”, view the `.inf` files, and edit the name or description. You can search these fields with `⌘K` and in the driver picker when configuring a boot entry.
+
+While a folder or ZIP file is uploading, click “Minimize” to follow its progress at the bottom of the page. Keep the tab open until the transfer finishes.
 
 > [!NOTE]
 > For WinPE network deployment, two driver classes are usually enough: **Net** (NIC driver so WinPE can connect to `[ombisos]`) and **SCSIAdapter / HDC** (storage controller so Windows Setup sees the drive).

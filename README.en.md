@@ -62,13 +62,15 @@ Real iPXE boot menu screenshot on a test virtual machine:
 ## Features
 
 - **Draft-based boot menu with rollback:** unified Legacy BIOS and UEFI menu, folders, an unpublished draft invisible to clients until published, version history, and snapshot rollback.
-- **ISO catalog & storage backends:** local folders, SMB shares, and NFS exports (`NFSv4.1` / `NFSv3`), browser uploads, built-in SFTP/SMB upload receiver, periodic background rescans, live ISO migration between storages, and disk usage accounting.
-- **Windows deployment (x64):** automatic WinPE media preparation when saving a boot entry, multiple independent `autounattend.xml` scenarios per ISO with a built-in visual answer file editor, and WinPE driver packages imported from a folder or ZIP.
-- **Ubuntu Autoinstall:** immutable generated profiles with interactive storage, installer-selected disk erasure warnings, or exact-serial disk erasure; see the [operations guide](docs/en/control-installation.md#ubuntu-autoinstall).
+- **Image catalog and storage.** ISO, `boot.wim`, and `install.wim` / `.esd` on local, SMB, and NFS storage. Browser uploads, ISO intake over SMB and SFTP, ISO version inspection, bulk actions, automatic scans, image migration, and disk usage reporting.
+- **Windows deployment (x64):** automatic WinPE preparation when saving a boot entry, independent `boot.wim` and `install.wim` / `.esd` overrides, `autounattend.xml` creation and uploads, and WinPE driver packages imported from a folder or ZIP.
+- **Ubuntu Autoinstall:** an editor for scripts with manual partitioning, automatic disk wiping, or disk selection by serial number. [Control panel guide](docs/en/control-installation.md#ubuntu-autoinstall).
 - **Service WinPE environments:** network boot for WinPE maintenance images with injected drivers and read-only SMB media delivery.
 - **UEFI Secure Boot & network drivers:** signed `shim 16.1 → iPXE` chain (Microsoft UEFI CA 2011 and 2023), global, per-machine, and MAC-prefix UEFI driver selection (`ipxe.efi` vs `snponly.efi`) without restarting DHCP, an SCCM preparation script, and a WinPE USB builder ([Secure Boot guide](docs/en/secure-boot.md)).
 - **Machine inventory & live telemetry:** live **Now** view with stage-by-stage progress, HTTP/DHCP/TFTP and system event logs, automatic machine inventory with vendor and model, CSV import/export, and MAC-prefix rules.
 - **Security & enterprise auth:** HTTPS, role-based access (`admin` / `operator` / `observer`), local accounts with password policy and TOTP 2FA (plus trusted browsers), Active Directory / LDAP and Keycloak (OIDC) sign-in, and built-in bilingual Wiki (`/wiki`).
+
+**In the `dev` branch for 0.2.7**, OMB adds background ISO downloads over HTTP(S) with optional checksum verification, queued SHA-256 indexing, minimizable file upload dialogs, WinPE driver package names and descriptions, Ubuntu `user-data` uploads, and in-place editing of Windows and editor-generated Ubuntu scripts. See the embedded Wiki in the corresponding build for details.
 
 ---
 
@@ -166,7 +168,7 @@ sudo omb reset-2fa [user]               # reset a user's TOTP 2FA
 
 ## Documentation
 
-All user guides are maintained in English and Russian (and embedded inside the server at `/wiki`).
+Open **Wiki** in the control panel header (`/wiki`). The article sources are available in the repository. [English Wiki](internal/control/wiki/en) · [Russian Wiki](internal/control/wiki/ru)
 
 | Guide | English | Русский |
 | --- | --- | --- |

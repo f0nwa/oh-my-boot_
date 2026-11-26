@@ -38,7 +38,7 @@ Click “Save”, review the diff table on the confirmation screen, and apply th
 
 Open [System → Storages](/storages). The local storage `/var/lib/omb-images/iso` is already connected. Connect SMB or NFS network storages if needed, or enable the local file server (SMB `[iso]` / SFTP `:2022`).
 
-You can also upload an image directly in the browser under [Library → ISO Images](/images). Once the file appears, open its `☰` row menu and run “Inspect ISO” so OMB detects the image type (Windows, Ubuntu, or Strelec) and reads the `install.wim` edition indexes.
+On [Library → Images](/images), click “Upload ISO” and add a file from your computer or from a URL. Once the file appears, select “Check ISO” in its `☰` row menu. OMB detects the image type (Windows, Ubuntu, or Strelec) and reads any `install.wim` edition indexes. [Ways to add images](/wiki/storages-and-file-server).
 
 ## Step 4. Create a boot and publish the menu
 

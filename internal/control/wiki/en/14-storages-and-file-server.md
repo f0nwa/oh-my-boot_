@@ -3,8 +3,8 @@ slug: storages-and-file-server
 section: infra
 order: 30
 title: ISO Storages, SMB/NFS, and Local File Server
-summary: Connecting SMB and NFSv4.1/v3, disk accounting, auto-rescan, ISO migration, local SMB/SFTP file server, and maintenance mode.
-keywords: [storages, smb, nfs, sftp, file server, migration, rescan, maintenance, drain]
+summary: Connecting SMB and NFS, downloading ISOs from URLs, SHA-256 indexing, moving images, the local file server, and maintenance mode.
+keywords: [storages, smb, nfs, sftp, file server, migration, rescan, maintenance, drain, ISO upload, URL, SHA-256]
 ---
 
 All ISO image sources are managed under [System → Storages](/storages). The same page shows detailed local disk usage across ISOs, `boot.wim`, Ubuntu sources, answer files, and USB archives (without double-counting deduplicated driver WIMs).
@@ -18,12 +18,20 @@ All ISO image sources are managed under [System → Storages](/storages). The sa
 > [!NOTE]
 > On NFS exports with `root_squash` enabled (such as Synology DSM), ISO files must be world-readable (`0644`) and directories traversable (`o+rx`).
 
+## Adding images
+
+On [Library → Images](/images), open the **ISO** tab and click “Upload ISO”. Choose a writable storage and a folder if the folder selector is available. The maximum file size is 32 GiB.
+
+- **From computer.** The browser transfers the file to the server. Minimize the dialog to follow progress at the bottom of the page. Keep the tab open until the transfer finishes. The same applies to standalone `boot.wim` and `install.wim` / `.esd` uploads.
+- **From URL.** Enter an HTTP(S) address, click “Query URL”, and check the suggested filename. If you have a checksum, select its algorithm (SHA-256, SHA-512, or MD5) and enter the value. OMB rejects the file on a mismatch. After you click “Download”, the server fetches the ISO in the background. You can close the tab and return later to track or cancel the job under “URL downloads”. On an isolated network, the OMB server must be able to reach the internal mirror.
+
 ## Storage background tasks
 
-The **“Background tasks”** button in the `/storages` header opens a single dialog for two periodic `omb-images` jobs:
+The **“Background tasks”** button in the [Storages](/storages) header opens settings for three jobs.
 
 - **Connection recovery:** automatically reconnects dropped SMB/NFS shares on a schedule.
 - **Automatic ISO rescan:** periodically scans directories (1 to 1,440 min interval). Automatically skips macOS metadata files (`._*`, `.DS_Store`) and recycle/trash folders (`#recycle`, `.trash`, hidden `.*` directories).
+- **Image SHA-256 indexing.** OMB calculates missing checksums for ISO, WIM, and ESD files one at a time. You can turn off indexing or cap its read speed (0 MB/s means unlimited). Watch progress above the image table and copy the completed checksum from the image properties.
 
 If a storage goes offline, [Library → ISO Images](/images) shows an honest outage state, hides unavailable row actions, and `/menu` highlights affected items.
 

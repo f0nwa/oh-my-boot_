@@ -458,10 +458,16 @@ func (s *Server) populateWIMImageTabs(
 	var bootImages []WindowsBootImage
 	var installImages []WindowsInstallImage
 	if wimStore, ok := s.windowsWIMStore(); ok {
-		if list, err := wimStore.ListWindowsBootImages(ctx); err == nil {
+		if list, err := wimStore.ListWindowsBootImages(ctx); err != nil {
+			log.Printf("list windows boot images: %v", err)
+			data.Error = "Не удалось прочитать образы boot.wim"
+		} else {
 			bootImages = list
 		}
-		if list, err := wimStore.ListWindowsInstallImages(ctx); err == nil {
+		if list, err := wimStore.ListWindowsInstallImages(ctx); err != nil {
+			log.Printf("list windows install images: %v", err)
+			data.Error = "Не удалось прочитать образы install.wim"
+		} else {
 			installImages = list
 		}
 	}

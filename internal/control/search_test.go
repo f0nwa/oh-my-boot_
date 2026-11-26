@@ -292,6 +292,14 @@ func TestSearchAllIncludesBootAndInstallWIM(t *testing.T) {
 				SHA256:     "a1b2c3d4e5f60000111122223333444455556666777788889999aaaabbbbcccc",
 				State:      "ready",
 			},
+			{
+				ID:               2,
+				SourceKind:       WIMSourceKindISO,
+				WindowsProfileID: 10,
+				Title:            "ISO Derived Boot",
+				SHA256:           "deadbeef0000111122223333444455556666777788889999aaaabbbbcccc1234",
+				State:            "ready",
+			},
 		},
 		installImages: []WindowsInstallImage{
 			{
@@ -338,5 +346,36 @@ func TestSearchAllIncludesBootAndInstallWIM(t *testing.T) {
 	}
 	if !foundInst {
 		t.Fatalf("expected install.wim in ⌘K search results, got %+v", instHits)
+	}
+
+	// English mode: ISO-derived boot.wim with SHA256 must translate "Из ISO" to "From ISO".
+	s.Store = searchWIMMockStore{
+		searchMockStore: searchMockStore{
+			authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true, Language: langEN}},
+		},
+		bootImages: s.Store.(searchWIMMockStore).bootImages,
+	}
+	reqEN := httptest.NewRequest(http.MethodGet, "/search?format=json&q=Derived", nil)
+	reqEN.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	resEN := httptest.NewRecorder()
+	s.Handler().ServeHTTP(resEN, reqEN)
+	var enHits []searchResult
+	if err := json.Unmarshal(resEN.Body.Bytes(), &enHits); err != nil {
+		t.Fatal(err)
+	}
+	foundEN := false
+	for _, r := range enHits {
+		if r.Title == "ISO Derived Boot" {
+			foundEN = true
+			if !strings.HasPrefix(r.Sub, "From ISO · ") {
+				t.Fatalf("expected English prefix 'From ISO · ' in Sub, got %q", r.Sub)
+			}
+			if strings.Contains(r.Sub, "Из ISO") {
+				t.Fatalf("unexpected Russian text in EN search result Sub: %q", r.Sub)
+			}
+		}
+	}
+	if !foundEN {
+		t.Fatalf("expected ISO-derived boot.wim in EN search results, got %+v", enHits)
 	}
 }

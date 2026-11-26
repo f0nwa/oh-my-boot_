@@ -14,13 +14,18 @@ import (
 
 type imagesTableStore struct {
 	*downloadsStore
-	authors       ResourceAuthors
-	names         map[string]string
-	bootImages    []WindowsBootImage
-	installImages []WindowsInstallImage
+	authors          ResourceAuthors
+	names            map[string]string
+	bootImages       []WindowsBootImage
+	installImages    []WindowsInstallImage
+	bootImagesErr    error
+	installImagesErr error
 }
 
 func (s *imagesTableStore) ListWindowsBootImages(context.Context) ([]WindowsBootImage, error) {
+	if s.bootImagesErr != nil {
+		return nil, s.bootImagesErr
+	}
 	return s.bootImages, nil
 }
 func (s *imagesTableStore) GetWindowsBootImage(_ context.Context, id int64) (WindowsBootImage, error) {
@@ -43,6 +48,9 @@ func (s *imagesTableStore) SetBootImageError(context.Context, int64, string, str
 func (s *imagesTableStore) SetBootImageTitle(context.Context, int64, string) error { return nil }
 func (s *imagesTableStore) DeleteWindowsBootImage(context.Context, int64) error    { return nil }
 func (s *imagesTableStore) ListWindowsInstallImages(context.Context) ([]WindowsInstallImage, error) {
+	if s.installImagesErr != nil {
+		return nil, s.installImagesErr
+	}
 	return s.installImages, nil
 }
 func (s *imagesTableStore) GetWindowsInstallImage(_ context.Context, id int64) (WindowsInstallImage, error) {
@@ -547,5 +555,18 @@ func TestImagesPageRendersISOBootAndInstallTabs(t *testing.T) {
 	instESDOnly := libraryGet(t, s, "/images?tab=install&show=esd")
 	if !strings.Contains(instESDOnly, "Windows 11 24H2 Multi") || strings.Contains(instESDOnly, "Windows 11 Corp Gold") {
 		t.Fatalf("install.wim ?show=esd filter failed")
+	}
+
+	// 4. DB errors listing boot.wim / install.wim surface in the error banner
+	store.bootImagesErr = errors.New("db down")
+	bootErrPage := libraryGet(t, s, "/images?tab=boot")
+	if !strings.Contains(bootErrPage, "Не удалось прочитать образы boot.wim") {
+		t.Fatalf("expected error banner when ListWindowsBootImages fails")
+	}
+	store.bootImagesErr = nil
+	store.installImagesErr = errors.New("db down")
+	instErrPage := libraryGet(t, s, "/images?tab=install")
+	if !strings.Contains(instErrPage, "Не удалось прочитать образы install.wim") {
+		t.Fatalf("expected error banner when ListWindowsInstallImages fails")
 	}
 }

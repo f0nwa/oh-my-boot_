@@ -216,12 +216,13 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 			}
 		}
 		if wimStore, ok := s.windowsWIMStore(); ok {
+			lang := normalizeLanguage(info.User.Language)
 			if bootImages, err := wimStore.ListWindowsBootImages(r.Context()); err == nil {
 				for _, img := range bootImages {
 					if searchMatch(query, img.Title, img.Path, wimVersionSummary(img.WIMInfo)) || searchMatchSHA(query, img.SHA256) {
 						sub := img.Path
 						if sub == "" && img.SourceKind == WIMSourceKindISO {
-							sub = "Из ISO"
+							sub = translate(lang, "Из ISO")
 						}
 						if img.SHA256 != "" {
 							if sub != "" {

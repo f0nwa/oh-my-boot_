@@ -216,7 +216,16 @@ func (s *Server) installationMenuSources(ctx context.Context) (InstallationMenuS
 	if err != nil {
 		return InstallationMenuSources{}, err
 	}
-	return InstallationMenuSources{Installations: items, BootProfiles: profiles, Autoinstalls: files}, nil
+	sources := InstallationMenuSources{Installations: items, BootProfiles: profiles, Autoinstalls: files}
+	if wimStore, ok := s.windowsWIMStore(); ok {
+		if bootImages, err := wimStore.ListWindowsBootImages(ctx); err == nil {
+			sources.BootImages = bootImages
+		}
+		if installImages, err := wimStore.ListWindowsInstallImages(ctx); err == nil {
+			sources.InstallImages = installImages
+		}
+	}
+	return sources, nil
 }
 
 // menuSources reads the objects menu items can point to.
@@ -633,8 +642,10 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 	selected := menuWindowsProfileIDs(script)
 	answerRefs := menuWindowsAnswerRefs(script)
 	driverRefs := menuDriverConfigRefs(script)
+	wimRefs := menuWindowsWIMRefs(script)
 	answerItems := map[[2]int64]bool{}
 	driverItems := map[int64]bool{}
+	wimItems := map[menuWindowsWIMRef]bool{}
 	for _, entry := range entries {
 		if entry.windowsISOID > 0 {
 			selected[entry.windowsISOID] = true
@@ -645,11 +656,22 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		if entry.driverConfigID > 0 {
 			driverItems[entry.driverConfigID] = true
 		}
+		if entry.bootImageID > 0 || entry.installImageID > 0 {
+			wimItems[menuWindowsWIMRef{
+				BootImageID:    entry.bootImageID,
+				BootSHA256:     entry.bootImageSHA256,
+				InstallImageID: entry.installImageID,
+				InstallFile:    entry.installImageFile,
+				BareWIM:        entry.kind == BootProfileWindowsWIM,
+			}] = true
+		}
 	}
 	answerRefMap := make(map[[2]int64]menuWindowsAnswerRef, len(answerRefs))
 	for _, ref := range answerRefs {
 		answerRefMap[[2]int64{ref.ID, ref.ProfileID}] = ref
-		selected[ref.ProfileID] = true
+		if ref.ProfileID > 0 {
+			selected[ref.ProfileID] = true
+		}
 	}
 	if len(answerItems) != len(answerRefMap) {
 		return fmt.Errorf("ссылки на скрипты повреждены")
@@ -668,17 +690,58 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		}
 	}
 	for _, ref := range driverRefs {
-		selected[ref.ProfileID] = true
+		if ref.ProfileID > 0 {
+			selected[ref.ProfileID] = true
+		}
 	}
-	if len(selected) == 0 {
+	if len(wimItems) > 0 {
+		wimRefSet := make(map[menuWindowsWIMRef]bool, len(wimRefs))
+		for _, ref := range wimRefs {
+			wimRefSet[ref] = true
+		}
+		if len(wimItems) != len(wimRefSet) {
+			return fmt.Errorf("ссылки на WIM-компоненты повреждены")
+		}
+		for ref := range wimItems {
+			if !wimRefSet[ref] {
+				return fmt.Errorf("ссылки на WIM-компоненты повреждены")
+			}
+		}
+	}
+	if len(selected) == 0 && len(driverRefs) == 0 && len(answerRefs) == 0 && len(wimRefs) == 0 {
 		return nil
 	}
-	if s.Images == nil || s.WindowsISO == nil {
-		return fmt.Errorf("службы образов недоступны")
-	}
-	profiles, err := s.Store.WindowsProfiles(ctx)
-	if err != nil {
-		return err
+	if len(wimRefs) > 0 {
+		wimStore, ok := s.windowsWIMStore()
+		if !ok {
+			return fmt.Errorf("хранилище WIM-образов недоступно")
+		}
+		for _, ref := range wimRefs {
+			if ref.BootImageID > 0 {
+				bootImg, err := wimStore.GetWindowsBootImage(ctx, ref.BootImageID)
+				if err != nil || bootImg.State != "ready" {
+					return fmt.Errorf("образ boot.wim %d недоступен", ref.BootImageID)
+				}
+				if ref.BootSHA256 != "" && bootImg.SHA256 != ref.BootSHA256 {
+					return fmt.Errorf("образ boot.wim %d изменился", ref.BootImageID)
+				}
+				if ref.BareWIM && !bootImg.HasSetupExe {
+					return fmt.Errorf("образ boot.wim %d не содержит setup.exe", ref.BootImageID)
+				}
+				if bootImg.SourceKind == WIMSourceKindISO && bootImg.WindowsProfileID > 0 {
+					selected[bootImg.WindowsProfileID] = true
+				}
+			}
+			if ref.InstallImageID > 0 {
+				instImg, err := wimStore.GetWindowsInstallImage(ctx, ref.InstallImageID)
+				if err != nil || instImg.State != "ready" {
+					return fmt.Errorf("образ install.wim %d недоступен", ref.InstallImageID)
+				}
+				if ref.InstallFile != "" && instImg.InstallFile != ref.InstallFile {
+					return fmt.Errorf("образ install.wim %d изменился", ref.InstallImageID)
+				}
+			}
+		}
 	}
 	if len(driverRefs) > 0 {
 		if s.DriverConfigs == nil || s.DriverPackages == nil {
@@ -718,7 +781,16 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 					return fmt.Errorf("пакет драйверов %s недоступен", inf.PackageSHA256)
 				}
 			}
-			if err := s.DriverConfigs.CheckDriverConfig(ctx, agent.DriverBuildCheck{Request: agent.DriverBuildRequest{ConfigID: config.ID, ProfileID: config.ProfileID, AnswerID: config.AnswerID, PackageINFs: config.PackageINFs}, Result: config.Build}); err != nil {
+			checkReq := agent.DriverBuildRequest{
+				ConfigID:       config.ID,
+				ProfileID:      config.ProfileID,
+				BootImageID:    ref.BootImageID,
+				InstallImageID: ref.InstallImageID,
+				InstallFile:    ref.InstallFile,
+				AnswerID:       config.AnswerID,
+				PackageINFs:    config.PackageINFs,
+			}
+			if err := s.DriverConfigs.CheckDriverConfig(ctx, agent.DriverBuildCheck{Request: checkReq, Result: config.Build}); err != nil {
 				return fmt.Errorf("файлы конфигурации драйверов %d недоступны", config.ID)
 			}
 			delete(driverRefs, config.ID)
@@ -755,6 +827,16 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 				checkedAnswers[answer.ID] = true
 			}
 		}
+	}
+	if len(selected) == 0 {
+		return nil
+	}
+	if s.Images == nil || s.WindowsISO == nil {
+		return fmt.Errorf("службы образов недоступны")
+	}
+	profiles, err := s.Store.WindowsProfiles(ctx)
+	if err != nil {
+		return err
 	}
 	catalog, err := s.Images.Catalog(ctx)
 	if err != nil {

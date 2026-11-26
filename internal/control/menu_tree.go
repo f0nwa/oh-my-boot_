@@ -14,6 +14,7 @@ const menuFolderMarker = "# omb:folders-v1 "
 const menuWindowsMarker = "# omb:winiso-v1 "
 const menuAnswerMarker = "# omb:winanswers-v1 "
 const menuDriverMarker = "# omb:windrivers-v1 "
+const menuWIMMarker = "# omb:winwim-v1 "
 
 type menuProfile struct {
 	kind               string
@@ -26,6 +27,12 @@ type menuProfile struct {
 	ubuntuSourceID     int64
 	ubuntuSourceSHA256 string
 	windowsISOID       int64
+	bootImageID        int64
+	bootImageSource    string
+	bootImageISOID     int64
+	bootImageSHA256    string
+	installImageID     int64
+	installImageFile   string
 	answerID           int64
 	answerSHA256       string
 	driverConfigID     int64
@@ -263,9 +270,35 @@ func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage st
 	var selectedAnswers []menuWindowsAnswerRef
 	seenAnswers := map[[2]int64]bool{}
 	var selectedDrivers []menuDriverConfigRef
+	var selectedWIMs []menuWindowsWIMRef
+	seenWIMs := map[menuWindowsWIMRef]bool{}
 	for _, profile := range profiles {
+		if profile.bootImageID > 0 || profile.installImageID > 0 {
+			ref := menuWindowsWIMRef{
+				BootImageID:    profile.bootImageID,
+				BootSHA256:     profile.bootImageSHA256,
+				InstallImageID: profile.installImageID,
+				InstallFile:    profile.installImageFile,
+				BareWIM:        profile.kind == BootProfileWindowsWIM,
+			}
+			if !seenWIMs[ref] {
+				seenWIMs[ref] = true
+				selectedWIMs = append(selectedWIMs, ref)
+			}
+		}
 		if profile.driverConfigID > 0 {
-			selectedDrivers = append(selectedDrivers, menuDriverConfigRef{ID: profile.driverConfigID, ProfileID: profile.windowsISOID, AnswerID: profile.driverAnswerID, AnswerSHA256: profile.driverAnswerSHA256, WIMKey: profile.driverWIMKey, WIMSHA256: profile.driverWIMSHA256, ScriptSHA256: profile.driverScriptSHA256})
+			selectedDrivers = append(selectedDrivers, menuDriverConfigRef{
+				ID:             profile.driverConfigID,
+				ProfileID:      profile.windowsISOID,
+				BootImageID:    profile.bootImageID,
+				InstallImageID: profile.installImageID,
+				InstallFile:    profile.installImageFile,
+				AnswerID:       profile.driverAnswerID,
+				AnswerSHA256:   profile.driverAnswerSHA256,
+				WIMKey:         profile.driverWIMKey,
+				WIMSHA256:      profile.driverWIMSHA256,
+				ScriptSHA256:   profile.driverScriptSHA256,
+			})
 		} else if profile.answerID > 0 {
 			key := [2]int64{profile.answerID, profile.windowsISOID}
 			if !seenAnswers[key] {
@@ -296,6 +329,13 @@ func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage st
 			return nil, err
 		}
 		out.WriteString(menuDriverMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
+	}
+	if len(selectedWIMs) > 0 {
+		encoded, err := json.Marshal(selectedWIMs)
+		if err != nil {
+			return nil, err
+		}
+		out.WriteString(menuWIMMarker + base64.RawURLEncoding.EncodeToString(encoded) + "\n")
 	}
 	out.WriteString(menuTheme)
 	writeMenuNode(&out, root, title, diagnosticLabel, localTimer, diagnosticsOn, defaultTarget)
@@ -400,9 +440,9 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 	}
 	if profile.driverConfigID > 0 {
 		configID := fmt.Sprintf("%d", profile.driverConfigID)
-		profileID := fmt.Sprintf("%d", profile.windowsISOID)
+		winpeshlURL := windowsWinpeshlURL(base, profile)
 		files := []windowsInitrdFile{
-			{name: "winpeshl.ini", url: base + "/assets/windows-profiles/" + profileID + "/winpeshl.ini"},
+			{name: "winpeshl.ini", url: winpeshlURL},
 			{name: "omb-setup.cmd", url: base + "/assets/windows-driver-configs/" + configID + "/omb-setup.cmd"},
 		}
 		if profile.driverAnswerID > 0 {
@@ -416,22 +456,22 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
 		return
 	}
-	if profile.windowsISOID > 0 {
-		id := fmt.Sprintf("%d", profile.windowsISOID)
-		prefix := base + "/assets/windows-profiles/" + id + "/"
-		startup := prefix + "omb-setup.cmd"
-		files := []windowsInitrdFile{{name: "winpeshl.ini", url: prefix + "winpeshl.ini"}}
+	if profile.windowsISOID > 0 || profile.kind == BootProfileWindowsWIM {
+		winpeshlURL := windowsWinpeshlURL(base, profile)
+		startup := windowsStartupURL(base, profile)
+		bootWIM := windowsBootWIMURL(base, profile)
+		files := []windowsInitrdFile{
+			{name: "winpeshl.ini", url: winpeshlURL},
+			{name: "omb-setup.cmd", url: startup},
+		}
 		if profile.answerID > 0 {
 			answerPrefix := base + "/assets/windows-answers/" + fmt.Sprintf("%d", profile.answerID) + "/"
-			startup = prefix + "omb-answer-setup.cmd"
-			files = append(files, windowsInitrdFile{name: "omb-setup.cmd", url: startup}, windowsInitrdFile{name: "omb-answer.xml", url: answerPrefix + "omb-answer.xml"})
-		} else {
-			files = append(files, windowsInitrdFile{name: "omb-setup.cmd", url: startup})
+			files = append(files, windowsInitrdFile{name: "omb-answer.xml", url: answerPrefix + "omb-answer.xml"})
 		}
 		out.WriteString(":" + profile.id + "\n" + choiceReport +
 			"kernel " + base + "/assets/windows/wimboot || goto " + profile.id + "_failed\n" +
 			windowsInjectedFiles(profile.id, files...) +
-			"initrd " + prefix + "boot.wim boot.wim || goto " + profile.id + "_failed\n" +
+			"initrd " + bootWIM + " boot.wim || goto " + profile.id + "_failed\n" +
 			"boot || goto " + profile.id + "_failed\n" +
 			":" + profile.id + "_failed\necho Windows boot failed\nsleep 5\ngoto local\n")
 		return
@@ -448,6 +488,43 @@ func writeProfileBoot(out *strings.Builder, profile menuProfile) {
 		}
 		out.WriteString(strings.Replace(script, ":"+profile.id+"\n", ":"+profile.id+"\n"+choiceReport, 1))
 	}
+}
+
+func windowsWinpeshlURL(base string, profile menuProfile) string {
+	if profile.windowsISOID > 0 {
+		return base + "/assets/windows-profiles/" + fmt.Sprintf("%d", profile.windowsISOID) + "/winpeshl.ini"
+	}
+	if profile.bootImageSource == WIMSourceKindISO && profile.bootImageISOID > 0 {
+		return base + "/assets/windows-profiles/" + fmt.Sprintf("%d", profile.bootImageISOID) + "/winpeshl.ini"
+	}
+	if profile.bootImageID > 0 {
+		return base + "/assets/windows-boot-images/" + fmt.Sprintf("%d", profile.bootImageID) + "/winpeshl.ini"
+	}
+	return base + "/assets/windows/winpeshl.ini"
+}
+
+func windowsStartupURL(base string, profile menuProfile) string {
+	scriptName := "omb-setup.cmd"
+	if profile.answerID > 0 {
+		scriptName = "omb-answer-setup.cmd"
+	}
+	if profile.windowsISOID > 0 && profile.installImageID == 0 {
+		return base + "/assets/windows-profiles/" + fmt.Sprintf("%d", profile.windowsISOID) + "/" + scriptName
+	}
+	if profile.installImageID > 0 {
+		return base + "/assets/windows-install-images/" + fmt.Sprintf("%d", profile.installImageID) + "/" + scriptName
+	}
+	return base + "/assets/windows-profiles/" + fmt.Sprintf("%d", profile.windowsISOID) + "/" + scriptName
+}
+
+func windowsBootWIMURL(base string, profile menuProfile) string {
+	if profile.bootImageID > 0 {
+		if profile.bootImageSource == WIMSourceKindISO && profile.bootImageISOID > 0 {
+			return base + "/assets/windows-profiles/" + fmt.Sprintf("%d", profile.bootImageISOID) + "/boot.wim"
+		}
+		return base + "/assets/windows-boot-images/" + fmt.Sprintf("%d", profile.bootImageID) + "/boot.wim"
+	}
+	return base + "/assets/windows-profiles/" + fmt.Sprintf("%d", profile.windowsISOID) + "/boot.wim"
 }
 
 func ubuntuAutoinstallSeedPath(installationKey, digest string) string {

@@ -284,3 +284,43 @@ func (s windowsMenuPageStore) Installations(context.Context) ([]Installation, er
 func (s windowsMenuPageStore) BootProfiles(context.Context) ([]BootProfile, error) {
 	return testInstallationSources(s.profiles, s.answers, nil).BootProfiles, nil
 }
+
+func TestWindowsMenuSplitWIMScriptAndMarkers(t *testing.T) {
+	bootSHA := strings.Repeat("b", 64)
+	p := WindowsProfile{ID: 17, WindowsProfileSource: WindowsProfileSource{Title: "Win11 ISO", Folder: "Windows"}, State: "ready", InstallFile: "install.wim"}
+	bootImg := WindowsBootImage{ID: 10, SourceKind: WIMSourceKindFile, Title: "Universal Boot", SHA256: bootSHA, HasSetupExe: true, State: "ready"}
+	instImg := WindowsInstallImage{ID: 20, InstallFile: "install.wim", Title: "Corp Gold", State: "ready"}
+	sources := InstallationMenuSources{
+		BootProfiles: []BootProfile{
+			{ID: 101, Kind: BootProfileWindowsISO, Title: "Win11 ISO", WindowsProfileID: 17},
+			{ID: 102, Kind: BootProfileWindowsWIM, Title: "Corp Gold", InstallImageID: 20},
+		},
+		Installations: []Installation{
+			{ID: 301, BootProfileID: 101, Title: "ISO Swapped Boot", Folder: "Windows", BootImageID: 10},
+			{ID: 302, BootProfileID: 102, Title: "Bare WIM", Folder: "Windows", BootImageID: 10, InstallImageID: 20},
+		},
+		BootImages:    []WindowsBootImage{bootImg},
+		InstallImages: []WindowsInstallImage{instImg},
+	}
+	draft := MenuDraft{
+		Title: "PXE", Label: "Diagnostics", Message: "Ready",
+		Items: []MenuDraftItem{{InstallationID: 301}, {InstallationID: 302}},
+	}
+	script, err := BuildMenuFromDraft(draft, "http://10.30.0.10:8080", []WindowsProfile{p}, nil, nil, sources)
+	if err != nil {
+		t.Fatalf("BuildMenuFromDraft: %v", err)
+	}
+	got := string(script)
+	for _, want := range []string{
+		"initrd http://10.30.0.10:8080/assets/windows-boot-images/10/boot.wim boot.wim || goto install_301_failed\n",
+		"initrd http://10.30.0.10:8080/assets/windows-boot-images/10/boot.wim boot.wim || goto install_302_failed\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in script:\n%s", want, got)
+		}
+	}
+	wimRefs := menuWindowsWIMRefs(got)
+	if len(wimRefs) != 2 {
+		t.Fatalf("expected 2 WIM refs, got %+v", wimRefs)
+	}
+}

@@ -24,8 +24,10 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 		return err
 	}
 	var sourceID int64
+	var selectedSource BootProfile
 	for _, source := range sources {
 		if source.ID == item.BootProfileID {
+			selectedSource = source
 			if source.Kind == BootProfileUbuntuISO {
 				return s.prepareUbuntuDownload(ctx, source, actor)
 			}
@@ -35,25 +37,65 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 			sourceID = source.WindowsProfileID
 		}
 	}
-	if sourceID <= 0 {
-		return fmt.Errorf("Источник загрузки недоступен")
-	}
-	profiles, err := s.Store.WindowsProfiles(ctx)
-	if err != nil {
-		return err
-	}
 	var profile WindowsProfile
-	for _, p := range profiles {
-		if p.ID == sourceID {
-			profile = p
+	var wimInfo agent.WindowsWIMInfo
+	var installFile string
+	var driverBootImageID int64
+	if selectedSource.Kind == BootProfileWindowsWIM {
+		wimStore, ok := s.windowsWIMStore()
+		if !ok {
+			return fmt.Errorf("Хранилище WIM-образов недоступно")
 		}
-	}
-	if profile.ID == 0 {
-		return fmt.Errorf("Источник загрузки недоступен")
-	}
-	wimInfo, err := s.prepareDownloadISO(ctx, profile, actor)
-	if err != nil {
-		return err
+		bootImg, err := wimStore.GetWindowsBootImage(ctx, item.BootImageID)
+		if err != nil || bootImg.State != "ready" || !bootImg.HasSetupExe {
+			return fmt.Errorf("Выбранный boot.wim не найден или не готов")
+		}
+		instImg, err := wimStore.GetWindowsInstallImage(ctx, item.InstallImageID)
+		if err != nil || instImg.State != "ready" {
+			return fmt.Errorf("Выбранный install.wim не найден или не готов")
+		}
+		wimInfo = instImg.WIMInfo
+		installFile = instImg.InstallFile
+		if bootImg.SourceKind == WIMSourceKindFile {
+			driverBootImageID = bootImg.ID
+		} else if bootImg.WindowsProfileID > 0 {
+			profile.ID = bootImg.WindowsProfileID
+		}
+	} else {
+		if sourceID <= 0 {
+			return fmt.Errorf("Источник загрузки недоступен")
+		}
+		profiles, err := s.Store.WindowsProfiles(ctx)
+		if err != nil {
+			return err
+		}
+		for _, p := range profiles {
+			if p.ID == sourceID {
+				profile = p
+			}
+		}
+		if profile.ID == 0 {
+			return fmt.Errorf("Источник загрузки недоступен")
+		}
+		wimInfo, err = s.prepareDownloadISO(ctx, profile, actor)
+		if err != nil {
+			return err
+		}
+		if item.InstallImageID > 0 {
+			if wimStore, ok := s.windowsWIMStore(); ok {
+				if instImg, err := wimStore.GetWindowsInstallImage(ctx, item.InstallImageID); err == nil && instImg.State == "ready" {
+					wimInfo = instImg.WIMInfo
+					installFile = instImg.InstallFile
+				}
+			}
+		}
+		if item.BootImageID > 0 {
+			if wimStore, ok := s.windowsWIMStore(); ok {
+				if bootImg, err := wimStore.GetWindowsBootImage(ctx, item.BootImageID); err == nil && bootImg.State == "ready" && bootImg.SourceKind == WIMSourceKindFile {
+					driverBootImageID = bootImg.ID
+				}
+			}
+		}
 	}
 	if item.DriverConfigID == 0 {
 		if profile.BootMode == "" {
@@ -85,7 +127,16 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 				problem = fmt.Errorf("Подготовка WinPE недоступна")
 			} else {
 				buildCtx, stop := context.WithTimeout(ctx, 15*time.Minute)
-				result, problem = s.DriverConfigs.PrepareDriverConfig(buildCtx, agent.DriverBuildRequest{ConfigID: config.ID, ProfileID: profile.ID, AnswerID: config.AnswerID, PackageINFs: config.PackageINFs})
+				req := agent.DriverBuildRequest{
+					ConfigID:       config.ID,
+					ProfileID:      profile.ID,
+					BootImageID:    driverBootImageID,
+					InstallImageID: item.InstallImageID,
+					InstallFile:    installFile,
+					AnswerID:       config.AnswerID,
+					PackageINFs:    config.PackageINFs,
+				}
+				result, problem = s.DriverConfigs.PrepareDriverConfig(buildCtx, req)
 				stop()
 			}
 			finalCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)

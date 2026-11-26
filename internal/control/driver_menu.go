@@ -10,13 +10,16 @@ import (
 )
 
 type menuDriverConfigRef struct {
-	ID           int64  `json:"id"`
-	ProfileID    int64  `json:"profile_id"`
-	AnswerID     int64  `json:"answer_id"`
-	AnswerSHA256 string `json:"answer_sha256"`
-	WIMKey       string `json:"wim_key"`
-	WIMSHA256    string `json:"wim_sha256"`
-	ScriptSHA256 string `json:"script_sha256"`
+	ID             int64  `json:"id"`
+	ProfileID      int64  `json:"profile_id"`
+	BootImageID    int64  `json:"boot_image_id,omitempty"`
+	InstallImageID int64  `json:"install_image_id,omitempty"`
+	InstallFile    string `json:"install_file,omitempty"`
+	AnswerID       int64  `json:"answer_id"`
+	AnswerSHA256   string `json:"answer_sha256"`
+	WIMKey         string `json:"wim_key"`
+	WIMSHA256      string `json:"wim_sha256"`
+	ScriptSHA256   string `json:"script_sha256"`
 }
 
 func menuDriverConfigRefs(script string) map[int64]menuDriverConfigRef {
@@ -34,7 +37,7 @@ func menuDriverConfigRefs(script string) map[int64]menuDriverConfigRef {
 			return selected
 		}
 		for _, ref := range refs {
-			if ref.ID > 0 && ref.ProfileID > 0 && validAnswerHash(ref.WIMKey) && validAnswerHash(ref.WIMSHA256) && validAnswerHash(ref.ScriptSHA256) && (ref.AnswerID == 0 || (ref.AnswerID > 0 && validAnswerHash(ref.AnswerSHA256))) {
+			if ref.ID > 0 && (ref.ProfileID > 0 || ref.BootImageID > 0) && validAnswerHash(ref.WIMKey) && validAnswerHash(ref.WIMSHA256) && validAnswerHash(ref.ScriptSHA256) && (ref.AnswerID == 0 || (ref.AnswerID > 0 && validAnswerHash(ref.AnswerSHA256))) {
 				selected[ref.ID] = ref
 			}
 		}

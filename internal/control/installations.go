@@ -166,6 +166,22 @@ func installationRows(profiles []WindowsProfile, answers []WindowsAnswerVariant,
 						row.SourcePath, row.StorageID = profile.UbuntuPath, profile.UbuntuStorageID
 					}
 				}
+				if profile.Kind == BootProfileWindowsWIM {
+					if instImg, ok := findWindowsInstallImage(source.InstallImages, profile.InstallImageID); ok {
+						row.Image = instImg.Title
+						row.SourcePath, row.StorageID = instImg.Path, instImg.StorageID
+						switch instImg.State {
+						case "pending":
+							row.Status = "needs_prepare"
+						case "preparing":
+							row.Status = "preparing"
+						case "error":
+							row.Status, row.Error = "error", instImg.Error
+						case "unavailable":
+							row.Status, row.Error = "unavailable", instImg.Error
+						}
+					}
+				}
 			}
 		}
 		answerID := installation.AnswerID

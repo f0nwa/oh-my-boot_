@@ -170,6 +170,108 @@ type InstallationMenuSources struct {
 	Installations []Installation
 	BootProfiles  []BootProfile
 	Autoinstalls  []UbuntuAutoinstallSummary
+	BootImages    []WindowsBootImage
+	InstallImages []WindowsInstallImage
+}
+
+func findWindowsBootImage(list []WindowsBootImage, id int64) (WindowsBootImage, bool) {
+	for _, img := range list {
+		if img.ID == id {
+			return img, true
+		}
+	}
+	return WindowsBootImage{}, false
+}
+
+func findWindowsInstallImage(list []WindowsInstallImage, id int64) (WindowsInstallImage, bool) {
+	for _, img := range list {
+		if img.ID == id {
+			return img, true
+		}
+	}
+	return WindowsInstallImage{}, false
+}
+
+func windowsWIMMenuProfile(installation Installation, base string, bootImg WindowsBootImage, installImg WindowsInstallImage, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, error) {
+	key := menuDraftItemKey(MenuDraftItem{InstallationID: installation.ID})
+	entry := menuProfile{
+		id:               key,
+		kind:             BootProfileWindowsWIM,
+		title:            installation.Title,
+		base:             base,
+		bootImageID:      bootImg.ID,
+		bootImageSource:  bootImg.SourceKind,
+		bootImageISOID:   bootImg.WindowsProfileID,
+		bootImageSHA256:  bootImg.SHA256,
+		installImageID:   installImg.ID,
+		installImageFile: installImg.InstallFile,
+	}
+	if installation.DriverConfigID > 0 {
+		for _, config := range configs {
+			if config.ID != installation.DriverConfigID {
+				continue
+			}
+			if config.State != "ready" || len(config.PackageINFs) == 0 || !validAnswerHash(config.Build.WIMKey) || !validAnswerHash(config.Build.WIMSHA256) || !validAnswerHash(config.Build.ScriptSHA256) {
+				return menuProfile{}, fmt.Errorf("WinPE driver configuration %d is not ready", config.ID)
+			}
+			answerHash := ""
+			hint := driverSummary(config)
+			if config.AnswerID > 0 {
+				found := false
+				for _, answer := range answers {
+					if answer.ID == config.AnswerID && answer.State == "ready" && answer.Size > 0 && validAnswerHash(answer.SHA256) {
+						if installImg.WIMInfo.Known {
+							if compat := EvaluateWindowsAnswerCompatibility(answer.Target, installImg.WIMInfo); compat.Status == "incompatible" {
+								return menuProfile{}, fmt.Errorf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; "))
+							}
+						}
+						answerHash, found = answer.SHA256, true
+						if answer.WipesDisk != nil && *answer.WipesDisk {
+							hint = "!! WIPES DISK"
+						}
+						break
+					}
+				}
+				if !found {
+					return menuProfile{}, fmt.Errorf("WinPE driver configuration answer is unavailable")
+				}
+			}
+			entry.hint = hint
+			entry.driverConfigID = config.ID
+			entry.driverAnswerID = config.AnswerID
+			entry.driverAnswerSHA256 = answerHash
+			entry.driverWIMKey = config.Build.WIMKey
+			entry.driverWIMSHA256 = config.Build.WIMSHA256
+			entry.driverScriptSHA256 = config.Build.ScriptSHA256
+			return entry, nil
+		}
+		return menuProfile{}, fmt.Errorf("WinPE driver configuration %d is not ready", installation.DriverConfigID)
+	}
+	if installation.AnswerID > 0 {
+		for _, answer := range answers {
+			if answer.ID != installation.AnswerID {
+				continue
+			}
+			if answer.State != "ready" || answer.Size <= 0 || !safeMenuText(answer.Title, 80) || !isASCII(answer.Title) || !validAnswerHash(answer.SHA256) {
+				return menuProfile{}, fmt.Errorf("Windows answer %d is not ready for PXE", answer.ID)
+			}
+			if installImg.WIMInfo.Known {
+				if compat := EvaluateWindowsAnswerCompatibility(answer.Target, installImg.WIMInfo); compat.Status == "incompatible" {
+					return menuProfile{}, fmt.Errorf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; "))
+				}
+			}
+			hint := "auto install"
+			if answer.WipesDisk != nil && *answer.WipesDisk {
+				hint = "!! WIPES DISK"
+			}
+			entry.hint = hint
+			entry.answerID = answer.ID
+			entry.answerSHA256 = answer.SHA256
+			return entry, nil
+		}
+		return menuProfile{}, fmt.Errorf("Windows answer %d is not ready for PXE", installation.AnswerID)
+	}
+	return entry, nil
 }
 
 func menuProfileForInstallation(id int64, base string, sources InstallationMenuSources, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
@@ -211,9 +313,13 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 					}
 				}
 			case BootProfileWindowsISO, BootProfileWinPEISO:
+				var isoProfile WindowsProfile
 				for _, iso := range profiles {
-					if iso.ID == profile.WindowsProfileID && (profile.Kind == BootProfileWinPEISO) != (iso.BootMode == agent.ISOStrelecMode) {
-						return menuProfile{}, "", fmt.Errorf("ISO boot mode differs from the selected source")
+					if iso.ID == profile.WindowsProfileID {
+						isoProfile = iso
+						if (profile.Kind == BootProfileWinPEISO) != (iso.BootMode == agent.ISOStrelecMode) {
+							return menuProfile{}, "", fmt.Errorf("ISO boot mode differs from the selected source")
+						}
 					}
 				}
 				var err error
@@ -222,6 +328,62 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 					return menuProfile{}, "", err
 				}
 				entry.id, entry.kind = key, profile.Kind
+				if profile.Kind == BootProfileWindowsISO && (installation.BootImageID > 0 || installation.InstallImageID > 0) {
+					activeWIM := isoProfile.WIMInfo
+					if installation.InstallImageID > 0 {
+						instImg, ok := findWindowsInstallImage(sources.InstallImages, installation.InstallImageID)
+						if !ok || instImg.State != "ready" {
+							return menuProfile{}, "", fmt.Errorf("Windows install image %d is not ready", installation.InstallImageID)
+						}
+						entry.installImageID = instImg.ID
+						entry.installImageFile = instImg.InstallFile
+						activeWIM = instImg.WIMInfo
+						ansID := installation.AnswerID
+						if ansID == 0 && entry.driverAnswerID > 0 {
+							ansID = entry.driverAnswerID
+						}
+						if ansID > 0 && activeWIM.Known {
+							for _, a := range answers {
+								if a.ID == ansID {
+									if compat := EvaluateWindowsAnswerCompatibility(a.Target, activeWIM); compat.Status == "incompatible" {
+										return menuProfile{}, "", fmt.Errorf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; "))
+									}
+									break
+								}
+							}
+						}
+					}
+					if installation.BootImageID > 0 {
+						bootImg, ok := findWindowsBootImage(sources.BootImages, installation.BootImageID)
+						if !ok || bootImg.State != "ready" {
+							return menuProfile{}, "", fmt.Errorf("Windows boot image %d is not ready", installation.BootImageID)
+						}
+						if compat := CheckBootInstallCompat(bootImg, activeWIM, true); compat.Status == "incompatible" {
+							return menuProfile{}, "", fmt.Errorf("Несовместимая пара boot.wim и install.wim: %s", strings.Join(compat.Errors, "; "))
+						}
+						entry.bootImageID = bootImg.ID
+						entry.bootImageSource = bootImg.SourceKind
+						entry.bootImageISOID = bootImg.WindowsProfileID
+						entry.bootImageSHA256 = bootImg.SHA256
+					}
+				}
+			case BootProfileWindowsWIM:
+				bootImg, ok := findWindowsBootImage(sources.BootImages, installation.BootImageID)
+				if !ok || bootImg.State != "ready" {
+					return menuProfile{}, "", fmt.Errorf("Windows boot image %d is not ready", installation.BootImageID)
+				}
+				instImg, ok := findWindowsInstallImage(sources.InstallImages, installation.InstallImageID)
+				if !ok || instImg.State != "ready" {
+					return menuProfile{}, "", fmt.Errorf("Windows install image %d is not ready", installation.InstallImageID)
+				}
+				if compat := CheckBootInstallCompat(bootImg, instImg.WIMInfo, false); compat.Status == "incompatible" {
+					return menuProfile{}, "", fmt.Errorf("Несовместимая пара boot.wim и install.wim: %s", strings.Join(compat.Errors, "; "))
+				}
+				var err error
+				entry, err = windowsWIMMenuProfile(installation, base, bootImg, instImg, answers, configs)
+				if err != nil {
+					return menuProfile{}, "", err
+				}
 			default:
 				return menuProfile{}, "", fmt.Errorf("unsupported boot profile kind %q", profile.Kind)
 			}

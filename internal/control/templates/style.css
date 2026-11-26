@@ -1331,4 +1331,16 @@ tr.is-selected{background:var(--draft-bg)}
 .bulk-dlg-tag{font-size:11px;padding:1px 6px;border-radius:4px;white-space:nowrap;flex:none}
 .bulk-dlg-tag-absent{background:var(--chip);color:var(--text-2)}
 .bulk-dlg-tag-disk{background:var(--bad-bg);color:var(--bad-text);border:1px solid var(--bad-line)}
+.wim-panel{margin:12px 0 0;padding:14px;border:1px solid var(--line-strong);border-radius:7px;background:var(--bg)}
+.wim-panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.wim-panel-head h3{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.wim-rows{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:720px){.wim-rows{grid-template-columns:1fr}}
+.wim-rows .field label{display:block;font-size:12px;color:var(--text-2);margin-bottom:4px;font-weight:500}
+.wim-rows .field select{width:100%}
+.wim-rows .field .hint{font-size:11.5px;color:var(--muted);margin:4px 0 0}
+.compat-strip{margin-top:12px;padding:9px 11px;border-radius:6px;font-size:12px;display:flex;align-items:flex-start;gap:8px}
+.compat-ok{background:var(--panel);border:1px solid var(--ok);color:var(--ok)}
+.compat-warn{background:var(--draft-bg);border:1px solid var(--draft-line);color:var(--accent-ink)}
+.compat-bad{background:var(--bad-bg);border:1px solid var(--bad-line);color:var(--bad-text)}
 .hidden{display:none!important}

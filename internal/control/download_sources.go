@@ -133,6 +133,9 @@ func (s *Server) downloadSourceChoices(ctx context.Context, shared []BootProfile
 	maintLookup := s.loadMaintenanceLookup(ctx)
 	applyMaintenanceLocksToChoices(choices, windows, maintLookup)
 	for _, image := range catalog.Images {
+		if (image.Kind != "" && image.Kind != "iso") || !strings.EqualFold(path.Ext(image.Path), ".iso") {
+			continue
+		}
 		if existing[fmt.Sprintf("%d:%s", image.StorageID, image.Path)] {
 			continue
 		}

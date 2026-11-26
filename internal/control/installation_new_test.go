@@ -23,7 +23,54 @@ type newInstallStore struct {
 	bootProfiles       []BootProfile
 	installations      []Installation
 	ubuntuAutoinstalls []UbuntuAutoinstallSummary
+	bootImages         []WindowsBootImage
+	installImages      []WindowsInstallImage
 }
+
+func (s *newInstallStore) ListWindowsBootImages(context.Context) ([]WindowsBootImage, error) {
+	return s.bootImages, nil
+}
+func (s *newInstallStore) GetWindowsBootImage(_ context.Context, id int64) (WindowsBootImage, error) {
+	for _, img := range s.bootImages {
+		if img.ID == id {
+			return img, nil
+		}
+	}
+	return WindowsBootImage{}, fmt.Errorf("boot image %d not found", id)
+}
+func (s *newInstallStore) UpsertFileBootImage(context.Context, WindowsBootImageSource) (WindowsBootImage, error) {
+	return WindowsBootImage{}, nil
+}
+func (s *newInstallStore) SetBootImageReady(context.Context, int64, string, bool, agent.WindowsWIMInfo) error {
+	return nil
+}
+func (s *newInstallStore) SetBootImageError(context.Context, int64, string, string) error {
+	return nil
+}
+func (s *newInstallStore) SetBootImageTitle(context.Context, int64, string) error { return nil }
+func (s *newInstallStore) DeleteWindowsBootImage(context.Context, int64) error    { return nil }
+func (s *newInstallStore) ListWindowsInstallImages(context.Context) ([]WindowsInstallImage, error) {
+	return s.installImages, nil
+}
+func (s *newInstallStore) GetWindowsInstallImage(_ context.Context, id int64) (WindowsInstallImage, error) {
+	for _, img := range s.installImages {
+		if img.ID == id {
+			return img, nil
+		}
+	}
+	return WindowsInstallImage{}, fmt.Errorf("install image %d not found", id)
+}
+func (s *newInstallStore) UpsertWindowsInstallImage(context.Context, WindowsInstallImageSource) (WindowsInstallImage, error) {
+	return WindowsInstallImage{}, nil
+}
+func (s *newInstallStore) SetInstallImageReady(context.Context, int64, string, agent.WindowsWIMInfo) error {
+	return nil
+}
+func (s *newInstallStore) SetInstallImageError(context.Context, int64, string, string) error {
+	return nil
+}
+func (s *newInstallStore) SetInstallImageTitle(context.Context, int64, string) error { return nil }
+func (s *newInstallStore) DeleteWindowsInstallImage(context.Context, int64) error    { return nil }
 
 func (s *newInstallStore) DriverPackages(context.Context) ([]DriverPackage, error) {
 	return s.packages, nil
@@ -528,6 +575,86 @@ func TestComposeMenuTitle(t *testing.T) {
 			}
 			if len([]rune(got)) > 80 {
 				t.Errorf("len(got) = %d > 80", len([]rune(got)))
+			}
+		})
+	}
+}
+
+func TestInstallationFormShowsWindowsComponentsOnlyForWindows(t *testing.T) {
+	s, store := newInstallServer(t)
+	store.profiles = append(store.profiles, WindowsProfile{
+		ID: 18,
+		WindowsProfileSource: WindowsProfileSource{
+			StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "strelec.iso",
+			Size: 12, Modified: store.profiles[0].Modified, Title: "Strelec x64", BootMode: agent.ISOStrelecMode,
+		},
+		State: "ready",
+	})
+	store.bootImages = []WindowsBootImage{
+		{
+			ID: 10, SourceKind: WIMSourceKindFile, StorageID: 7, Path: "winpe/win11-boot.wim",
+			Title: "Win11 Universal Boot", SHA256: strings.Repeat("b", 64), HasSetupExe: true, State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 2, Architecture: "amd64", Build: 26100}}},
+		},
+	}
+	store.installImages = []WindowsInstallImage{
+		{
+			ID: 20, StorageID: 7, Path: "wims/win11-corp.wim", InstallFile: "install.wim",
+			Title: "Win11 Corp Gold", State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 11 Pro", EditionID: "Professional", Architecture: "amd64", Build: 26100}}},
+		},
+	}
+	store.bootProfiles = append(store.bootProfiles,
+		BootProfile{ID: 53, Kind: BootProfileWinPEISO, WindowsProfileID: 18, Title: "Strelec x64"},
+		BootProfile{ID: 55, Kind: BootProfileWindowsWIM, InstallImageID: 20, Title: "Win11 Corp Gold"},
+	)
+
+	cases := []struct {
+		name         string
+		profileID    string
+		wantVisible  bool
+		wantNoISOOpt bool
+	}{
+		{"windows_iso", "50", true, false},
+		{"windows_wim", "55", true, true},
+		{"ubuntu_builtin", "52", false, false},
+		{"winpe_iso_strelec", "53", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := libraryGet(t, s, "/installations/new?boot_profile_id="+tc.profileID)
+			if strings.Contains(body, "<details") || strings.Contains(body, "<summary") {
+				t.Fatalf("form must not contain <details> or <summary>")
+			}
+			idx := strings.Index(body, `id="windows-wim-components"`)
+			if idx < 0 {
+				t.Fatalf("missing #windows-wim-components in body")
+			}
+			tagEnd := strings.Index(body[idx:], ">")
+			if tagEnd < 0 {
+				t.Fatalf("malformed #windows-wim-components tag")
+			}
+			tag := body[idx : idx+tagEnd+1]
+			isHidden := strings.Contains(tag, " hidden")
+			isDisabled := strings.Contains(tag, " disabled")
+			if tc.wantVisible && (isHidden || isDisabled) {
+				t.Fatalf("%s: expected #windows-wim-components visible and enabled, got tag: %s", tc.name, tag)
+			}
+			if !tc.wantVisible && (!isHidden || !isDisabled) {
+				t.Fatalf("%s: expected #windows-wim-components hidden and disabled, got tag: %s", tc.name, tag)
+			}
+			if tc.wantVisible {
+				if !strings.Contains(body, "Win11 Universal Boot") || !strings.Contains(body, "Win11 Corp Gold") {
+					t.Fatalf("%s: expected boot.wim and install.wim options in form", tc.name)
+				}
+			}
+			if tc.wantNoISOOpt {
+				if !strings.Contains(body, `id="windows-drivers"`) || strings.Contains(body, `id="windows-drivers" hidden`) {
+					t.Fatalf("%s: expected #windows-drivers visible for windows_wim", tc.name)
+				}
+				if !strings.Contains(body, `id="windows-answers"`) || strings.Contains(body, `id="windows-answers" hidden`) {
+					t.Fatalf("%s: expected #windows-answers visible for windows_wim", tc.name)
+				}
 			}
 		})
 	}

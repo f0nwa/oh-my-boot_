@@ -369,8 +369,10 @@ type pageData struct {
 	HasAnyISOImages       bool
 	HasAnyBootWIMImages   bool
 	HasAnyInstallWIMImages bool
-	BootWIMImages         []bootWIMRow
-	InstallWIMImages      []installWIMRow
+	BootWIMImages          []bootWIMRow
+	InstallWIMImages       []installWIMRow
+	WindowsBootImages      []WindowsBootImage
+	WindowsInstallImages   []WindowsInstallImage
 	SearchResults         []searchResult
 	SessionIndex          int
 	DHCPEvents            []agent.DHCPEvent

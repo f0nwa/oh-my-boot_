@@ -2,17 +2,22 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"reflect"
 	"strings"
 	"testing"
+
+	"omb/internal/agent"
 )
 
 type unifiedMenuStore struct {
 	*draftStore
 	installations []Installation
 	bootProfiles  []BootProfile
+	bootImages    []WindowsBootImage
+	installImages []WindowsInstallImage
 }
 
 func (s *unifiedMenuStore) Installations(context.Context) ([]Installation, error) {
@@ -21,6 +26,50 @@ func (s *unifiedMenuStore) Installations(context.Context) ([]Installation, error
 func (s *unifiedMenuStore) BootProfiles(context.Context) ([]BootProfile, error) {
 	return s.bootProfiles, nil
 }
+func (s *unifiedMenuStore) ListWindowsBootImages(context.Context) ([]WindowsBootImage, error) {
+	return s.bootImages, nil
+}
+func (s *unifiedMenuStore) GetWindowsBootImage(_ context.Context, id int64) (WindowsBootImage, error) {
+	for _, img := range s.bootImages {
+		if img.ID == id {
+			return img, nil
+		}
+	}
+	return WindowsBootImage{}, fmt.Errorf("boot image %d not found", id)
+}
+func (s *unifiedMenuStore) UpsertFileBootImage(context.Context, WindowsBootImageSource) (WindowsBootImage, error) {
+	return WindowsBootImage{}, nil
+}
+func (s *unifiedMenuStore) SetBootImageReady(context.Context, int64, string, bool, agent.WindowsWIMInfo) error {
+	return nil
+}
+func (s *unifiedMenuStore) SetBootImageError(context.Context, int64, string, string) error {
+	return nil
+}
+func (s *unifiedMenuStore) SetBootImageTitle(context.Context, int64, string) error { return nil }
+func (s *unifiedMenuStore) DeleteWindowsBootImage(context.Context, int64) error    { return nil }
+func (s *unifiedMenuStore) ListWindowsInstallImages(context.Context) ([]WindowsInstallImage, error) {
+	return s.installImages, nil
+}
+func (s *unifiedMenuStore) GetWindowsInstallImage(_ context.Context, id int64) (WindowsInstallImage, error) {
+	for _, img := range s.installImages {
+		if img.ID == id {
+			return img, nil
+		}
+	}
+	return WindowsInstallImage{}, fmt.Errorf("install image %d not found", id)
+}
+func (s *unifiedMenuStore) UpsertWindowsInstallImage(context.Context, WindowsInstallImageSource) (WindowsInstallImage, error) {
+	return WindowsInstallImage{}, nil
+}
+func (s *unifiedMenuStore) SetInstallImageReady(context.Context, int64, string, agent.WindowsWIMInfo) error {
+	return nil
+}
+func (s *unifiedMenuStore) SetInstallImageError(context.Context, int64, string, string) error {
+	return nil
+}
+func (s *unifiedMenuStore) SetInstallImageTitle(context.Context, int64, string) error { return nil }
+func (s *unifiedMenuStore) DeleteWindowsInstallImage(context.Context, int64) error    { return nil }
 
 func unifiedMenuFixture(t *testing.T) (*Server, *unifiedMenuStore, *[]string) {
 	t.Helper()
@@ -224,5 +273,86 @@ func TestUnifiedMenuReportsChoiceBeforeBootFiles(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUnifiedMenuPublishesAndRollsBackSplitWindowsWIM(t *testing.T) {
+	s, store, published := unifiedMenuFixture(t)
+	s.DriverConfigs, s.DriverPackages = &recordingDriverCheck{}, &recordingPackageCheck{}
+	bootSHA := strings.Repeat("b", 64)
+	driverWIMKey := strings.Repeat("1", 64)
+	store.bootImages = []WindowsBootImage{
+		{
+			ID: 10, SourceKind: WIMSourceKindFile, StorageID: 7, Path: "winpe/win11-boot.wim",
+			Title: "Win11 Universal Boot", SHA256: bootSHA, HasSetupExe: true, State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 2, Architecture: "amd64", Build: 26100}}},
+		},
+	}
+	store.installImages = []WindowsInstallImage{
+		{
+			ID: 20, StorageID: 7, Path: "wims/win11-corp.wim", InstallFile: "install.wim",
+			Title: "Win11 Corp Gold", State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 11 Pro", EditionID: "Professional", Architecture: "amd64", Build: 26100}}},
+		},
+	}
+	store.bootProfiles = append(store.bootProfiles, BootProfile{
+		ID: 3, Kind: BootProfileWindowsWIM, InstallImageID: 20, Title: "Win11 Corp Gold",
+	})
+	// Add a driver config for standalone windows_wim (ProfileID=0).
+	store.configs = append(store.configs, DriverConfig{
+		ID: 40, ProfileID: 0, AnswerID: 0, Title: "Bare Drivers", State: "ready",
+		PackageINFs: []agent.SelectedINF{{PackageSHA256: strings.Repeat("a", 64), INFPath: "NetKVM/netkvm.inf"}},
+		Build: agent.DriverBuildResult{
+			WIMKey: driverWIMKey, WIMSHA256: strings.Repeat("2", 64), ScriptSHA256: strings.Repeat("3", 64),
+		},
+	})
+	// Item 72: ISO + swapped standalone boot.wim (no drivers) -> /assets/windows-boot-images/10/boot.wim
+	store.installations[1].BootImageID = 10
+	// Item 74: standalone windows_wim + boot.wim 10 + driver config 40 -> /assets/windows-driver-wims/<key>/boot.wim
+	inst74 := Installation{ID: 74, BootProfileID: 3, Title: "Win11 Bare Drivers", Folder: "Windows", BootImageID: 10, InstallImageID: 20, DriverConfigID: 40}
+	store.installations = append(store.installations, inst74)
+	store.draft.Items = []MenuDraftItem{
+		{InstallationID: 72, Title: "Windows ISO Swap", Folder: "Windows", Components: installationComponents(store.installations[1])},
+		{InstallationID: 74, Title: "Win11 Bare Drivers", Folder: "Windows", Components: installationComponents(inst74)},
+	}
+
+	// Publish v1.
+	res := menuPost(t, s, "/menu/publish", url.Values{})
+	if res.Code != http.StatusSeeOther || len(*published) != 1 {
+		t.Fatalf("publish v1=%d body=%s", res.Code, res.Body.String())
+	}
+	v1Script := (*published)[0]
+	for _, want := range []string{
+		menuWIMMarker,
+		"initrd " + testBootURL + "/assets/windows-boot-images/10/boot.wim boot.wim || goto install_72_failed\n",
+		"initrd " + testBootURL + "/assets/windows-driver-wims/" + driverWIMKey + "/boot.wim boot.wim || goto install_74_failed\n",
+		"/assets/windows-driver-configs/40/omb-setup.cmd",
+	} {
+		if !strings.Contains(v1Script, want) {
+			t.Errorf("v1 menu.ipxe missing %q\nscript:\n%s", want, v1Script)
+		}
+	}
+	v1ID := store.versions[0].ID
+
+	// Publish v2 with only item 72 (without boot_image_id override).
+	store.installations[1].BootImageID = 0
+	store.draft.Items = []MenuDraftItem{
+		{InstallationID: 72, Title: "Windows ISO Plain", Folder: "Windows", Components: installationComponents(store.installations[1])},
+	}
+	res = menuPost(t, s, "/menu/publish", url.Values{})
+	if res.Code != http.StatusSeeOther || len(*published) != 2 {
+		t.Fatalf("publish v2=%d body=%s", res.Code, res.Body.String())
+	}
+
+	// Rollback to v1 must succeed and restore v1 script & components.
+	res = menuPost(t, s, "/menu/rollback", url.Values{"id": {fmt.Sprintf("%d", v1ID)}})
+	if res.Code != http.StatusSeeOther || len(*published) != 3 {
+		t.Fatalf("rollback=%d body=%s", res.Code, res.Body.String())
+	}
+	if (*published)[2] != v1Script {
+		t.Fatalf("rollback did not republish v1 script")
+	}
+	if len(store.draft.Items) != 2 || store.draft.Items[0].Components == nil || store.draft.Items[0].Components.BootImageID != 10 || store.draft.Items[1].Components.InstallImageID != 20 {
+		t.Fatalf("rollback did not restore split WIM components in draft: %+v", store.draft.Items)
 	}
 }

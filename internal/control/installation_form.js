@@ -284,8 +284,157 @@
     }
   }
 
-  function updateWindowsCompatibility(windows, profile) {
-    var wim = (windows && profile) ? parseJSON(profile.dataset.wim, null) : null;
+  function normalizeWIMArch(arch) {
+    var v = (arch || "").trim().toLowerCase();
+    if (v === "amd64" || v === "x64" || v === "x86_64") return "amd64";
+    if (v === "x86" || v === "i386") return "x86";
+    if (v === "arm64" || v === "aarch64") return "arm64";
+    return v;
+  }
+
+  function uniqueWIMArchs(wim) {
+    if (!wim || !wim.images || !wim.images.length) return [];
+    var seen = {}, out = [];
+    wim.images.forEach(function (img) {
+      var a = normalizeWIMArch(img.architecture);
+      if (a && !seen[a]) { seen[a] = true; out.push(a); }
+    });
+    return out;
+  }
+
+  function maxWIMBuild(wim) {
+    if (!wim || !wim.images || !wim.images.length) return 0;
+    var best = 0;
+    wim.images.forEach(function (img) {
+      if ((img.build || 0) > best) best = img.build;
+    });
+    return best;
+  }
+
+  function syncWIMComponentSelectors(windows, isBareWim, profile) {
+    var panel = document.getElementById("windows-wim-components");
+    var bootSel = document.getElementById("boot-image-select");
+    var instSel = document.getElementById("install-image-select");
+    if (panel) {
+      panel.hidden = !windows;
+      panel.disabled = !windows;
+    }
+    if (!windows || !bootSel || !instSel) {
+      return { bootOpt: null, instOpt: null, activeWIM: null };
+    }
+    var bootISOOpt = bootSel.querySelector('option[data-iso-default="1"]');
+    var instISOOpt = instSel.querySelector('option[data-iso-default="1"]');
+    if (bootISOOpt) {
+      bootISOOpt.hidden = isBareWim;
+      bootISOOpt.disabled = isBareWim;
+    }
+    if (instISOOpt) {
+      instISOOpt.hidden = isBareWim;
+      instISOOpt.disabled = isBareWim;
+    }
+    var targetInstallID = (profile && profile.dataset.installImage) ? profile.dataset.installImage : "";
+    Array.from(instSel.options).forEach(function (opt) {
+      if (opt.dataset.isoDefault === "1") return;
+      opt.disabled = isBareWim && targetInstallID !== "" && opt.value !== targetInstallID;
+    });
+    if (isBareWim) {
+      if (targetInstallID && instSel.value !== targetInstallID) {
+        instSel.value = targetInstallID;
+      }
+      if (!bootSel.value || bootSel.value === "0") {
+        var firstGood = Array.from(bootSel.options).find(function (o) {
+          return o.value !== "0" && !o.disabled && o.dataset.hasSetup === "true";
+        });
+        var firstAny = Array.from(bootSel.options).find(function (o) {
+          return o.value !== "0" && !o.disabled;
+        });
+        if (firstGood) bootSel.value = firstGood.value;
+        else if (firstAny) bootSel.value = firstAny.value;
+      }
+    }
+    var bootOpt = bootSel.options[bootSel.selectedIndex] || null;
+    var instOpt = instSel.options[instSel.selectedIndex] || null;
+    var activeWIM = null;
+    if (instOpt && instOpt.value !== "0" && instOpt.dataset.wim) {
+      activeWIM = parseJSON(instOpt.dataset.wim, null);
+    } else if (profile && profile.dataset.wim) {
+      activeWIM = parseJSON(profile.dataset.wim, null);
+    }
+    return { bootOpt: bootOpt, instOpt: instOpt, activeWIM: activeWIM };
+  }
+
+  function evaluateWIMPairCompat(windows, isBareWim, profile, bootOpt, instOpt, activeWIM) {
+    var strip = document.getElementById("wim-compat-strip");
+    var res = { status: "compatible", errors: [], warnings: [] };
+    if (!windows) {
+      if (strip) strip.hidden = true;
+      return res;
+    }
+    var hasBootOverride = !!(bootOpt && bootOpt.value && bootOpt.value !== "0");
+    var hasInstOverride = !!(instOpt && instOpt.value && instOpt.value !== "0");
+    if (isBareWim) {
+      if (!hasBootOverride) {
+        res.errors.push(en
+          ? "Select a ready boot.wim with setup.exe for standalone install.wim deployment"
+          : "Выберите готовый boot.wim с setup.exe для установки из отдельного install.wim");
+      } else if (bootOpt.dataset.hasSetup !== "true") {
+        res.errors.push(en
+          ? "Selected boot.wim does not contain X:\\sources\\setup.exe (WinPE only). Choose a boot.wim with Windows Setup or use a base Windows ISO."
+          : "Выбранный boot.wim не содержит X:\\sources\\setup.exe (только WinPE). Выберите boot.wim с Windows Setup или используйте базовый Windows ISO.");
+      }
+    }
+    var bootWIM = null;
+    if (hasBootOverride && bootOpt.dataset.wim) {
+      bootWIM = parseJSON(bootOpt.dataset.wim, null);
+    } else if (!isBareWim && profile && profile.dataset.wim) {
+      bootWIM = parseJSON(profile.dataset.wim, null);
+    }
+    if ((hasBootOverride || hasInstOverride || isBareWim) && bootWIM && activeWIM) {
+      var bootArchs = uniqueWIMArchs(bootWIM);
+      var instArchs = uniqueWIMArchs(activeWIM);
+      if (bootArchs.length && instArchs.length) {
+        var overlap = bootArchs.some(function (a) { return instArchs.indexOf(a) !== -1; });
+        if (!overlap) {
+          res.errors.push(en
+            ? "Architecture mismatch: boot.wim (" + bootArchs.join(", ") + ") and install.wim (" + instArchs.join(", ") + ")"
+            : "Несовпадение архитектуры: boot.wim (" + bootArchs.join(", ") + ") и install.wim (" + instArchs.join(", ") + ")");
+        }
+      }
+      var bBuild = maxWIMBuild(bootWIM);
+      var iBuild = maxWIMBuild(activeWIM);
+      if (bBuild > 0 && iBuild > 0 && bBuild < iBuild) {
+        res.warnings.push(en
+          ? "boot.wim build (" + bBuild + ") is older than install.wim build (" + iBuild + "); installation errors may occur"
+          : "Версия boot.wim (build " + bBuild + ") ниже версии install.wim (build " + iBuild + "); возможны ошибки установки");
+      }
+    }
+    if (res.errors.length) res.status = "incompatible";
+    else if (res.warnings.length) res.status = "warning";
+
+    if (strip) {
+      if (!isBareWim && !hasBootOverride && !hasInstOverride) {
+        strip.hidden = true;
+      } else {
+        strip.hidden = false;
+        if (res.status === "incompatible") {
+          strip.className = "compat-strip compat-bad";
+          strip.textContent = "✕ " + res.errors.join("; ");
+        } else if (res.status === "warning") {
+          strip.className = "compat-strip compat-warn";
+          strip.textContent = "⚠ " + res.warnings.join("; ");
+        } else {
+          strip.className = "compat-strip compat-ok";
+          strip.textContent = isBareWim
+            ? (en ? "✓ Compatible: WinPE with setup.exe → standalone install.wim." : "✓ Совместимо: WinPE (с setup.exe) → отдельный install.wim.")
+            : (en ? "✓ Compatible: selected boot.wim and install.wim match." : "✓ Совместимо: выбранные boot.wim и install.wim подходят друг к другу.");
+        }
+      }
+    }
+    return res;
+  }
+
+  function updateWindowsCompatibility(windows, profile, activeWIM, extraWarnings) {
+    var wim = windows ? activeWIM : null;
     var winProfileID = profile ? (profile.dataset.windowsProfile || "") : "";
     var wimKnown = !!(wim && wim.known && wim.images && wim.images.length);
     var unknownNote = document.getElementById("windows-wim-unknown-note");
@@ -388,20 +537,27 @@
     }
     scored.forEach(function (entry) { list.appendChild(entry.item); });
 
-    // Warning confirmation block for the currently selected script
+    // Warning confirmation block for the currently selected script and/or WIM pair
     var warnBox = document.getElementById("windows-answer-warnings");
     var warnList = document.getElementById("windows-warning-list");
     var warnCheck = warnBox ? warnBox.querySelector('input[name="confirm_warnings"]') : null;
     var selected = checked("answer_id");
     var selectedEntry = scored.find(function (e) { return e.input === selected; });
-    var needsConfirm = !!(windows && wimKnown && selectedEntry && selectedEntry.compat.status === "warning");
+    var allWarnings = [];
+    if (windows && wimKnown && selectedEntry && selectedEntry.compat.status === "warning") {
+      allWarnings = allWarnings.concat(selectedEntry.compat.warnings);
+    }
+    if (windows && extraWarnings && extraWarnings.length) {
+      allWarnings = allWarnings.concat(extraWarnings);
+    }
+    var needsConfirm = allWarnings.length > 0;
 
     if (warnBox && warnList && warnCheck) {
       warnBox.hidden = !needsConfirm;
       warnCheck.disabled = !needsConfirm;
       if (needsConfirm) {
         warnList.textContent = "";
-        selectedEntry.compat.warnings.forEach(function (msg) {
+        allWarnings.forEach(function (msg) {
           var li = document.createElement("li");
           li.textContent = msg;
           warnList.appendChild(li);
@@ -426,7 +582,8 @@
     syncPackages();
     var profile = checked("boot_profile_id");
     var kind = profile ? profile.dataset.kind : "";
-    var windows = kind === "windows_iso";
+    var isBareWim = kind === "windows_wim";
+    var windows = kind === "windows_iso" || isBareWim;
     var winpe = windows || kind === "winpe_iso";
     var isUbuntu = kind === "ubuntu_builtin" || kind === "ubuntu_iso";
 
@@ -447,8 +604,24 @@
       var el = document.getElementById(id);
       if (el) el.hidden = !winpe;
     });
+    ["summary-boot-label", "summary-boot-wim", "summary-install-label", "summary-install-wim", "summary-setup-label", "summary-setup-cmd"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.hidden = !windows;
+    });
 
-    var blockedByUnconfirmedWarning = updateWindowsCompatibility(windows, profile);
+    var wimSel = syncWIMComponentSelectors(windows, isBareWim, profile);
+    var pairCompat = evaluateWIMPairCompat(windows, isBareWim, profile, wimSel.bootOpt, wimSel.instOpt, wimSel.activeWIM);
+    var blockedByUnconfirmedWarning = updateWindowsCompatibility(windows, profile, wimSel.activeWIM, pairCompat.warnings);
+    var blockedByWIMCompat = pairCompat.status === "incompatible";
+
+    if (windows) {
+      var isoLabel = en ? "From selected ISO" : "Из выбранного ISO";
+      text("summary-boot-wim", (wimSel.bootOpt && wimSel.bootOpt.value !== "0") ? (wimSel.bootOpt.dataset.title || wimSel.bootOpt.textContent) : isoLabel);
+      text("summary-install-wim", (wimSel.instOpt && wimSel.instOpt.value !== "0") ? (wimSel.instOpt.dataset.title || wimSel.instOpt.textContent) : isoLabel);
+      var wpID = profile ? (profile.dataset.windowsProfile || "<id>") : "<id>";
+      text("summary-setup-cmd", isBareWim ? "X:\\sources\\setup.exe" : ("Y:\\" + (wpID && wpID !== "0" ? wpID : "<id>") + "\\sources\\setup.exe"));
+    }
+
     updateStepVisibility("boot-profiles", "boot-profile-search");
     updateStepVisibility("windows-drivers", "windows-driver-search");
     updateStepVisibility("windows-answers", "windows-answer-search");
@@ -481,7 +654,7 @@
     text("summary-build", (drivers || profile && profile.dataset.prepare === "true") ? (en ? "needed, a few minutes" : "нужна, несколько минут") : (en ? "not needed" : "не нужна"));
 
     if (submitBtn && !submitBtn.dataset.submitting) {
-      submitBtn.disabled = blockedByUnconfirmedWarning || hasInvalidMenuFields;
+      submitBtn.disabled = blockedByWIMCompat || blockedByUnconfirmedWarning || hasInvalidMenuFields;
       submitBtn.textContent = defaultSubmitLabel;
     }
   }

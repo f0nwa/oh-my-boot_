@@ -82,6 +82,7 @@ type bootProfileChoice struct {
 	State, Error, Path string
 	Value, StorageName string
 	DefaultTitle       string
+	InstallFile        string
 	InspectStorageID   int64
 	WIMInfo            agent.WindowsWIMInfo
 }
@@ -90,6 +91,15 @@ type bootProfileChoice struct {
 func (s *Server) bootProfileChoices(ctx context.Context, shared []BootProfile, windows []WindowsProfile) []bootProfileChoice {
 	var ubuntuProblem error
 	ubuntuChecked := false
+	var installByID map[int64]WindowsInstallImage
+	if wimStore, ok := s.windowsWIMStore(); ok {
+		if list, err := wimStore.ListWindowsInstallImages(ctx); err == nil {
+			installByID = make(map[int64]WindowsInstallImage, len(list))
+			for _, img := range list {
+				installByID[img.ID] = img
+			}
+		}
+	}
 	choices := make([]bootProfileChoice, 0, len(shared))
 	for _, profile := range shared {
 		choice := bootProfileChoice{BootProfile: profile, State: "unavailable", Error: "Профиль загрузки недоступен"}
@@ -128,6 +138,13 @@ func (s *Server) bootProfileChoices(ctx context.Context, shared []BootProfile, w
 							choice.Error = "Профиль загрузки недоступен"
 						}
 					}
+				}
+			}
+		case BootProfileWindowsWIM:
+			if img, ok := installByID[profile.InstallImageID]; ok {
+				choice.State, choice.Error, choice.Path, choice.WIMInfo, choice.InstallFile = img.State, img.Error, img.Path, img.WIMInfo, img.InstallFile
+				if img.Title != "" {
+					choice.Title = img.Title
 				}
 			}
 		}
@@ -192,6 +209,12 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 			if item.ID == data.EditInstallationID {
 				found = true
 				data.Form = url.Values{"boot_profile_id": {strconv.FormatInt(item.BootProfileID, 10)}, "title": {item.Title}, "folder": {item.Folder}, "answer_id": {strconv.FormatInt(item.AnswerID, 10)}, "autoinstall_id": {strconv.FormatInt(item.AutoinstallID, 10)}}
+				if item.BootImageID > 0 {
+					data.Form.Set("boot_image_id", strconv.FormatInt(item.BootImageID, 10))
+				}
+				if item.InstallImageID > 0 {
+					data.Form.Set("install_image_id", strconv.FormatInt(item.InstallImageID, 10))
+				}
 				if item.DriverConfigID > 0 {
 					configs, err := s.Store.DriverConfigs(r.Context())
 					if err != nil {
@@ -237,10 +260,34 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.MenuFolders = collectMenuFolders(sources.Installations, nil)
+	selectedBootImgID, _ := strconv.ParseInt(data.Form.Get("boot_image_id"), 10, 64)
+	selectedInstallImgID, _ := strconv.ParseInt(data.Form.Get("install_image_id"), 10, 64)
+	for _, img := range sources.BootImages {
+		if img.State == "ready" || (selectedBootImgID > 0 && img.ID == selectedBootImgID) {
+			data.WindowsBootImages = append(data.WindowsBootImages, img)
+		}
+	}
+	for _, img := range sources.InstallImages {
+		if img.State == "ready" || (selectedInstallImgID > 0 && img.ID == selectedInstallImgID) {
+			data.WindowsInstallImages = append(data.WindowsInstallImages, img)
+		}
+	}
 	for _, profile := range data.BootProfileChoices {
 		if data.Form.Get("boot_profile_id") == profile.Value {
 			data.SelectedBootKind = profile.Kind
 			data.SelectedWIM = profile.WIMInfo
+			if profile.Kind == BootProfileWindowsWIM && selectedInstallImgID == 0 && profile.InstallImageID > 0 {
+				selectedInstallImgID = profile.InstallImageID
+				data.Form.Set("install_image_id", strconv.FormatInt(profile.InstallImageID, 10))
+			}
+		}
+	}
+	if selectedInstallImgID > 0 {
+		for _, img := range data.WindowsInstallImages {
+			if img.ID == selectedInstallImgID {
+				data.SelectedWIM = img.WIMInfo
+				break
+			}
 		}
 	}
 	normalizeDriverForm(data.Form, data.PackageChoices)
@@ -630,10 +677,18 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Prefer the latest preparation; historical startup recipes stay frozen.
+		// When split WIM overrides are active, only reuse the previous config if
+		// the boot/install WIM selection has not changed.
+		canReuseConfig := func(other DriverConfig) bool {
+			if bootImageID == 0 && installImageID == 0 {
+				return true
+			}
+			return editID > 0 && previous.DriverConfigID == other.ID && previous.BootImageID == bootImageID && previous.InstallImageID == installImageID
+		}
 		for i := len(existing) - 1; i >= 0; i-- {
 			other := existing[i]
-			if sameDriverSelection(other, *selectedConfig) {
-				if other.State == "ready" {
+			if sameDriverSelection(other, *selectedConfig) && canReuseConfig(other) {
+				if other.State == "ready" && other.ProfileID > 0 {
 					if _, _, e := windowsMenuProfile(Installation{DriverConfigID: other.ID}, other.ProfileID, "", profiles, answers, existing); e != nil {
 						continue
 					}

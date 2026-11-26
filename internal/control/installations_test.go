@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"omb/internal/agent"
 	"omb/internal/boot"
 )
 
@@ -356,5 +357,113 @@ func TestInstallationsPageRendersLiveRefresh(t *testing.T) {
 	}
 	if !strings.Contains(body, `<script defer src="/assets/live-refresh.js"></script>`) {
 		t.Errorf("expected script /assets/live-refresh.js in /installations")
+	}
+}
+
+func TestInstallationEditAllowsSwappingBootAndInstallWIM(t *testing.T) {
+	s, store := newInstallServer(t)
+	store.bootImages = []WindowsBootImage{
+		{
+			ID: 10, SourceKind: WIMSourceKindFile, StorageID: 7, Path: "winpe/win11-boot.wim",
+			Title: "Win11 Universal Boot", SHA256: strings.Repeat("b", 64), HasSetupExe: true, State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 2, Architecture: "amd64", Build: 26100}}},
+		},
+		{
+			ID: 11, SourceKind: WIMSourceKindFile, StorageID: 7, Path: "winpe/adk-pure.wim",
+			Title: "ADK WinPE Pure", SHA256: strings.Repeat("c", 64), HasSetupExe: false, State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 1, Architecture: "amd64", Build: 26100}}},
+		},
+	}
+	store.installImages = []WindowsInstallImage{
+		{
+			ID: 20, StorageID: 7, Path: "wims/win11-pro.wim", InstallFile: "install.wim",
+			Title: "Win11 Pro Gold", State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 11 Pro", EditionID: "Professional", Architecture: "amd64", Build: 26100}}},
+		},
+		{
+			ID: 21, StorageID: 7, Path: "wims/win11-home.wim", InstallFile: "install.wim",
+			Title: "Win11 Home Only", State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 11 Home", EditionID: "Core", Architecture: "amd64", Build: 26100}}},
+		},
+	}
+	store.answers[0].Target = WindowsAnswerTarget{
+		ImageMode:     "edition",
+		EditionID:     "pro",
+		EditionLabel:  "Windows 11 Pro",
+		Architectures: []string{"amd64"},
+	}
+	store.bootProfiles = append(store.bootProfiles, BootProfile{
+		ID: 55, Kind: BootProfileWindowsWIM, InstallImageID: 20, Title: "Win11 Pro Gold",
+	})
+	// Existing ISO installation already published in active menu and in draft.
+	orig := Installation{ID: 100, BootProfileID: 51, Title: "Win11 Corp", Folder: "Windows", AnswerID: 31}
+	bare := Installation{ID: 101, BootProfileID: 55, Title: "Win11 Bare", Folder: "Windows", BootImageID: 10, InstallImageID: 20}
+	store.installations = []Installation{orig, bare}
+	origComp := installationComponents(orig)
+	store.versions = []MenuVersion{{
+		ID: 1, Active: true, Title: productMenuTitle, Label: "Diagnostics", Message: "Ready", Look: menuLook,
+		Items: []MenuVersionItem{{InstallationID: 100, Position: 0, Title: "Win11 Corp", Folder: "Windows", Components: origComp}},
+	}}
+	store.draft = &MenuDraft{
+		Title: productMenuTitle, Label: "Diagnostics", Message: "Ready",
+		Items: []MenuDraftItem{{InstallationID: 100, Title: "Win11 Corp", Folder: "Windows", Components: installationComponents(orig), InheritsTitle: true}},
+	}
+
+	// 1. Edit page pre-populates boot_image_id and install_image_id for bare WIM installation.
+	editBody := libraryGet(t, s, "/installations/101/edit")
+	if !strings.Contains(editBody, `id="windows-wim-components"`) || !strings.Contains(editBody, `value="10"`) || !strings.Contains(editBody, `selected`) {
+		t.Fatalf("expected edit page to render #windows-wim-components with preselected boot_image_id=10")
+	}
+
+	// 2. Swapping boot_image_id + compatible install_image_id updates installation and menu_draft,
+	//    while leaving active published MenuVersion untouched until /menu/publish.
+	res := menuPost(t, s, "/installations/100", url.Values{
+		"boot_profile_id":  {"51"},
+		"boot_image_id":    {"10"},
+		"install_image_id": {"20"},
+		"answer_id":        {"31"},
+		"title":            {"Win11 Corp"},
+		"folder":           {"Windows"},
+	})
+	if res.Code != http.StatusSeeOther {
+		t.Fatalf("swap boot/install WIM failed: status=%d body=%s", res.Code, res.Body.String())
+	}
+	if store.installations[0].BootImageID != 10 || store.installations[0].InstallImageID != 20 {
+		t.Fatalf("installation not updated: %+v", store.installations[0])
+	}
+	if store.draft.Items[0].Components == nil || store.draft.Items[0].Components.BootImageID != 10 || store.draft.Items[0].Components.InstallImageID != 20 {
+		t.Fatalf("draft components not updated: %+v", store.draft.Items[0].Components)
+	}
+	if store.versions[0].Items[0].Components.BootImageID != 0 || store.versions[0].Items[0].Components.InstallImageID != 0 {
+		t.Fatalf("active published menu was mutated before publish: %+v", store.versions[0].Items[0].Components)
+	}
+	changes := diffMenuDraft(draftFromVersion(store.versions[0]), *store.draft)
+	if len(changes) == 0 {
+		t.Fatalf("expected diffMenuDraft to report component change")
+	}
+
+	// 3. Review Focus #2: ADK boot.wim without setup.exe on windows_wim must return 400.
+	res = menuPost(t, s, "/installations/101", url.Values{
+		"boot_profile_id":  {"55"},
+		"boot_image_id":    {"11"},
+		"install_image_id": {"20"},
+		"title":            {"Win11 Bare"},
+		"folder":           {"Windows"},
+	})
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for ADK boot.wim without setup.exe on windows_wim, got %d: %s", res.Code, res.Body.String())
+	}
+
+	// 4. Review Focus #3: swapping install_image_id to Home edition incompatible with Pro autounattend.xml must return 400.
+	res = menuPost(t, s, "/installations/100", url.Values{
+		"boot_profile_id":  {"51"},
+		"boot_image_id":    {"10"},
+		"install_image_id": {"21"},
+		"answer_id":        {"31"},
+		"title":            {"Win11 Corp"},
+		"folder":           {"Windows"},
+	})
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for incompatible autounattend.xml after install.wim swap, got %d: %s", res.Code, res.Body.String())
 	}
 }

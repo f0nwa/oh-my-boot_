@@ -59,6 +59,7 @@
   var fileEl = document.getElementById('hash-index-file');
   var sepEl = document.getElementById('hash-index-sep');
   var progWrap = document.getElementById('hash-index-prog-wrap');
+  var trackEl = document.getElementById('hash-index-track');
   var fillEl = document.getElementById('hash-index-fill');
   var pctEl = document.getElementById('hash-index-pct');
   var speedEl = document.getElementById('hash-index-speed');
@@ -110,6 +111,7 @@
         fileEl.title = (st.current.storage_name ? st.current.storage_name + ' · ' : '') + (st.current.path || '');
       }
       if (progWrap) progWrap.hidden = false;
+      if (trackEl) trackEl.hidden = false;
       var pct = Math.max(0, Math.min(100, st.current.percent || 0));
       if (fillEl) fillEl.style.width = pct + '%';
       if (pctEl) pctEl.textContent = pct + '%';
@@ -125,6 +127,7 @@
         fileEl.title = pausedLabel;
       }
       if (progWrap) progWrap.hidden = true;
+      if (trackEl) trackEl.hidden = true;
     }
     return true;
   }

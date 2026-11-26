@@ -4,7 +4,7 @@
 {{if .WindowsAnswerVariants}}<div class="table-wrap"><table class="answers-table">{{template "answer_table_head" (dict "Page" $ "BulkGroup" "answers-windows")}}<tbody>
 {{range .WindowsAnswerVariants}}{{$uses := index $.AnswerFileUsage.Windows .ID}}<tr>
 {{if eq $.Info.User.Role "admin"}}<td class="col-check"><input type="checkbox" data-bulk-select-row data-bulk-group="answers-windows" data-bulk-value="windows:{{.ID}}" data-bulk-label="{{.Title}}" aria-label="{{.Title}}"{{if not $.AnswerFileUsage.DownloadsKnown}} disabled title="{{t "Не удалось проверить использование"}}"{{else if $uses.Downloads}} disabled title="{{t "Скрипт используется загрузками"}}"{{end}}></td>{{end}}
-<td><span class="answer-name">{{.Title}}</span><small class="answer-meta">№ {{.ID}}</small></td>
+<td>{{if eq .State "ready"}}<a class="answer-name" href="/answers/{{.ID}}/edit">{{.Title}}</a>{{else}}<span class="answer-name">{{.Title}}</span>{{end}}<small class="answer-meta">№ {{.ID}}</small></td>
 <td class="answer-target-cell"><div class="chips">{{range .Target.Chips}}<span class="chip">{{chipText .}}</span>{{else}}<span class="chip">{{t "любой образ"}}</span>{{end}}</div></td>
 <td>{{template "answer_file_author" .Author}}</td>
 <td>{{template "answer_file_created" .CreatedAt}}</td>

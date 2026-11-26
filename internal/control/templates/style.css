@@ -938,6 +938,7 @@ tr.is-migrating td{background:var(--draft-bg)}
 .answers-table th{white-space:normal}
 .answers-table td{padding-top:14px;padding-bottom:14px}
 .answers-table .answer-name{font-weight:500}
+.answers-table a.answer-name{text-underline-offset:3px}
 .answers-table .answer-meta{display:block;margin-top:4px;color:var(--muted);font-size:11px}
 .answer-target-cell .chips{gap:4px}
 .answer-target-cell .chip{font-size:11px;padding:1px 6px}

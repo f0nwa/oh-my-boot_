@@ -110,7 +110,7 @@ func TestAnswerRowActions(t *testing.T) {
 		data.Info.User.Role = role
 		data.AnswerFileUsage.DownloadsKnown = true
 		body := renderPage("answers", data)
-		for _, want := range []string{`popovertarget="answer-menu-5"`, `id="answer-menu-5"`, `href="/answers/5/edit"`} {
+		for _, want := range []string{`popovertarget="answer-menu-5"`, `id="answer-menu-5"`, `href="/answers/5/edit"`, `<a class="answer-name" href="/answers/5/edit">`} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: missing %s", role, want)
 			}
@@ -150,7 +150,7 @@ func TestAnswerFilesCommonColumns(t *testing.T) {
 		if headers[0] != headers[1] {
 			t.Fatal("headers differ between operating systems")
 		}
-		for _, want := range []string{">Windows</h2>", ">Ubuntu</h2>", "ubuntu-creator", "2026-11-02", "2026-11-01", `popovertarget="ubuntu-answer-menu-41"`, `href="/ubuntu-autoinstall/41/download"`} {
+		for _, want := range []string{">Windows</h2>", ">Ubuntu</h2>", "ubuntu-creator", "2026-11-02", "2026-11-01", `popovertarget="ubuntu-answer-menu-41"`, `href="/ubuntu-autoinstall/41/download"`, `<a class="answer-name" href="/ubuntu-autoinstall/41">Ubuntu shared</a>`} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s missing %q", lang, want)
 			}

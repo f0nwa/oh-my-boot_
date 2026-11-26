@@ -3,7 +3,7 @@
 {{if .UbuntuAutoinstalls}}<div class="table-wrap"><table class="answers-table">{{template "answer_table_head" (dict "Page" $ "BulkGroup" "answers-ubuntu")}}<tbody>
 {{range .UbuntuAutoinstalls}}{{$uses := index $.AnswerFileUsage.Ubuntu .ID}}<tr>
 {{if eq $.Info.User.Role "admin"}}<td class="col-check"><input type="checkbox" data-bulk-select-row data-bulk-group="answers-ubuntu" data-bulk-value="ubuntu:{{.ID}}" data-bulk-label="{{.Title}}" aria-label="{{.Title}}"{{if not $.AnswerFileUsage.DownloadsKnown}} disabled title="{{t "Не удалось проверить использование"}}"{{else if $uses.Downloads}} disabled title="{{t "Скрипт используется загрузками"}}"{{end}}></td>{{end}}
-<td><span class="answer-name">{{.Title}}</span></td>
+<td><a class="answer-name" href="/ubuntu-autoinstall/{{.ID}}">{{.Title}}</a></td>
 <td class="answer-target-cell"><div class="chips">{{if .IsUploaded}}<span class="chip chip-accent">Ubuntu · YAML</span>{{else}}<span class="chip">Ubuntu Desktop</span>{{end}}</div></td>
 <td>{{template "answer_file_author" .Author}}</td>
 <td>{{template "answer_file_created" .CreatedAt}}</td>

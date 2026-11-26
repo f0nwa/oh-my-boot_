@@ -231,7 +231,8 @@ func (m *DriverManager) driverScript(req DriverBuildRequest) ([]byte, error) {
 	var err error
 	shareSubdir := ""
 	if req.InstallImageID > 0 {
-		if req.InstallFile == "" || len(m.Template) == 0 || m.Password == "" {
+		tmpl, password, ok := resolveWinPETemplateAndPassword(m.Template, m.Password)
+		if req.InstallFile == "" || !ok {
 			return nil, fmt.Errorf("split install driver startup requires install_file, WinPE template, and SMB password")
 		}
 		shareSubdir = installImageDirName(req.InstallImageID)
@@ -239,7 +240,7 @@ func (m *DriverManager) driverScript(req DriverBuildRequest) ([]byte, error) {
 		if req.ProfileID > 0 {
 			setupSource = fmt.Sprintf(`Y:\%d\sources\setup.exe`, req.ProfileID)
 		}
-		base, err = winpe.RenderSplitInstallStartup(m.Template, m.Password, setupSource, shareSubdir, req.InstallFile)
+		base, err = winpe.RenderSplitInstallStartup(tmpl, password, setupSource, shareSubdir, req.InstallFile)
 		if err != nil {
 			return nil, err
 		}

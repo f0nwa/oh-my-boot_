@@ -28,7 +28,7 @@ Drivers are selected directly on the [New boot](/installations/new) form:
 - if a package contains a single `.inf`, it renders as a single selectable card;
 - if a package contains multiple `.inf` files, you can select the whole package or pick individual `.inf` entries.
 
-During the build, `omb-agent` injects the selected drivers into a copy of `boot.wim` using `wimlib-imagex`. Built `boot.wim` files are stored in `/srv/omb/tftp/windows-driver-wims/` with **SHA-256 deduplication** (source `boot.wim` + `.inf` set): if multiple boots share the same driver set, `boot.wim` is neither duplicated on disk nor rebuilt.
+During the build, `omb-agent` injects the selected drivers into a copy of the active `boot.wim` using `wimlib-imagex` — this works identically for `boot.wim` from the base ISO, when swapping in `boot.wim` from another Windows ISO, or when using a standalone file from the **boot.wim** tab under [Library → Images](/images). Built `boot.wim` files are stored in `/srv/omb/tftp/windows-driver-wims/` with **SHA-256 deduplication** (source `boot.wim` + `.inf` set): if multiple boots share the same `boot.wim` and driver set, the image is neither duplicated on disk nor rebuilt.
 
 Disk space used by configurations is shown in the WinPE configurations table and on [System → Storages](/storages) without double-counting shared `boot.wim` files.
 

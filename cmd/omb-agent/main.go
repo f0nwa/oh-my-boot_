@@ -59,21 +59,30 @@ func main() {
 		Systemctl:  agent.SMBCommandSystemctl{},
 	}
 	windows := &agent.WindowsISOManager{
-		SourceRoots: []string{"/mnt/omb-smb", "/mnt/omb-nfs"},
-		LocalRoot:   agent.LocalISORoot,
-		ConfigRoot:  "/etc/omb/winiso",
-		MountRoot:   "/mnt/omb-iso/profiles",
-		AssetRoot:   "/srv/omb/tftp/windows-profiles",
-		AnswerRoot:  "/srv/omb/tftp/windows-answers",
-		Systemctl:   agent.SMBCommandSystemctl{},
-		WIMCommands: agent.ExecDriverCommandRunner{},
+		SourceRoots:      []string{"/mnt/omb-smb", "/mnt/omb-nfs"},
+		LocalRoot:        agent.LocalISORoot,
+		ConfigRoot:       "/etc/omb/winiso",
+		MountRoot:        "/mnt/omb-iso/profiles",
+		AssetRoot:        "/srv/omb/tftp/windows-profiles",
+		BootImageRoot:    "/srv/omb/tftp/windows-boot-images",
+		InstallAssetRoot: "/srv/omb/tftp/windows-install-images",
+		AnswerRoot:       "/srv/omb/tftp/windows-answers",
+		Systemctl:        agent.SMBCommandSystemctl{},
+		WIMCommands:      agent.ExecDriverCommandRunner{},
 	}
-	driverManager := &agent.DriverManager{Root: "/var/lib/omb-agent/drivers", ProfileRoot: "/srv/omb/tftp/windows-profiles", WIMRoot: "/srv/omb/tftp/windows-driver-wims", ConfigRoot: "/srv/omb/tftp/windows-driver-configs"}
+	driverManager := &agent.DriverManager{
+		Root:          "/var/lib/omb-agent/drivers",
+		ProfileRoot:   "/srv/omb/tftp/windows-profiles",
+		BootImageRoot: windows.BootImageRoot,
+		WIMRoot:       "/srv/omb/tftp/windows-driver-wims",
+		ConfigRoot:    "/srv/omb/tftp/windows-driver-configs",
+	}
 	applier.WinPE = &agent.WinPEWaitUpdater{
-		CustomTemplatePath:  agent.CustomWinPETemplatePath,
-		DefaultTemplatePath: agent.DefaultWinPETemplatePath,
-		ProfileRoot:         windows.AssetRoot,
-		DriverConfigRoot:    driverManager.ConfigRoot,
+		CustomTemplatePath:    agent.CustomWinPETemplatePath,
+		DefaultTemplatePath:   agent.DefaultWinPETemplatePath,
+		ProfileRoot:           windows.AssetRoot,
+		InstallImageAssetRoot: windows.InstallAssetRoot,
+		DriverConfigRoot:      driverManager.ConfigRoot,
 	}
 	ubuntu := &agent.UbuntuISOManager{SourceRoots: []string{"/mnt/omb-smb", "/mnt/omb-nfs"}, LocalRoot: agent.LocalISORoot, AssetRoot: "/srv/omb/tftp", ScriptPath: *ubuntuSourceScript, RegistryRoot: boot.DefaultUbuntuRegistryRoot, LegacyConfigPath: "/etc/omb/boot.env", Runner: agent.ExecDriverCommandRunner{}}
 	listener, err := agent.ListenUnix(*socket)
@@ -87,6 +96,7 @@ func main() {
 	diskUsage := &agent.DiskUsageCollector{
 		Roots: agent.DiskUsageRoots{
 			WindowsProfiles:      windows.AssetRoot,
+			WindowsBootImages:    windows.BootImageRoot,
 			WindowsDriverWIMs:    driverManager.WIMRoot,
 			WindowsDriverConfigs: driverManager.ConfigRoot,
 			WindowsAnswers:       windows.AnswerRoot,

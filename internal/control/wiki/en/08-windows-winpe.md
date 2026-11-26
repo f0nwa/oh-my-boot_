@@ -4,19 +4,40 @@ section: os-scenarios
 order: 10
 title: Deploying Windows 10/11 via WinPE
 summary: How OMB prepares and boots Windows 10 and 11 images over the network using wimboot, WinPE, and an isolated Samba share.
-keywords: [windows, winpe, wimboot, omb-setup.cmd, ombisos, setup.exe, iso, media not ready, retrying, wpeinit]
+keywords: [windows, winpe, wimboot, boot.wim, install.wim, install.esd, omb-setup.cmd, ombisos, setup.exe, iso, media not ready, retrying, wpeinit]
 ---
 
-OMB deploys Windows 10 and Windows 11 (verified including Windows 11 26H2) on Legacy BIOS and UEFI (with or without Secure Boot) without WDS and without modifying the original ISO files.
+OMB deploys Windows 10 and Windows 11 (verified including Windows 11 26H2) on Legacy BIOS and UEFI (with or without Secure Boot) without WDS and without modifying the original ISO or WIM/ESD files.
+
+## Windows images: `ISO | boot.wim | install.wim` tabs
+
+Under [Library → Images](/images), three tabs are available:
+
+- **ISO** — full Windows and Linux ISO images on local, SMB, or NFS storage. During inspection, OMB indexes the versions of the embedded `boot.wim` and `install.wim` / `install.esd`.
+- **boot.wim** — standalone WinPE boot images (`boot.wim`), such as a newer WinPE or a custom ADK image. During inspection, OMB reads its version/build, boot index, and checks whether `sources\setup.exe` is present inside the image.
+- **install.wim** — standalone `install.wim` or `install.esd` installation images (for example, customized corporate images with slipstreamed updates and applications).
 
 ## How profile preparation works
 
-1. Upload or connect a Windows ISO on local, SMB, or NFS storage and run “Inspect ISO” on [Library → ISO Images](/images).
-2. When you create a boot under [Library → Boots](/installations), `omb-agent` prepares the Windows profile (`omb-winiso@.service`):
-   - loop-mounts the ISO read-only (`mount -o loop,ro`) at `/mnt/omb-iso/profiles/<id>`;
-   - extracts the minimal WinPE boot set (`boot.wim`, `BCD`, `boot.sdi`) into `/srv/omb/tftp/windows-profiles/<id>/`;
-   - exposes the mounted ISO content under a random token inside the read-only Samba share `[ombisos]`.
+1. Upload or connect a Windows ISO (or standalone `boot.wim` / `install.wim` files) on local, SMB, or NFS storage and inspect them on the matching tab under [Library → Images](/images).
+2. When you create a boot under [Library → Boots](/installations), `omb-agent` prepares the required artifacts:
+   - for a base ISO (`omb-winiso@.service`), it loop-mounts the ISO read-only (`mount -o loop,ro`) at `/mnt/omb-iso/profiles/<id>`, extracts the minimal WinPE boot set (`boot.wim`, `BCD`, `boot.sdi`) into `/srv/omb/tftp/windows-profiles/<id>/`, and exposes the mounted content inside the read-only Samba share `[ombisos]`;
+   - for a standalone `boot.wim`, it caches the verified `boot.wim` under `/srv/omb/tftp/windows-boot-images/<id>/`;
+   - for a standalone `install.wim` / `install.esd`, it exposes the file via a read-only bind mount inside `[ombisos]` and generates startup scripts under `/srv/omb/tftp/windows-install-images/<id>/`.
 3. `omb-setup.cmd` is generated from `/etc/omb/windows-profiles/omb-setup.cmd.in` with the current network wait settings and post-Setup exit action.
+
+## Swapping `boot.wim` and `install.wim`
+
+Both when creating (`/installations/new`) and editing (`/installations/<id>/edit`) a Windows boot, you can use a standard ISO as-is or swap its components independently:
+
+- **Swapping `boot.wim`:** pick `boot.wim` from another inspected Windows ISO or a standalone file from the **boot.wim** tab. This is useful, for example, to boot Windows 10 with a newer Windows 11 WinPE.
+- **Swapping `install.wim` / `install.esd`:** select a standalone image from the **install.wim** tab on top of a base ISO, or **without any base ISO** at all (standalone `boot.wim` + standalone `install.wim`).
+
+> [!IMPORTANT]
+> **`setup.exe` requirement for no-ISO mode:** when a boot is configured without a base ISO (standalone `boot.wim` + standalone `install.wim`), the selected `boot.wim` must contain `sources\setup.exe` (standard `boot.wim` files from Windows install ISOs include it; a bare ADK WinPE without `setup.exe` cannot be used without a base ISO). When a base ISO is selected, `setup.exe` is launched from the ISO and `install.wim` is passed via `/installfrom`.
+
+> [!NOTE]
+> **Version rule `boot.wim ≥ install.wim`:** the `boot.wim` (WinPE) version and build must be greater than or equal to the `install.wim` / `install.esd` version and build. A newer `boot.wim` cleanly installs older Windows editions, whereas launching a newer `install.wim` from an older `boot.wim` can fail during Setup. OMB displays a version warning on the create and edit forms whenever `boot.wim` is older than `install.wim`.
 
 > [!IMPORTANT]
 > HTTP access to `omb-setup.cmd` and XML answer files is restricted to the PXE boot subnet (`Cache-Control: no-store`). Requests from the management network return `404`.

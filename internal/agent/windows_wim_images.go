@@ -124,23 +124,27 @@ func (m *WindowsISOManager) resolveWinpeshl() []byte {
 	return defaultWinpeshlINI
 }
 
-func (m *WindowsISOManager) resolveWinPETemplateAndPassword() ([]byte, string, bool) {
-	tmpl := m.Template
+func resolveWinPETemplateAndPassword(template []byte, password string) ([]byte, string, bool) {
+	tmpl := template
 	if len(tmpl) == 0 {
 		if resolved, err := ResolveWinPETemplate(CustomWinPETemplatePath, DefaultWinPETemplatePath); err == nil && len(resolved) > 0 {
 			tmpl = resolved
 		}
 	}
-	password := strings.TrimSpace(m.Password)
-	if password == "" {
-		if secret, err := os.ReadFile("/etc/omb/omb-iso-password"); err == nil {
-			password = strings.TrimSpace(string(secret))
+	secret := strings.TrimSpace(password)
+	if secret == "" {
+		if raw, err := os.ReadFile("/etc/omb/omb-iso-password"); err == nil {
+			secret = strings.TrimSpace(string(raw))
 		}
 	}
-	if len(tmpl) == 0 || password == "" {
+	if len(tmpl) == 0 || secret == "" {
 		return nil, "", false
 	}
-	return tmpl, password, true
+	return tmpl, secret, true
+}
+
+func (m *WindowsISOManager) resolveWinPETemplateAndPassword() ([]byte, string, bool) {
+	return resolveWinPETemplateAndPassword(m.Template, m.Password)
 }
 
 func (m *WindowsISOManager) writeInstallImageStartupAssets(id int64, installFile string, isoProfileID int64) error {

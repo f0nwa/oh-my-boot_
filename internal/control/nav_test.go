@@ -71,8 +71,11 @@ func TestNavigationGroupsLibraryAndSystemPages(t *testing.T) {
 		t.Fatalf("sections=%v", titles)
 	}
 	tabs := subnav(groups)
-	if len(tabs) != 5 || tabs[0].Path != "/installations" || tabs[1].Path != "/images" || !tabs[2].Active || tabs[2].Path != "/drivers" || tabs[3].Path != "/answers" || tabs[4].Path != "/usb" {
+	if len(tabs) != 5 || tabs[0].Path != "/installations" || tabs[1].Path != "/images" || tabs[1].Label != "Образы" || !tabs[2].Active || tabs[2].Path != "/drivers" || tabs[3].Path != "/answers" || tabs[4].Path != "/usb" {
 		t.Fatalf("library tabs=%+v", tabs)
+	}
+	if got := translate(langEN, tabs[1].Label); got != "Images" {
+		t.Fatalf("Образы → %q, want Images", got)
 	}
 	if tabs := subnav(navigation("admin", "/installations/new")); len(tabs) != 5 || !tabs[0].Active {
 		t.Fatalf("installation form must show library tabs: %+v", tabs)

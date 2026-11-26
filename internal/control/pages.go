@@ -95,6 +95,182 @@ func imageFilters() []installationFilter {
 	}
 }
 
+func bootImageFilters() []installationFilter {
+	return []installationFilter{
+		{"Все", "", "all"},
+		{"Отдельные", "file", "file"},
+		{"Из ISO", "iso", "iso"},
+	}
+}
+
+func installImageFilters() []installationFilter {
+	return []installationFilter{
+		{"Все", "", "all"},
+		{".wim", "wim", "wim"},
+		{".esd", "esd", "esd"},
+	}
+}
+
+func normalizeImageTab(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "boot":
+		return "boot"
+	case "install":
+		return "install"
+	default:
+		return "iso"
+	}
+}
+
+type bootWIMRow struct {
+	ID                       int64
+	SourceKind               string // "iso", "file", "catalog"
+	WindowsProfileID         int64
+	SourceISOPath            string
+	StorageID                int64
+	StorageName              string
+	StorageBlocked           bool
+	Path                     string
+	Title                    string
+	Size                     int64
+	VersionArch              string
+	HasSetupExe              bool
+	State                    string // "ready", "error", "pending", "preparing", "unavailable", "uninspected"
+	Error                    string
+	Present                  bool
+	Maintenance              bool
+	MaintenanceInherited     bool
+	MaintenanceActiveClients int
+	Downloads                []imageDownload
+	DeleteBlockedReason      string
+}
+
+func (r bootWIMRow) MatchesFilter(show string) bool {
+	switch show {
+	case "file":
+		return r.SourceKind != WIMSourceKindISO
+	case "iso":
+		return r.SourceKind == WIMSourceKindISO
+	default:
+		return true
+	}
+}
+
+type installWIMRow struct {
+	ID                       int64
+	StorageID                int64
+	StorageName              string
+	StorageBlocked           bool
+	Path                     string
+	Title                    string
+	InstallFile              string
+	IsESD                    bool
+	Size                     int64
+	Editions                 string
+	IndexCount               int
+	VersionArch              string
+	State                    string // "ready", "error", "pending", "preparing", "unavailable", "uninspected"
+	Error                    string
+	Present                  bool
+	Maintenance              bool
+	MaintenanceInherited     bool
+	MaintenanceActiveClients int
+	Downloads                []imageDownload
+	DeleteBlockedReason      string
+}
+
+func (r installWIMRow) MatchesFilter(show string) bool {
+	switch show {
+	case "wim":
+		return !r.IsESD
+	case "esd":
+		return r.IsESD
+	default:
+		return true
+	}
+}
+
+func wimArchDisplay(arch string) string {
+	switch strings.ToLower(strings.TrimSpace(arch)) {
+	case "amd64", "x86_64", "x64":
+		return "x64"
+	case "x86", "i386", "386":
+		return "x86"
+	case "arm64", "aarch64":
+		return "arm64"
+	default:
+		return strings.TrimSpace(arch)
+	}
+}
+
+func wimVersionSummary(info agent.WindowsWIMInfo) string {
+	if !info.Known || len(info.Images) == 0 {
+		return ""
+	}
+	chosen := info.Images[0]
+	for _, img := range info.Images {
+		if img.Build > chosen.Build {
+			chosen = img
+		}
+	}
+	var parts []string
+	if chosen.Build > 0 {
+		parts = append(parts, "10.0."+strconv.Itoa(chosen.Build))
+	}
+	if arch := wimArchDisplay(chosen.Architecture); arch != "" {
+		parts = append(parts, arch)
+	}
+	return strings.Join(parts, " · ")
+}
+
+func wimEditionsSummary(info agent.WindowsWIMInfo) string {
+	if !info.Known || len(info.Images) == 0 {
+		return ""
+	}
+	seen := make(map[string]bool, len(info.Images))
+	var names []string
+	for _, img := range info.Images {
+		name := strings.TrimSpace(img.DisplayName)
+		if name == "" {
+			name = strings.TrimSpace(img.Name)
+		}
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+		if len(names) == 3 {
+			break
+		}
+	}
+	out := strings.Join(names, ", ")
+	if len(info.Images) > len(names) && len(names) == 3 {
+		out += "…"
+	}
+	return out
+}
+
+func indexCountLabel(lang string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if lang == langEN {
+		if n == 1 {
+			return "1 index"
+		}
+		return strconv.Itoa(n) + " indexes"
+	}
+	mod10, mod100 := n%10, n%100
+	switch {
+	case mod10 == 1 && mod100 != 11:
+		return strconv.Itoa(n) + " индекс"
+	case mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14):
+		return strconv.Itoa(n) + " индекса"
+	default:
+		return strconv.Itoa(n) + " индексов"
+	}
+}
+
 type imageDownload struct {
 	ID    int64
 	Title string
@@ -188,7 +364,13 @@ type pageData struct {
 	Preview               *menuPreview
 	InstallCounts         map[string]int
 	ImageCounts           map[string]int
+	ImageTab              string
+	ImageTabCounts        map[string]int
 	HasAnyISOImages       bool
+	HasAnyBootWIMImages   bool
+	HasAnyInstallWIMImages bool
+	BootWIMImages         []bootWIMRow
+	InstallWIMImages      []installWIMRow
 	SearchResults         []searchResult
 	SessionIndex          int
 	DHCPEvents            []agent.DHCPEvent
@@ -303,8 +485,11 @@ func parsePages(lang string) *template.Template {
 		},
 		"add1":            func(i int) int { return i + 1 },
 		"list":            func(s ...string) []string { return s },
-		"filterList":      installationFilters,
-		"imageFilterList": imageFilters,
+		"filterList":             installationFilters,
+		"imageFilterList":        imageFilters,
+		"bootImageFilterList":    bootImageFilters,
+		"installImageFilterList": installImageFilters,
+		"indexCount":             func(n int) string { return indexCountLabel(lang, n) },
 		"size":            func(n int64) string { return humanSize(lang, n) },
 		"hasEnoughSpace":  func(free, size int64) bool { return free >= size+(512<<20) },
 		"arch":            isoArch,
@@ -564,6 +749,9 @@ func isoArch(name string) string {
 // SortCol creates a TableColumn for a sortable table header.
 func (p pageData) SortCol(targetCol, label, defaultDir string) TableColumn {
 	params := url.Values{}
+	if p.ImageTab != "" && p.ImageTab != "iso" {
+		params.Set("tab", p.ImageTab)
+	}
 	if p.Query != "" {
 		params.Set("q", p.Query)
 	}

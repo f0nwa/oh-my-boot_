@@ -85,6 +85,13 @@ func samplePageDataBase(lang string) pageData {
 			{ID: 2, Name: "Mounted", Kind: "mounted", Root: "/mnt/iso", State: "other", Error: "Ожидает подключения"},
 		},
 		ISOImages:             []imageRow{{Image: images.Image{StorageID: 7, Path: "win10.iso", Size: 1, Present: true}, StorageName: "Upload"}, {Image: images.Image{StorageID: 7, Path: "arm64.iso", Present: false}, StorageName: "Upload", Problem: "ARM64 пока не поддерживается"}},
+		BootWIMImages: []bootWIMRow{
+			{ID: 1, SourceKind: WIMSourceKindFile, StorageID: 7, StorageName: "Upload", Path: "winpe/boot.wim", Title: "Win11 Boot", Size: 500 << 20, VersionArch: "10.0.26100 · x64", HasSetupExe: true, State: "ready", Present: true},
+			{ID: 2, SourceKind: WIMSourceKindISO, WindowsProfileID: 2, SourceISOPath: "win11.iso", StorageName: "Upload", Title: "ISO Boot", Size: 480 << 20, VersionArch: "10.0.26100 · x64", HasSetupExe: false, State: "ready", Present: true},
+		},
+		InstallWIMImages: []installWIMRow{
+			{ID: 1, StorageID: 7, StorageName: "Upload", Path: "wims/install.esd", Title: "Win11 Gold", InstallFile: "install.esd", IsESD: true, Size: 5 << 30, Editions: "Windows 11 Pro", IndexCount: 2, VersionArch: "10.0.26100 · x64", State: "ready", Present: true},
+		},
 		WindowsProfiles:       []WindowsProfile{profile, {ID: 3, WindowsProfileSource: WindowsProfileSource{Title: "Ready"}, State: "ready"}},
 		WindowsAnswerVariants: []WindowsAnswerVariant{answer, {ID: 5, Title: "Ready", State: "ready", WipesDisk: &wipesTrue}, {ID: 6, Title: "Safe", State: "ready", WipesDisk: &wipesFalse}},
 		PackageChoices:        []packageChoice{{SHA256: "abc", Label: "netkvm", INFs: []infChoice{{Value: "abc:netkvm.inf", Label: "netkvm.inf · Net"}}}, {SHA256: "def", Label: "netkvm, vioscsi", INFs: []infChoice{{Value: "def:netkvm.inf", Label: "netkvm.inf · Net"}, {Value: "def:vioscsi.inf", Label: "vioscsi.inf · SCSIAdapter"}}}},
@@ -108,6 +115,20 @@ func TestEnglishPagesContainNoRussianText(t *testing.T) {
 			if !strings.Contains(body, `<html lang="en" `) && name != "network_preview" {
 				t.Errorf("%s is not marked as English", name)
 			}
+		}
+	}
+	for _, tab := range []string{"iso", "boot", "install"} {
+		data := samplePageData(langEN)
+		data.ImageError = ""
+		data.ImageTab = tab
+		res := httptest.NewRecorder()
+		render(res, "images", data)
+		body := strings.ReplaceAll(res.Body.String(), "Русский", "")
+		if res.Code != http.StatusOK {
+			t.Fatalf("images tab=%s: status %d: %s", tab, res.Code, body)
+		}
+		if found := cyrillic.FindAllString(body, 5); len(found) > 0 {
+			t.Errorf("images tab=%s has untranslated text %q", tab, found)
 		}
 	}
 }

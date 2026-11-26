@@ -4,14 +4,20 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"omb/internal/images"
 	"omb/internal/nfsstorage"
 	"omb/internal/smbstorage"
 )
+
+type imageUploader interface {
+	UploadImage(context.Context, int64, string, string, string, io.Reader, int64) (images.UploadResult, error)
+}
 
 //go:embed iso_upload.js
 var isoUploadJS []byte
@@ -78,8 +84,16 @@ func (s *Server) imagesUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name, folder := r.URL.Query().Get("name"), r.URL.Query().Get("folder")
-	if !images.ValidISOName(name) {
-		http.Error(w, "Неверное имя ISO", http.StatusBadRequest)
+	expectedKind := strings.TrimSpace(r.URL.Query().Get("expected_kind"))
+	if expectedKind == "" {
+		expectedKind = images.ImageKindISO
+	}
+	if !images.ValidExpectedKind(expectedKind) || !images.ValidImageName(name, expectedKind) {
+		if expectedKind == images.ImageKindISO {
+			http.Error(w, "Неверное имя ISO", http.StatusBadRequest)
+		} else {
+			http.Error(w, "Неверное имя файла образа", http.StatusBadRequest)
+		}
 		return
 	}
 	controller := http.NewResponseController(w)
@@ -102,10 +116,21 @@ func (s *Server) imagesUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := s.Images.UploadISO(r.Context(), storage.ID, folder, name, r.Body, r.ContentLength)
+	var (
+		result images.UploadResult
+		err    error
+	)
+	if uploader, ok := s.Images.(imageUploader); ok {
+		result, err = uploader.UploadImage(r.Context(), storage.ID, folder, name, expectedKind, r.Body, r.ContentLength)
+	} else if expectedKind == images.ImageKindISO {
+		result, err = s.Images.UploadISO(r.Context(), storage.ID, folder, name, r.Body, r.ContentLength)
+	} else {
+		http.Error(w, "Служба загрузки недоступна", http.StatusServiceUnavailable)
+		return
+	}
 	if err != nil {
 		_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.upload", "error", strconv.FormatInt(storage.ID, 10))
-		http.Error(w, "Не удалось загрузить ISO: "+uploadErrorMessage(err), http.StatusServiceUnavailable)
+		http.Error(w, "Не удалось загрузить образ: "+uploadErrorMessage(err), http.StatusServiceUnavailable)
 		return
 	}
 	_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.upload", "ok", strconv.FormatInt(storage.ID, 10)+" "+result.Path+" "+result.SHA256)

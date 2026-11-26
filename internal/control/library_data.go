@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -249,15 +250,16 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 		data.ReturnTo = safeImagesReturnURL(r.URL.RequestURI())
 	}
 	data.Query = strings.TrimSpace(q.Get("q"))
+	data.ImageTab = normalizeImageTab(q.Get("tab"))
 	data.Tab = q.Get("show")
 	data.Sort = q.Get("sort")
 	data.Dir = q.Get("dir")
 	data.ImageCounts = map[string]int{}
+	data.ImageTabCounts = map[string]int{}
 	catalog := s.loadLibraryCatalog(r.Context(), &data)
 	if catalog == nil {
 		return data
 	}
-	data.HasAnyISOImages = len(catalog.Images) > 0
 	authors := s.resourceAuthors(r.Context())
 	storagesByID := map[int64]images.Storage{}
 	for _, storage := range catalog.Storages {
@@ -302,8 +304,10 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	}
 	inspections = matchingImageInspections(*catalog, inspections)
 	byPath := map[string]WindowsProfile{}
+	profilesByID := map[int64]WindowsProfile{}
 	for _, p := range data.WindowsProfiles {
 		byPath[fmt.Sprintf("%d:%s", p.StorageID, p.Path)] = p
+		profilesByID[p.ID] = p
 	}
 	activeMigrations := map[string]*images.MigrationJob{}
 	if s.Images != nil {
@@ -321,8 +325,22 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 	for sid := range maintLookup.byStorage {
 		data.MaintenanceStorages[sid] = true
 	}
+
+	catalogByKey := make(map[string]images.Image, len(catalog.Images))
+	var catalogWIMs []images.Image
 	for _, image := range catalog.Images {
 		key := imageAuthorKey(image.StorageID, image.Path)
+		catalogByKey[key] = image
+		imgKind := catalogImageKind(image)
+		if imgKind != images.ImageKindISO {
+			catalogWIMs = append(catalogWIMs, image)
+			continue
+		}
+		data.HasAnyISOImages = true
+		data.ImageTabCounts["iso"]++
+		if data.ImageTab != "iso" {
+			continue
+		}
 		kind, problem, arch := inspectionLabel("")
 		if record, ok := inspections[key]; ok {
 			kind, problem, arch = inspectionLabel(record.Kind)
@@ -401,10 +419,299 @@ func (s *Server) imagesLibraryData(r *http.Request) pageData {
 			data.ISOImages = append(data.ISOImages, row)
 		}
 	}
-	if data.Sort != "" {
+	if data.ImageTab == "iso" && data.Sort != "" {
 		sortImages(data.ISOImages, data.Sort, data.Dir)
 	}
+
+	s.populateWIMImageTabs(r.Context(), &data, catalogWIMs, catalogByKey, storagesByID, profilesByID, sources, usageErr, diskReport, maintLookup, drainCounts)
 	return data
+}
+
+func catalogImageKind(img images.Image) string {
+	switch strings.ToLower(strings.TrimSpace(img.Kind)) {
+	case images.ImageKindISO, images.ImageKindWIM, images.ImageKindESD:
+		return strings.ToLower(strings.TrimSpace(img.Kind))
+	}
+	switch strings.ToLower(path.Ext(img.Path)) {
+	case ".wim":
+		return images.ImageKindWIM
+	case ".esd":
+		return images.ImageKindESD
+	default:
+		return images.ImageKindISO
+	}
+}
+
+func (s *Server) populateWIMImageTabs(
+	ctx context.Context,
+	data *pageData,
+	catalogWIMs []images.Image,
+	catalogByKey map[string]images.Image,
+	storagesByID map[int64]images.Storage,
+	profilesByID map[int64]WindowsProfile,
+	sources InstallationMenuSources,
+	usageErr error,
+	diskReport *agent.DiskUsageReport,
+	maintLookup maintenanceLookup,
+	drainCounts maintenanceDrainCounts,
+) {
+	var bootImages []WindowsBootImage
+	var installImages []WindowsInstallImage
+	if wimStore, ok := s.windowsWIMStore(); ok {
+		if list, err := wimStore.ListWindowsBootImages(ctx); err == nil {
+			bootImages = list
+		}
+		if list, err := wimStore.ListWindowsInstallImages(ctx); err == nil {
+			installImages = list
+		}
+	}
+
+	bootByIDUses := map[int64][]imageDownload{}
+	isoBootByProfileUses := map[int64][]imageDownload{}
+	installByIDUses := map[int64][]imageDownload{}
+	bpByID := make(map[int64]BootProfile, len(sources.BootProfiles))
+	for _, bp := range sources.BootProfiles {
+		bpByID[bp.ID] = bp
+	}
+	for _, item := range sources.Installations {
+		dl := imageDownload{ID: item.ID, Title: item.Title}
+		bp := bpByID[item.BootProfileID]
+		if item.BootImageID > 0 {
+			bootByIDUses[item.BootImageID] = append(bootByIDUses[item.BootImageID], dl)
+		} else if bp.Kind == BootProfileWindowsISO && bp.WindowsProfileID > 0 {
+			isoBootByProfileUses[bp.WindowsProfileID] = append(isoBootByProfileUses[bp.WindowsProfileID], dl)
+		}
+		if item.InstallImageID > 0 {
+			installByIDUses[item.InstallImageID] = append(installByIDUses[item.InstallImageID], dl)
+		} else if bp.Kind == BootProfileWindowsWIM && bp.InstallImageID > 0 {
+			installByIDUses[bp.InstallImageID] = append(installByIDUses[bp.InstallImageID], dl)
+		}
+	}
+
+	knownBootKeys := map[string]bool{}
+	knownInstallKeys := map[string]bool{}
+	for _, b := range bootImages {
+		if b.SourceKind == WIMSourceKindFile && b.StorageID > 0 && b.Path != "" {
+			knownBootKeys[imageAuthorKey(b.StorageID, b.Path)] = true
+		}
+	}
+	for _, inst := range installImages {
+		if inst.StorageID > 0 && inst.Path != "" {
+			knownInstallKeys[imageAuthorKey(inst.StorageID, inst.Path)] = true
+		}
+	}
+
+	// Build boot.wim rows
+	var allBoot []bootWIMRow
+	for _, b := range bootImages {
+		row := bootWIMRow{
+			ID:               b.ID,
+			SourceKind:       b.SourceKind,
+			WindowsProfileID: b.WindowsProfileID,
+			StorageID:        b.StorageID,
+			Path:             b.Path,
+			Title:            b.Title,
+			Size:             b.Size,
+			VersionArch:      wimVersionSummary(b.WIMInfo),
+			HasSetupExe:      b.HasSetupExe,
+			State:            b.State,
+			Error:            b.Error,
+			Present:          true,
+		}
+		if b.SourceKind == WIMSourceKindISO {
+			if p, ok := profilesByID[b.WindowsProfileID]; ok {
+				row.SourceISOPath = p.Path
+				if st, ok := storagesByID[p.StorageID]; ok {
+					row.StorageName = st.Name
+				}
+				if row.Size == 0 && diskReport != nil && diskReport.WindowsProfiles[p.ID] > 0 {
+					row.Size = diskReport.WindowsProfiles[p.ID]
+				}
+			}
+			row.Downloads = append(append([]imageDownload(nil), bootByIDUses[b.ID]...), isoBootByProfileUses[b.WindowsProfileID]...)
+		} else {
+			key := imageAuthorKey(b.StorageID, b.Path)
+			if st, ok := storagesByID[b.StorageID]; ok {
+				row.StorageName = st.Name
+				row.StorageBlocked = st.State == "unavailable" || st.State == "scanning" || st.State == "unknown"
+			} else {
+				row.StorageBlocked = true
+			}
+			if cimg, ok := catalogByKey[key]; ok {
+				row.Present = cimg.Present
+				if row.Size == 0 {
+					row.Size = cimg.Size
+				}
+			} else {
+				row.Present = false
+			}
+			row.MaintenanceActiveClients = drainCounts.byImage[key]
+			if _, inherited, ok := maintLookup.ImageLock(b.StorageID, b.Path); ok {
+				row.Maintenance = true
+				row.MaintenanceInherited = inherited
+			}
+			row.Downloads = bootByIDUses[b.ID]
+			if usageErr != nil {
+				row.DeleteBlockedReason = "Не удалось проверить загрузки"
+			} else if len(row.Downloads) > 0 {
+				row.DeleteBlockedReason = "Образ используется загрузками"
+			}
+		}
+		allBoot = append(allBoot, row)
+	}
+	for _, cimg := range catalogWIMs {
+		if catalogImageKind(cimg) != images.ImageKindWIM {
+			continue
+		}
+		key := imageAuthorKey(cimg.StorageID, cimg.Path)
+		if knownBootKeys[key] || knownInstallKeys[key] {
+			continue
+		}
+		st, stFound := storagesByID[cimg.StorageID]
+		row := bootWIMRow{
+			SourceKind:     "catalog",
+			StorageID:      cimg.StorageID,
+			StorageName:    st.Name,
+			StorageBlocked: !stFound || st.State == "unavailable" || st.State == "scanning" || st.State == "unknown",
+			Path:           cimg.Path,
+			Title:          path.Base(cimg.Path),
+			Size:           cimg.Size,
+			State:          "uninspected",
+			Present:        cimg.Present,
+		}
+		row.MaintenanceActiveClients = drainCounts.byImage[key]
+		if _, inherited, ok := maintLookup.ImageLock(cimg.StorageID, cimg.Path); ok {
+			row.Maintenance = true
+			row.MaintenanceInherited = inherited
+		}
+		allBoot = append(allBoot, row)
+	}
+	data.HasAnyBootWIMImages = len(allBoot) > 0
+	data.ImageTabCounts["boot"] = len(allBoot)
+
+	// Build install.wim rows
+	var allInstall []installWIMRow
+	for _, inst := range installImages {
+		key := imageAuthorKey(inst.StorageID, inst.Path)
+		st, stFound := storagesByID[inst.StorageID]
+		row := installWIMRow{
+			ID:             inst.ID,
+			StorageID:      inst.StorageID,
+			StorageName:    st.Name,
+			StorageBlocked: !stFound || st.State == "unavailable" || st.State == "scanning" || st.State == "unknown",
+			Path:           inst.Path,
+			Title:          inst.Title,
+			InstallFile:    inst.InstallFile,
+			IsESD:          strings.EqualFold(path.Ext(inst.Path), ".esd") || strings.EqualFold(inst.InstallFile, "install.esd"),
+			Size:           inst.Size,
+			Editions:       wimEditionsSummary(inst.WIMInfo),
+			IndexCount:     len(inst.WIMInfo.Images),
+			VersionArch:    wimVersionSummary(inst.WIMInfo),
+			State:          inst.State,
+			Error:          inst.Error,
+			Present:        true,
+		}
+		if cimg, ok := catalogByKey[key]; ok {
+			row.Present = cimg.Present
+		} else {
+			row.Present = false
+		}
+		row.MaintenanceActiveClients = drainCounts.byImage[key]
+		if _, inherited, ok := maintLookup.ImageLock(inst.StorageID, inst.Path); ok {
+			row.Maintenance = true
+			row.MaintenanceInherited = inherited
+		}
+		row.Downloads = installByIDUses[inst.ID]
+		if usageErr != nil {
+			row.DeleteBlockedReason = "Не удалось проверить загрузки"
+		} else if len(row.Downloads) > 0 {
+			row.DeleteBlockedReason = "Образ используется загрузками"
+		}
+		allInstall = append(allInstall, row)
+	}
+	for _, cimg := range catalogWIMs {
+		key := imageAuthorKey(cimg.StorageID, cimg.Path)
+		if knownInstallKeys[key] || knownBootKeys[key] {
+			continue
+		}
+		st, stFound := storagesByID[cimg.StorageID]
+		isESD := catalogImageKind(cimg) == images.ImageKindESD
+		installFile := "install.wim"
+		if isESD {
+			installFile = "install.esd"
+		}
+		row := installWIMRow{
+			StorageID:      cimg.StorageID,
+			StorageName:    st.Name,
+			StorageBlocked: !stFound || st.State == "unavailable" || st.State == "scanning" || st.State == "unknown",
+			Path:           cimg.Path,
+			Title:          path.Base(cimg.Path),
+			InstallFile:    installFile,
+			IsESD:          isESD,
+			Size:           cimg.Size,
+			State:          "uninspected",
+			Present:        cimg.Present,
+		}
+		row.MaintenanceActiveClients = drainCounts.byImage[key]
+		if _, inherited, ok := maintLookup.ImageLock(cimg.StorageID, cimg.Path); ok {
+			row.Maintenance = true
+			row.MaintenanceInherited = inherited
+		}
+		allInstall = append(allInstall, row)
+	}
+	data.HasAnyInstallWIMImages = len(allInstall) > 0
+	data.ImageTabCounts["install"] = len(allInstall)
+
+	switch data.ImageTab {
+	case "boot":
+		for _, row := range allBoot {
+			if data.Query != "" && !bootWIMMatchesQuery(row, data.Query) {
+				continue
+			}
+			data.ImageCounts["all"]++
+			if row.SourceKind == WIMSourceKindISO {
+				data.ImageCounts["iso"]++
+			} else {
+				data.ImageCounts["file"]++
+			}
+			if row.MatchesFilter(data.Tab) {
+				data.BootWIMImages = append(data.BootWIMImages, row)
+			}
+		}
+	case "install":
+		for _, row := range allInstall {
+			if data.Query != "" && !installWIMMatchesQuery(row, data.Query) {
+				continue
+			}
+			data.ImageCounts["all"]++
+			if row.IsESD {
+				data.ImageCounts["esd"]++
+			} else {
+				data.ImageCounts["wim"]++
+			}
+			if row.MatchesFilter(data.Tab) {
+				data.InstallWIMImages = append(data.InstallWIMImages, row)
+			}
+		}
+	}
+}
+
+func bootWIMMatchesQuery(row bootWIMRow, query string) bool {
+	q := strings.ToLower(query)
+	parts := []string{row.Title, row.Path, row.SourceISOPath, row.StorageName, row.VersionArch, row.State, row.Error}
+	for _, d := range row.Downloads {
+		parts = append(parts, d.Title)
+	}
+	return strings.Contains(strings.ToLower(strings.Join(parts, " ")), q)
+}
+
+func installWIMMatchesQuery(row installWIMRow, query string) bool {
+	q := strings.ToLower(query)
+	parts := []string{row.Title, row.Path, row.InstallFile, row.Editions, row.StorageName, row.VersionArch, row.State, row.Error}
+	for _, d := range row.Downloads {
+		parts = append(parts, d.Title)
+	}
+	return strings.Contains(strings.ToLower(strings.Join(parts, " ")), q)
 }
 
 func sortImages(rows []imageRow, sortBy, dir string) {

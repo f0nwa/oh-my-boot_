@@ -14,9 +14,56 @@ import (
 
 type imagesTableStore struct {
 	*downloadsStore
-	authors ResourceAuthors
-	names   map[string]string
+	authors       ResourceAuthors
+	names         map[string]string
+	bootImages    []WindowsBootImage
+	installImages []WindowsInstallImage
 }
+
+func (s *imagesTableStore) ListWindowsBootImages(context.Context) ([]WindowsBootImage, error) {
+	return s.bootImages, nil
+}
+func (s *imagesTableStore) GetWindowsBootImage(_ context.Context, id int64) (WindowsBootImage, error) {
+	for _, img := range s.bootImages {
+		if img.ID == id {
+			return img, nil
+		}
+	}
+	return WindowsBootImage{}, errors.New("not found")
+}
+func (s *imagesTableStore) UpsertFileBootImage(context.Context, WindowsBootImageSource) (WindowsBootImage, error) {
+	return WindowsBootImage{}, nil
+}
+func (s *imagesTableStore) SetBootImageReady(context.Context, int64, string, bool, agent.WindowsWIMInfo) error {
+	return nil
+}
+func (s *imagesTableStore) SetBootImageError(context.Context, int64, string, string) error {
+	return nil
+}
+func (s *imagesTableStore) SetBootImageTitle(context.Context, int64, string) error { return nil }
+func (s *imagesTableStore) DeleteWindowsBootImage(context.Context, int64) error    { return nil }
+func (s *imagesTableStore) ListWindowsInstallImages(context.Context) ([]WindowsInstallImage, error) {
+	return s.installImages, nil
+}
+func (s *imagesTableStore) GetWindowsInstallImage(_ context.Context, id int64) (WindowsInstallImage, error) {
+	for _, img := range s.installImages {
+		if img.ID == id {
+			return img, nil
+		}
+	}
+	return WindowsInstallImage{}, errors.New("not found")
+}
+func (s *imagesTableStore) UpsertWindowsInstallImage(context.Context, WindowsInstallImageSource) (WindowsInstallImage, error) {
+	return WindowsInstallImage{}, nil
+}
+func (s *imagesTableStore) SetInstallImageReady(context.Context, int64, string, agent.WindowsWIMInfo) error {
+	return nil
+}
+func (s *imagesTableStore) SetInstallImageError(context.Context, int64, string, string) error {
+	return nil
+}
+func (s *imagesTableStore) SetInstallImageTitle(context.Context, int64, string) error { return nil }
+func (s *imagesTableStore) DeleteWindowsInstallImage(context.Context, int64) error    { return nil }
 
 func (s *imagesTableStore) ResourceAuthors(context.Context) (ResourceAuthors, error) {
 	return s.authors, nil
@@ -329,5 +376,176 @@ func TestImagesPageRendersLiveRefresh(t *testing.T) {
 	}
 	if !strings.Contains(body, `<script defer src="/assets/live-refresh.js"></script>`) {
 		t.Errorf("expected script /assets/live-refresh.js in /images")
+	}
+}
+
+func TestImagesPageRendersISOBootAndInstallTabs(t *testing.T) {
+	s, store := setupImagesTableServer(t, "admin", langRU)
+	now := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	store.bootImages = []WindowsBootImage{
+		{
+			ID:          1,
+			SourceKind:  WIMSourceKindFile,
+			StorageID:   5,
+			Path:        "winpe/win11-26h2-boot.wim",
+			Size:        548 << 20,
+			Title:       "Win11 26H2 Universal Boot",
+			SHA256:      strings.Repeat("b", 64),
+			HasSetupExe: true,
+			State:       "ready",
+			WIMInfo: agent.WindowsWIMInfo{
+				Known: true,
+				Images: []agent.WindowsWIMImage{
+					{Index: 2, Name: "Microsoft Windows Setup (amd64)", Architecture: "amd64", Build: 26100},
+				},
+			},
+		},
+		{
+			ID:          2,
+			SourceKind:  WIMSourceKindFile,
+			StorageID:   5,
+			Path:        "winpe/adk-winpe11-x64.wim",
+			Size:        392 << 20,
+			Title:       "ADK WinPE 11 (чистый)",
+			SHA256:      strings.Repeat("c", 64),
+			HasSetupExe: false,
+			State:       "ready",
+			WIMInfo: agent.WindowsWIMInfo{
+				Known: true,
+				Images: []agent.WindowsWIMImage{
+					{Index: 1, Name: "Microsoft Windows PE (amd64)", Architecture: "amd64", Build: 26100},
+				},
+			},
+		},
+		{
+			ID:               3,
+			SourceKind:       WIMSourceKindISO,
+			WindowsProfileID: 10,
+			Title:            "boot.wim · Windows 11 Pro",
+			SHA256:           strings.Repeat("d", 64),
+			HasSetupExe:      true,
+			State:            "ready",
+			WIMInfo: agent.WindowsWIMInfo{
+				Known: true,
+				Images: []agent.WindowsWIMImage{
+					{Index: 2, Name: "Microsoft Windows Setup (amd64)", Architecture: "amd64", Build: 26100},
+				},
+			},
+		},
+	}
+	store.installImages = []WindowsInstallImage{
+		{
+			ID:          10,
+			StorageID:   5,
+			Path:        "wims/win11-corp.wim",
+			InstallFile: "install.wim",
+			Size:        8 << 30,
+			Modified:    now,
+			Title:       "Windows 11 Corp Gold",
+			State:       "ready",
+			WIMInfo: agent.WindowsWIMInfo{
+				Known: true,
+				Images: []agent.WindowsWIMImage{
+					{Index: 1, Name: "Windows 11 Pro", Architecture: "amd64", Build: 26100},
+				},
+			},
+		},
+		{
+			ID:          11,
+			StorageID:   7,
+			Path:        "wims/win11-multi.esd",
+			InstallFile: "install.esd",
+			Size:        5 << 30,
+			Modified:    now,
+			Title:       "Windows 11 24H2 Multi",
+			State:       "ready",
+			WIMInfo: agent.WindowsWIMInfo{
+				Known: true,
+				Images: []agent.WindowsWIMImage{
+					{Index: 1, Name: "Windows 11 Home", Architecture: "amd64", Build: 26100},
+					{Index: 2, Name: "Windows 11 Pro", Architecture: "amd64", Build: 26100},
+				},
+			},
+		},
+	}
+	// Also add the WIM/ESD files into catalog so they are recognized as present
+	// and verify they do NOT appear on the ISO tab.
+	imgAPI := s.Images.(*fakeImagesAPI)
+	imgAPI.catalog.Images = append(imgAPI.catalog.Images,
+		images.Image{StorageID: 5, Path: "winpe/win11-26h2-boot.wim", Kind: images.ImageKindWIM, Size: 548 << 20, Modified: now, Present: true},
+		images.Image{StorageID: 5, Path: "winpe/adk-winpe11-x64.wim", Kind: images.ImageKindWIM, Size: 392 << 20, Modified: now, Present: true},
+		images.Image{StorageID: 5, Path: "wims/win11-corp.wim", Kind: images.ImageKindWIM, Size: 8 << 30, Modified: now, Present: true},
+		images.Image{StorageID: 7, Path: "wims/win11-multi.esd", Kind: images.ImageKindESD, Size: 5 << 30, Modified: now, Present: true},
+	)
+
+	// 1. ISO tab (default)
+	isoPage := libraryGet(t, s, "/images")
+	for _, want := range []string{
+		`class="tabs"`,
+		`href="/images?tab=iso"`,
+		`href="/images?tab=boot"`,
+		`href="/images?tab=install"`,
+		`+ Загрузить ISO`,
+		`data-expected-kind="iso"`,
+		"win11.iso",
+	} {
+		if !strings.Contains(isoPage, want) {
+			t.Fatalf("ISO tab missing %q", want)
+		}
+	}
+	if strings.Contains(isoPage, "win11-corp.wim") || strings.Contains(isoPage, "adk-winpe11-x64.wim") {
+		t.Fatalf("ISO tab must not list .wim/.esd files")
+	}
+
+	// 2. boot.wim tab
+	bootPage := libraryGet(t, s, "/images?tab=boot")
+	for _, want := range []string{
+		`+ Загрузить boot.wim`,
+		`data-expected-kind="wim"`,
+		"Win11 26H2 Universal Boot",
+		"ADK WinPE 11 (чистый)",
+		"boot.wim · Windows 11 Pro",
+		"Отдельный файл",
+		"Из ISO (без копии)",
+		"Есть setup.exe",
+		"Только WinPE · нужен ISO",
+		"10.0.26100",
+		"Отдельные",
+		"Из ISO",
+	} {
+		if !strings.Contains(bootPage, want) {
+			t.Fatalf("boot.wim tab missing %q", want)
+		}
+	}
+	if strings.Contains(bootPage, "<details") || strings.Contains(bootPage, "<summary") {
+		t.Fatalf("boot.wim tab must not contain <details>/<summary>")
+	}
+	bootISOOnly := libraryGet(t, s, "/images?tab=boot&show=iso")
+	if !strings.Contains(bootISOOnly, "boot.wim · Windows 11 Pro") || strings.Contains(bootISOOnly, "ADK WinPE 11 (чистый)") {
+		t.Fatalf("boot.wim ?show=iso filter failed")
+	}
+
+	// 3. install.wim tab
+	instPage := libraryGet(t, s, "/images?tab=install")
+	for _, want := range []string{
+		`+ Загрузить install.wim / .esd`,
+		`data-expected-kind="wim_or_esd"`,
+		"Windows 11 Corp Gold",
+		"Windows 11 24H2 Multi",
+		"Windows 11 Pro",
+		"ESD",
+		".wim",
+		".esd",
+	} {
+		if !strings.Contains(instPage, want) {
+			t.Fatalf("install.wim tab missing %q", want)
+		}
+	}
+	if strings.Contains(instPage, "<details") || strings.Contains(instPage, "<summary") {
+		t.Fatalf("install.wim tab must not contain <details>/<summary>")
+	}
+	instESDOnly := libraryGet(t, s, "/images?tab=install&show=esd")
+	if !strings.Contains(instESDOnly, "Windows 11 24H2 Multi") || strings.Contains(instESDOnly, "Windows 11 Corp Gold") {
+		t.Fatalf("install.wim ?show=esd filter failed")
 	}
 }

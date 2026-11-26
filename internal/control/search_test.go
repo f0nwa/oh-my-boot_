@@ -235,3 +235,108 @@ func TestSearchAnswersJSONAndPage(t *testing.T) {
 		t.Fatal("search.js lacks loading state handlers")
 	}
 }
+
+type searchWIMMockStore struct {
+	searchMockStore
+	bootImages    []WindowsBootImage
+	installImages []WindowsInstallImage
+}
+
+func (s searchWIMMockStore) ListWindowsBootImages(context.Context) ([]WindowsBootImage, error) {
+	return s.bootImages, nil
+}
+func (s searchWIMMockStore) GetWindowsBootImage(context.Context, int64) (WindowsBootImage, error) {
+	return WindowsBootImage{}, nil
+}
+func (s searchWIMMockStore) UpsertFileBootImage(context.Context, WindowsBootImageSource) (WindowsBootImage, error) {
+	return WindowsBootImage{}, nil
+}
+func (s searchWIMMockStore) SetBootImageReady(context.Context, int64, string, bool, agent.WindowsWIMInfo) error {
+	return nil
+}
+func (s searchWIMMockStore) SetBootImageError(context.Context, int64, string, string) error {
+	return nil
+}
+func (s searchWIMMockStore) SetBootImageTitle(context.Context, int64, string) error { return nil }
+func (s searchWIMMockStore) DeleteWindowsBootImage(context.Context, int64) error    { return nil }
+func (s searchWIMMockStore) ListWindowsInstallImages(context.Context) ([]WindowsInstallImage, error) {
+	return s.installImages, nil
+}
+func (s searchWIMMockStore) GetWindowsInstallImage(context.Context, int64) (WindowsInstallImage, error) {
+	return WindowsInstallImage{}, nil
+}
+func (s searchWIMMockStore) UpsertWindowsInstallImage(context.Context, WindowsInstallImageSource) (WindowsInstallImage, error) {
+	return WindowsInstallImage{}, nil
+}
+func (s searchWIMMockStore) SetInstallImageReady(context.Context, int64, string, agent.WindowsWIMInfo) error {
+	return nil
+}
+func (s searchWIMMockStore) SetInstallImageError(context.Context, int64, string, string) error {
+	return nil
+}
+func (s searchWIMMockStore) SetInstallImageTitle(context.Context, int64, string) error { return nil }
+func (s searchWIMMockStore) DeleteWindowsInstallImage(context.Context, int64) error    { return nil }
+
+func TestSearchAllIncludesBootAndInstallWIM(t *testing.T) {
+	s := libraryServer()
+	s.Store = searchWIMMockStore{
+		searchMockStore: searchMockStore{
+			authOnlyStore: authOnlyStore{user: User{ID: 1, Role: "admin", Enabled: true}},
+		},
+		bootImages: []WindowsBootImage{
+			{
+				ID:         1,
+				SourceKind: WIMSourceKindFile,
+				Path:       "winpe/universal-boot.wim",
+				Title:      "Win11 Universal Boot",
+				SHA256:     "a1b2c3d4e5f60000111122223333444455556666777788889999aaaabbbbcccc",
+				State:      "ready",
+			},
+		},
+		installImages: []WindowsInstallImage{
+			{
+				ID:          2,
+				Path:        "wims/corp-gold.esd",
+				InstallFile: "install.esd",
+				Title:       "Corp Gold Edition",
+				State:       "ready",
+			},
+		},
+	}
+
+	reqBoot := httptest.NewRequest(http.MethodGet, "/search?format=json&q=Universal", nil)
+	reqBoot.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	resBoot := httptest.NewRecorder()
+	s.Handler().ServeHTTP(resBoot, reqBoot)
+	var bootHits []searchResult
+	if err := json.Unmarshal(resBoot.Body.Bytes(), &bootHits); err != nil {
+		t.Fatal(err)
+	}
+	foundBoot := false
+	for _, r := range bootHits {
+		if r.Title == "Win11 Universal Boot" && strings.HasPrefix(r.Href, "/images?tab=boot") {
+			foundBoot = true
+		}
+	}
+	if !foundBoot {
+		t.Fatalf("expected boot.wim in ⌘K search results, got %+v", bootHits)
+	}
+
+	reqInst := httptest.NewRequest(http.MethodGet, "/search?format=json&q=Corp+Gold", nil)
+	reqInst.AddCookie(&http.Cookie{Name: "omb_session", Value: "test-token"})
+	resInst := httptest.NewRecorder()
+	s.Handler().ServeHTTP(resInst, reqInst)
+	var instHits []searchResult
+	if err := json.Unmarshal(resInst.Body.Bytes(), &instHits); err != nil {
+		t.Fatal(err)
+	}
+	foundInst := false
+	for _, r := range instHits {
+		if r.Title == "Corp Gold Edition" && strings.HasPrefix(r.Href, "/images?tab=install") {
+			foundInst = true
+		}
+	}
+	if !foundInst {
+		t.Fatalf("expected install.wim in ⌘K search results, got %+v", instHits)
+	}
+}

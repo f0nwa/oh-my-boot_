@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"omb/internal/agent"
@@ -211,6 +212,47 @@ func (s *Server) searchAll(r *http.Request, query string) []searchResult {
 			for _, u := range users {
 				if searchMatch(query, u.Username) {
 					add(searchResult{Kind: "Пользователь", Title: u.Username, Sub: u.Role, Href: "/users"})
+				}
+			}
+		}
+		if wimStore, ok := s.windowsWIMStore(); ok {
+			if bootImages, err := wimStore.ListWindowsBootImages(r.Context()); err == nil {
+				for _, img := range bootImages {
+					if searchMatch(query, img.Title, img.Path, wimVersionSummary(img.WIMInfo)) || searchMatchSHA(query, img.SHA256) {
+						sub := img.Path
+						if sub == "" && img.SourceKind == WIMSourceKindISO {
+							sub = "Из ISO"
+						}
+						if img.SHA256 != "" {
+							if sub != "" {
+								sub += " · "
+							}
+							sub += shortSHA(img.SHA256)
+						}
+						add(searchResult{
+							Kind:  "Среда загрузки (boot.wim)",
+							Title: img.Title,
+							Sub:   sub,
+							Href:  "/images?tab=boot&q=" + url.QueryEscape(img.Title),
+						})
+					}
+				}
+			}
+			if installImages, err := wimStore.ListWindowsInstallImages(r.Context()); err == nil {
+				for _, img := range installImages {
+					editions := wimEditionsSummary(img.WIMInfo)
+					if searchMatch(query, img.Title, img.Path, img.InstallFile, editions, wimVersionSummary(img.WIMInfo)) {
+						sub := img.Path
+						if editions != "" {
+							sub += " · " + editions
+						}
+						add(searchResult{
+							Kind:  "Образ установки (install.wim)",
+							Title: img.Title,
+							Sub:   sub,
+							Href:  "/images?tab=install&q=" + url.QueryEscape(img.Title),
+						})
+					}
 				}
 			}
 		}

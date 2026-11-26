@@ -4,8 +4,12 @@
     "Не удалось прочитать папки хранилища": "Could not read storage folders",
     "(корневая папка)": "(root folder)",
     "Выберите ISO размером до 32 ГБ.": "Choose an ISO up to 32 GB.",
+    "Выберите файл .wim размером до 32 ГБ.": "Choose a .wim file up to 32 GB.",
+    "Выберите файл .wim или .esd размером до 32 ГБ.": "Choose a .wim or .esd file up to 32 GB.",
     "ISO загружен и добавлен в каталог.": "ISO uploaded and added to the catalog.",
+    "Файл загружен и добавлен в каталог.": "File uploaded and added to the catalog.",
     "Не удалось загрузить ISO.": "Could not upload the ISO.",
+    "Не удалось загрузить файл.": "Could not upload the file.",
     "Соединение прервано.": "Connection lost.",
     "Загрузка отменена.": "Upload cancelled.",
     "Начинаю загрузку…": "Starting upload…",
@@ -76,8 +80,20 @@
     const iso = file.files[0];
     const selectedOpt = storage.selectedOptions[0];
     if (!iso || !storage.value || (selectedOpt && selectedOpt.disabled) || !foldersReady || !folder.options.length || request) return;
-    if (!/\.iso$/i.test(iso.name) || iso.size <= 0 || iso.size > 32 * 1024 ** 3) {
-      status.textContent = tr('Выберите ISO размером до 32 ГБ.');
+    const expectedKind = form.dataset.expectedKind || 'iso';
+    const tab = form.dataset.tab || 'iso';
+    const maxBytes = 32 * 1024 ** 3;
+    let extOK = /\.iso$/i.test(iso.name);
+    let invalidMsg = 'Выберите ISO размером до 32 ГБ.';
+    if (expectedKind === 'wim') {
+      extOK = /\.wim$/i.test(iso.name);
+      invalidMsg = 'Выберите файл .wim размером до 32 ГБ.';
+    } else if (expectedKind === 'wim_or_esd') {
+      extOK = /\.(wim|esd)$/i.test(iso.name);
+      invalidMsg = 'Выберите файл .wim или .esd размером до 32 ГБ.';
+    }
+    if (!extOK || iso.size <= 0 || iso.size > maxBytes) {
+      status.textContent = tr(invalidMsg);
       return;
     }
     // The server checks again; this saves a long transfer that would fail.
@@ -87,7 +103,7 @@
       return;
     }
     request = new XMLHttpRequest();
-    const url = `/images/upload/${storage.value}?name=${encodeURIComponent(iso.name)}&folder=${encodeURIComponent(folder.value)}`;
+    const url = `/images/upload/${storage.value}?name=${encodeURIComponent(iso.name)}&folder=${encodeURIComponent(folder.value)}&expected_kind=${encodeURIComponent(expectedKind)}`;
     request.open('POST', url);
     request.setRequestHeader('X-CSRF-Token', form.dataset.csrf);
     request.upload.onprogress = event => {
@@ -96,10 +112,15 @@
     };
     request.onload = () => {
       if (request.status === 201) {
-        status.textContent = tr('ISO загружен и добавлен в каталог.');
+        const doneMsg = expectedKind === 'iso' ? 'ISO загружен и добавлен в каталог.' : 'Файл загружен и добавлен в каталог.';
+        status.textContent = tr(doneMsg);
         progress.value = 100;
-        window.location.assign('/images?message=' + encodeURIComponent('ISO загружен и добавлен в каталог.'));
-      } else status.textContent = request.responseText.trim() || tr('Не удалось загрузить ISO.');
+        const tabParam = tab && tab !== 'iso' ? `tab=${encodeURIComponent(tab)}&` : '';
+        window.location.assign(`/images?${tabParam}message=` + encodeURIComponent(doneMsg));
+      } else {
+        const failMsg = expectedKind === 'iso' ? 'Не удалось загрузить ISO.' : 'Не удалось загрузить файл.';
+        status.textContent = request.responseText.trim() || tr(failMsg);
+      }
       busy(false);
       request = null;
     };

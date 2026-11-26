@@ -428,6 +428,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /drivers/configs/{id}/title", s.protect("images", withPageErrors(s.driversPage, s.driverConfigRename)))
 	mux.HandleFunc("POST /drivers/configs/{id}/delete", s.protect("delete", withPageErrors(s.driversPage, s.driverConfigDelete)))
 	mux.HandleFunc("POST /drivers/configs/delete-batch", s.protect("delete", withPageErrors(s.driversPage, s.driverConfigsDeleteBatch)))
+	mux.HandleFunc("GET /assets/upload-dock.js", uploadDockScript)
 	mux.HandleFunc("GET /assets/driver-upload.js", s.driverUploadScript)
 	mux.HandleFunc("GET /images/storages/{id}/folders", s.protect("view", s.imagesFolders))
 	mux.HandleFunc("POST /images/upload/{id}", s.protect("images", s.imagesUpload))

@@ -1805,6 +1805,7 @@ var englishMessages = map[string]string{
 	"Поиск по драйверам": "Search drivers",
 	"Поиск по скриптам":  "Search scripts",
 	"Свернуть":           "Show fewer",
+	"Свернуть в фон":     "Minimize",
 	"Метаданные install.wim ещё не прочитаны — автоматическая проверка совместимости отключена.": "install.wim metadata has not been read yet — automatic compatibility check is disabled.",
 	"Совместим":                    "Compatible",
 	"Есть предупреждение":          "Warning",

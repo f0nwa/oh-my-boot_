@@ -281,7 +281,7 @@ func TestLoginPageFollowsBrowserLanguage(t *testing.T) {
 // scripts to have an English entry, or to be a redirect message the server translates.
 func TestScriptTextIsTranslated(t *testing.T) {
 	quoted := regexp.MustCompile(`'([^'\n]*[\x{0400}-\x{04FF}][^'\n]*)'`)
-	for _, file := range []string{"iso_upload.js", "driver_upload.js", "password.js"} {
+	for _, file := range []string{"iso_upload.js", "driver_upload.js", "upload_dock.js", "password.js"} {
 		src, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)

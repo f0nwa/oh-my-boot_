@@ -377,8 +377,8 @@ func TestImagesPageRendersLiveRefresh(t *testing.T) {
 	if !strings.Contains(body, `data-live-refresh="15"`) {
 		t.Errorf("expected data-live-refresh=\"15\" in /images")
 	}
-	if !strings.Contains(body, `data-live-targets="#image-results,#image-filters"`) {
-		t.Errorf("expected data-live-targets=\"#image-results,#image-filters\" in /images")
+	if !strings.Contains(body, `data-live-targets="#image-results,#image-filters,#image-tabs"`) {
+		t.Errorf("expected data-live-targets=\"#image-results,#image-filters,#image-tabs\" in /images")
 	}
 	if !strings.Contains(body, `<script defer src="/assets/live-refresh.js"></script>`) {
 		t.Errorf("expected script /assets/live-refresh.js in /images")

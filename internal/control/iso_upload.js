@@ -14,7 +14,13 @@
     "Загрузка отменена.": "Upload cancelled.",
     "Начинаю загрузку…": "Starting upload…",
     "Не хватит места: в хранилище свободно %s ГБ.": "Not enough space: the storage has %s GB free.",
-    "Передано %s% — после передачи сервер проверит файл.": "Transferred %s% — the server will check the file after the transfer."
+    "Передано %s% — после передачи сервер проверит файл.": "Transferred %s% — the server will check the file after the transfer.",
+    "Файл передан — сервер проверяет и добавляет в каталог…": "File transferred — the server is verifying and adding it to the catalog…",
+    "Файл передан · сервер проверяет…": "File transferred · server verifying…",
+    "%s из %s · передача": "%s of %s · uploading",
+    "Добавлен в каталог · список обновлён": "Added to catalog · list updated",
+    "Закрыть": "Close",
+    "Свернуть": "Minimize"
   };
   const tr = (text, ...args) => {
     let result = document.documentElement.lang === 'en' ? (english[text] || text) : text;
@@ -26,9 +32,6 @@
   const dialog = document.getElementById('iso-upload-dialog');
   const open = document.getElementById('iso-upload-open');
   const close = document.getElementById('iso-upload-close');
-  open.addEventListener('click', () => dialog.showModal());
-  close.addEventListener('click', () => dialog.close());
-  dialog.addEventListener('cancel', event => { if (request) event.preventDefault(); });
   const storage = form.querySelector('[name="storage"]');
   const folder = form.querySelector('[name="folder"]');
   const file = form.querySelector('[name="file"]');
@@ -36,12 +39,64 @@
   const progress = document.getElementById('iso-upload-progress');
   const submit = form.querySelector('[type="submit"]');
   const cancel = document.getElementById('iso-upload-cancel');
+  const dropzone = form.querySelector('.dropzone');
+  const dropzoneTitle = dropzone ? dropzone.querySelector('strong') : null;
+  const initialDropzoneTitle = dropzoneTitle ? dropzoneTitle.textContent : '';
   let request = null;
   let foldersRequest = null;
   let foldersReady = false;
   const folderField = document.getElementById('iso-folder-field');
+
+  const formatBytes = bytes => {
+    if (typeof window !== 'undefined' && window.OMB && typeof window.OMB.formatUploadBytes === 'function') {
+      return window.OMB.formatUploadBytes(bytes);
+    }
+    return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  };
+
+  const openDialog = () => {
+    if (!dialog.open) dialog.showModal();
+    if (dock) dock.setMinimized(false);
+  };
+
+  const dock = (typeof window !== 'undefined' && window.OMB && typeof window.OMB.createUploadDock === 'function')
+    ? window.OMB.createUploadDock({
+        onExpand: openDialog,
+        onCancel: () => { if (request) request.abort(); }
+      })
+    : null;
+
+  open.addEventListener('click', openDialog);
+  close.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const rect = dialog.getBoundingClientRect();
+    const inside = event.clientX >= rect.left && event.clientX <= rect.right &&
+      event.clientY >= rect.top && event.clientY <= rect.bottom;
+    if (!inside) dialog.close();
+  });
+  dialog.addEventListener('close', () => {
+    if (request && dock) dock.setMinimized(true);
+  });
+
   // Cancel and the progress bar only make sense while a transfer runs.
-  const busy = on => { close.disabled = on; submit.disabled = on || !foldersReady; storage.disabled = on; folder.disabled = on; cancel.hidden = !on; progress.parentElement.hidden = !on; };
+  // Keep the close button enabled so the user can minimize the dialog without aborting.
+  const busy = on => {
+    close.disabled = false;
+    close.textContent = on ? tr('Свернуть') : tr('Закрыть');
+    submit.disabled = on || !foldersReady;
+    storage.disabled = on;
+    folder.disabled = on;
+    file.disabled = on;
+    cancel.hidden = !on;
+    progress.parentElement.hidden = !on;
+  };
+
+  const resetDropzone = () => {
+    file.value = '';
+    if (dropzoneTitle) dropzoneTitle.textContent = initialDropzoneTitle;
+    if (dropzone) dropzone.classList.remove('has-file');
+  };
 
   async function loadFolders() {
     if (foldersRequest) foldersRequest.abort();
@@ -68,7 +123,7 @@
       });
       folderField.hidden = folders.length < 2;
       foldersReady = true;
-      submit.disabled = false;
+      if (!request) submit.disabled = false;
       status.textContent = '';
     } catch (error) { if (foldersRequest === controller && error.name !== 'AbortError') status.textContent = error.message; }
   }
@@ -102,48 +157,83 @@
       status.textContent = tr('Не хватит места: в хранилище свободно %s ГБ.', (free / 1024 ** 3).toFixed(1));
       return;
     }
-    request = new XMLHttpRequest();
+    const xhr = new XMLHttpRequest();
+    request = xhr;
     const url = `/images/upload/${storage.value}?name=${encodeURIComponent(iso.name)}&folder=${encodeURIComponent(folder.value)}&expected_kind=${encodeURIComponent(expectedKind)}`;
-    request.open('POST', url);
-    request.setRequestHeader('X-CSRF-Token', form.dataset.csrf);
-    request.upload.onprogress = event => {
-      if (event.lengthComputable) progress.value = Math.round(event.loaded * 100 / event.total);
-      status.textContent = tr('Передано %s% — после передачи сервер проверит файл.', progress.value);
+    xhr.open('POST', url);
+    xhr.setRequestHeader('X-CSRF-Token', form.dataset.csrf);
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable && event.total > 0) {
+        const pct = Math.min(100, Math.round(event.loaded * 100 / event.total));
+        progress.value = pct;
+        if (pct >= 100) {
+          status.textContent = tr('Файл передан — сервер проверяет и добавляет в каталог…');
+          if (dock) dock.progress(100, tr('Файл передан · сервер проверяет…'));
+        } else {
+          status.textContent = tr('Передано %s% — после передачи сервер проверит файл.', pct);
+          if (dock) dock.progress(pct, tr('%s из %s · передача', formatBytes(event.loaded), formatBytes(event.total)));
+        }
+      }
     };
-    request.onload = () => {
-      if (request.status === 201) {
+    xhr.onload = () => {
+      const wasOpen = dialog.open;
+      const ok = xhr.status === 201;
+      const errText = xhr.responseText ? xhr.responseText.trim() : '';
+      request = null;
+      busy(false);
+      if (ok) {
         const doneMsg = expectedKind === 'iso' ? 'ISO загружен и добавлен в каталог.' : 'Файл загружен и добавлен в каталог.';
         status.textContent = tr(doneMsg);
         progress.value = 100;
-        const tabParam = tab && tab !== 'iso' ? `tab=${encodeURIComponent(tab)}&` : '';
-        window.location.assign(`/images?${tabParam}message=` + encodeURIComponent(doneMsg));
+        if (wasOpen) {
+          if (dock) dock.dismiss();
+          const tabParam = tab && tab !== 'iso' ? `tab=${encodeURIComponent(tab)}&` : '';
+          window.location.assign(`/images?${tabParam}message=` + encodeURIComponent(doneMsg));
+        } else {
+          resetDropzone();
+          if (dock) dock.finish('done', tr('Добавлен в каталог · список обновлён'));
+          document.dispatchEvent(new Event('omb:refresh'));
+        }
       } else {
-        const failMsg = expectedKind === 'iso' ? 'Не удалось загрузить ISO.' : 'Не удалось загрузить файл.';
-        status.textContent = request.responseText.trim() || tr(failMsg);
+        const failMsg = errText || tr(expectedKind === 'iso' ? 'Не удалось загрузить ISO.' : 'Не удалось загрузить файл.');
+        status.textContent = failMsg;
+        if (dock) {
+          if (wasOpen) dock.dismiss();
+          else dock.finish('error', failMsg);
+        }
       }
-      busy(false);
-      request = null;
     };
-    request.onerror = () => { status.textContent = tr('Соединение прервано.'); busy(false); request = null; };
-    request.onabort = () => { status.textContent = tr('Загрузка отменена.'); busy(false); request = null; };
+    xhr.onerror = () => {
+      const wasOpen = dialog.open;
+      request = null;
+      busy(false);
+      status.textContent = tr('Соединение прервано.');
+      if (dock) {
+        if (wasOpen) dock.dismiss();
+        else dock.finish('error', tr('Соединение прервано.'));
+      }
+    };
+    xhr.onabort = () => {
+      request = null;
+      busy(false);
+      status.textContent = tr('Загрузка отменена.');
+      if (dock) dock.finish('cancelled');
+    };
     busy(true);
     progress.value = 0;
     status.textContent = tr('Начинаю загрузку…');
-    request.send(iso);
+    if (dock) dock.start(iso.name, tr('Начинаю загрузку…'));
+    xhr.send(iso);
   });
-  loadFolders();
-})();
 
-// Show the chosen file name in the drop zone.
-(() => {
-  const input = document.querySelector('#iso-upload-form .dropzone input[type="file"]');
-  if (!input) return;
-  const zone = input.closest('.dropzone');
-  const title = zone.querySelector('strong');
-  const initial = title.textContent;
-  input.addEventListener('change', () => {
-    const file = input.files[0];
-    title.textContent = file ? `${file.name} · ${(file.size / 1024 ** 3).toFixed(1)} GB` : initial;
-    zone.classList.toggle('has-file', !!file);
-  });
+  // Show the chosen file name in the drop zone.
+  if (file && dropzone && dropzoneTitle) {
+    file.addEventListener('change', () => {
+      const chosen = file.files[0];
+      dropzoneTitle.textContent = chosen ? `${chosen.name} · ${(chosen.size / 1024 ** 3).toFixed(1)} GB` : initialDropzoneTitle;
+      dropzone.classList.toggle('has-file', !!chosen);
+    });
+  }
+
+  loadFolders();
 })();

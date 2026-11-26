@@ -93,6 +93,7 @@
         }
         syncTarget('#topnav');
         syncTarget('#subnav');
+        doc.dispatchEvent(new win.Event('omb:bulk-sync'));
       })
       .catch(function () {
         isFetching = false;

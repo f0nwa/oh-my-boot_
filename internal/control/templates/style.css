@@ -1317,6 +1317,11 @@ html[data-theme="light"] .chan-pill.is-stable{background:rgba(13,148,104,.10);bo
 .toolbar-bulk{margin-left:auto;display:flex;align-items:center;gap:8px;padding:2px 2px 2px 10px;border:1px solid var(--draft-line);border-radius:6px;background:var(--draft-bg);min-height:32px}
 .toolbar-bulk .bulk-count{font-weight:600;color:var(--text);white-space:nowrap}
 .toolbar-bulk .btn{min-height:26px;padding:0 10px;font-size:12px;margin:0}
+.bulk-sep{width:1px;height:16px;background:var(--draft-line);margin:0 2px;flex:none}
+.bulk-dlg-warn-accent{margin:10px 0;padding:10px 12px;border-radius:6px;border:1px solid var(--draft-line);background:var(--draft-bg);color:var(--accent-ink);font-size:12.5px}
+.bulk-dlg-tag-warn{background:var(--draft-bg);color:var(--accent-ink);border:1px solid var(--draft-line)}
+.section-bulk-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}
+.section-bulk-head h2,.section-bulk-head h3{margin:0}
 .col-check{width:38px;padding-right:4px;text-align:center;vertical-align:middle}
 .col-check input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
 .col-check input[type=checkbox]:disabled{cursor:not-allowed;opacity:.35}

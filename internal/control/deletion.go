@@ -324,7 +324,7 @@ func (s *Server) rejectDeletion(w http.ResponseWriter, r *http.Request, action s
 
 // Library components remain referenced even when their installations leave the menu.
 type installationComponent struct {
-	installationID, profileID, answerID, driverConfigID, bootImageID, installImageID int64
+	installationID, profileID, answerID, autoinstallID, driverConfigID, bootImageID, installImageID int64
 }
 
 func (c installationComponent) matches(item Installation, profiles []BootProfile) bool {
@@ -333,6 +333,9 @@ func (c installationComponent) matches(item Installation, profiles []BootProfile
 	}
 	if c.answerID > 0 {
 		return item.AnswerID == c.answerID
+	}
+	if c.autoinstallID > 0 {
+		return item.AutoinstallID == c.autoinstallID
 	}
 	if c.driverConfigID > 0 {
 		return item.DriverConfigID == c.driverConfigID

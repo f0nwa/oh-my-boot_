@@ -142,10 +142,10 @@ func TestAnswerFilesCommonColumns(t *testing.T) {
 				t.Fatal("missing semantic header")
 			}
 			cols := regexp.MustCompile(`<th(?:\s[^>]*)?>`).FindAllString(head[1], -1)
-			if len(cols) != 10 {
-				t.Fatalf("got %d columns, want 10", len(cols))
+			if len(cols) != 11 {
+				t.Fatalf("got %d columns, want 11", len(cols))
 			}
-			headers = append(headers, head[1])
+			headers = append(headers, regexp.MustCompile(`data-bulk-select-all="[^"]+"`).ReplaceAllString(head[1], `data-bulk-select-all="*"`))
 		}
 		if headers[0] != headers[1] {
 			t.Fatal("headers differ between operating systems")

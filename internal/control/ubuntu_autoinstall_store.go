@@ -78,3 +78,14 @@ func (s Store) SetUbuntuAutoinstallTitle(ctx context.Context, id int64, title st
 	}
 	return nil
 }
+
+func (s Store) DeleteUbuntuAutoinstall(ctx context.Context, id int64) error {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM ubuntu_autoinstall_files WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}

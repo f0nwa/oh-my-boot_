@@ -272,6 +272,7 @@
             if (nextTable && tableArea) {
               tableArea.innerHTML = nextTable.innerHTML;
               if (typeof window.initInfiniteScroll === 'function') window.initInfiniteScroll();
+              document.dispatchEvent(new Event('omb:bulk-sync'));
             }
             if (nextCounts && countsArea) {
               countsArea.innerHTML = nextCounts.innerHTML;

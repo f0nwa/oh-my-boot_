@@ -333,12 +333,13 @@
       instISOOpt.disabled = isBareWim;
     }
     var targetInstallID = (profile && profile.dataset.installImage) ? profile.dataset.installImage : "";
+    var isEdit = !!(profile && profile.disabled);
     Array.from(instSel.options).forEach(function (opt) {
       if (opt.dataset.isoDefault === "1") return;
-      opt.disabled = isBareWim && targetInstallID !== "" && opt.value !== targetInstallID;
+      opt.disabled = !isEdit && isBareWim && targetInstallID !== "" && opt.value !== targetInstallID;
     });
     if (isBareWim) {
-      if (targetInstallID && instSel.value !== targetInstallID) {
+      if (targetInstallID && (!isEdit || !instSel.value || instSel.value === "0") && instSel.value !== targetInstallID) {
         instSel.value = targetInstallID;
       }
       if (!bootSel.value || bootSel.value === "0") {

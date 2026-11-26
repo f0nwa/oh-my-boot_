@@ -606,3 +606,102 @@ func TestWindowsWIMImagesHTTPEndpoints(t *testing.T) {
 		t.Fatalf("install-image remove status=%d body=%s", rmInst.Code, rmInst.Body.String())
 	}
 }
+
+func TestPrepareBootAndInstallImageWriteStartupAssetsAndUpdateWait(t *testing.T) {
+	base := canonicalTestDir(t)
+	smbRoot := filepath.Join(base, "smb")
+	storage := filepath.Join(smbRoot, "storage")
+	if err := os.MkdirAll(storage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bootSrc := filepath.Join(storage, "boot.wim")
+	instSrc := filepath.Join(storage, "install.wim")
+	if err := os.WriteFile(bootSrc, []byte("boot-wim-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(instSrc, []byte("install-wim-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bootInfo, _ := os.Stat(bootSrc)
+	instInfo, _ := os.Stat(instSrc)
+
+	tftpRoot := filepath.Join(base, "tftp")
+	profileRoot := filepath.Join(tftpRoot, "windows-profiles")
+	bootRoot := filepath.Join(tftpRoot, "windows-boot-images")
+	installAssetRoot := filepath.Join(tftpRoot, "windows-install-images")
+	tmpl, err := os.ReadFile("../../deploy/boot-assets/windows-profiles/omb-setup.cmd.in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	customTmplPath := filepath.Join(base, "omb-setup.cmd.in")
+	if err := os.WriteFile(customTmplPath, tmpl, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &WindowsISOManager{
+		SourceRoots:       []string{smbRoot},
+		AssetRoot:         profileRoot,
+		BootImageRoot:     bootRoot,
+		InstallAssetRoot:  installAssetRoot,
+		InstallConfigRoot: filepath.Join(base, "install-cfg"),
+		InstallMountRoot:  filepath.Join(base, "mounts"),
+		Template:          tmpl,
+		Password:          strings.Repeat("A", 32),
+		InstallMounter:    newFakeInstallMounter(),
+		WIMCommands: &fakeWIMImageRunner{
+			infoOut: map[string]string{
+				"*": sampleBootWIMWithSetupInfo,
+			},
+			dirOut: map[string]string{"*": "setup.exe\n"},
+		},
+	}
+
+	// 1. PrepareBootImage writes winpeshl.ini alongside boot.wim
+	if _, err := m.PrepareBootImage(context.Background(), WindowsBootImageRequest{
+		ID: 10, StorageRoot: storage, RelativePath: "boot.wim", Size: bootInfo.Size(), Modified: bootInfo.ModTime(),
+	}); err != nil {
+		t.Fatalf("PrepareBootImage: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(bootRoot, "10", "winpeshl.ini")); err != nil || !strings.Contains(string(data), "omb-setup.cmd") {
+		t.Fatalf("missing boot image winpeshl.ini: err=%v data=%q", err, string(data))
+	}
+
+	// 2. PrepareInstallImage writes bare + ISO-swapped omb-setup*.cmd and winpeshl.ini
+	m.WIMCommands = &fakeWIMImageRunner{infoOut: map[string]string{"*": sampleInstallWIMInfo}}
+	if _, err := m.PrepareInstallImage(context.Background(), WindowsInstallImageRequest{
+		ID: 20, StorageRoot: storage, RelativePath: "install.wim", Size: instInfo.Size(), Modified: instInfo.ModTime(), ISOProfileID: 17,
+	}); err != nil {
+		t.Fatalf("PrepareInstallImage: %v", err)
+	}
+	bareCmd, err := os.ReadFile(filepath.Join(installAssetRoot, "20", "omb-setup.cmd"))
+	if err != nil || !strings.Contains(string(bareCmd), `X:\sources\setup.exe`) || !strings.Contains(string(bareCmd), `Y:\install-20\sources\install.wim`) {
+		t.Fatalf("unexpected bare omb-setup.cmd: err=%v content=%s", err, string(bareCmd))
+	}
+	isoCmd, err := os.ReadFile(filepath.Join(installAssetRoot, "20", "omb-setup-iso-17.cmd"))
+	if err != nil || !strings.Contains(string(isoCmd), `Y:\17\sources\setup.exe`) || !strings.Contains(string(isoCmd), `Y:\install-20\sources\install.wim`) {
+		t.Fatalf("unexpected iso-swapped omb-setup-iso-17.cmd: err=%v content=%s", err, string(isoCmd))
+	}
+	if _, err := os.ReadFile(filepath.Join(installAssetRoot, "20", "omb-answer-setup-iso-17.cmd")); err != nil {
+		t.Fatalf("missing omb-answer-setup-iso-17.cmd: %v", err)
+	}
+
+	// 3. WinPEWaitUpdater updates windows-install-images/*/omb-*.cmd
+	updater := &WinPEWaitUpdater{
+		CustomTemplatePath:  customTmplPath,
+		DefaultTemplatePath: customTmplPath,
+		ProfileRoot:         profileRoot,
+	}
+	if _, _, err := updater.apply(context.Background(), 45, 7, "cmd", "10.30.0.99"); err != nil {
+		t.Fatalf("WinPEWaitUpdater.apply: %v", err)
+	}
+	for _, name := range []string{"omb-setup.cmd", "omb-answer-setup.cmd", "omb-setup-iso-17.cmd", "omb-answer-setup-iso-17.cmd"} {
+		updated, err := os.ReadFile(filepath.Join(installAssetRoot, "20", name))
+		if err != nil {
+			t.Fatalf("read updated %s: %v", name, err)
+		}
+		text := string(updated)
+		if !strings.Contains(text, "10.30.0.99") || !strings.Contains(text, "%OMB_ATTEMPT%/45") || !strings.Contains(text, "ping -n 8 ") {
+			t.Fatalf("%s was not updated by WinPEWaitUpdater:\n%s", name, text)
+		}
+	}
+}

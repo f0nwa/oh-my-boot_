@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"omb/internal/winpe"
 )
 
 // ErrInvalidWIMType indicates that a WIM/ESD file does not match the expected
@@ -44,6 +46,7 @@ type WindowsInstallImageRequest struct {
 	RelativePath string    `json:"relative_path"`
 	Size         int64     `json:"size"`
 	Modified     time.Time `json:"modified"`
+	ISOProfileID int64     `json:"iso_profile_id,omitempty"`
 }
 
 // WindowsInstallImageResult reports verified metadata of a prepared standalone install.wim/esd.
@@ -97,6 +100,99 @@ type bootImageMeta struct {
 type storedInstallImage struct {
 	Request     WindowsInstallImageRequest `json:"request"`
 	InstallFile string                     `json:"install_file"`
+}
+
+var defaultWinpeshlINI = []byte("[LaunchApps]\r\n%SYSTEMROOT%\\System32\\cmd.exe, /c %SYSTEMROOT%\\System32\\omb-setup.cmd\r\n")
+
+func (m *WindowsISOManager) installAssetRoot() string {
+	if m.InstallAssetRoot != "" {
+		return m.InstallAssetRoot
+	}
+	if m.AssetRoot != "" {
+		return filepath.Join(filepath.Dir(m.AssetRoot), "windows-install-images")
+	}
+	return ""
+}
+
+func (m *WindowsISOManager) resolveWinpeshl() []byte {
+	if len(m.Winpeshl) > 0 {
+		return m.Winpeshl
+	}
+	if data, err := os.ReadFile("/usr/share/omb/windows-profiles/winpeshl.ini"); err == nil && len(data) > 0 {
+		return data
+	}
+	return defaultWinpeshlINI
+}
+
+func (m *WindowsISOManager) resolveWinPETemplateAndPassword() ([]byte, string, bool) {
+	tmpl := m.Template
+	if len(tmpl) == 0 {
+		if resolved, err := ResolveWinPETemplate(CustomWinPETemplatePath, DefaultWinPETemplatePath); err == nil && len(resolved) > 0 {
+			tmpl = resolved
+		}
+	}
+	password := strings.TrimSpace(m.Password)
+	if password == "" {
+		if secret, err := os.ReadFile("/etc/omb/omb-iso-password"); err == nil {
+			password = strings.TrimSpace(string(secret))
+		}
+	}
+	if len(tmpl) == 0 || password == "" {
+		return nil, "", false
+	}
+	return tmpl, password, true
+}
+
+func (m *WindowsISOManager) writeInstallImageStartupAssets(id int64, installFile string, isoProfileID int64) error {
+	assetRoot := m.installAssetRoot()
+	if assetRoot == "" {
+		return nil
+	}
+	tmpl, password, ok := m.resolveWinPETemplateAndPassword()
+	if !ok {
+		return nil
+	}
+	dir := filepath.Join(assetRoot, strconv.FormatInt(id, 10))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	if err := writeAtomic(filepath.Join(dir, "winpeshl.ini"), m.resolveWinpeshl(), 0o644); err != nil {
+		return err
+	}
+	shareSubdir := installImageDirName(id)
+	bareCmd, err := winpe.RenderSplitInstallStartup(tmpl, password, `X:\sources\setup.exe`, shareSubdir, installFile)
+	if err != nil {
+		return err
+	}
+	if err := writeAtomic(filepath.Join(dir, "omb-setup.cmd"), bareCmd, 0o644); err != nil {
+		return err
+	}
+	bareAnswerCmd, err := winpe.RenderAnswerStartupSubdir(bareCmd, shareSubdir)
+	if err != nil {
+		return err
+	}
+	if err := writeAtomic(filepath.Join(dir, "omb-answer-setup.cmd"), bareAnswerCmd, 0o644); err != nil {
+		return err
+	}
+	if isoProfileID > 0 {
+		setupSource := fmt.Sprintf(`Y:\%d\sources\setup.exe`, isoProfileID)
+		isoCmd, err := winpe.RenderSplitInstallStartup(tmpl, password, setupSource, shareSubdir, installFile)
+		if err != nil {
+			return err
+		}
+		isoSuffix := strconv.FormatInt(isoProfileID, 10)
+		if err := writeAtomic(filepath.Join(dir, "omb-setup-iso-"+isoSuffix+".cmd"), isoCmd, 0o644); err != nil {
+			return err
+		}
+		isoAnswerCmd, err := winpe.RenderAnswerStartupSubdir(isoCmd, shareSubdir)
+		if err != nil {
+			return err
+		}
+		if err := writeAtomic(filepath.Join(dir, "omb-answer-setup-iso-"+isoSuffix+".cmd"), isoAnswerCmd, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *WindowsISOManager) bootImageRoot() (string, error) {
@@ -167,6 +263,9 @@ func (m *WindowsISOManager) PrepareBootImage(ctx context.Context, req WindowsBoo
 	idStr := strconv.FormatInt(req.ID, 10)
 	final := filepath.Join(bootRoot, idStr)
 	if cached, ok := readCachedBootImage(final, req); ok {
+		if _, statErr := os.Lstat(filepath.Join(final, "winpeshl.ini")); os.IsNotExist(statErr) {
+			_ = writeAtomic(filepath.Join(final, "winpeshl.ini"), m.resolveWinpeshl(), 0o644)
+		}
 		return cached, nil
 	}
 
@@ -221,6 +320,9 @@ func (m *WindowsISOManager) PrepareBootImage(ctx context.Context, req WindowsBoo
 		return WindowsBootImageResult{}, err
 	}
 	if err := os.WriteFile(filepath.Join(stage, "meta.json"), metaBytes, 0o644); err != nil {
+		return WindowsBootImageResult{}, err
+	}
+	if err := os.WriteFile(filepath.Join(stage, "winpeshl.ini"), m.resolveWinpeshl(), 0o644); err != nil {
 		return WindowsBootImageResult{}, err
 	}
 	if err := os.Chmod(stage, 0o755); err != nil {
@@ -336,6 +438,9 @@ func (m *WindowsISOManager) PrepareInstallImage(ctx context.Context, req Windows
 		}
 		return WindowsInstallImageResult{}, err
 	}
+	if err := m.writeInstallImageStartupAssets(req.ID, installFile, req.ISOProfileID); err != nil {
+		return WindowsInstallImageResult{}, err
+	}
 	return WindowsInstallImageResult{InstallFile: installFile, WIMInfo: wimInfo}, nil
 }
 
@@ -442,6 +547,15 @@ func (m *WindowsISOManager) RemoveInstallImage(ctx context.Context, id int64) er
 		}
 	} else if !os.IsNotExist(err) {
 		return err
+	}
+	if assetRoot := m.installAssetRoot(); assetRoot != "" {
+		if _, err := os.Lstat(assetRoot); err == nil {
+			if err := removeManagedDirectory(assetRoot, strconv.FormatInt(id, 10)); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
 	}
 	return nil
 }

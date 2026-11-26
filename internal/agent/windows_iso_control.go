@@ -23,8 +23,12 @@ type WindowsISOManager struct {
 	AssetRoot         string
 	AnswerRoot        string
 	BootImageRoot     string
+	InstallAssetRoot  string
 	InstallConfigRoot string
 	InstallMountRoot  string
+	Template          []byte
+	Winpeshl          []byte
+	Password          string
 	Systemctl         SMBSystemctl
 	Mounter           WindowsISOMounter
 	InstallMounter    InstallImageMounter

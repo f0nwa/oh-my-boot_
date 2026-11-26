@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 
 	"omb/internal/winpe"
 )
@@ -24,12 +25,13 @@ type DriverScriptUpdate struct {
 }
 
 // WinPEWaitUpdater updates the WinPE startup template and all prepared profile,
-// Strelec, and driver-configuration startup scripts.
+// Strelec, standalone install image, and driver-configuration startup scripts.
 type WinPEWaitUpdater struct {
-	CustomTemplatePath  string
-	DefaultTemplatePath string
-	ProfileRoot         string
-	DriverConfigRoot    string
+	CustomTemplatePath    string
+	DefaultTemplatePath   string
+	ProfileRoot           string
+	InstallImageAssetRoot string
+	DriverConfigRoot      string
 }
 
 type fileMutation struct {
@@ -113,6 +115,16 @@ func (u *WinPEWaitUpdater) apply(ctx context.Context, attempts, retrySeconds int
 	}
 	mutations = append(mutations, profileMutations...)
 
+	installAssetRoot := u.InstallImageAssetRoot
+	if installAssetRoot == "" && u.ProfileRoot != "" {
+		installAssetRoot = filepath.Join(filepath.Dir(u.ProfileRoot), "windows-install-images")
+	}
+	installMutations, err := planInstallImageScriptUpdates(installAssetRoot, attempts, retrySeconds, exitAction, serverIP)
+	if err != nil {
+		return nil, nil, err
+	}
+	mutations = append(mutations, installMutations...)
+
 	driverMutations, updates, err := planDriverConfigUpdates(u.DriverConfigRoot, attempts, retrySeconds, exitAction, serverIP)
 	if err != nil {
 		return nil, nil, err
@@ -162,6 +174,64 @@ func planScriptDirUpdates(root string, attempts, retrySeconds int, exitAction, s
 			if os.IsNotExist(err) {
 				continue
 			}
+			if err != nil {
+				return nil, err
+			}
+			if !info.Mode().IsRegular() || info.Size() == 0 {
+				return nil, fmt.Errorf("WinPE script %s is not a regular non-empty file", scriptPath)
+			}
+			oldBytes, err := os.ReadFile(scriptPath)
+			if err != nil {
+				return nil, err
+			}
+			newBytes, changedWait, err := winpe.UpdateStartupWait(oldBytes, attempts, retrySeconds)
+			if err != nil {
+				return nil, fmt.Errorf("update %s: %w", scriptPath, err)
+			}
+			newBytes, changedExit, err := winpe.UpdateStartupExitAction(newBytes, exitAction)
+			if err != nil {
+				return nil, fmt.Errorf("update %s exit action: %w", scriptPath, err)
+			}
+			newBytes, changedIP, err := winpe.UpdateStartupServerIP(newBytes, serverIP)
+			if err != nil {
+				return nil, fmt.Errorf("update %s server IP: %w", scriptPath, err)
+			}
+			if changedWait || changedExit || changedIP {
+				mutations = append(mutations, fileMutation{
+					path:       scriptPath,
+					mode:       info.Mode().Perm(),
+					existed:    true,
+					oldContent: oldBytes,
+					newContent: newBytes,
+				})
+			}
+		}
+	}
+	return mutations, nil
+}
+
+func planInstallImageScriptUpdates(root string, attempts, retrySeconds int, exitAction, serverIP string) ([]fileMutation, error) {
+	if root == "" {
+		return nil, nil
+	}
+	ids, err := numericSubdirs(root)
+	if err != nil {
+		return nil, err
+	}
+	var mutations []fileMutation
+	for _, id := range ids {
+		dir := filepath.Join(root, strconv.FormatInt(id, 10))
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if !strings.HasPrefix(name, "omb-") || !strings.HasSuffix(name, ".cmd") {
+				continue
+			}
+			scriptPath := filepath.Join(dir, name)
+			info, err := os.Lstat(scriptPath)
 			if err != nil {
 				return nil, err
 			}

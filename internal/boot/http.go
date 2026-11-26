@@ -338,6 +338,10 @@ func privateWinPEScript(name string) bool {
 		if parts[2] != "omb-setup.cmd" {
 			return false
 		}
+	case "windows-install-images":
+		if !strings.HasPrefix(parts[2], "omb-") || !strings.HasSuffix(parts[2], ".cmd") {
+			return false
+		}
 	default:
 		return false
 	}

@@ -401,3 +401,41 @@ func TestWinPEDriverStartupIsLimitedToPXESubnet(t *testing.T) {
 		}
 	}
 }
+
+func TestWinPESplitInstallStartupIsLimitedToPXESubnet(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "windows-install-images", "20")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	scripts := []string{"omb-setup.cmd", "omb-answer-setup.cmd", "omb-setup-iso-17.cmd", "omb-answer-setup-iso-17.cmd"}
+	for _, name := range scripts {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("split-secret-"+name), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range scripts {
+		for _, tc := range []struct {
+			remote string
+			status int
+		}{{"10.30.0.7:12345", http.StatusOK}, {"192.168.10.55:12345", http.StatusNotFound}} {
+			req := httptest.NewRequest(http.MethodGet, "/assets/windows-install-images/20/"+name, nil)
+			req.RemoteAddr = tc.remote
+			res := httptest.NewRecorder()
+			h.ServeHTTP(res, req)
+			if res.Code != tc.status {
+				t.Fatalf("script=%s remote=%s status=%d want=%d", name, tc.remote, res.Code, tc.status)
+			}
+			if tc.status == http.StatusOK && res.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("script=%s can be cached", name)
+			}
+			if tc.status != http.StatusOK && strings.Contains(res.Body.String(), "split-secret-") {
+				t.Fatalf("script=%s leaked outside PXE subnet", name)
+			}
+		}
+	}
+}

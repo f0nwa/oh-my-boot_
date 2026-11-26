@@ -30,6 +30,7 @@ type DriverBuildRequest struct {
 	ConfigID       int64         `json:"config_id"`
 	ProfileID      int64         `json:"profile_id"`
 	BootImageID    int64         `json:"boot_image_id,omitempty"`
+	BootProfileID  int64         `json:"boot_profile_id,omitempty"`
 	InstallImageID int64         `json:"install_image_id,omitempty"`
 	InstallFile    string        `json:"install_file,omitempty"`
 	AnswerID       int64         `json:"answer_id"`
@@ -93,7 +94,11 @@ func (m *DriverManager) sourceBootWIM(req DriverBuildRequest) (string, error) {
 		}
 		return source, nil
 	}
-	source := filepath.Join(m.ProfileRoot, strconv.FormatInt(req.ProfileID, 10), "boot.wim")
+	profileID := req.ProfileID
+	if req.BootProfileID > 0 {
+		profileID = req.BootProfileID
+	}
+	source := filepath.Join(m.ProfileRoot, strconv.FormatInt(profileID, 10), "boot.wim")
 	if err := requireRegularISOFile(filepath.Dir(source), "boot.wim"); err != nil {
 		return "", err
 	}
@@ -189,7 +194,7 @@ func (m *DriverManager) CheckConfig(ctx context.Context, req DriverBuildRequest,
 }
 
 func (m *DriverManager) validateBuildRequest(req DriverBuildRequest) error {
-	if req.ConfigID <= 0 || req.ProfileID < 0 || req.BootImageID < 0 || (req.ProfileID <= 0 && req.BootImageID <= 0) || req.InstallImageID < 0 || req.AnswerID < 0 || len(req.PackageINFs) == 0 || len(req.PackageINFs) > 128 {
+	if req.ConfigID <= 0 || req.ProfileID < 0 || req.BootImageID < 0 || req.BootProfileID < 0 || (req.ProfileID <= 0 && req.BootImageID <= 0 && req.BootProfileID <= 0) || req.InstallImageID < 0 || req.AnswerID < 0 || len(req.PackageINFs) == 0 || len(req.PackageINFs) > 128 {
 		return fmt.Errorf("invalid driver configuration")
 	}
 	for _, selected := range req.PackageINFs {

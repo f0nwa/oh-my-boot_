@@ -13,6 +13,7 @@ type menuDriverConfigRef struct {
 	ID             int64  `json:"id"`
 	ProfileID      int64  `json:"profile_id"`
 	BootImageID    int64  `json:"boot_image_id,omitempty"`
+	BootProfileID  int64  `json:"boot_profile_id,omitempty"`
 	InstallImageID int64  `json:"install_image_id,omitempty"`
 	InstallFile    string `json:"install_file,omitempty"`
 	AnswerID       int64  `json:"answer_id"`
@@ -37,7 +38,7 @@ func menuDriverConfigRefs(script string) map[int64]menuDriverConfigRef {
 			return selected
 		}
 		for _, ref := range refs {
-			if ref.ID > 0 && (ref.ProfileID > 0 || ref.BootImageID > 0) && validAnswerHash(ref.WIMKey) && validAnswerHash(ref.WIMSHA256) && validAnswerHash(ref.ScriptSHA256) && (ref.AnswerID == 0 || (ref.AnswerID > 0 && validAnswerHash(ref.AnswerSHA256))) {
+			if ref.ID > 0 && (ref.ProfileID > 0 || ref.BootImageID > 0 || ref.BootProfileID > 0) && validAnswerHash(ref.WIMKey) && validAnswerHash(ref.WIMSHA256) && validAnswerHash(ref.ScriptSHA256) && (ref.AnswerID == 0 || (ref.AnswerID > 0 && validAnswerHash(ref.AnswerSHA256))) {
 				selected[ref.ID] = ref
 			}
 		}

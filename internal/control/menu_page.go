@@ -693,6 +693,9 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 		if ref.ProfileID > 0 {
 			selected[ref.ProfileID] = true
 		}
+		if ref.BootProfileID > 0 {
+			selected[ref.BootProfileID] = true
+		}
 	}
 	if len(wimItems) > 0 {
 		wimRefSet := make(map[menuWindowsWIMRef]bool, len(wimRefs))
@@ -785,6 +788,7 @@ func (s *Server) verifyMenuWindowsProfiles(ctx context.Context, script string, e
 				ConfigID:       config.ID,
 				ProfileID:      config.ProfileID,
 				BootImageID:    ref.BootImageID,
+				BootProfileID:  ref.BootProfileID,
 				InstallImageID: ref.InstallImageID,
 				InstallFile:    ref.InstallFile,
 				AnswerID:       config.AnswerID,

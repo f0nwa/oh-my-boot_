@@ -287,10 +287,19 @@ func buildMenuTreeWithProfilesTimed(title, diagnosticLabel, diagnosticMessage st
 			}
 		}
 		if profile.driverConfigID > 0 {
+			var drvBootImageID, drvBootProfileID int64
+			if profile.bootImageID > 0 {
+				if profile.bootImageSource == WIMSourceKindISO && profile.bootImageISOID > 0 {
+					drvBootProfileID = profile.bootImageISOID
+				} else {
+					drvBootImageID = profile.bootImageID
+				}
+			}
 			selectedDrivers = append(selectedDrivers, menuDriverConfigRef{
 				ID:             profile.driverConfigID,
 				ProfileID:      profile.windowsISOID,
-				BootImageID:    profile.bootImageID,
+				BootImageID:    drvBootImageID,
+				BootProfileID:  drvBootProfileID,
 				InstallImageID: profile.installImageID,
 				InstallFile:    profile.installImageFile,
 				AnswerID:       profile.driverAnswerID,
@@ -510,6 +519,15 @@ func windowsStartupURL(base string, profile menuProfile) string {
 	}
 	if profile.windowsISOID > 0 && profile.installImageID == 0 {
 		return base + "/assets/windows-profiles/" + fmt.Sprintf("%d", profile.windowsISOID) + "/" + scriptName
+	}
+	if profile.windowsISOID > 0 && profile.installImageID > 0 {
+		isoSuffix := fmt.Sprintf("-iso-%d.cmd", profile.windowsISOID)
+		if profile.answerID > 0 {
+			scriptName = "omb-answer-setup" + isoSuffix
+		} else {
+			scriptName = "omb-setup" + isoSuffix
+		}
+		return base + "/assets/windows-install-images/" + fmt.Sprintf("%d", profile.installImageID) + "/" + scriptName
 	}
 	if profile.installImageID > 0 {
 		return base + "/assets/windows-install-images/" + fmt.Sprintf("%d", profile.installImageID) + "/" + scriptName

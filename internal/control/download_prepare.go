@@ -41,6 +41,7 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 	var wimInfo agent.WindowsWIMInfo
 	var installFile string
 	var driverBootImageID int64
+	var driverBootProfileID int64
 	if selectedSource.Kind == BootProfileWindowsWIM {
 		wimStore, ok := s.windowsWIMStore()
 		if !ok {
@@ -59,7 +60,7 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 		if bootImg.SourceKind == WIMSourceKindFile {
 			driverBootImageID = bootImg.ID
 		} else if bootImg.WindowsProfileID > 0 {
-			profile.ID = bootImg.WindowsProfileID
+			driverBootProfileID = bootImg.WindowsProfileID
 		}
 	} else {
 		if sourceID <= 0 {
@@ -86,13 +87,31 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 				if instImg, err := wimStore.GetWindowsInstallImage(ctx, item.InstallImageID); err == nil && instImg.State == "ready" {
 					wimInfo = instImg.WIMInfo
 					installFile = instImg.InstallFile
+					if item.DriverConfigID == 0 {
+						if wimAPI := s.windowsWIMAPI(); wimAPI != nil {
+							if _, prepErr := wimAPI.PrepareInstallImage(ctx, agent.WindowsInstallImageRequest{
+								ID:           instImg.ID,
+								StorageRoot:  instImg.StorageRoot,
+								RelativePath: instImg.Path,
+								Size:         instImg.Size,
+								Modified:     instImg.Modified,
+								ISOProfileID: profile.ID,
+							}); prepErr != nil {
+								return fmt.Errorf("Не удалось подготовить скрипт запуска для install.wim")
+							}
+						}
+					}
 				}
 			}
 		}
 		if item.BootImageID > 0 {
 			if wimStore, ok := s.windowsWIMStore(); ok {
-				if bootImg, err := wimStore.GetWindowsBootImage(ctx, item.BootImageID); err == nil && bootImg.State == "ready" && bootImg.SourceKind == WIMSourceKindFile {
-					driverBootImageID = bootImg.ID
+				if bootImg, err := wimStore.GetWindowsBootImage(ctx, item.BootImageID); err == nil && bootImg.State == "ready" {
+					if bootImg.SourceKind == WIMSourceKindFile {
+						driverBootImageID = bootImg.ID
+					} else if bootImg.WindowsProfileID > 0 {
+						driverBootProfileID = bootImg.WindowsProfileID
+					}
 				}
 			}
 		}
@@ -131,6 +150,7 @@ func (s *Server) prepareDownload(requestCtx context.Context, item Installation, 
 					ConfigID:       config.ID,
 					ProfileID:      profile.ID,
 					BootImageID:    driverBootImageID,
+					BootProfileID:  driverBootProfileID,
 					InstallImageID: item.InstallImageID,
 					InstallFile:    installFile,
 					AnswerID:       config.AnswerID,

@@ -85,6 +85,10 @@ func profileBootable(p WindowsProfile) bool {
 }
 
 func windowsMenuProfile(installation Installation, profileID int64, base string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig) (menuProfile, string, error) {
+	return windowsMenuProfileWithWIM(installation, profileID, base, profiles, answers, configs, nil)
+}
+
+func windowsMenuProfileWithWIM(installation Installation, profileID int64, base string, profiles []WindowsProfile, answers []WindowsAnswerVariant, configs []DriverConfig, activeWIMOverride *agent.WindowsWIMInfo) (menuProfile, string, error) {
 	key := menuDraftItemKey(MenuDraftItem{InstallationID: installation.ID})
 	id := profileID
 	kind := "manual"
@@ -97,6 +101,12 @@ func windowsMenuProfile(installation Installation, profileID int64, base string,
 	byID := map[int64]WindowsProfile{}
 	for _, p := range profiles {
 		byID[p.ID] = p
+	}
+	effectiveWIM := func(parent WindowsProfile) agent.WindowsWIMInfo {
+		if activeWIMOverride != nil {
+			return *activeWIMOverride
+		}
+		return parent.WIMInfo
 	}
 	switch kind {
 	case "manual":
@@ -117,8 +127,9 @@ func windowsMenuProfile(installation Installation, profileID int64, base string,
 			if !ok || !profileBootable(parent) || answer.State != "ready" || answer.Size <= 0 || !safeMenuText(answer.Title, 80) || !isASCII(answer.Title) || !validAnswerHash(answer.SHA256) {
 				return menuProfile{}, "", fmt.Errorf("Windows answer %d is not ready for PXE", answer.ID)
 			}
-			if parent.BootMode == "" && parent.WIMInfo.Known {
-				if compat := EvaluateWindowsAnswerCompatibility(answer.Target, parent.WIMInfo); compat.Status == "incompatible" {
+			wim := effectiveWIM(parent)
+			if parent.BootMode == "" && wim.Known {
+				if compat := EvaluateWindowsAnswerCompatibility(answer.Target, wim); compat.Status == "incompatible" {
 					return menuProfile{}, "", fmt.Errorf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; "))
 				}
 			}
@@ -141,10 +152,11 @@ func windowsMenuProfile(installation Installation, profileID int64, base string,
 			hint := driverSummary(config)
 			if config.AnswerID > 0 {
 				found := false
+				wim := effectiveWIM(parent)
 				for _, answer := range answers {
 					if answer.ID == config.AnswerID && answer.State == "ready" && answer.Size > 0 && validAnswerHash(answer.SHA256) {
-						if parent.BootMode == "" && parent.WIMInfo.Known {
-							if compat := EvaluateWindowsAnswerCompatibility(answer.Target, parent.WIMInfo); compat.Status == "incompatible" {
+						if parent.BootMode == "" && wim.Known {
+							if compat := EvaluateWindowsAnswerCompatibility(answer.Target, wim); compat.Status == "incompatible" {
 								return menuProfile{}, "", fmt.Errorf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; "))
 							}
 						}
@@ -322,8 +334,18 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 						}
 					}
 				}
+				var wimOverride *agent.WindowsWIMInfo
+				var instImg WindowsInstallImage
+				if profile.Kind == BootProfileWindowsISO && installation.InstallImageID > 0 {
+					var ok bool
+					instImg, ok = findWindowsInstallImage(sources.InstallImages, installation.InstallImageID)
+					if !ok || instImg.State != "ready" {
+						return menuProfile{}, "", fmt.Errorf("Windows install image %d is not ready", installation.InstallImageID)
+					}
+					wimOverride = &instImg.WIMInfo
+				}
 				var err error
-				entry, _, err = windowsMenuProfile(installation, profile.WindowsProfileID, base, profiles, answers, configs)
+				entry, _, err = windowsMenuProfileWithWIM(installation, profile.WindowsProfileID, base, profiles, answers, configs, wimOverride)
 				if err != nil {
 					return menuProfile{}, "", err
 				}
@@ -331,27 +353,9 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 				if profile.Kind == BootProfileWindowsISO && (installation.BootImageID > 0 || installation.InstallImageID > 0) {
 					activeWIM := isoProfile.WIMInfo
 					if installation.InstallImageID > 0 {
-						instImg, ok := findWindowsInstallImage(sources.InstallImages, installation.InstallImageID)
-						if !ok || instImg.State != "ready" {
-							return menuProfile{}, "", fmt.Errorf("Windows install image %d is not ready", installation.InstallImageID)
-						}
 						entry.installImageID = instImg.ID
 						entry.installImageFile = instImg.InstallFile
 						activeWIM = instImg.WIMInfo
-						ansID := installation.AnswerID
-						if ansID == 0 && entry.driverAnswerID > 0 {
-							ansID = entry.driverAnswerID
-						}
-						if ansID > 0 && activeWIM.Known {
-							for _, a := range answers {
-								if a.ID == ansID {
-									if compat := EvaluateWindowsAnswerCompatibility(a.Target, activeWIM); compat.Status == "incompatible" {
-										return menuProfile{}, "", fmt.Errorf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; "))
-									}
-									break
-								}
-							}
-						}
 					}
 					if installation.BootImageID > 0 {
 						bootImg, ok := findWindowsBootImage(sources.BootImages, installation.BootImageID)

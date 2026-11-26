@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"omb/internal/agent"
+	"omb/internal/images"
 )
 
 type unifiedMenuStore struct {
@@ -355,4 +356,104 @@ func TestUnifiedMenuPublishesAndRollsBackSplitWindowsWIM(t *testing.T) {
 	if len(store.draft.Items) != 2 || store.draft.Items[0].Components == nil || store.draft.Items[0].Components.BootImageID != 10 || store.draft.Items[1].Components.InstallImageID != 20 {
 		t.Fatalf("rollback did not restore split WIM components in draft: %+v", store.draft.Items)
 	}
+}
+
+func TestUnifiedMenuISOBootSwapWithDriversAndSwappedInstallAnswerCompat(t *testing.T) {
+	s, store, published := unifiedMenuFixture(t)
+	var checkedReqs []agent.DriverBuildRequest
+	s.DriverConfigs = &capturingDriverCheck{onCheck: func(check agent.DriverBuildCheck) {
+		checkedReqs = append(checkedReqs, check.Request)
+	}}
+	s.DriverPackages = &recordingPackageCheck{}
+
+	// Base ISO 17 has only Windows 11 Home (Core).
+	store.profiles[0].WIMInfo = agent.WindowsWIMInfo{
+		Known:  true,
+		Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 11 Home", EditionID: "Core", Architecture: "amd64", Build: 26100}},
+	}
+	// Second ISO 18 provides source_kind='iso' boot.wim.
+	store.profiles = append(store.profiles, WindowsProfile{
+		ID: 18,
+		WindowsProfileSource: WindowsProfileSource{
+			StorageID: 7, StorageRoot: "/mnt/omb-smb/key7", Path: "win11-boot-iso.iso",
+			Size: 12, Modified: store.profiles[0].Modified, Title: "Win11 Boot ISO",
+		},
+		State: "ready", InstallFile: "install.wim",
+	})
+	s.Images.(*fakeImagesAPI).catalog.Images = append(s.Images.(*fakeImagesAPI).catalog.Images, images.Image{
+		StorageID: 7, Path: "win11-boot-iso.iso", Size: 12, Modified: store.profiles[0].Modified, Present: true,
+	})
+
+	store.bootImages = []WindowsBootImage{
+		{
+			ID: 12, SourceKind: WIMSourceKindISO, WindowsProfileID: 18,
+			Title: "boot.wim · Win11 Boot ISO", SHA256: strings.Repeat("d", 64), HasSetupExe: true, State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 2, Architecture: "amd64", Build: 26100}}},
+		},
+	}
+	// Swapped install.wim 20 has Windows 11 Pro (Professional).
+	store.installImages = []WindowsInstallImage{
+		{
+			ID: 20, StorageID: 7, Path: "wims/win11-pro.wim", InstallFile: "install.wim",
+			Title: "Win11 Pro Gold", State: "ready",
+			WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 1, Name: "Windows 11 Pro", EditionID: "Professional", Architecture: "amd64", Build: 26100}}},
+		},
+	}
+	// Answer 31 targets Pro (incompatible with base ISO 17 Home, compatible with swapped install.wim 20 Pro).
+	store.answers[0].Target = WindowsAnswerTarget{
+		ImageMode:     "edition",
+		EditionID:     "pro",
+		EditionLabel:  "Windows 11 Pro",
+		Architectures: []string{"amd64"},
+	}
+
+	// Item 72: ISO 17 (Home) + swapped install.wim 20 (Pro) + answer 31 (Pro), no drivers -> must publish cleanly
+	// and point omb-setup.cmd to /assets/windows-install-images/20/omb-answer-setup-iso-17.cmd.
+	store.installations[1].InstallImageID = 20
+	store.installations[1].AnswerID = 31
+
+	// Item 75: ISO 17 + source_kind='iso' boot.wim 12 (from ISO 18) + driver config 2.
+	inst75 := Installation{ID: 75, BootProfileID: 2, Title: "ISO Swap Boot Drivers", Folder: "Windows", BootImageID: 12, InstallImageID: 20, DriverConfigID: 2}
+	store.installations = append(store.installations, inst75)
+	store.draft.Items = []MenuDraftItem{
+		{InstallationID: 72, Title: "ISO Home Swapped Pro", Folder: "Windows", Components: installationComponents(store.installations[1])},
+		{InstallationID: 75, Title: "ISO Swap Boot Drivers", Folder: "Windows", Components: installationComponents(inst75)},
+	}
+
+	res := menuPost(t, s, "/menu/publish", url.Values{})
+	if res.Code != http.StatusSeeOther || len(*published) != 1 {
+		t.Fatalf("publish=%d body=%s", res.Code, res.Body.String())
+	}
+	script := (*published)[0]
+	if !strings.Contains(script, "/assets/windows-install-images/20/omb-answer-setup-iso-17.cmd") {
+		t.Fatalf("expected ISO-swapped answer startup script URL, got:\n%s", script)
+	}
+	if len(checkedReqs) != 1 || checkedReqs[0].BootImageID != 0 || checkedReqs[0].BootProfileID != 18 || checkedReqs[0].ProfileID != 17 {
+		t.Fatalf("expected CheckDriverConfig with BootImageID=0 BootProfileID=18 ProfileID=17, got %+v", checkedReqs)
+	}
+
+	// Rollback must also pass CheckDriverConfig with BootProfileID=18.
+	v1ID := store.versions[0].ID
+	checkedReqs = nil
+	res = menuPost(t, s, "/menu/rollback", url.Values{"id": {fmt.Sprintf("%d", v1ID)}})
+	if res.Code != http.StatusSeeOther || len(*published) != 2 {
+		t.Fatalf("rollback=%d body=%s", res.Code, res.Body.String())
+	}
+	if len(checkedReqs) != 1 || checkedReqs[0].BootImageID != 0 || checkedReqs[0].BootProfileID != 18 {
+		t.Fatalf("rollback CheckDriverConfig mismatch: %+v", checkedReqs)
+	}
+}
+
+type capturingDriverCheck struct {
+	onCheck func(agent.DriverBuildCheck)
+}
+
+func (c *capturingDriverCheck) PrepareDriverConfig(context.Context, agent.DriverBuildRequest) (agent.DriverBuildResult, error) {
+	return agent.DriverBuildResult{}, nil
+}
+func (c *capturingDriverCheck) CheckDriverConfig(_ context.Context, check agent.DriverBuildCheck) error {
+	if c.onCheck != nil {
+		c.onCheck(check)
+	}
+	return nil
 }

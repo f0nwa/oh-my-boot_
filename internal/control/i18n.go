@@ -2434,4 +2434,5 @@ var englishMessages = map[string]string{
 	"образ boot.wim %d не содержит setup.exe":                                                                "boot.wim image %d does not contain setup.exe",
 	"образ install.wim %d недоступен":                                                                        "install.wim image %d is unavailable",
 	"образ install.wim %d изменился":                                                                         "install.wim image %d has changed",
+	"Не удалось подготовить скрипт запуска для install.wim":                                                  "Could not prepare startup script for install.wim",
 }

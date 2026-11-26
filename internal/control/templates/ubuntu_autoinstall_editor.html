@@ -1,8 +1,29 @@
 {{define "ubuntu_autoinstall_editor"}}{{template "top" .}}{{$info := .Info}}
 <p class="crumbs"><a href="/answers#ubuntu-autoinstall">← {{t "Файлы Ubuntu Autoinstall"}}</a></p>
+{{with .UbuntuEditor}}{{$v := .}}
+{{if and .File .File.IsUploaded}}
+<h1>{{t "Скрипт Ubuntu Autoinstall"}}</h1>
+<p class="lead">{{t "Загруженный YAML-файл неизменяем. Для изменений загрузите новый файл."}}</p>
+{{if .Message}}<div class="notice error" role="alert">{{t .Message}}</div>{{end}}
+<section class="card ai-view-card">
+<div class="ai-view-head">
+<div>
+<h2>{{.Title}}</h2>
+<div class="ai-view-meta"><span class="chip chip-accent">{{t "Загружен из файла"}}</span><span class="mono">{{.File.SHA256}}</span><span aria-hidden="true">·</span><span>{{size .File.Size}}</span></div>
+</div>
+<div class="actions"><button type="button" class="btn" data-copy-yaml data-copied="{{t "Скопировано"}}">{{t "Копировать YAML"}}</button><a class="btn btn-primary" href="/ubuntu-autoinstall/{{.File.ID}}/download">{{t "Скачать user-data"}}</a></div>
+</div>
+<dl class="ai-view-kv">
+<div><dt>{{t "Разметка диска"}}</dt><dd>{{template "answer_file_disk" .File.DiskSummary}}</dd></div>
+<div><dt>{{t "Источник"}}</dt><dd>{{t "Загруженный YAML"}}</dd></div>
+<div><dt>{{t "Изменяемость"}}</dt><dd>{{t "Только чтение"}}</dd></div>
+</dl>
+<pre id="autoinstall-yaml">{{.YAML}}</pre>
+</section>
+<script defer src="/assets/answers.js"></script>
+{{else}}
 <h1>{{t "Конструктор Ubuntu Desktop"}}</h1>
 <p class="lead">{{t "Настройте рабочий компьютер, проверьте YAML и сохраните скрипт установки."}}</p>
-{{with .UbuntuEditor}}{{$v := .}}
 {{if .Message}}<div class="notice error" role="alert">{{t .Message}}</div>{{end}}
 {{if .File}}
 <h2>{{.Title}}</h2><p>{{t "Сохранённый файл неизменяем. Для изменений создайте копию с новым паролем."}}</p>
@@ -88,4 +109,4 @@
 </form>
 <div id="ai-download">{{if .CanSave}}<form id="ai-preview-download" method="post" action="/ubuntu-autoinstall/preview/download"><input type="hidden" name="csrf" value="{{$info.CSRF}}"><input type="hidden" name="preview_token" value="{{.Token}}"><button class="btn">{{t "Скачать user-data"}}</button></form>{{end}}</div>
 <script defer src="/assets/ubuntu_autoinstall_editor.js"></script>
-{{end}}{{end}}{{template "bottom" .}}{{end}}
+{{end}}{{end}}{{end}}{{template "bottom" .}}{{end}}

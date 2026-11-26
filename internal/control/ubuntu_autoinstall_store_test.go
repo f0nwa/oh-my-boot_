@@ -69,7 +69,7 @@ func TestUbuntuAutoinstallStore(t *testing.T) {
 		t.Fatalf("round trip = %+v, err=%v", got, err)
 	}
 	summaries, err := store.UbuntuAutoinstalls(ctx)
-	want := []UbuntuAutoinstallSummary{{ID: saved.ID, Title: saved.Title, SHA256: saved.SHA256, State: "validated", DiskMode: "serial", DiskSerial: "DISK123", CreatedAt: saved.CreatedAt}}
+	want := []UbuntuAutoinstallSummary{{ID: saved.ID, Title: saved.Title, SourceKind: "editor", SHA256: saved.SHA256, State: "validated", DiskMode: "serial", DiskSerial: "DISK123", CreatedAt: saved.CreatedAt}}
 	if err != nil || !reflect.DeepEqual(summaries, want) {
 		t.Fatalf("summaries=%+v err=%v", summaries, err)
 	}

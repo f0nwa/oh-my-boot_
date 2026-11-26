@@ -2,6 +2,10 @@
   'use strict';
 
   var uploadDialog = document.getElementById('answer-upload-dialog');
+  var ubuntuUploadDialog = document.getElementById('ubuntu-upload-dialog');
+  var ubuntuUploadTitle = document.getElementById('ubuntu-upload-title-input');
+  var ubuntuUploadFile = document.getElementById('ubuntu-upload-file-input');
+  var ubuntuAutoTitle = '';
   var renameDialog = document.getElementById('answer-rename-dialog');
   var renameForm = renameDialog ? renameDialog.querySelector('form') : null;
   var renameInput = document.getElementById('answer-rename-input');
@@ -40,7 +44,51 @@
     }
   }
 
+  if (ubuntuUploadFile && ubuntuUploadTitle) {
+    ubuntuUploadFile.addEventListener('change', function () {
+      var file = ubuntuUploadFile.files && ubuntuUploadFile.files[0];
+      if (!file) return;
+      var current = ubuntuUploadTitle.value.trim();
+      if (current && current !== ubuntuAutoTitle) return;
+      var base = file.name.replace(/\.(ya?ml|txt)$/i, '').trim();
+      if (!base || base.toLowerCase() === 'user-data') return;
+      if (base.length > 80) base = base.slice(0, 80);
+      ubuntuAutoTitle = base;
+      ubuntuUploadTitle.value = base;
+    });
+  }
+
   document.addEventListener('click', function (event) {
+    var copyYamlBtn = event.target.closest('[data-copy-yaml]');
+    if (copyYamlBtn) {
+      var pre = document.getElementById('autoinstall-yaml');
+      if (pre) {
+        var text = pre.textContent || '';
+        var original = copyYamlBtn.getAttribute('data-orig') || copyYamlBtn.textContent;
+        copyYamlBtn.setAttribute('data-orig', original);
+        var done = function () {
+          copyYamlBtn.textContent = copyYamlBtn.getAttribute('data-copied') || 'Copied';
+          setTimeout(function () { copyYamlBtn.textContent = original; }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {});
+        }
+      }
+      return;
+    }
+
+    var ubuntuUploadBtn = event.target.closest('[data-ubuntu-upload-open]');
+    if (ubuntuUploadBtn && ubuntuUploadDialog && typeof ubuntuUploadDialog.showModal === 'function') {
+      event.preventDefault();
+      var uForm = ubuntuUploadDialog.querySelector('form');
+      if (uForm) uForm.reset();
+      ubuntuAutoTitle = '';
+      var uPopover = ubuntuUploadBtn.closest('[popover]');
+      if (uPopover && typeof uPopover.hidePopover === 'function') uPopover.hidePopover();
+      ubuntuUploadDialog.showModal();
+      if (ubuntuUploadTitle) ubuntuUploadTitle.focus();
+      return;
+    }
     var renameBtn = event.target.closest('[data-answer-rename-open]');
     if (renameBtn && renameDialog && renameForm && renameInput && typeof renameDialog.showModal === 'function') {
       var renameMenu = renameBtn.closest('[popover]');

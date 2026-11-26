@@ -135,7 +135,7 @@ func imageAuthorKey(storageID int64, path string) string {
 func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT a.action,a.detail,COALESCE(u.username,''),a.occurred_at
 		FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id
-		WHERE a.result='ok' AND a.action IN ('installation.create','windows-answer.create','ubuntu-autoinstall.create','iso.upload','iso.download_url','iso.migrate','driver.import','driver-config.create')
+		WHERE a.result='ok' AND a.action IN ('installation.create','windows-answer.create','ubuntu-autoinstall.create','ubuntu-autoinstall.upload','iso.upload','iso.download_url','iso.migrate','driver.import','driver-config.create')
 		ORDER BY a.id`)
 	if err != nil {
 		return ResourceAuthors{}, err
@@ -171,7 +171,7 @@ func (s Store) ResourceAuthors(ctx context.Context) (ResourceAuthors, error) {
 					break
 				}
 			}
-		case "ubuntu-autoinstall.create":
+		case "ubuntu-autoinstall.create", "ubuntu-autoinstall.upload":
 			id, err := strconv.ParseInt(detail, 10, 64)
 			if err == nil && id > 0 && authors.UbuntuAnswers[id] == "" {
 				authors.UbuntuAnswers[id] = actor

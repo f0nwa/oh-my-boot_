@@ -47,6 +47,9 @@ func ubuntuSection(field string) string {
 	}
 }
 func (s *Server) prepareUbuntuView(r *http.Request, v *ubuntuAutoinstallEditorView) {
+	if v.File != nil && v.File.IsUploaded() {
+		return
+	}
 	if !v.HasForm {
 		v.Form = ubuntuFormFromValues(v.Values)
 	}

@@ -195,15 +195,19 @@ CREATE TABLE IF NOT EXISTS windows_boot_profiles (
 CREATE TABLE IF NOT EXISTS ubuntu_autoinstall_files (
  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  title TEXT NOT NULL CHECK (btrim(title) <> ''),
+ source_kind TEXT NOT NULL DEFAULT 'editor' CONSTRAINT ubuntu_autoinstall_files_source_kind_check CHECK (source_kind IN ('editor','uploaded')),
  "values" JSONB NOT NULL CHECK (jsonb_typeof("values") = 'object' AND NOT ("values" ? 'Password')),
- user_data BYTEA NOT NULL CHECK (octet_length(user_data) > 0 AND octet_length(user_data) < 65536),
+ user_data BYTEA NOT NULL CONSTRAINT ubuntu_autoinstall_files_user_data_check CHECK (octet_length(user_data) > 0 AND octet_length(user_data) <= 65536),
  sha256 CHAR(64) NOT NULL UNIQUE CHECK (sha256 ~ '^[0-9a-f]{64}$'),
  state TEXT NOT NULL CHECK (state = 'validated'),
- disk_mode TEXT NOT NULL CONSTRAINT ubuntu_autoinstall_files_disk_mode_check CHECK (disk_mode IN ('interactive','default','serial')),
+ disk_mode TEXT NOT NULL CONSTRAINT ubuntu_autoinstall_files_disk_mode_check CHECK (disk_mode IN ('interactive','default','serial','custom','unknown')),
  disk_serial TEXT NOT NULL DEFAULT '',
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
- CONSTRAINT ubuntu_autoinstall_files_disk_serial_check CHECK ((disk_mode IN ('interactive','default') AND disk_serial = '') OR (disk_mode = 'serial' AND octet_length(disk_serial) BETWEEN 1 AND 128)),
- CHECK ("values"->>'DiskMode' = disk_mode AND "values"->>'DiskSerial' = disk_serial)
+ CONSTRAINT ubuntu_autoinstall_files_disk_serial_check CHECK ((disk_mode IN ('interactive','default','custom','unknown') AND disk_serial = '') OR (disk_mode = 'serial' AND octet_length(disk_serial) BETWEEN 1 AND 128)),
+ CONSTRAINT ubuntu_autoinstall_files_values_match_check CHECK (
+  (source_kind = 'editor' AND "values"->>'DiskMode' = disk_mode AND "values"->>'DiskSerial' = disk_serial)
+  OR (source_kind = 'uploaded' AND "values" = '{}'::jsonb)
+ )
 );
 
 CREATE TABLE IF NOT EXISTS installations (
@@ -249,6 +253,7 @@ CREATE INDEX IF NOT EXISTS installations_autoinstall_idx ON installations (autoi
 CREATE OR REPLACE FUNCTION reject_ubuntu_autoinstall_update() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF NEW.id IS DISTINCT FROM OLD.id
+    OR NEW.source_kind IS DISTINCT FROM OLD.source_kind
     OR NEW."values" IS DISTINCT FROM OLD."values"
     OR NEW.user_data IS DISTINCT FROM OLD.user_data
     OR NEW.sha256 IS DISTINCT FROM OLD.sha256

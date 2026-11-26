@@ -400,6 +400,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /usb/uefica", s.protect("view", withPageErrors(s.usbPage, s.ueficaUSBDownload)))
 	mux.HandleFunc("GET /assets/usb.js", usbScript)
 	mux.HandleFunc("GET /ubuntu-autoinstall/new", s.protect("images", s.ubuntuAutoinstallNew))
+	mux.HandleFunc("POST /ubuntu-autoinstall/upload", s.protect("images", withPageErrors(s.answersPage, s.ubuntuAutoinstallUpload)))
 	mux.HandleFunc("POST /ubuntu-autoinstall/preview", s.protect("images", s.ubuntuAutoinstallPreview))
 	mux.HandleFunc("POST /ubuntu-autoinstall/preview/download", s.protect("images", s.ubuntuAutoinstallPreviewDownload))
 	mux.HandleFunc("POST /ubuntu-autoinstall", s.protect("images", s.ubuntuAutoinstallSave))
@@ -526,6 +527,18 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 					return
 				}
 				r.Body = http.MaxBytesReader(w, r.Body, images.MaxISOBytes)
+			} else if r.Pattern == "POST /ubuntu-autoinstall/upload" {
+				if r.ContentLength > maxUbuntuAutoinstallUploadBytes+(32<<10) {
+					http.Error(w, translate(normalizeLanguage(user.Language), "Файл больше 64 КиБ"), http.StatusRequestEntityTooLarge)
+					return
+				}
+				r.Body = http.MaxBytesReader(w, r.Body, maxUbuntuAutoinstallUploadBytes+(32<<10))
+				err = r.ParseMultipartForm(128 << 10)
+				var sizeError *http.MaxBytesError
+				if errors.As(err, &sizeError) {
+					http.Error(w, translate(normalizeLanguage(user.Language), "Файл больше 64 КиБ"), http.StatusRequestEntityTooLarge)
+					return
+				}
 			} else if strings.HasPrefix(r.Pattern, "POST /ubuntu-autoinstall") {
 				if r.ContentLength > 512<<10 {
 					http.Error(w, "Форма больше 512 КиБ", http.StatusRequestEntityTooLarge)

@@ -1444,3 +1444,13 @@ tr.is-selected,.driver-package-card.is-selected{background:var(--draft-bg)}
 .sha-inline-dot{margin-right:6px;vertical-align:middle}
 .storage-task-live{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line-strong);display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--text-2);flex-wrap:wrap}
 .storage-task-live .dot{margin-right:5px;vertical-align:middle}
+
+/* Ubuntu Autoinstall uploaded YAML view */
+.chip-accent{background:var(--draft-bg);color:var(--accent-ink);border:1px solid var(--draft-line)}
+.ai-view-card{margin-top:12px}
+.ai-view-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+.ai-view-head h2{margin:0;font-size:17px}
+.ai-view-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;color:var(--muted);font-size:12px}
+.ai-view-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;padding:12px;margin:0 0 14px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.ai-view-kv dt{font-size:11px;color:var(--muted);margin:0 0 3px}
+.ai-view-kv dd{margin:0;font-size:12.5px;font-weight:500}

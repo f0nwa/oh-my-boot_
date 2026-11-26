@@ -222,6 +222,10 @@ func (s *Server) ubuntuAutoinstallFile(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "/download"):
 		downloadAutoinstall(w, file.UserData)
 	case strings.HasSuffix(r.URL.Path, "/copy"):
+		if file.IsUploaded() {
+			http.NotFound(w, r)
+			return
+		}
 		values := file.Values
 		values.PasswordHash = ""
 		s.renderUbuntuAutoinstall(w, r, &ubuntuAutoinstallEditorView{Title: file.Title, Values: values})

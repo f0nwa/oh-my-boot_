@@ -170,17 +170,31 @@ func SummarizeWindowsAnswerDisk(data []byte) AnswerFileDisk {
 	return result
 }
 
-func (f UbuntuAutoinstallSummary) DiskSummary() AnswerFileDisk {
-	switch f.DiskMode {
+func ubuntuAutoinstallDiskSummary(diskMode, diskSerial string) AnswerFileDisk {
+	switch diskMode {
 	case "serial":
-		return AnswerFileDisk{Kind: "wipe", Target: "Серийный номер: " + f.DiskSerial}
+		return AnswerFileDisk{Kind: "wipe", Target: "Серийный номер: " + diskSerial}
 	case "default":
 		return AnswerFileDisk{Kind: "wipe", Target: "Диск выбирает установщик"}
 	case "interactive":
 		return AnswerFileDisk{Kind: "interactive", Target: "Разметка в установщике"}
+	case "custom":
+		return AnswerFileDisk{Kind: "partition", Target: "Своя разметка (YAML)"}
 	default:
 		return AnswerFileDisk{Kind: "unknown", Target: "Нет данных о разметке"}
 	}
+}
+
+func (f UbuntuAutoinstallSummary) DiskSummary() AnswerFileDisk {
+	return ubuntuAutoinstallDiskSummary(f.DiskMode, f.DiskSerial)
+}
+
+func (f UbuntuAutoinstallFile) DiskSummary() AnswerFileDisk {
+	mode, serial := f.DiskMode, f.DiskSerial
+	if mode == "" {
+		mode, serial = f.Values.DiskMode, f.Values.DiskSerial
+	}
+	return ubuntuAutoinstallDiskSummary(mode, serial)
 }
 
 func (v WindowsAnswerVariant) DiskSummary() AnswerFileDisk {

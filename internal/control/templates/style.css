@@ -188,7 +188,9 @@ html[data-theme="light"] select:hover, html[data-theme="light"] select:focus,
 }
 ::placeholder{color:var(--faint);opacity:1}
 input[type=checkbox],input[type=radio]{width:16px;height:16px;min-height:0;padding:0;accent-color:var(--accent)}
-input[type=file]{padding:6px}
+input[type=file]{padding:5px;font-size:12px;background:var(--bg);color:var(--text)}
+input[type=file]::file-selector-button{font:inherit;line-height:16px;color:var(--text);background:var(--panel);border:1px solid var(--line-strong);border-radius:4px;padding:5px 9px;margin-right:8px;cursor:pointer}
+input[type=file]::file-selector-button:hover{background:var(--chip)}
 progress{width:100%;max-width:520px;accent-color:var(--accent)}
 .stack-form{max-width:600px}.stack-form fieldset{border:0;padding:0;margin:20px 0 0}.stack-form legend{font-size:12px;font-weight:500;color:var(--text-2);padding:0;margin-bottom:6px}
 .check{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:400;color:var(--text);margin:6px 0}
@@ -870,8 +872,7 @@ tr.is-migrating td{background:var(--draft-bg)}
 .driver-upload-method+.driver-upload-method{border-top:1px solid var(--line)}
 .driver-upload-dialog .driver-upload-method label{margin:0;font-size:14px;color:var(--text)}
 .driver-upload-fields{display:flex;flex-wrap:wrap;align-items:center;gap:10px;min-width:0}
-.driver-upload-fields input[type="file"]{flex:1;width:0;min-width:0;padding:5px;font-size:12px;background:var(--bg)}
-.driver-upload-fields input::file-selector-button{font:inherit;line-height:16px;color:var(--text);background:var(--panel);border:1px solid var(--line-strong);border-radius:4px;padding:5px 9px;margin-right:8px;cursor:pointer}
+.driver-upload-fields input[type="file"]{flex:1;width:0;min-width:0}
 .driver-upload-fields button{flex:none;min-height:40px;margin:0;white-space:nowrap}
 .driver-upload-fields button[type="submit"]{min-width:132px}
 .driver-upload-fields button:disabled{opacity:.45;cursor:default;pointer-events:none}

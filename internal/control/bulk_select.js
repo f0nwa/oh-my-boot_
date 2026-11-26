@@ -24,8 +24,8 @@
     const checked = enabled.filter((cb) => cb.checked);
 
     for (const cb of rows) {
-      const tr = cb.closest('tr');
-      if (tr) tr.classList.toggle('is-selected', !cb.disabled && cb.checked);
+      const container = cb.closest('tr, .driver-package-card');
+      if (container) container.classList.toggle('is-selected', !cb.disabled && cb.checked);
     }
 
     const selectAll = document.querySelector(`[data-bulk-select-all="${CSS.escape(group)}"]`);

@@ -650,9 +650,9 @@ td .mono.muted{color:var(--muted)}
 @media(max-width:700px){.ai-editor .ed-row2{grid-template-columns:1fr}.ai-editor .ed-foot{position:static}.ai-editor .ed-foot button{flex:1}}
 
 /* Boot entries: one aligned action row and a wrapping source path. */
-.installs td:first-child{min-width:160px}
-.installs td:nth-child(2){min-width:240px}
-.installs td:nth-child(4)>small{display:block;max-width:28ch;overflow-wrap:anywhere}
+.installs td.col-name{min-width:160px}
+.installs td.col-parts{min-width:240px}
+.installs td.col-status>small{display:block;max-width:28ch;overflow-wrap:anywhere}
 .installs .download-source{display:block;margin-top:6px;color:var(--muted);overflow-wrap:anywhere;white-space:normal;max-width:60ch}
 .installs .download-source .mono{color:var(--muted)}
 .download-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
@@ -1322,10 +1322,13 @@ html[data-theme="light"] .chan-pill.is-stable{background:rgba(13,148,104,.10);bo
 .bulk-dlg-tag-warn{background:var(--draft-bg);color:var(--accent-ink);border:1px solid var(--draft-line)}
 .section-bulk-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}
 .section-bulk-head h2,.section-bulk-head h3{margin:0}
-.col-check{width:38px;padding-right:4px;text-align:center;vertical-align:middle}
-.col-check input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
-.col-check input[type=checkbox]:disabled{cursor:not-allowed;opacity:.35}
-tr.is-selected{background:var(--draft-bg)}
+col.col-check{width:38px}
+th.col-check,td.col-check{width:38px;min-width:38px;max-width:38px;padding-left:10px;padding-right:4px;text-align:center;vertical-align:middle}
+.col-check input[type=checkbox],input[type=checkbox][data-bulk-select-row],input[type=checkbox][data-bulk-select-all]{width:15px;height:15px;min-height:15px;margin:0;padding:0;flex:none;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
+.col-check input[type=checkbox]:disabled,input[type=checkbox][data-bulk-select-row]:disabled,input[type=checkbox][data-bulk-select-all]:disabled{cursor:not-allowed;opacity:.32}
+.driver-pkg-check{margin-top:3px!important}
+tr.is-selected,.driver-package-card.is-selected{background:var(--draft-bg)}
+.driver-package-card.is-selected{border-color:var(--draft-line)}
 .image-bulk-delete-dialog{width:min(520px,calc(100vw - 32px));text-align:left;white-space:normal}
 .bulk-dlg-warn{margin:10px 0;padding:10px 12px;border-radius:6px;border:1px solid var(--bad-line);background:var(--bad-bg);color:var(--bad-text);font-size:12.5px}
 .bulk-dlg-info{margin:10px 0;padding:10px 12px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--text-2);font-size:12.5px}

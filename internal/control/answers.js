@@ -2,6 +2,9 @@
   'use strict';
 
   var uploadDialog = document.getElementById('answer-upload-dialog');
+  var winUploadTitle = document.getElementById('answer-upload-title-input');
+  var winUploadFile = document.getElementById('answer-upload-file-input');
+  var winAutoTitle = '';
   var ubuntuUploadDialog = document.getElementById('ubuntu-upload-dialog');
   var ubuntuUploadTitle = document.getElementById('ubuntu-upload-title-input');
   var ubuntuUploadFile = document.getElementById('ubuntu-upload-file-input');
@@ -42,6 +45,20 @@
         });
       });
     }
+  }
+
+  if (winUploadFile && winUploadTitle) {
+    winUploadFile.addEventListener('change', function () {
+      var file = winUploadFile.files && winUploadFile.files[0];
+      if (!file) return;
+      var current = winUploadTitle.value.trim();
+      if (current && current !== winAutoTitle) return;
+      var base = file.name.replace(/\.xml$/i, '').trim();
+      if (!base || /^(auto)?unattend$/i.test(base)) return;
+      if (base.length > 80) base = base.slice(0, 80);
+      winAutoTitle = base;
+      winUploadTitle.value = base;
+    });
   }
 
   if (ubuntuUploadFile && ubuntuUploadTitle) {
@@ -126,6 +143,7 @@
       if (form) {
         form.reset();
       }
+      winAutoTitle = '';
       var popover = uploadBtn.closest('[popover]');
       if (popover && typeof popover.hidePopover === 'function') {
         popover.hidePopover();

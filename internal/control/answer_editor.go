@@ -788,8 +788,9 @@ func (s *Server) answerEditorSave(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusUnprocessableEntity, "Некорректный XML-файл скрипта")
 		return
 	}
-	if !safeMenuText(v.Title, 80) || !isASCII(v.Title) || validateMenuFolder(v.Folder) != nil || !isASCII(v.Folder) {
-		fail(http.StatusBadRequest, "Название и каталог должны быть латиницей")
+	v.Title = strings.TrimSpace(v.Title)
+	if !safeMenuText(v.Title, 80) {
+		fail(http.StatusBadRequest, "Укажите название скрипта (до 80 символов)")
 		return
 	}
 	s.windowsMu.Lock()
@@ -798,7 +799,7 @@ func (s *Server) answerEditorSave(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusServiceUnavailable, "Подготовка скриптов недоступна")
 		return
 	}
-	variant, status, message := s.saveWindowsAnswer(r, v.Title, v.Folder, xml, true)
+	variant, status, message := s.saveWindowsAnswer(r, v.Title, "", xml, true)
 	if status != 0 {
 		fail(status, message)
 		return

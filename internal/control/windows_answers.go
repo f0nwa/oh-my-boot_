@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -84,9 +85,9 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Подготовка скриптов недоступна", http.StatusServiceUnavailable)
 		return
 	}
-	title, folder := r.FormValue("title"), r.FormValue("folder")
-	if !safeMenuText(title, 80) || !isASCII(title) || validateMenuFolder(folder) != nil || !isASCII(folder) {
-		http.Error(w, "Название и каталог должны быть латиницей", http.StatusBadRequest)
+	title := strings.TrimSpace(r.FormValue("title"))
+	if !safeMenuText(title, 80) {
+		http.Error(w, "Укажите название скрипта (до 80 символов)", http.StatusBadRequest)
 		return
 	}
 	file, _, err := r.FormFile("file")
@@ -100,7 +101,7 @@ func (s *Server) windowsAnswerUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Некорректный XML-файл скрипта", http.StatusBadRequest)
 		return
 	}
-	if _, status, message := s.saveWindowsAnswer(r, title, folder, data, false); status != 0 {
+	if _, status, message := s.saveWindowsAnswer(r, title, "", data, false); status != 0 {
 		http.Error(w, message, status)
 		return
 	}

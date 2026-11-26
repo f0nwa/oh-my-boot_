@@ -185,8 +185,7 @@
 </div>
 <div class="ed-warn" id="ed-wipes"{{if not $v.WipesDisk}} hidden{{end}}><b>{{t "Стирает диск."}}</b> {{t "Пункт меню с этим файлом получит метку «WIPES DISK»."}}</div>
 <div class="summary ed-save">{{if $v.CanSave}}<h2>{{t "Сохранить скрипт"}}</h2>
-<label for="ed-title">{{t "Название пункта меню, латиницей"}}</label><input id="ed-title" class="mono" name="title" value="{{$v.Title}}" maxlength="80" placeholder="Windows 11 Lab">
-<label for="ed-folder">{{t "Каталог в меню"}}</label><input id="ed-folder" class="mono" name="folder" value="{{$v.Folder}}">
+<label for="ed-title">{{t "Название скрипта"}}</label><input id="ed-title" name="title" value="{{$v.Title}}" maxlength="80" placeholder="Windows 11 Lab">
 <button class="btn btn-primary btn-wide ed-savebtn" formaction="/answers/editor/save" formnovalidate>{{if $v.SourceID}}{{t "Сохранить как новый файл"}}{{else}}{{t "Сохранить скрипт"}}{{end}}</button>
 <p class="hint">{{if $v.SourceID}}{{t "Исходный файл и пункт меню с ним не меняются."}} {{end}}{{t "Компьютеры в доверенном PXE-сегменте могут получить содержимое файла, включая пароли и ключи."}}</p>{{end}}
 <button class="btn btn-wide" name="do" value="download" formnovalidate>{{t "Скачать autounattend.xml"}}</button></div>

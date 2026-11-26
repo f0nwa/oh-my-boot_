@@ -527,6 +527,9 @@ func (s *Server) populateWIMImageTabs(
 		if b.SourceKind == WIMSourceKindISO {
 			if p, ok := profilesByID[b.WindowsProfileID]; ok {
 				row.SourceISOPath = p.Path
+				if row.VersionArch == "" && p.WIMInfo.Known {
+					row.VersionArch = wimVersionSummary(p.WIMInfo)
+				}
 				if st, ok := storagesByID[p.StorageID]; ok {
 					row.StorageName = st.Name
 				}

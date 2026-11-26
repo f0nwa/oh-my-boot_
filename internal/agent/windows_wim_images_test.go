@@ -705,3 +705,53 @@ func TestPrepareBootAndInstallImageWriteStartupAssetsAndUpdateWait(t *testing.T)
 		}
 	}
 }
+
+func TestInspectProfileBootWIMAndHTTPEndpoint(t *testing.T) {
+	assetRoot := t.TempDir()
+	profileDir := filepath.Join(assetRoot, "7")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profileDir, "boot.wim"), []byte("wim"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := &WindowsISOManager{
+		AssetRoot: assetRoot,
+		WIMCommands: &fakeWIMImageRunner{
+			infoOut: map[string]string{"*": sampleADKBootWIMInfo},
+		},
+	}
+
+	info, err := m.InspectProfileBootWIM(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("InspectProfileBootWIM: %v", err)
+	}
+	if !info.Known || len(info.Images) == 0 || info.Images[0].Build == 0 {
+		t.Fatalf("unexpected boot.wim info: %+v", info)
+	}
+	if _, err := m.InspectProfileBootWIM(context.Background(), 999); err == nil {
+		t.Fatalf("expected error for missing profile boot.wim")
+	}
+
+	h := HandlerWithManagers(nil, nil, m)
+	req := httptest.NewRequest(http.MethodPost, "/windows/profile/inspect-boot", strings.NewReader(`{"id":7}`))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /windows/profile/inspect-boot = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var decoded WindowsWIMInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !decoded.Known || len(decoded.Images) == 0 || decoded.Images[0].Build != info.Images[0].Build {
+		t.Fatalf("decoded info = %+v", decoded)
+	}
+
+	badReq := httptest.NewRequest(http.MethodPost, "/windows/profile/inspect-boot", strings.NewReader(`{"id":0}`))
+	badRec := httptest.NewRecorder()
+	h.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for id=0, got %d", badRec.Code)
+	}
+}

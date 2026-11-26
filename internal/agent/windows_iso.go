@@ -56,6 +56,7 @@ type WindowsISORequest struct {
 type WindowsISOResult struct {
 	InstallFile string         `json:"install_file"`
 	WIMInfo     WindowsWIMInfo `json:"wim_info,omitempty"`
+	BootWIMInfo WindowsWIMInfo `json:"boot_wim_info,omitempty"`
 }
 
 type WindowsISOMounter interface {
@@ -145,6 +146,7 @@ func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequ
 	}
 	var installFile string
 	var wimInfo WindowsWIMInfo
+	var bootWIMInfo WindowsWIMInfo
 	if req.BootMode == ISOStrelecMode {
 		err = prepareStrelecISOAssets(ctx, target, runtime.AssetRoot, req.ID, runtime.Template, runtime.Password, runtime.WIMCommands)
 	} else {
@@ -156,6 +158,12 @@ func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequ
 			} else {
 				wimInfo = info
 			}
+			bootInfo, bootWIMErr := inspectWindowsWIMInfo(ctx, runtime.WIMCommands, filepath.Join(runtime.AssetRoot, strconv.FormatInt(req.ID, 10), "boot.wim"))
+			if bootWIMErr != nil {
+				log.Printf("windows-iso %d: boot.wim info unavailable (%v); continuing with boot_wim_info.known=false", req.ID, bootWIMErr)
+			} else {
+				bootWIMInfo = bootInfo
+			}
 		}
 	}
 	if err != nil {
@@ -164,7 +172,7 @@ func (runtime WindowsISORuntime) Prepare(ctx context.Context, req WindowsISORequ
 		}
 		return WindowsISOResult{}, err
 	}
-	return WindowsISOResult{InstallFile: installFile, WIMInfo: wimInfo}, nil
+	return WindowsISOResult{InstallFile: installFile, WIMInfo: wimInfo, BootWIMInfo: bootWIMInfo}, nil
 }
 
 // LocalISORoot holds the local ISO storages of this server; an ISO for a

@@ -58,6 +58,94 @@ func (s *Server) windowsWIMAPI() WindowsWIMAPI {
 	return nil
 }
 
+type profileBootWIMInspector interface {
+	InspectProfileBootWIM(context.Context, int64) (agent.WindowsWIMInfo, error)
+}
+
+type isoBootWIMInfoStore interface {
+	SetISOBootImageWIMInfo(context.Context, int64, agent.WindowsWIMInfo) error
+}
+
+func (s *Server) profileBootWIMInspector() profileBootWIMInspector {
+	if insp, ok := s.WindowsWIM.(profileBootWIMInspector); ok && !isNilProvider(insp) {
+		return insp
+	}
+	if insp, ok := s.WindowsISO.(profileBootWIMInspector); ok && !isNilProvider(insp) {
+		return insp
+	}
+	if s.Agent != nil {
+		return s.Agent
+	}
+	return nil
+}
+
+func (s *Server) saveISOBootWIMInfo(ctx context.Context, profileID int64, info agent.WindowsWIMInfo) {
+	if profileID <= 0 || !info.Known {
+		return
+	}
+	if st, ok := s.Store.(isoBootWIMInfoStore); ok {
+		_ = st.SetISOBootImageWIMInfo(ctx, profileID, info)
+	}
+}
+
+// SyncISOBootWIMInfo backfills WIM metadata for ISO-backed boot.wim entries
+// whose wim_info is still unknown by inspecting each profile's cached boot.wim
+// via omb-agent.
+func (s *Server) SyncISOBootWIMInfo(ctx context.Context) error {
+	wimStore, ok := s.windowsWIMStore()
+	if !ok {
+		return nil
+	}
+	setter, ok := s.Store.(isoBootWIMInfoStore)
+	if !ok {
+		return nil
+	}
+	inspector := s.profileBootWIMInspector()
+	if inspector == nil {
+		return nil
+	}
+	list, err := wimStore.ListWindowsBootImages(ctx)
+	if err != nil {
+		return err
+	}
+	var firstErr error
+	for _, b := range list {
+		if b.SourceKind != WIMSourceKindISO || b.State != "ready" || b.WIMInfo.Known || b.WindowsProfileID <= 0 {
+			continue
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		info, err := inspector.InspectProfileBootWIM(ctx, b.WindowsProfileID)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if !info.Known {
+			continue
+		}
+		if err := setter.SetISOBootImageWIMInfo(ctx, b.WindowsProfileID, info); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func enrichISOBootImageWIMInfo(boot WindowsBootImage, profiles []WindowsProfile) WindowsBootImage {
+	if boot.SourceKind != WIMSourceKindISO || boot.WIMInfo.Known || boot.WindowsProfileID <= 0 {
+		return boot
+	}
+	for _, p := range profiles {
+		if p.ID == boot.WindowsProfileID && p.WIMInfo.Known {
+			boot.WIMInfo = p.WIMInfo
+			break
+		}
+	}
+	return boot
+}
+
 func findCatalogImage(catalog images.Catalog, storageID int64, relPath string) (images.Storage, images.Image, bool) {
 	var st images.Storage
 	var stFound bool

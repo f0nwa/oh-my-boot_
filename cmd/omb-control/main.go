@@ -149,6 +149,13 @@ func main() {
 	}
 	control.NewSystemEventMonitor(server).Start(shutdownCtx)
 	go func() {
+		syncCtx, cancel := context.WithTimeout(shutdownCtx, 30*time.Second)
+		defer cancel()
+		if err := server.SyncISOBootWIMInfo(syncCtx); err != nil {
+			log.Printf("ISO boot.wim metadata sync: %v", err)
+		}
+	}()
+	go func() {
 		<-shutdownCtx.Done()
 		timeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

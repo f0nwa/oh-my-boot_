@@ -131,7 +131,28 @@ func (m *WindowsISOManager) inspectAndCheckProfile(ctx context.Context, target, 
 		log.Printf("windows-iso %s: wim info check unavailable (%v); continuing with wim_info.known=false", id, wimErr)
 		wimInfo = WindowsWIMInfo{}
 	}
-	return WindowsISOResult{InstallFile: installFile, WIMInfo: wimInfo}, nil
+	bootWIMInfo, bootErr := inspectWindowsWIMInfo(ctx, m.WIMCommands, filepath.Join(m.AssetRoot, id, "boot.wim"))
+	if bootErr != nil {
+		log.Printf("windows-iso %s: boot.wim info check unavailable (%v); continuing with boot_wim_info.known=false", id, bootErr)
+		bootWIMInfo = WindowsWIMInfo{}
+	}
+	return WindowsISOResult{InstallFile: installFile, WIMInfo: wimInfo, BootWIMInfo: bootWIMInfo}, nil
+}
+
+// InspectProfileBootWIM reads WIM metadata directly from a prepared Windows ISO
+// profile's cached boot.wim under AssetRoot/<profileID>/boot.wim.
+func (m *WindowsISOManager) InspectProfileBootWIM(ctx context.Context, profileID int64) (WindowsWIMInfo, error) {
+	if profileID <= 0 {
+		return WindowsWIMInfo{}, fmt.Errorf("invalid Windows profile ID")
+	}
+	if m.AssetRoot == "" {
+		return WindowsWIMInfo{}, fmt.Errorf("Windows profile asset root is unavailable")
+	}
+	dir := filepath.Join(m.AssetRoot, strconv.FormatInt(profileID, 10))
+	if err := requireRegularISOFile(dir, "boot.wim"); err != nil {
+		return WindowsWIMInfo{}, err
+	}
+	return inspectWindowsWIMInfo(ctx, m.WIMCommands, filepath.Join(dir, "boot.wim"))
 }
 
 func (m *WindowsISOManager) checkWindowsISOAssets(id, mode string) error {

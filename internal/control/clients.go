@@ -142,6 +142,16 @@ func (c *AgentClient) PrepareWindowsISO(ctx context.Context, req agent.WindowsIS
 	return result, err
 }
 
+func (c *AgentClient) InspectProfileBootWIM(ctx context.Context, profileID int64) (agent.WindowsWIMInfo, error) {
+	var result agent.WindowsWIMInfo
+	body, err := json.Marshal(map[string]int64{"id": profileID})
+	if err != nil {
+		return result, err
+	}
+	err = localCall(ctx, c.http, http.MethodPost, "/windows/profile/inspect-boot", body, &result)
+	return result, err
+}
+
 func (c *AgentClient) PrepareBootImage(ctx context.Context, req agent.WindowsBootImageRequest) (agent.WindowsBootImageResult, error) {
 	var result agent.WindowsBootImageResult
 	body, err := json.Marshal(req)

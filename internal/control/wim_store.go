@@ -193,6 +193,23 @@ func (s Store) UpsertFileBootImage(ctx context.Context, src WindowsBootImageSour
 	return scanWindowsBootImage(row)
 }
 
+func (s Store) SetISOBootImageWIMInfo(ctx context.Context, windowsProfileID int64, wimInfo agent.WindowsWIMInfo) error {
+	if !wimInfo.Known {
+		return nil
+	}
+	tag, err := s.Pool.Exec(ctx,
+		`UPDATE windows_boot_images SET wim_info=$2 WHERE source_kind='iso' AND windows_profile_id=$1`,
+		windowsProfileID, wimInfo,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func (s Store) SetBootImageReady(ctx context.Context, id int64, sha256 string, hasSetupExe bool, wimInfo agent.WindowsWIMInfo) error {
 	tag, err := s.Pool.Exec(ctx,
 		`UPDATE windows_boot_images SET sha256=$2, has_setup_exe=$3, wim_info=$4, state='ready', last_error='' WHERE id=$1`,

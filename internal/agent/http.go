@@ -339,6 +339,29 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(result)
 	})
+	mux.HandleFunc("POST /windows/profile/inspect-boot", func(w http.ResponseWriter, r *http.Request) {
+		if windows == nil {
+			http.Error(w, "Windows boot image inspection unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			ID int64 `json:"id"`
+		}
+		if !decodeAgentRequest(w, r, &req, 4096) {
+			return
+		}
+		if req.ID <= 0 {
+			http.Error(w, "invalid Windows profile ID", http.StatusBadRequest)
+			return
+		}
+		info, err := windows.InspectProfileBootWIM(r.Context(), req.ID)
+		if err != nil {
+			http.Error(w, "Windows profile boot.wim inspection failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(info)
+	})
 	mux.HandleFunc("POST /windows/boot-image/prepare", func(w http.ResponseWriter, r *http.Request) {
 		if windows == nil {
 			http.Error(w, "Windows boot image preparation unavailable", http.StatusServiceUnavailable)

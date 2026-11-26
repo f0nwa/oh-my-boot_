@@ -680,3 +680,80 @@ func TestInstallImageSwapWithDefaultISOBootChecksCompat(t *testing.T) {
 		t.Fatalf("expected 303 with confirm_warnings=1, got %d inst=%+v body=%s", resConfirm.Code, store.installations[0], resConfirm.Body.String())
 	}
 }
+
+type syncISOBootWIMStore struct {
+	*fakeWIMStore
+	updated map[int64]agent.WindowsWIMInfo
+}
+
+func (s *syncISOBootWIMStore) SetISOBootImageWIMInfo(_ context.Context, profileID int64, info agent.WindowsWIMInfo) error {
+	if s.updated == nil {
+		s.updated = map[int64]agent.WindowsWIMInfo{}
+	}
+	s.updated[profileID] = info
+	for i := range s.bootImages {
+		if s.bootImages[i].SourceKind == WIMSourceKindISO && s.bootImages[i].WindowsProfileID == profileID {
+			s.bootImages[i].WIMInfo = info
+		}
+	}
+	return nil
+}
+
+type syncISOBootWIMInspector struct {
+	*fakeWindowsWIMAPI
+	calls   []int64
+	results map[int64]agent.WindowsWIMInfo
+}
+
+func (i *syncISOBootWIMInspector) InspectProfileBootWIM(_ context.Context, profileID int64) (agent.WindowsWIMInfo, error) {
+	i.calls = append(i.calls, profileID)
+	return i.results[profileID], nil
+}
+
+func TestSyncISOBootWIMInfoBackfillsUnknownISOEntries(t *testing.T) {
+	baseStore := &fakeWIMStore{}
+	baseStore.bootImages = []WindowsBootImage{
+		{ID: 1, SourceKind: WIMSourceKindISO, WindowsProfileID: 2, Title: "Win11 ISO", State: "ready"},
+		{ID: 2, SourceKind: WIMSourceKindISO, WindowsProfileID: 3, Title: "Already Known", State: "ready", WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 1, Build: 19045, Architecture: "x86_64"}}}},
+		{ID: 3, SourceKind: WIMSourceKindFile, StorageID: 1, Path: "boot.wim", Title: "Standalone", State: "ready"},
+	}
+	store := &syncISOBootWIMStore{fakeWIMStore: baseStore}
+	insp := &syncISOBootWIMInspector{
+		fakeWindowsWIMAPI: &fakeWindowsWIMAPI{},
+		results: map[int64]agent.WindowsWIMInfo{
+			2: {Known: true, Images: []agent.WindowsWIMImage{{Index: 2, Build: 26100, Architecture: "x86_64"}}},
+		},
+	}
+	s := &Server{Store: store, WindowsWIM: insp}
+	if err := s.SyncISOBootWIMInfo(context.Background()); err != nil {
+		t.Fatalf("SyncISOBootWIMInfo: %v", err)
+	}
+	if len(insp.calls) != 1 || insp.calls[0] != 2 {
+		t.Fatalf("expected InspectProfileBootWIM only for profile 2, got %v", insp.calls)
+	}
+	if got := store.updated[2]; !got.Known || len(got.Images) != 1 || got.Images[0].Build != 26100 {
+		t.Fatalf("unexpected updated wim_info: %+v", got)
+	}
+}
+
+func TestEnrichISOBootImageWIMInfoFallbackAndPreference(t *testing.T) {
+	profiles := []WindowsProfile{
+		{ID: 10, WIMInfo: agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 1, Build: 26100, Architecture: "x86_64"}}}},
+	}
+	unknownISO := WindowsBootImage{ID: 1, SourceKind: WIMSourceKindISO, WindowsProfileID: 10}
+	enriched := enrichISOBootImageWIMInfo(unknownISO, profiles)
+	if !enriched.WIMInfo.Known || wimVersionSummary(enriched.WIMInfo) != "10.0.26100 · x64" {
+		t.Fatalf("expected fallback wim_info, got %+v (%q)", enriched.WIMInfo, wimVersionSummary(enriched.WIMInfo))
+	}
+
+	knownISO := WindowsBootImage{
+		ID:               2,
+		SourceKind:       WIMSourceKindISO,
+		WindowsProfileID: 10,
+		WIMInfo:          agent.WindowsWIMInfo{Known: true, Images: []agent.WindowsWIMImage{{Index: 2, Build: 26200, Architecture: "x86_64"}}},
+	}
+	kept := enrichISOBootImageWIMInfo(knownISO, profiles)
+	if wimVersionSummary(kept.WIMInfo) != "10.0.26200 · x64" {
+		t.Fatalf("expected boot.wim's own wim_info to win, got %q", wimVersionSummary(kept.WIMInfo))
+	}
+}

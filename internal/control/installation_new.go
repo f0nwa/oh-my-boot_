@@ -264,7 +264,7 @@ func (s *Server) installationNewPage(w http.ResponseWriter, r *http.Request) {
 	selectedInstallImgID, _ := strconv.ParseInt(data.Form.Get("install_image_id"), 10, 64)
 	for _, img := range sources.BootImages {
 		if img.State == "ready" || (selectedBootImgID > 0 && img.ID == selectedBootImgID) {
-			data.WindowsBootImages = append(data.WindowsBootImages, img)
+			data.WindowsBootImages = append(data.WindowsBootImages, enrichISOBootImageWIMInfo(img, profiles))
 		}
 	}
 	for _, img := range sources.InstallImages {
@@ -486,7 +486,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Выбранный boot.wim не найден или не готов", http.StatusBadRequest)
 				return
 			}
-			pairBoot = selectedBootImg
+			pairBoot = enrichISOBootImageWIMInfo(selectedBootImg, profiles)
 			checkPair = true
 		} else if installImageID > 0 && shared.Kind == BootProfileWindowsISO {
 			pairBoot = WindowsBootImage{

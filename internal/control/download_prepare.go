@@ -262,6 +262,9 @@ func (s *Server) prepareDownloadISO(ctx context.Context, profile WindowsProfile,
 					_ = s.Store.SetWindowsProfileWIMInfo(ctx, profile.ID, checked.WIMInfo)
 				}
 			}
+			if checked.BootWIMInfo.Known {
+				s.saveISOBootWIMInfo(ctx, profile.ID, checked.BootWIMInfo)
+			}
 			return wim, nil
 		}
 	}
@@ -291,6 +294,9 @@ func (s *Server) prepareDownloadISO(ctx context.Context, profile WindowsProfile,
 		if err := s.Store.SetWindowsProfileWIMInfo(finalCtx, profile.ID, result.WIMInfo); err != nil {
 			return agent.WindowsWIMInfo{}, err
 		}
+	}
+	if result.BootWIMInfo.Known {
+		s.saveISOBootWIMInfo(finalCtx, profile.ID, result.BootWIMInfo)
 	}
 	_ = s.Store.Audit(finalCtx, actor, "windows-profile.prepare", "ok", fmt.Sprintf("id=%d", profile.ID))
 	return result.WIMInfo, nil

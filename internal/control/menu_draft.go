@@ -362,6 +362,7 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 						if !ok || bootImg.State != "ready" {
 							return menuProfile{}, "", fmt.Errorf("Windows boot image %d is not ready", installation.BootImageID)
 						}
+						bootImg = enrichISOBootImageWIMInfo(bootImg, profiles)
 						if compat := CheckBootInstallCompat(bootImg, activeWIM, true); compat.Status == "incompatible" {
 							return menuProfile{}, "", fmt.Errorf("Несовместимая пара boot.wim и install.wim: %s", strings.Join(compat.Errors, "; "))
 						}
@@ -376,6 +377,7 @@ func menuProfileForInstallation(id int64, base string, sources InstallationMenuS
 				if !ok || bootImg.State != "ready" {
 					return menuProfile{}, "", fmt.Errorf("Windows boot image %d is not ready", installation.BootImageID)
 				}
+				bootImg = enrichISOBootImageWIMInfo(bootImg, profiles)
 				instImg, ok := findWindowsInstallImage(sources.InstallImages, installation.InstallImageID)
 				if !ok || instImg.State != "ready" {
 					return menuProfile{}, "", fmt.Errorf("Windows install image %d is not ready", installation.InstallImageID)

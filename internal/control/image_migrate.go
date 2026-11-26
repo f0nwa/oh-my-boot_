@@ -55,6 +55,7 @@ type MigrationCoordinator struct {
 	store      Store
 	images     ImagesAPI
 	windowsISO WindowsISOAPI
+	windowsWIM WindowsWIMAPI
 	ubuntuISO  UbuntuISOAPI
 	agent      any
 	nfs        any
@@ -181,6 +182,34 @@ func (c *MigrationCoordinator) CheckPreflight(ctx context.Context, sourceStorage
 						strings.EqualFold(sessionProfile, strings.TrimSpace(p.Title)) ||
 						(p.Folder != "" && strings.EqualFold(sessionProfile, strings.TrimSpace(p.Folder))) {
 						return fmt.Errorf("%w: клиент %s выполняет установку через \\\\ombisos\\%s", ErrImageInUse, s.IP, sessionProfile)
+					}
+				}
+			}
+		}
+	}
+
+	if c.store.Pool != nil {
+		if installImgs, err := c.store.ListWindowsInstallImages(ctx); err == nil && len(installImgs) > 0 {
+			var matchedInst []WindowsInstallImage
+			for _, img := range installImgs {
+				if img.StorageID == sourceStorageID && img.Path == path {
+					matchedInst = append(matchedInst, img)
+				}
+			}
+			if len(matchedInst) > 0 {
+				sessions, _ := getActiveSMBSessions(ctx, c.agent)
+				for _, s := range sessions {
+					if s.Ended != nil {
+						continue
+					}
+					sessionProfile := strings.TrimSpace(s.Profile)
+					if sessionProfile == "" {
+						continue
+					}
+					for _, img := range matchedInst {
+						if strings.EqualFold(sessionProfile, fmt.Sprintf("install-%d", img.ID)) {
+							return fmt.Errorf("%w: клиент %s выполняет установку через \\\\ombisos\\%s", ErrImageInUse, s.IP, sessionProfile)
+						}
 					}
 				}
 			}
@@ -331,6 +360,33 @@ func (c *MigrationCoordinator) ProcessCompletedMigration(ctx context.Context, jo
 		}
 	}
 
+	// 2b. Rebind in agent: standalone install.wim / install.esd bind mounts
+	wimAPI := c.windowsWIM
+	if wimAPI == nil {
+		if a, ok := c.agent.(WindowsWIMAPI); ok && !isNilProvider(a) {
+			wimAPI = a
+		}
+	}
+	if wimAPI != nil && c.store.Pool != nil {
+		if installImgs, err := c.store.ListWindowsInstallImages(ctx); err == nil {
+			for _, img := range installImgs {
+				if img.StorageID == job.SourceStorageID && img.Path == job.Path && img.State == "ready" {
+					req := agent.WindowsInstallImageRequest{
+						ID:           img.ID,
+						StorageRoot:  targetRoot,
+						RelativePath: job.Path,
+						Size:         img.Size,
+						Modified:     img.Modified,
+					}
+					if _, err := wimAPI.PrepareInstallImage(ctx, req); err != nil {
+						_, _ = c.store.Pool.Exec(ctx, `UPDATE image_migrations SET state='failed', error=$2, updated_at=NOW() WHERE id=$1`, jobID, err.Error())
+						return fmt.Errorf("ошибка перепривязки install.wim в агенте: %w", err)
+					}
+				}
+			}
+		}
+	}
+
 	// 3. PostgreSQL Transactional Rebind
 	tx, err := c.store.Pool.Begin(ctx)
 	if err != nil {
@@ -392,6 +448,9 @@ func (c *MigrationCoordinator) ProcessCompletedMigration(ctx context.Context, jo
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("не удалось зафиксировать транзакцию перепривязки: %w", err)
+	}
+	if err := c.store.RebindWIMImageStorage(ctx, job.SourceStorageID, job.Path, job.TargetStorageID, targetRoot); err != nil {
+		return fmt.Errorf("не удалось перепривязать WIM-образы к новому хранилищу: %w", err)
 	}
 	if c.onRebind != nil {
 		c.onRebind()
@@ -475,6 +534,7 @@ func (s *Server) migrationCoordinator() *MigrationCoordinator {
 		store:      store,
 		images:     s.Images,
 		windowsISO: s.WindowsISO,
+		windowsWIM: s.windowsWIMAPI(),
 		ubuntuISO:  s.UbuntuISO,
 		agent:      agentAPI,
 		nfs:        nfsAPI,

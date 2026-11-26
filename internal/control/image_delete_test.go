@@ -480,3 +480,43 @@ func TestImagesPageRendersBulkCheckboxesForAdminOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestImageDeleteBlocksUsedBootAndInstallWIM(t *testing.T) {
+	t.Run("used_boot_wim_file_blocked", func(t *testing.T) {
+		s, store, api := newFakeWIMStore(t, "admin")
+		s.Images.(*fakeImagesAPI).catalog.Storages = []images.Storage{{ID: 7, Name: "Local", Kind: "local", Root: "/srv/omb/iso", State: "ready"}}
+		s.Images.(*fakeImagesAPI).catalog.Images = []images.Image{{StorageID: 7, Path: "wim/boot.wim", Present: true, Kind: images.ImageKindWIM}}
+		store.bootImages = []WindowsBootImage{{ID: 11, SourceKind: WIMSourceKindFile, StorageID: 7, Path: "wim/boot.wim", State: "ready"}}
+		store.installations = []Installation{{ID: 101, BootProfileID: 50, Title: "Win11", BootImageID: 11}}
+
+		res := submitImageDeletion(t, s, imageDeletionForm("7", "wim/boot.wim"))
+		if res.Code != http.StatusConflict || len(s.Images.(*fakeImagesAPI).deleted) != 0 || len(api.removedBootIDs) != 0 {
+			t.Fatalf("used boot.wim deleted: status=%d deleted=%+v removed=%v body=%s", res.Code, s.Images.(*fakeImagesAPI).deleted, api.removedBootIDs, res.Body.String())
+		}
+	})
+
+	t.Run("used_install_wim_in_draft_blocked", func(t *testing.T) {
+		s, store, api := newFakeWIMStore(t, "admin")
+		s.Images.(*fakeImagesAPI).catalog.Storages = []images.Storage{{ID: 7, Name: "Local", Kind: "local", Root: "/srv/omb/iso", State: "ready"}}
+		s.Images.(*fakeImagesAPI).catalog.Images = []images.Image{{StorageID: 7, Path: "wim/install.wim", Present: true, Kind: images.ImageKindWIM}}
+		store.installImages = []WindowsInstallImage{{ID: 21, StorageID: 7, Path: "wim/install.wim", State: "ready"}}
+		store.draft = &MenuDraft{Items: []MenuDraftItem{{InstallationID: 105, Title: "Draft", Components: &InstallationComponents{InstallImageID: 21}}}}
+
+		res := submitImageDeletion(t, s, imageDeletionForm("7", "wim/install.wim"))
+		if res.Code != http.StatusConflict || len(s.Images.(*fakeImagesAPI).deleted) != 0 || len(api.removedInstallIDs) != 0 {
+			t.Fatalf("draft-used install.wim deleted: status=%d deleted=%+v removed=%v body=%s", res.Code, s.Images.(*fakeImagesAPI).deleted, api.removedInstallIDs, res.Body.String())
+		}
+	})
+
+	t.Run("unused_install_wim_cleans_up_record_and_file", func(t *testing.T) {
+		s, store, api := newFakeWIMStore(t, "admin")
+		s.Images.(*fakeImagesAPI).catalog.Storages = []images.Storage{{ID: 7, Name: "Local", Kind: "local", Root: "/srv/omb/iso", State: "ready"}}
+		s.Images.(*fakeImagesAPI).catalog.Images = []images.Image{{StorageID: 7, Path: "wim/install.wim", Present: true, Kind: images.ImageKindWIM}}
+		store.installImages = []WindowsInstallImage{{ID: 21, StorageID: 7, Path: "wim/install.wim", State: "ready"}}
+
+		res := submitImageDeletion(t, s, imageDeletionForm("7", "wim/install.wim"))
+		if res.Code != http.StatusSeeOther || len(s.Images.(*fakeImagesAPI).deleted) != 1 || len(api.removedInstallIDs) != 1 || len(store.installImages) != 0 {
+			t.Fatalf("unused install.wim delete failed: status=%d deleted=%+v removed=%v left=%d body=%s", res.Code, s.Images.(*fakeImagesAPI).deleted, api.removedInstallIDs, len(store.installImages), res.Body.String())
+		}
+	})
+}

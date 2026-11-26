@@ -188,6 +188,7 @@ type Server struct {
 	SMB               SMBMountAPI
 	NFS               NFSMountAPI
 	WindowsISO        WindowsISOAPI
+	WindowsWIM        WindowsWIMAPI
 	UbuntuISO         UbuntuISOAPI
 	UbuntuReadiness   UbuntuReadiness
 	UbuntuSource      UbuntuSourceAPI
@@ -431,6 +432,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/image-details.js", imageDetailsScript)
 	mux.HandleFunc("POST /images/name", s.protect("images", withPageErrors(s.imagesPage, s.imageNameSave)))
 	mux.HandleFunc("POST /images/iso/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectISO)))
+	mux.HandleFunc("POST /images/boot/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectBootWIM)))
+	mux.HandleFunc("POST /images/boot/rename", s.protect("images", withPageErrors(s.imagesPage, s.renameBootWIM)))
+	mux.HandleFunc("POST /images/boot/delete", s.protect("delete", withPageErrors(s.imagesPage, s.deleteBootWIM)))
+	mux.HandleFunc("POST /images/install/inspect", s.protect("images", withPageErrors(s.imagesPage, s.inspectInstallWIM)))
+	mux.HandleFunc("POST /images/install/rename", s.protect("images", withPageErrors(s.imagesPage, s.renameInstallWIM)))
+	mux.HandleFunc("POST /images/install/delete", s.protect("delete", withPageErrors(s.imagesPage, s.deleteInstallWIM)))
 	mux.HandleFunc("POST /images/windows-profiles/{id}/delete", s.protect("delete", withPageErrors(s.imagesPage, s.windowsProfileDelete)))
 	mux.HandleFunc("POST /images/windows-answers/{id}/delete", s.protect("delete", withPageErrors(s.answersPage, s.windowsAnswerDelete)))
 	mux.HandleFunc("POST /images/smb", s.protect("smb", withPageErrors(s.storagesPage, s.imagesSMBCreate)))

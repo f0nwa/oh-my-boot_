@@ -25,7 +25,7 @@ func safeImagesReturnURL(raw string) string {
 	}
 	q := u.Query()
 	clean := url.Values{}
-	for _, key := range []string{"show", "q", "sort", "dir"} {
+	for _, key := range []string{"tab", "show", "q", "sort", "dir"} {
 		if v := strings.TrimSpace(q.Get(key)); v != "" {
 			clean.Set(key, v)
 		}
@@ -64,12 +64,14 @@ func parseImageBatchItems(values []string) ([]imageBatchItem, error) {
 }
 
 type imageDeleteContext struct {
-	storagesByID  map[int64]images.Storage
-	imagesByKey   map[string]images.Image
-	maintLookup   maintenanceLookup
-	profilesByKey map[string]WindowsProfile
-	downloads     map[string][]imageDownload
-	uploadEnabled map[int64]bool
+	storagesByID     map[int64]images.Storage
+	imagesByKey      map[string]images.Image
+	maintLookup      maintenanceLookup
+	profilesByKey    map[string]WindowsProfile
+	bootWIMsByKey    map[string]WindowsBootImage
+	installWIMsByKey map[string]WindowsInstallImage
+	downloads        map[string][]imageDownload
+	uploadEnabled    map[int64]bool
 }
 
 func (s *Server) prepareImageDeleteContext(r *http.Request) (*imageDeleteContext, int, string) {
@@ -89,12 +91,14 @@ func (s *Server) prepareImageDeleteContext(r *http.Request) (*imageDeleteContext
 		return nil, http.StatusServiceUnavailable, "Не удалось проверить загрузки"
 	}
 	dctx := &imageDeleteContext{
-		storagesByID:  make(map[int64]images.Storage, len(catalog.Storages)),
-		imagesByKey:   make(map[string]images.Image, len(catalog.Images)),
-		maintLookup:   s.loadMaintenanceLookup(r.Context()),
-		profilesByKey: make(map[string]WindowsProfile, len(profiles)),
-		downloads:     imageDownloadsBySource(profiles, sources),
-		uploadEnabled: make(map[int64]bool),
+		storagesByID:     make(map[int64]images.Storage, len(catalog.Storages)),
+		imagesByKey:      make(map[string]images.Image, len(catalog.Images)),
+		maintLookup:      s.loadMaintenanceLookup(r.Context()),
+		profilesByKey:    make(map[string]WindowsProfile, len(profiles)),
+		bootWIMsByKey:    make(map[string]WindowsBootImage),
+		installWIMsByKey: make(map[string]WindowsInstallImage),
+		downloads:        imageDownloadsBySource(profiles, sources),
+		uploadEnabled:    make(map[int64]bool),
 	}
 	for _, st := range catalog.Storages {
 		dctx.storagesByID[st.ID] = st
@@ -104,6 +108,29 @@ func (s *Server) prepareImageDeleteContext(r *http.Request) (*imageDeleteContext
 	}
 	for _, p := range profiles {
 		dctx.profilesByKey[imageAuthorKey(p.StorageID, p.Path)] = p
+	}
+	if wimStore, ok := s.windowsWIMStore(); ok {
+		bootImages, err := wimStore.ListWindowsBootImages(r.Context())
+		if err != nil {
+			return nil, http.StatusServiceUnavailable, "Не удалось проверить образы boot.wim"
+		}
+		installImages, err := wimStore.ListWindowsInstallImages(r.Context())
+		if err != nil {
+			return nil, http.StatusServiceUnavailable, "Не удалось проверить образы install.wim"
+		}
+		for _, img := range bootImages {
+			if img.SourceKind == WIMSourceKindFile && img.StorageID > 0 && img.Path != "" {
+				dctx.bootWIMsByKey[imageAuthorKey(img.StorageID, img.Path)] = img
+			}
+		}
+		for _, img := range installImages {
+			if img.StorageID > 0 && img.Path != "" {
+				dctx.installWIMsByKey[imageAuthorKey(img.StorageID, img.Path)] = img
+			}
+		}
+		for k, list := range imageDownloadsByWIMSource(bootImages, installImages, sources) {
+			dctx.downloads[k] = append(dctx.downloads[k], list...)
+		}
 	}
 	return dctx, 0, ""
 }
@@ -161,6 +188,54 @@ func (s *Server) deleteSingleImageItem(r *http.Request, dctx *imageDeleteContext
 			return storageName, imagePresent, http.StatusServiceUnavailable, "Не удалось удалить запись профиля"
 		}
 		delete(dctx.profilesByKey, key)
+	}
+	if bootImg, hasBoot := dctx.bootWIMsByKey[key]; hasBoot && bootImg.ID > 0 {
+		reason, msg, err := s.checkWIMImageReferences(r.Context(), bootImg.ID, 0)
+		if err != nil {
+			return storageName, imagePresent, http.StatusServiceUnavailable, "Не удалось проверить использование boot.wim"
+		}
+		if reason != "" {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "rejected", fmt.Sprintf("id=%d boot_wim=%d %s", storageID, bootImg.ID, reason))
+			return storageName, imagePresent, http.StatusConflict, msg
+		}
+		wimAPI := s.windowsWIMAPI()
+		wimStore, ok := s.windowsWIMStore()
+		if wimAPI == nil || !ok {
+			return storageName, imagePresent, http.StatusServiceUnavailable, "Очистка файлов boot.wim недоступна"
+		}
+		if err := wimAPI.RemoveBootImage(r.Context(), bootImg.ID); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s boot cleanup", storageID, imagePath))
+			return storageName, imagePresent, http.StatusServiceUnavailable, "Не удалось удалить подготовленные файлы boot.wim"
+		}
+		if err := wimStore.DeleteWindowsBootImage(r.Context(), bootImg.ID); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s boot database", storageID, imagePath))
+			return storageName, imagePresent, http.StatusServiceUnavailable, "Не удалось удалить запись boot.wim"
+		}
+		delete(dctx.bootWIMsByKey, key)
+	}
+	if instImg, hasInst := dctx.installWIMsByKey[key]; hasInst && instImg.ID > 0 {
+		reason, msg, err := s.checkWIMImageReferences(r.Context(), 0, instImg.ID)
+		if err != nil {
+			return storageName, imagePresent, http.StatusServiceUnavailable, "Не удалось проверить использование install.wim"
+		}
+		if reason != "" {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "rejected", fmt.Sprintf("id=%d install_wim=%d %s", storageID, instImg.ID, reason))
+			return storageName, imagePresent, http.StatusConflict, msg
+		}
+		wimAPI := s.windowsWIMAPI()
+		wimStore, ok := s.windowsWIMStore()
+		if wimAPI == nil || !ok {
+			return storageName, imagePresent, http.StatusServiceUnavailable, "Очистка файлов install.wim недоступна"
+		}
+		if err := wimAPI.RemoveInstallImage(r.Context(), instImg.ID); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s install cleanup", storageID, imagePath))
+			return storageName, imagePresent, http.StatusServiceUnavailable, "Не удалось удалить подготовленные файлы install.wim"
+		}
+		if err := wimStore.DeleteWindowsInstallImage(r.Context(), instImg.ID); err != nil {
+			_ = s.Store.Audit(r.Context(), requestInfo(r).User.ID, "iso.delete", "error", fmt.Sprintf("%d %s install database", storageID, imagePath))
+			return storageName, imagePresent, http.StatusServiceUnavailable, "Не удалось удалить запись install.wim"
+		}
+		delete(dctx.installWIMsByKey, key)
 	}
 	if imagePresent && !dctx.uploadEnabled[storageID] {
 		if storage.Kind == "smb" {

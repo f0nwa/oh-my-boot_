@@ -378,13 +378,75 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if shared.Kind == BootProfileWinPEISO && ((r.FormValue("answer_id") != "" && r.FormValue("answer_id") != "0") || (r.FormValue("autoinstall_id") != "" && r.FormValue("autoinstall_id") != "0")) {
+	if shared.Kind == BootProfileWinPEISO && ((r.FormValue("answer_id") != "" && r.FormValue("answer_id") != "0") || (r.FormValue("autoinstall_id") != "" && r.FormValue("autoinstall_id") != "0") || (r.FormValue("boot_image_id") != "" && r.FormValue("boot_image_id") != "0") || (r.FormValue("install_image_id") != "" && r.FormValue("install_image_id") != "0")) {
 		http.Error(w, "Сервисная WinPE не использует параметры установщика Windows", http.StatusBadRequest)
 		return
 	}
-	if (shared.Kind == BootProfileUbuntuBuiltin || shared.Kind == BootProfileUbuntuISO) && ((r.FormValue("answer_id") != "" && r.FormValue("answer_id") != "0") || len(r.Form["package"]) > 0 || len(r.Form["inf"]) > 0) {
+	if (shared.Kind == BootProfileUbuntuBuiltin || shared.Kind == BootProfileUbuntuISO) && ((r.FormValue("answer_id") != "" && r.FormValue("answer_id") != "0") || (r.FormValue("boot_image_id") != "" && r.FormValue("boot_image_id") != "0") || (r.FormValue("install_image_id") != "" && r.FormValue("install_image_id") != "0") || len(r.Form["package"]) > 0 || len(r.Form["inf"]) > 0) {
 		http.Error(w, "Ubuntu не поддерживает компоненты Windows", http.StatusBadRequest)
 		return
+	}
+	bootImageID, installImageID := int64(0), int64(0)
+	if raw := strings.TrimSpace(r.FormValue("boot_image_id")); raw != "" && raw != "0" {
+		bootImageID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || bootImageID <= 0 {
+			http.Error(w, "Неверный образ boot.wim", http.StatusBadRequest)
+			return
+		}
+	}
+	if raw := strings.TrimSpace(r.FormValue("install_image_id")); raw != "" && raw != "0" {
+		installImageID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || installImageID <= 0 {
+			http.Error(w, "Неверный образ install.wim", http.StatusBadRequest)
+			return
+		}
+	}
+	if shared.Kind == BootProfileWindowsWIM {
+		if installImageID == 0 {
+			installImageID = shared.InstallImageID
+		}
+		if installImageID != shared.InstallImageID {
+			http.Error(w, "Для загрузки из отдельного install.wim образ установки должен совпадать с выбранным источником", http.StatusBadRequest)
+			return
+		}
+		if bootImageID <= 0 {
+			http.Error(w, "Выберите готовый boot.wim с setup.exe для установки из отдельного install.wim", http.StatusBadRequest)
+			return
+		}
+	}
+	var selectedBootImg WindowsBootImage
+	var selectedInstallImg WindowsInstallImage
+	activeWIM := profile.WIMInfo
+	if bootImageID > 0 || installImageID > 0 {
+		wimStore, ok := s.windowsWIMStore()
+		if !ok {
+			http.Error(w, "Хранилище WIM-образов недоступно", http.StatusServiceUnavailable)
+			return
+		}
+		if installImageID > 0 {
+			selectedInstallImg, err = wimStore.GetWindowsInstallImage(r.Context(), installImageID)
+			if err != nil || selectedInstallImg.State != "ready" {
+				http.Error(w, "Выбранный install.wim не найден или не готов", http.StatusBadRequest)
+				return
+			}
+			activeWIM = selectedInstallImg.WIMInfo
+		}
+		if bootImageID > 0 {
+			selectedBootImg, err = wimStore.GetWindowsBootImage(r.Context(), bootImageID)
+			if err != nil || selectedBootImg.State != "ready" {
+				http.Error(w, "Выбранный boot.wim не найден или не готов", http.StatusBadRequest)
+				return
+			}
+			pairCompat := CheckBootInstallCompat(selectedBootImg, activeWIM, shared.Kind == BootProfileWindowsISO)
+			if pairCompat.Status == "incompatible" {
+				http.Error(w, fmt.Sprintf("Несовместимая пара boot.wim и install.wim: %s", strings.Join(pairCompat.Errors, "; ")), http.StatusBadRequest)
+				return
+			}
+			if pairCompat.Status == "warning" && r.FormValue("confirm_warnings") != "1" {
+				http.Error(w, "Подтвердите предупреждения совместимости boot.wim и install.wim", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 	autoinstallID := int64(0)
 	if raw := r.FormValue("autoinstall_id"); raw != "" && raw != "0" {
@@ -434,8 +496,8 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Файл ответов не найден", http.StatusBadRequest)
 			return
 		}
-		if profileBootable(profile) && profile.WIMInfo.Known {
-			compat := EvaluateWindowsAnswerCompatibility(selectedAnswer.Target, profile.WIMInfo)
+		if (installImageID > 0 || profileBootable(profile)) && activeWIM.Known {
+			compat := EvaluateWindowsAnswerCompatibility(selectedAnswer.Target, activeWIM)
 			if compat.Status == "incompatible" {
 				http.Error(w, fmt.Sprintf("Скрипт установки несовместим с образом: %s", strings.Join(compat.Errors, "; ")), http.StatusBadRequest)
 				return
@@ -487,7 +549,7 @@ func (s *Server) installationCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var selectedConfig *DriverConfig
-	item := Installation{BootProfileID: shared.ID, Title: title, Folder: folder, AnswerID: answerID, AutoinstallID: autoinstallID}
+	item := Installation{BootProfileID: shared.ID, Title: title, Folder: folder, AnswerID: answerID, BootImageID: bootImageID, InstallImageID: installImageID, AutoinstallID: autoinstallID}
 	if len(infs) > 0 {
 		unique := map[string]bool{}
 		values := url.Values{"profile_id": {strconv.FormatInt(profile.ID, 10)}, "answer_id": {strconv.FormatInt(answerID, 10)}, "title": {title}, "folder": {folder}}

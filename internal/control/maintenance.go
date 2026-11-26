@@ -112,15 +112,52 @@ func (s *Server) installationMaintenanceLocked(ctx context.Context, inst Install
 	if len(lookup.locks) == 0 {
 		return false
 	}
+	wpByID := make(map[int64]WindowsProfile, len(profiles))
+	for _, wp := range profiles {
+		wpByID[wp.ID] = wp
+	}
+	var wimStore windowsWIMStore
+	if st, ok := s.windowsWIMStore(); ok {
+		wimStore = st
+	}
+	if wimStore != nil {
+		if inst.BootImageID > 0 {
+			if bootImg, err := wimStore.GetWindowsBootImage(ctx, inst.BootImageID); err == nil {
+				if bootImg.SourceKind == WIMSourceKindFile && bootImg.StorageID > 0 {
+					if _, _, locked := lookup.ImageLock(bootImg.StorageID, bootImg.Path); locked {
+						return true
+					}
+				} else if bootImg.SourceKind == WIMSourceKindISO && bootImg.WindowsProfileID > 0 {
+					if wp, ok := wpByID[bootImg.WindowsProfileID]; ok {
+						if _, _, locked := lookup.ImageLock(wp.StorageID, wp.Path); locked {
+							return true
+						}
+					}
+				}
+			}
+		}
+		if inst.InstallImageID > 0 {
+			if instImg, err := wimStore.GetWindowsInstallImage(ctx, inst.InstallImageID); err == nil && instImg.StorageID > 0 {
+				if _, _, locked := lookup.ImageLock(instImg.StorageID, instImg.Path); locked {
+					return true
+				}
+			}
+		}
+	}
 	for _, bp := range sources.BootProfiles {
 		if bp.ID != inst.BootProfileID {
 			continue
 		}
 		switch bp.Kind {
 		case BootProfileWindowsISO, BootProfileWinPEISO:
-			for _, wp := range profiles {
-				if wp.ID == bp.WindowsProfileID {
-					_, _, locked := lookup.ImageLock(wp.StorageID, wp.Path)
+			if wp, ok := wpByID[bp.WindowsProfileID]; ok {
+				_, _, locked := lookup.ImageLock(wp.StorageID, wp.Path)
+				return locked
+			}
+		case BootProfileWindowsWIM:
+			if wimStore != nil && bp.InstallImageID > 0 {
+				if instImg, err := wimStore.GetWindowsInstallImage(ctx, bp.InstallImageID); err == nil && instImg.StorageID > 0 {
+					_, _, locked := lookup.ImageLock(instImg.StorageID, instImg.Path)
 					return locked
 				}
 			}
@@ -173,6 +210,20 @@ func (s *Server) SyncMaintenance(ctx context.Context) error {
 	for _, wp := range winProfiles {
 		wpByID[wp.ID] = wp
 	}
+	bootImgByID := map[int64]WindowsBootImage{}
+	installImgByID := map[int64]WindowsInstallImage{}
+	if wimStore, ok := s.windowsWIMStore(); ok {
+		if list, err := wimStore.ListWindowsBootImages(ctx); err == nil {
+			for _, img := range list {
+				bootImgByID[img.ID] = img
+			}
+		}
+		if list, err := wimStore.ListWindowsInstallImages(ctx); err == nil {
+			for _, img := range list {
+				installImgByID[img.ID] = img
+			}
+		}
+	}
 
 	var state boot.MaintenanceState
 	// Always block matching Windows profiles and Ubuntu sources even if they have no installation yet.
@@ -205,6 +256,10 @@ func (s *Server) SyncMaintenance(ctx context.Context) error {
 			if wp, ok := wpByID[bp.WindowsProfileID]; ok {
 				_, _, blocked = lookup.ImageLock(wp.StorageID, wp.Path)
 			}
+		case BootProfileWindowsWIM:
+			if img, ok := installImgByID[bp.InstallImageID]; ok && img.StorageID > 0 {
+				_, _, blocked = lookup.ImageLock(img.StorageID, img.Path)
+			}
 		case BootProfileUbuntuISO:
 			if bp.UbuntuStorageID > 0 {
 				_, _, blocked = lookup.ImageLock(bp.UbuntuStorageID, bp.UbuntuPath)
@@ -212,6 +267,22 @@ func (s *Server) SyncMaintenance(ctx context.Context) error {
 		case BootProfileUbuntuBuiltin:
 			if bp.UbuntuStorageID > 0 {
 				_, _, blocked = lookup.ImageLock(bp.UbuntuStorageID, bp.UbuntuPath)
+			}
+		}
+		if !blocked && inst.BootImageID > 0 {
+			if img, ok := bootImgByID[inst.BootImageID]; ok {
+				if img.SourceKind == WIMSourceKindFile && img.StorageID > 0 {
+					_, _, blocked = lookup.ImageLock(img.StorageID, img.Path)
+				} else if img.SourceKind == WIMSourceKindISO && img.WindowsProfileID > 0 {
+					if wp, ok := wpByID[img.WindowsProfileID]; ok {
+						_, _, blocked = lookup.ImageLock(wp.StorageID, wp.Path)
+					}
+				}
+			}
+		}
+		if !blocked && inst.InstallImageID > 0 {
+			if img, ok := installImgByID[inst.InstallImageID]; ok && img.StorageID > 0 {
+				_, _, blocked = lookup.ImageLock(img.StorageID, img.Path)
 			}
 		}
 		if blocked {
@@ -237,24 +308,46 @@ func (s *Server) countActiveDrainClients(ctx context.Context) maintenanceDrainCo
 		byImage:   map[string]int{},
 	}
 	var liveSMB []int64
+	var liveInstallSMB []int64
 	if rawSMB, ok := s.loadRawSMBSessions(ctx); ok {
 		for _, sess := range rawSMB.Sessions {
 			if sess.Ended != nil {
 				continue
 			}
-			if pid, err := strconv.ParseInt(strings.TrimSpace(sess.Profile), 10, 64); err == nil && pid > 0 {
+			prof := strings.TrimSpace(sess.Profile)
+			if rest, ok := strings.CutPrefix(strings.ToLower(prof), "install-"); ok {
+				if id, err := strconv.ParseInt(rest, 10, 64); err == nil && id > 0 {
+					liveInstallSMB = append(liveInstallSMB, id)
+				}
+				continue
+			}
+			if pid, err := strconv.ParseInt(prof, 10, 64); err == nil && pid > 0 {
 				liveSMB = append(liveSMB, pid)
 			}
 		}
 	}
 	transfers := s.bootTransfers(ctx)
-	if len(liveSMB) == 0 && len(transfers) == 0 {
+	if len(liveSMB) == 0 && len(liveInstallSMB) == 0 && len(transfers) == 0 {
 		return counts
 	}
 	winProfiles, _ := s.Store.WindowsProfiles(ctx)
 	wpByID := make(map[int64]WindowsProfile, len(winProfiles))
 	for _, wp := range winProfiles {
 		wpByID[wp.ID] = wp
+	}
+	bootImgByID := map[int64]WindowsBootImage{}
+	installImgByID := map[int64]WindowsInstallImage{}
+	if wimStore, ok := s.windowsWIMStore(); ok {
+		if list, err := wimStore.ListWindowsBootImages(ctx); err == nil {
+			for _, img := range list {
+				bootImgByID[img.ID] = img
+			}
+		}
+		if list, err := wimStore.ListWindowsInstallImages(ctx); err == nil {
+			for _, img := range list {
+				installImgByID[img.ID] = img
+			}
+		}
 	}
 	add := func(storageID int64, imgPath string) {
 		if storageID <= 0 {
@@ -268,6 +361,11 @@ func (s *Server) countActiveDrainClients(ctx context.Context) maintenanceDrainCo
 	for _, pid := range liveSMB {
 		if wp, ok := wpByID[pid]; ok {
 			add(wp.StorageID, wp.Path)
+		}
+	}
+	for _, iid := range liveInstallSMB {
+		if img, ok := installImgByID[iid]; ok {
+			add(img.StorageID, img.Path)
 		}
 	}
 	if len(transfers) > 0 {
@@ -289,6 +387,13 @@ func (s *Server) countActiveDrainClients(ctx context.Context) maintenanceDrainCo
 				if id, err := strconv.ParseInt(seg, 10, 64); err == nil {
 					if wp, ok := wpByID[id]; ok {
 						add(wp.StorageID, wp.Path)
+					}
+				}
+			} else if rest, ok := strings.CutPrefix(tr.Path, "/assets/windows-boot-images/"); ok {
+				seg, _, _ := strings.Cut(rest, "/")
+				if id, err := strconv.ParseInt(seg, 10, 64); err == nil {
+					if img, ok := bootImgByID[id]; ok && img.SourceKind == WIMSourceKindFile {
+						add(img.StorageID, img.Path)
 					}
 				}
 			} else if rest, ok := strings.CutPrefix(tr.Path, "/assets/windows-driver-configs/"); ok {

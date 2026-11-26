@@ -323,7 +323,9 @@ func (s *Server) rejectDeletion(w http.ResponseWriter, r *http.Request, action s
 }
 
 // Library components remain referenced even when their installations leave the menu.
-type installationComponent struct{ installationID, profileID, answerID, driverConfigID int64 }
+type installationComponent struct {
+	installationID, profileID, answerID, driverConfigID, bootImageID, installImageID int64
+}
 
 func (c installationComponent) matches(item Installation, profiles []BootProfile) bool {
 	if c.installationID > 0 {
@@ -334,6 +336,20 @@ func (c installationComponent) matches(item Installation, profiles []BootProfile
 	}
 	if c.driverConfigID > 0 {
 		return item.DriverConfigID == c.driverConfigID
+	}
+	if c.bootImageID > 0 {
+		return item.BootImageID == c.bootImageID
+	}
+	if c.installImageID > 0 {
+		if item.InstallImageID == c.installImageID {
+			return true
+		}
+		for _, p := range profiles {
+			if p.ID == item.BootProfileID && p.Kind == BootProfileWindowsWIM && p.InstallImageID == c.installImageID {
+				return true
+			}
+		}
+		return false
 	}
 	for _, p := range profiles {
 		if p.ID == item.BootProfileID && p.WindowsProfileID == c.profileID && isISOBootKind(p.Kind) {

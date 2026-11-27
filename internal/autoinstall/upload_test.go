@@ -63,6 +63,28 @@ autoinstall:
 			wantMode: "custom",
 		},
 		{
+			name: "layout with yaml anchors and aliases",
+			input: []byte(`#cloud-config
+autoinstall:
+  apt:
+    mirror-selection:
+      primary:
+      - arches: &id001
+        - amd64
+        - i386
+        uri: https://mirror.yandex.ru/ubuntu/
+    security:
+    - arches: *id001
+      uri: https://mirror.yandex.ru/ubuntu/
+  storage:
+    layout:
+      name: lvm
+      sizing-policy: all
+  version: 1
+`),
+			wantMode: "default",
+		},
+		{
 			name: "no storage section and UTF-8 BOM",
 			input: append([]byte{0xef, 0xbb, 0xbf}, []byte(`#cloud-config
 autoinstall:

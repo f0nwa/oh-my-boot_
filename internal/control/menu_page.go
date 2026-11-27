@@ -459,9 +459,19 @@ func (s *Server) stageMenuAutoinstalls(ctx context.Context, entries []menuProfil
 		if err != nil {
 			return fmt.Errorf("Ubuntu Autoinstall file %d is unavailable", entry.autoinstallID)
 		}
-		rendered, err := autoinstall.Render(file.Values)
-		if err != nil || file.ID != entry.autoinstallID || file.State != "validated" || file.SHA256 != entry.autoinstallSHA256 || len(file.UserData) == 0 || len(file.UserData) > boot.MaxAutoinstallUserDataSize || !bytes.Equal(rendered, file.UserData) || fmt.Sprintf("%x", sha256.Sum256(file.UserData)) != entry.autoinstallSHA256 {
+		if file.ID != entry.autoinstallID || file.State != "validated" || file.SHA256 != entry.autoinstallSHA256 || len(file.UserData) == 0 || len(file.UserData) > boot.MaxAutoinstallUserDataSize || fmt.Sprintf("%x", sha256.Sum256(file.UserData)) != entry.autoinstallSHA256 {
 			return fmt.Errorf("Ubuntu Autoinstall file %d is invalid or changed", entry.autoinstallID)
+		}
+		if file.IsUploaded() {
+			clean, _, valErr := autoinstall.ValidateUploadedUserData(file.UserData)
+			if valErr != nil || !bytes.Equal(clean, file.UserData) {
+				return fmt.Errorf("Ubuntu Autoinstall file %d is invalid or changed", entry.autoinstallID)
+			}
+		} else {
+			rendered, renderErr := autoinstall.Render(file.Values)
+			if renderErr != nil || !bytes.Equal(rendered, file.UserData) {
+				return fmt.Errorf("Ubuntu Autoinstall file %d is invalid or changed", entry.autoinstallID)
+			}
 		}
 		if err := s.validateUbuntuSourceFor(ctx, file.Values, entry.ubuntuSourceID, entry.ubuntuSourceSHA256); err != nil {
 			return err

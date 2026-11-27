@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net"
@@ -293,5 +294,43 @@ func TestUbuntuAutoinstallRestoreRetainsOldSeedAndRejectsCorruption(t *testing.T
 	after, _ := h.publisher.Current()
 	if res.Code < 400 || string(after) != string(current) || !reflect.DeepEqual(store.versions, beforeVersions) || !reflect.DeepEqual(*store.draft, beforeDraft) {
 		t.Fatalf("corrupt seed restoration=%d", res.Code)
+	}
+}
+
+func TestUbuntuAutoinstallUploadedYAMLPublishesAndRejectsInvalid(t *testing.T) {
+	s, store, h := autoinstallMenuFixture(t)
+	raw := []byte("#cloud-config\nautoinstall:\n  apt:\n    mirror-selection:\n      primary:\n      - arches: &id001\n        - amd64\n        uri: https://mirror.yandex.ru/ubuntu/\n    security:\n    - arches: *id001\n      uri: https://mirror.yandex.ru/ubuntu/\n  storage:\n    layout:\n      name: lvm\n      sizing-policy: all\n  version: 1\n")
+	digest := fmt.Sprintf("%x", sha256.Sum256(raw))
+	uploaded := UbuntuAutoinstallFile{
+		ID:         21,
+		Title:      "Uploaded YAML",
+		SourceKind: "uploaded",
+		UserData:   raw,
+		SHA256:     digest,
+		State:      "validated",
+		DiskMode:   "default",
+	}
+	store.files = append(store.files, uploaded)
+	store.installations[0].AutoinstallID = uploaded.ID
+	store.draft.Items = []MenuDraftItem{{InstallationID: 71}}
+
+	res := menuPost(t, s, "/menu/publish", url.Values{})
+	if res.Code != http.StatusSeeOther {
+		t.Fatalf("publish uploaded YAML = %d %s", res.Code, res.Body.String())
+	}
+	script, _ := h.publisher.Current()
+	if !strings.Contains(installationScript(t, string(script), 71), seedPath(71, uploaded)) {
+		t.Fatalf("published script missing uploaded seed path: %s", script)
+	}
+	assertSeedAvailable(t, h, 71, uploaded)
+
+	// Corrupted uploaded YAML (even with matching SHA256) must be rejected before publish.
+	bad := []byte("not-cloud-config\n")
+	badDigest := fmt.Sprintf("%x", sha256.Sum256(bad))
+	store.files[len(store.files)-1].UserData = bad
+	store.files[len(store.files)-1].SHA256 = badDigest
+	res = menuPost(t, s, "/menu/publish", url.Values{})
+	if res.Code < 400 {
+		t.Fatalf("expected invalid uploaded YAML to fail publish, got %d", res.Code)
 	}
 }

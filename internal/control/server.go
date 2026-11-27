@@ -149,6 +149,10 @@ type DriverPackageAPI interface {
 	CheckDriverPackage(context.Context, string) error
 }
 
+type DriverPackageExportAPI interface {
+	ExportDriverPackages(context.Context, []agent.DriverExportItem) (io.ReadCloser, error)
+}
+
 type DriverConfigAPI interface {
 	PrepareDriverConfig(context.Context, agent.DriverBuildRequest) (agent.DriverBuildResult, error)
 	CheckDriverConfig(context.Context, agent.DriverBuildCheck) error
@@ -198,6 +202,7 @@ type Server struct {
 	UbuntuSource      UbuntuSourceAPI
 	WindowsAnswers    WindowsAnswerAPI
 	DriverPackages    DriverPackageAPI
+	DriverExport      DriverPackageExportAPI
 	DriverConfigs     DriverConfigAPI
 	Cleanup           AssetCleanupAPI
 	StorageRecovery   StorageRecoveryAPI
@@ -432,6 +437,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/ubuntu_autoinstall_editor.js", ubuntuAutoinstallEditorScript)
 	mux.HandleFunc("POST /answers/upload", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerUpload)))
 	mux.HandleFunc("GET /drivers", s.protect("view", s.driversPage))
+	mux.HandleFunc("GET /drivers/packages/export", s.protect("view", withPageErrors(s.driversPage, s.driverPackagesExportAll)))
+	mux.HandleFunc("POST /drivers/packages/export", s.protect("view", withPageErrors(s.driversPage, s.driverPackagesExportBatch)))
+	mux.HandleFunc("GET /drivers/packages/{sha}/export", s.protect("view", withPageErrors(s.driversPage, s.driverPackageExportOne)))
 	mux.HandleFunc("POST /drivers/packages/{sha}/metadata", s.protect("images", withPageErrors(s.driversPage, s.driverPackageUpdateMetadata)))
 	mux.HandleFunc("POST /drivers/packages/{sha}/delete", s.protect("delete", withPageErrors(s.driversPage, s.driverPackageDelete)))
 	mux.HandleFunc("POST /drivers/packages/delete-batch", s.protect("delete", withPageErrors(s.driversPage, s.driverPackagesDeleteBatch)))
@@ -592,6 +600,9 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 			} else if r.Pattern == "POST /answers/upload" || r.Pattern == "POST /answers/{id}/inspect" {
 				r.Body = http.MaxBytesReader(w, r.Body, maxWindowsAnswerBytes+(32<<10))
 				err = r.ParseMultipartForm(2 << 20)
+			} else if r.Pattern == "POST /drivers/packages/export" {
+				r.Body = http.MaxBytesReader(w, r.Body, 128<<10)
+				err = r.ParseForm()
 			} else if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 				r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 				err = r.ParseMultipartForm(64 << 10)

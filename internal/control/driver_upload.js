@@ -111,6 +111,15 @@
       .then(html => {
         if (!html) return;
         const parsed = new window.DOMParser().parseFromString(html, 'text/html');
+        const freshHead = parsed.getElementById('driver-page-actions');
+        const currentHead = document.getElementById('driver-page-actions');
+        if (freshHead && currentHead) {
+          if (typeof currentHead.replaceChildren === 'function') {
+            currentHead.replaceChildren(...Array.from(freshHead.childNodes));
+          } else {
+            currentHead.innerHTML = freshHead.innerHTML;
+          }
+        }
         const fresh = parsed.getElementById('driver-packages-section');
         if (!fresh) return;
         if (typeof current.replaceChildren === 'function') {

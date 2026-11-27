@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -74,6 +75,33 @@ func (c *AgentClient) CheckDriverPackage(ctx context.Context, hash string) error
 		return err
 	}
 	return localCall(ctx, c.http, "POST", "/winpe-drivers/check", body, nil)
+}
+
+func (c *AgentClient) ExportDriverPackages(ctx context.Context, items []agent.DriverExportItem) (io.ReadCloser, error) {
+	body, err := json.Marshal(map[string]any{"items": items})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/winpe-drivers/export", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Transport: c.http.Transport}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode == http.StatusNotFound {
+		_ = res.Body.Close()
+		return nil, os.ErrNotExist
+	}
+	if res.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
+		_ = res.Body.Close()
+		return nil, fmt.Errorf("driver export: %d %s", res.StatusCode, strings.TrimSpace(string(msg)))
+	}
+	return res.Body, nil
 }
 
 func (c *AgentClient) PrepareDriverConfig(ctx context.Context, req agent.DriverBuildRequest) (agent.DriverBuildResult, error) {

@@ -17,6 +17,7 @@ import (
 
 type DriverManager struct {
 	mu            sync.Mutex
+	exporting     map[string]int
 	Root          string
 	WIMRoot       string
 	ConfigRoot    string

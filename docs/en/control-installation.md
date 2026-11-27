@@ -161,7 +161,7 @@ Strelec uses the same packages and individual INF choices under **WinPE drivers*
 
 Recovery WinPE attempts every selected INF. A nonzero driver result is recorded in `X:\omb-driver.log` and does not skip the remaining drivers or SSTR connection; one shared entry may be used on different hardware. After connecting the share, OMB extracts the native components and starts MInst with the native Strelec profile to create shortcuts. Network and application stages are recorded in `X:\omb-strelec.log`. Device and network operation still require client validation. Windows installer entries retain their strict driver failure behavior.
 
-Library → Drivers accepts directories containing INF files and their supporting files, or a ZIP with the same structure. A boot entry selects specific INFs when created or edited. Its derived driver WIM is used by that entry; the source ISO remains on storage.
+Library → Drivers accepts directories containing INF files and their supporting files, or a ZIP with the same structure; uploaded packages can also be downloaded back individually (from the card’s `☰` menu or “Properties and contents”), selectively via checkboxes, or all at once (“Download all ZIP”). A boot entry selects specific INFs when created or edited. Its derived driver WIM is used by that entry; the source ISO remains on storage.
 
 Answer files are under Library → Installation scripts. You can reuse Windows XML with compatible images. OMB checks the selected script against the image's `install.wim` metadata. Publish a choice only after its files have been prepared and checked. Dependencies prevent deletion of images or files that are still used.
 

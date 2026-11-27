@@ -809,6 +809,7 @@ tr.is-migrating td{background:var(--draft-bg)}
 .row-menu-item{display:block;width:100%;box-sizing:border-box;margin:0;padding:7px 10px;min-height:30px;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;font-size:13px;font-weight:400;text-align:left;text-decoration:none;cursor:pointer}
 .answers-table .answer-actions .row-menu-item{padding:7px 10px}
 .row-menu-item:hover,.row-menu-item:focus-visible{background:var(--chip)}
+.row-menu-item:disabled,.row-menu-item:disabled:hover{color:var(--muted);background:transparent;opacity:.45;cursor:not-allowed}
 .row-menu-danger{color:var(--bad)}
 .row-menu-sep{border:0;border-top:1px solid var(--line);margin:4px 0}
 .row-menu-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 10px 2px}
@@ -905,7 +906,7 @@ tr.is-migrating td{background:var(--draft-bg)}
 .driver-config-dialog-buttons{display:flex;gap:8px;align-items:center;margin-left:auto}
 .driver-author-approx{cursor:help}
 @media(max-width:520px){.driver-config-props{grid-template-columns:1fr;gap:4px 0}.driver-config-props dt{margin-top:6px}.driver-config-props dt:first-child{margin-top:0}}
-.driver-package-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.driver-package-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 #menu-versions-content .search-spinner{position:static;display:inline-block;vertical-align:middle;margin:0 4px 0 0;width:14px;height:14px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;opacity:1;pointer-events:auto;animation:search-spin .7s linear infinite}
 
 /* Async blocks loading and error states */
@@ -918,17 +919,18 @@ tr.is-migrating td{background:var(--draft-bg)}
 
 /* Driver dependencies and library cleanup */
 .driver-config-table .driver-actions{width:1%;text-align:right;white-space:nowrap;vertical-align:middle}
-.driver-config-table .driver-actions>button,.driver-package-actions>button{margin-top:0;min-height:30px}
+.driver-config-table .driver-actions>button,.driver-package-actions>button:not(.row-menu-btn){margin-top:0;min-height:30px}
 .driver-meta{display:block;color:var(--muted);margin-top:4px}
 .driver-meta.error{color:var(--bad)}
 .driver-inf+.driver-inf,.driver-use+.driver-use{margin-top:12px}
 .driver-config-table td{vertical-align:top}
 .driver-config-table tr[id]{scroll-margin-top:24px}
 .driver-package-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-shrink:0;flex-wrap:wrap}
+.pkg-select-all{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-2);cursor:pointer;user-select:none;margin:0}
+.pkg-select-all:hover{color:var(--text)}
 .driver-package-usage{margin-top:8px;color:var(--muted);font-size:12px}
 .driver-package-usage a{margin-right:6px}
-.driver-config-table button:disabled,.driver-package-actions button:disabled{color:var(--muted);background:transparent;border-color:var(--line);opacity:.5;filter:none;cursor:default}
-@media(max-width:600px){.driver-package-row{align-items:flex-start;flex-direction:column}.driver-package-actions{align-self:stretch}}
+.driver-config-table button:disabled,.driver-package-actions button:not(.row-menu-btn):disabled{color:var(--muted);background:transparent;border-color:var(--line);opacity:.5;filter:none;cursor:default}
 
 /* Shared Windows and Ubuntu answer-file tables. */
 .answer-section h2,.autoinstall-section h2{margin:0 0 14px;font-size:14px;font-weight:600}

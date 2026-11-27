@@ -68,5 +68,8 @@ func (m *DriverManager) RemovePackage(ctx context.Context, hash string) error {
 	if !validDriverHash(hash) {
 		return fmt.Errorf("invalid driver package hash")
 	}
+	if m.exporting[hash] > 0 {
+		return ErrDriverPackageBusy
+	}
 	return removeManagedDirectory(m.Root, hash)
 }

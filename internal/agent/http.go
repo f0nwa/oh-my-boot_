@@ -89,10 +89,41 @@ func HandlerWithDriverManager(applier *Applier, manager *SMBManager, windows *Wi
 			return
 		}
 		if err := driverManager.RemovePackage(r.Context(), req.SHA256); err != nil {
+			if errors.Is(err, ErrDriverPackageBusy) {
+				http.Error(w, "driver package is being exported", http.StatusConflict)
+				return
+			}
 			http.Error(w, "driver package cleanup failed", http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /winpe-drivers/export", func(w http.ResponseWriter, r *http.Request) {
+		if driverManager == nil {
+			http.Error(w, "driver packages unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			Items []DriverExportItem `json:"items"`
+		}
+		if !decodeAgentRequest(w, r, &req, 256<<10) {
+			return
+		}
+		exp, err := driverManager.PrepareExport(r.Context(), req.Items)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrInvalidDriverExport):
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			case errors.Is(err, ErrDriverPackageMissing):
+				http.Error(w, err.Error(), http.StatusNotFound)
+			default:
+				http.Error(w, "driver export unavailable: "+err.Error(), http.StatusServiceUnavailable)
+			}
+			return
+		}
+		defer exp.Close()
+		w.Header().Set("Content-Type", "application/zip")
+		_ = exp.Stream(r.Context(), w)
 	})
 	mux.HandleFunc("POST /winpe-drivers/remove-config", func(w http.ResponseWriter, r *http.Request) {
 		if driverManager == nil {

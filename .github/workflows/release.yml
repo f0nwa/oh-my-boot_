@@ -18,17 +18,29 @@ jobs:
   release:
     name: Build & Publish .deb Release
     runs-on: ubuntu-24.04
+    environment: omb-release
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       deb_version: ${{ steps.meta.outputs.deb_version }}
       channel: ${{ steps.meta.outputs.channel }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
+      - name: Validate release ref
+        id: ref
+        env:
+          REQUESTED_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-dev\.[0-9]+)?$ ]]; then
+            echo "Expected a release tag in the form vX.Y.Z or vX.Y.Z-dev.N."
+            exit 1
+          fi
+          printf 'tag=%s\n' "$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag || github.ref }}
+          ref: refs/tags/${{ steps.ref.outputs.tag }}
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -37,12 +49,10 @@ jobs:
 
       - name: Resolve release metadata
         id: meta
+        env:
+          VALIDATED_TAG: ${{ steps.ref.outputs.tag }}
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-dev\.[0-9]+)?$ ]]; then
-            echo "Unsupported tag format: $TAG (expected vX.Y.Z or vX.Y.Z-dev.N)" >&2
-            exit 1
-          fi
+          TAG="$VALIDATED_TAG"
           DEB_VER="${TAG#v}"
           DEB_VER="${DEB_VER//-dev./~dev.}"
           if [[ "$TAG" == *-dev.* ]]; then
@@ -68,11 +78,15 @@ jobs:
           bash scripts/install_test.sh
 
       - name: Build .deb and SHA256SUMS
+        env:
+          OMB_RELEASE_SIGNING_KEY: ${{ secrets.OMB_RELEASE_SIGNING_KEY }}
+          RELEASE_CHANNEL: ${{ steps.meta.outputs.channel }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends dpkg-dev
 
           WORK_DIR="$(mktemp -d)"
+          trap 'rm -rf -- "$WORK_DIR"' EXIT
 
           # Prepare pinned boot assets (verified by SHA-256)
           mkdir -p "$WORK_DIR/assets"
@@ -86,21 +100,35 @@ jobs:
           SUMS
           (cd "$WORK_DIR/assets" && sha256sum -c expected.sha256)
 
-          # Minimal sysdebs placeholder required by build-release.sh (only omb_*.deb is published online)
+          # The update archive upgrades an existing OMB package. System dependencies
+          # are installed separately and are not updated by offline-deploy.sh update.
           mkdir -p "$WORK_DIR/sysdebs"
           (cd "$WORK_DIR/sysdebs" && apt-get download base-files && dpkg-scanpackages -m . | gzip -9n > Packages.gz)
 
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$WORK_DIR/ephemeral.pem" 2>/dev/null
+          mkdir -p dist-release
+          KEY="$WORK_DIR/signing.pem"
+          ARCHIVE_ARGS=()
+          if [[ -n "$OMB_RELEASE_SIGNING_KEY" ]]; then
+            BRANCH=main
+            if [[ "$RELEASE_CHANNEL" == dev ]]; then BRANCH=dev; fi
+            git fetch --no-tags origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+            git merge-base --is-ancestor HEAD "refs/remotes/origin/$BRANCH"
+            (umask 077; printf '%s\n' "$OMB_RELEASE_SIGNING_KEY" > "$KEY")
+            TAG="${{ steps.meta.outputs.tag }}"
+            ARCHIVE_ARGS=(--update-archive "dist-release/omb-update-${TAG#v}-amd64.tar.gz")
+          else
+            openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$KEY" 2>/dev/null
+          fi
+          unset OMB_RELEASE_SIGNING_KEY
           bash scripts/build-release.sh \
             --version "${{ steps.meta.outputs.deb_version }}" \
             --channel "${{ steps.meta.outputs.channel }}" \
             --sysdebs-dir "$WORK_DIR/sysdebs" \
             --assets-dir "$WORK_DIR/assets" \
-            --sign-key "$WORK_DIR/ephemeral.pem" \
-            --out "$WORK_DIR/apt-repo"
-          rm -f "$WORK_DIR/ephemeral.pem"
+            --sign-key "$KEY" \
+            --out "$WORK_DIR/apt-repo" "${ARCHIVE_ARGS[@]}"
+          rm -f "$KEY"
 
-          mkdir -p dist-release
           cp "$WORK_DIR/apt-repo/omb_${{ steps.meta.outputs.deb_version }}_amd64.deb" dist-release/
           cp "$WORK_DIR/SHA256SUMS" dist-release/
           (cd dist-release && sha256sum -c SHA256SUMS)
@@ -110,7 +138,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: omb-deb
-          path: dist-release/
+          path: |
+            dist-release/omb_*.deb
+            dist-release/SHA256SUMS
           retention-days: 1
 
       - name: Publish GitHub Release (.deb)
@@ -120,8 +150,11 @@ jobs:
           TAG="${{ steps.meta.outputs.tag }}"
           DEB="dist-release/omb_${{ steps.meta.outputs.deb_version }}_amd64.deb"
           SUMS="dist-release/SHA256SUMS"
+          ASSETS=("$DEB" "$SUMS")
+          ARCHIVE="dist-release/omb-update-${TAG#v}-amd64.tar.gz"
+          if [[ -f "$ARCHIVE" ]]; then ASSETS+=("$ARCHIVE"); fi
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$DEB" "$SUMS" --clobber
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
           else
             EXTRA_FLAGS=()
             if [[ "${{ steps.meta.outputs.prerelease }}" == "true" ]]; then
@@ -129,7 +162,7 @@ jobs:
             else
               EXTRA_FLAGS+=(--latest)
             fi
-            gh release create "$TAG" "$DEB" "$SUMS" \
+            gh release create "$TAG" "${ASSETS[@]}" \
               --title "oh my boot_ $TAG" \
               --generate-notes \
               "${EXTRA_FLAGS[@]}"

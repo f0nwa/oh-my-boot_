@@ -256,3 +256,178 @@
     });
   }
 })();
+
+(function () {
+  "use strict";
+  const dialog = document.getElementById("omb-update-dialog");
+  if (!dialog) return;
+
+  const byID = (name) => document.getElementById("omb-update-" + name);
+  const trigger = byID("open");
+  const openLabel = trigger.textContent;
+  const form = byID("form");
+  const file = byID("file");
+  const upload = byID("upload");
+  const install = byID("install");
+  const status = byID("status");
+  const cardStatus = byID("card-status");
+  const confirm = byID("confirm");
+  const csrf = form.elements.csrf.value;
+  let state = { state: "idle" };
+  let pending = false;
+  let polling = false;
+  let choosing = false;
+  let reloading = false;
+  let generation = 0;
+  const rejectionReasons = ["invalid_archive", "verification_failed", "too_large"];
+  const maxArchiveBytes = 1024 ** 3;
+
+  function label(key) {
+    return dialog.getAttribute("data-" + key.replaceAll("_", "-"));
+  }
+
+  function changeMessage(out, reconnecting) {
+    let text = label(out.state) || label("unavailable");
+    if (out.state === "rejected" && rejectionReasons.includes(out.reason)) text = label(out.reason);
+    if (out.state === "installing" && out.phase) text = label(out.phase) || text;
+    if (reconnecting) text = label("reconnect");
+    if (out.state === "installed" && out.release && out.release.target) {
+      text += " " + displayVersion(out.release.target);
+    }
+    return text;
+  }
+
+  function displayVersion(version) {
+    return "v" + version.replace("~dev.", "-dev.");
+  }
+
+  function render(reconnecting = false) {
+    const active = state.state === "checking" || state.state === "installing";
+    const ready = state.state === "ready" && !choosing;
+    const recover = state.state === "recovery_required";
+    const release = state.release || {};
+    const message = changeMessage(state, reconnecting);
+    if (cardStatus.textContent !== message) cardStatus.textContent = message;
+    if (status.textContent !== message) status.textContent = message;
+    status.dataset.tone = ["installed", "ready"].includes(state.state) ? "ok"
+      : ["rejected", "failed", "rolled_back", "recovery_required", "unavailable"].includes(state.state) ? "error"
+      : "";
+    status.hidden = state.state === "idle" || choosing && state.state === "ready";
+    trigger.textContent = active || ready || recover ? label("open-update") : openLabel;
+    form.hidden = active || ready || recover;
+    upload.disabled = pending || file.files.length === 0;
+    confirm.hidden = !ready;
+    install.disabled = pending || !ready;
+    byID("background").hidden = state.state !== "installing";
+    byID("recovery").hidden = !recover;
+    if (ready && release.current && release.target) {
+      byID("transition").textContent = displayVersion(release.current) + " → " + displayVersion(release.target) +
+        " · " + release.channel;
+    }
+  }
+
+  async function request(path, body, contentType) {
+    const options = {headers: {Accept: "application/json"}, redirect: "error"};
+    if (body !== undefined) {
+      options.method = "POST";
+      options.body = body;
+      options.headers["Content-Type"] = contentType;
+      options.headers["X-CSRF-Token"] = csrf;
+    }
+    const res = await fetch(path, options);
+    const data = await res.json();
+    if (!data || typeof data.state !== "string") throw new Error("update service returned no status");
+    return data;
+  }
+
+  async function refresh() {
+    if (pending || polling || document.hidden || reloading) return;
+    polling = true;
+    const expected = generation;
+    try {
+      const next = await request("/api/system/update");
+      if (pending || generation !== expected) return;
+      if (next.state === "unavailable" && state.state === "installing") {
+        render(true);
+        return;
+      }
+      if (next.id !== state.id) choosing = false;
+      const version = next.release && next.release.target;
+      if (state.state === "installing" && next.state === "installed" && next.id === state.id &&
+          version && dialog.dataset.version && version !== dialog.dataset.version) {
+        reloading = true;
+        window.location.reload();
+        return;
+      }
+      state = next;
+      render();
+    } catch {
+      if (state.state === "installing") render(true);
+    } finally {
+      polling = false;
+    }
+  }
+
+  async function submit(path, body, contentType, optimisticState) {
+    const prior = state;
+    generation++;
+    pending = true;
+    state = { ...state, state: optimisticState };
+    render();
+    try {
+      const next = await request(path, body, contentType);
+      // Control can stop after accepting installation but before responding.
+      if (optimisticState !== "installing" || next.state !== "unavailable") state = next;
+    } catch {
+      if (optimisticState !== "installing") state = {state: "unavailable"};
+    } finally {
+      choosing = false;
+      pending = false;
+      if (state.state === "unavailable" && prior.state === "ready") state = prior;
+      render();
+      if (state.state === "installing") refresh();
+    }
+  }
+
+  trigger.addEventListener("click", () => {
+    dialog.showModal();
+    if (form.hidden) byID("title").focus();
+    refresh();
+  });
+  file.addEventListener("change", () => {
+    file.setCustomValidity("");
+    render();
+  });
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const archive = file.files[0];
+    if (!archive || pending) return;
+    if (!archive.name.toLowerCase().endsWith(".tar.gz")) {
+      file.setCustomValidity(label("invalid_archive"));
+      file.reportValidity();
+      return;
+    }
+    if (archive.size > maxArchiveBytes) {
+      file.setCustomValidity(label("too_large"));
+      file.reportValidity();
+      return;
+    }
+    form.reset();
+    submit("/system/update/upload", archive, "application/gzip", "checking");
+    byID("title").focus();
+  });
+  byID("replace").addEventListener("click", () => {
+    choosing = true;
+    form.reset();
+    render();
+    file.focus();
+  });
+  install.addEventListener("click", () => {
+    if (state.state !== "ready" || !state.id || pending) return;
+    submit("/system/update/install", JSON.stringify({id: state.id}), "application/json", "installing");
+    byID("title").focus();
+  });
+  document.addEventListener("visibilitychange", refresh);
+  window.setInterval(refresh, 2500);
+  refresh();
+})();

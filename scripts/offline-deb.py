@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 
 
@@ -37,6 +38,7 @@ BINARIES = (
     "omb-images",
     "omb-imagesctl",
     "omb-setup",
+    "omb-update",
     "omb-winiso-prepare",
 )
 UNITS = (
@@ -45,11 +47,16 @@ UNITS = (
     "omb-control.service",
     "omb-dnsmasq.service",
     "omb-images.service",
+    "omb-update.service",
+    "omb-update.socket",
     "omb-winiso@.service",
 )
 HELPERS = (
     ("scripts/prepare-ubuntu-source.sh", UBUNTU_HELPER.lstrip("/")),
     ("scripts/fetch-ipxe.sh", "usr/lib/omb/fetch-ipxe"),
+    ("scripts/offline-deploy.sh", "usr/lib/omb/offline-update/offline-deploy.sh"),
+    ("scripts/offline-install-lib.sh", "usr/lib/omb/offline-update/offline-install-lib.sh"),
+    ("scripts/offline-deb.py", "usr/lib/omb/offline-update/offline-deb.py"),
 )
 BOOT_ASSETS = ("ipxeboot.tar.gz", "ipxe-shimx64.efi", "wimboot")
 WINDOWS_PROFILES = ("omb-setup.cmd.in", "winpeshl.ini")
@@ -626,6 +633,22 @@ def verify_repo(repo_dir: Path, public_key: Path) -> dict:
     return data
 
 
+def pack_update(repo_dir: Path, output: Path, public_key: Path) -> None:
+    data = verify_repo(repo_dir, public_key)
+    filenames = {REPO_MANIFEST, REPO_SIGNATURE, "Packages.gz", data["package"]["filename"]}
+    filenames.update(entry["filename"] for entry in data["system_debs"])
+    if len(filenames) > 4096 or sum((repo_dir / name).stat().st_size for name in filenames) > 2 << 30:
+        raise ValueError("the repository exceeds the offline update extraction limits")
+    with tempfile.TemporaryDirectory(prefix=".omb-update-", dir=output.parent) as directory:
+        archive = Path(directory) / "update.tar.gz"
+        with tarfile.open(archive, "w:gz", format=tarfile.USTAR_FORMAT) as stream:
+            for filename in sorted(filenames):
+                stream.add(repo_dir / filename, arcname=f"apt-repo/{filename}", recursive=False)
+        if archive.stat().st_size > 1 << 30:
+            raise ValueError("the compressed update exceeds 1 GiB")
+        os.link(archive, output)
+
+
 def main() -> None:
     default_go_mod = REPO_ROOT / "go.mod"
     default_unattend = REPO_ROOT / "internal/unattend/UPSTREAM.md"
@@ -661,6 +684,10 @@ def main() -> None:
         action="store_true",
         help="print FILENAME, SHA256, VERSION, COMMIT, CHANNEL as TSV",
     )
+    pack_cmd = sub.add_parser("pack-update", help="verify and archive an OMB APT repository")
+    pack_cmd.add_argument("repository", type=Path)
+    pack_cmd.add_argument("output", type=Path)
+    pack_cmd.add_argument("--public-key", type=Path, required=True)
 
     args = cli.parse_args()
     if args.command == "build":
@@ -668,6 +695,13 @@ def main() -> None:
             build_repo(args)
         except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
             cli.exit(1, f"OMB package build failed: {error}\n")
+        return
+
+    if args.command == "pack-update":
+        try:
+            pack_update(args.repository, args.output, args.public_key)
+        except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
+            cli.exit(1, f"OMB update archive failed: {error}\n")
         return
 
     try:

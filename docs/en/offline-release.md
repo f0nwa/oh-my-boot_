@@ -10,11 +10,11 @@ Delta `tar.gz` archives and `from_commit` pinning are not used: any installed OM
 
 Prepare the compiled binaries from a committed Git revision as described in [the offline installation guide](../offline-installation.md) and stage a payload directory containing:
 
-- `bin/` — ten amd64 ELF binaries (`omb`, `omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-winiso-prepare`);
-- `deploy/systemd/` — six systemd units (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-winiso@.service`);
+- `bin/` — eleven amd64 ELF binaries (`omb`, `omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-update`, `omb-winiso-prepare`);
+- `deploy/systemd/` — six systemd units (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-update.service`, `omb-update.socket`, `omb-winiso@.service`);
 - `deploy/boot-assets/windows-profiles/` — WinPE profile templates (`omb-setup.cmd.in`, `winpeshl.ini`, and any additional templates);
 - `assets/` — pinned boot assets (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`);
-- `scripts/prepare-ubuntu-source.sh`, `scripts/fetch-ipxe.sh`, `deploy/samba/smb.conf`;
+- `scripts/prepare-ubuntu-source.sh`, `scripts/fetch-ipxe.sh`, `scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh`, `scripts/offline-deb.py`, `deploy/samba/smb.conf`;
 - `deploy/sql/{boot.sql,images.sql,control.sql}` — initial bootstrap SQL schemas;
 - `deploy/sql/migrations/{omb_boot,omb_images,omb_control}/NNNN_name.sql` — cumulative SQL migrations;
 - `debs/` — local system `.deb` dependencies and `Packages.gz` with versions and SHA-256 digests.
@@ -46,7 +46,7 @@ Passing `--print-package` outputs the TSV tuple (`FILENAME`, `SHA256`, `VERSION`
 
 ### Single-command release build (`scripts/build-release.sh`)
 
-To cross-compile all 10 binaries, stage `payload/`, run `offline-deb.py build` + `verify-repo`, and optionally deploy to a stand in one command, use `scripts/build-release.sh`. Version and channel are inferred from the Git tag on `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) or passed explicitly via `--version` / `--channel`:
+To cross-compile all 11 binaries, stage `payload/`, run `offline-deb.py build` + `verify-repo`, and optionally deploy to a stand in one command, use `scripts/build-release.sh`. Version and channel are inferred from the Git tag on `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) or passed explicitly via `--version` / `--channel`:
 
 ```sh
 # 1. On an Ubuntu VM or in CI (local dpkg-deb)
@@ -67,6 +67,23 @@ bash scripts/build-release.sh \
   --sign-key /path/to/signing-private.pem \
   --out ./dist/apt-repo
 ```
+
+## Update from the dashboard
+
+On the release machine, add `--sign-key /path/to/release-private.pem` and `--update-archive ./omb-update-0.2.8-amd64.tar.gz` to `scripts/build-release.sh`. GitHub Actions publishes this archive when the `OMB_RELEASE_SIGNING_KEY` secret is configured in the `omb-release` environment. The tag must point to a commit in its release channel branch. Use a local build or a separate trusted build host for releases signed with a persistent key. The `--remote` option transfers the key to that build host for the duration of the build. The archive can be up to 1 GiB compressed and 2 GiB unpacked.
+
+Install the first release that supports dashboard updates from the console using the trusted `offline-deploy.sh` from the new release. For a packaged OMB installation on Ubuntu 26.04 amd64, copy the trusted public key and enable the socket once:
+
+```sh
+sudo install -m 0644 trusted-release-public.pem /etc/omb/release-public.pem
+printf '%s\n' 'OMB_UPDATE_MANAGEMENT_IP=192.0.2.10' | sudo tee /etc/omb/update.env
+sudo systemctl daemon-reload
+sudo systemctl enable --now omb-update.socket
+```
+
+Replace `192.0.2.10` with the IPv4 address of the OMB dashboard. Open **System → OMB release**, click **Upload update…**, select the archive, and click **Upload and verify**. Review the versions and click **Install**. The release card shows the status. Run `sudo journalctl -u omb-update.service` for service logs.
+
+Dashboard updates upgrade the OMB package within the installed channel. The updater backs up data and verifies services and the published PXE menu. If installation fails, it attempts to restore the previous package and data. If the dashboard reports that recovery is required, use the command-line rollback below.
 
 ## Deployment, updates, and rollback (`offline-deploy.sh`)
 

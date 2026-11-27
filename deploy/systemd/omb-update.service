@@ -1,0 +1,11 @@
+[Unit]
+Description=Oh My Boot offline updater
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/omb/update.env
+ExecStart=/usr/bin/omb-update
+StateDirectory=omb-update
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=2s

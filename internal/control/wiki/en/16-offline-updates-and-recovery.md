@@ -74,6 +74,10 @@ What `offline-deploy.sh update` does:
 4. Installs the new `.deb`, applies pending SQL migrations recording them in `schema_migrations`, verifies user rows, service health, HTTPS response, and unchanged `omb-boot` menu. `/srv/omb/tftp` and `/etc/omb` are never overwritten.
 5. Updates `/var/lib/omb-deployment/current.deb` and state markers; if any step fails (or the process is killed with `SIGKILL`), automatic or manual `rollback` restores the previous `.deb` and databases, preserving the migrated databases as `omb_retained_<id>` with connections disabled for post-mortem analysis.
 
+## Offline dashboard updates
+
+Once a trusted release key and the update service are configured, administrators can open **System → OMB release** and click **Upload update…**. Choose a signed `.tar.gz` release archive and click **Upload and verify**. **Install** appears after signature and compatibility checks. Installation continues if you close the tab. The release card shows the result when the dashboard comes back. If it reports **OMB recovery required**, run the `rollback` command above.
+
 ## Console administration and online updates (`omb`)
 
 For servers with internet access and day-2 diagnostics, use the unified `omb` CLI:

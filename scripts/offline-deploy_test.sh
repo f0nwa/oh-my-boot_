@@ -505,13 +505,14 @@ target_id=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     grep -Fq 'offline-deploy.sh install ' "$usage_out"
     grep -Fq 'offline-deploy.sh update [--allow-channel-switch] ' "$usage_out"
     grep -Fq 'offline-deploy.sh rollback ' "$usage_out"
-    if grep -Eq 'check-update|install-deb|update-deb' "$usage_out"; then
+    grep -Fq 'offline-deploy.sh check-update ' "$usage_out"
+    if grep -Eq 'install-deb|update-deb' "$usage_out"; then
         echo 'Legacy commands still present in usage' >&2
         exit 1
     fi
 
     # --allow-channel-switch rejected for install and rollback.
-    for bad_cmd in "install --allow-channel-switch repo key 127.0.0.1" "rollback --allow-channel-switch 127.0.0.1" "check-update a b c" "update-deb-repo a b c d e f g"; do
+    for bad_cmd in "install --allow-channel-switch repo key 127.0.0.1" "rollback --allow-channel-switch 127.0.0.1" "check-update --allow-channel-switch a b c" "update-deb-repo a b c d e f g"; do
         set +e
         # shellcheck disable=SC2086
         bash "$repo/scripts/offline-deploy.sh" $bad_cmd >/dev/null 2>&1
@@ -578,6 +579,30 @@ SH
         echo 'collect_applied_migrations ignored sql failure' >&2
         exit 1
     fi
+)
+
+
+# A web update may add or replace its own executable, units and deploy tools.
+make_pkg_tree "$work/new-with-updater"
+mkdir -p "$work/new-with-updater/usr/lib/omb/offline-update"
+for file in usr/bin/omb-update usr/lib/systemd/system/omb-update.service \
+    usr/lib/systemd/system/omb-update.socket usr/lib/omb/offline-update/offline-deploy.sh \
+    usr/lib/omb/offline-update/offline-install-lib.sh usr/lib/omb/offline-update/offline-deb.py; do
+    printf 'updater-v1' > "$work/new-with-updater/$file"
+done
+test "$(compute_update_scope "$work/old-boot" "$work/new-with-updater" "$work/no-pending")" = $'SERVICES\tcontrol\nDATABASES\tnone'
+
+# The shared preflight is read-only and reports a machine-readable transition.
+(
+    check_address() { return 0; }
+    state="$work/test-state"
+    mkdir -p "$state"
+    : > "$state/PENDING"
+    if (check_update test-repo test-key) > "$work/preflight-pending" 2>&1; then
+        echo 'Preflight accepted a pending deployment' >&2
+        exit 1
+    fi
+    grep -Fq 'An update is pending' "$work/preflight-pending"
 )
 
 echo 'All offline-deploy unit tests passed.'

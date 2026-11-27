@@ -8,11 +8,11 @@ OMB распространяется и обновляется через еди
 
 Подготовьте бинарники из зафиксированного Git-коммита по [офлайн-руководству](offline-installation.md) и соберите каталог входных файлов `payload`:
 
-- `bin/` — десять amd64 ELF-бинарников (`omb`, `omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-winiso-prepare`);
-- `deploy/systemd/` — шесть юнитов (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-winiso@.service`);
+- `bin/` — одиннадцать amd64 ELF-бинарников (`omb`, `omb-agent`, `omb-agentctl`, `omb-boot`, `omb-control`, `omb-controlctl`, `omb-images`, `omb-imagesctl`, `omb-setup`, `omb-update`, `omb-winiso-prepare`);
+- `deploy/systemd/` — восемь юнитов (`omb-agent.service`, `omb-boot.service`, `omb-control.service`, `omb-dnsmasq.service`, `omb-images.service`, `omb-update.service`, `omb-update.socket`, `omb-winiso@.service`);
 - `deploy/boot-assets/windows-profiles/` — профили WinPE (включая `omb-setup.cmd.in` и `winpeshl.ini`);
 - `assets/` — закреплённые загрузочные файлы (`ipxeboot.tar.gz`, `ipxe-shimx64.efi`, `wimboot`);
-- `scripts/prepare-ubuntu-source.sh`, `scripts/fetch-ipxe.sh`, `deploy/samba/smb.conf`;
+- `scripts/prepare-ubuntu-source.sh`, `scripts/fetch-ipxe.sh`, `scripts/offline-deploy.sh`, `scripts/offline-install-lib.sh`, `scripts/offline-deb.py`, `deploy/samba/smb.conf`;
 - `deploy/sql/{boot.sql,images.sql,control.sql}` — начальные схемы трёх БД;
 - `deploy/sql/migrations/{omb_boot,omb_images,omb_control}/NNNN_name.sql` — кумулятивные SQL-миграции;
 - `debs/` — локальные системные `.deb`-пакеты и индекс `Packages.gz` с версиями и SHA-256.
@@ -44,7 +44,7 @@ python3 scripts/offline-deb.py verify-repo <apt-repo> \
 
 ### Сборка релиза одной командой (`scripts/build-release.sh`)
 
-Для автоматической кросс-компиляции всех 10 бинарников, сборки `payload/`, запуска `offline-deb.py build` + `verify-repo` (и при необходимости сразу выката на стенд) используйте `scripts/build-release.sh`. Версия и канал определяются автоматически по тегу Git на `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) или задаются через `--version` / `--channel`:
+Для автоматической кросс-компиляции всех 11 бинарников, сборки `payload/`, запуска `offline-deb.py build` + `verify-repo` (и при необходимости сразу выката на стенд) используйте `scripts/build-release.sh`. Версия и канал определяются автоматически по тегу Git на `HEAD` (`vX.Y.Z` → `stable`, `vX.Y.Z-dev.N` → `dev`) или задаются через `--version` / `--channel`:
 
 ```sh
 # 1. На Ubuntu-ВМ или в CI (локальный dpkg-deb)
@@ -65,6 +65,23 @@ bash scripts/build-release.sh \
   --sign-key /path/to/signing-private.pem \
   --out ./dist/apt-repo
 ```
+
+## Обновление через веб-интерфейс
+
+На машине выпуска добавьте к `scripts/build-release.sh` параметры `--sign-key /path/to/release-private.pem` и `--update-archive ./omb-update-0.2.8-amd64.tar.gz`. В GitHub Actions файл создаётся при настроенном секрете `OMB_RELEASE_SIGNING_KEY` в окружении `omb-release`. Тег должен указывать на коммит в ветке своего канала. Для выпуска с постоянным ключом используйте локальную сборку или отдельную доверенную машину сборки. При `--remote` ключ передаётся этой машине на время сборки. Предельный размер архива — 1 ГиБ, суммарный размер файлов после распаковки — 2 ГиБ.
+
+Первый выпуск с веб-обновлением установите из консоли доверенной копией `offline-deploy.sh` из нового выпуска. Для пакетного OMB на Ubuntu 26.04 amd64 один раз скопируйте проверенный публичный ключ и включите сокет:
+
+```sh
+sudo install -m 0644 trusted-release-public.pem /etc/omb/release-public.pem
+printf '%s\n' 'OMB_UPDATE_MANAGEMENT_IP=192.0.2.10' | sudo tee /etc/omb/update.env
+sudo systemctl daemon-reload
+sudo systemctl enable --now omb-update.socket
+```
+
+Замените `192.0.2.10` на IPv4-адрес, по которому доступна панель OMB. В панели откройте «Система → Выпуск OMB», нажмите «Загрузить обновление…», выберите архив и нажмите «Загрузить и проверить». После проверки сверяйте версии и нажимайте «Установить». Статус доступен в карточке выпуска, подробности работы службы — через `sudo journalctl -u omb-update.service`.
+
+Веб-обновление выполняет пакетное обновление OMB внутри установленного канала. Оно сохраняет резервную копию и проверяет службы и опубликованное PXE-меню. При сбое установщик пытается восстановить предыдущий пакет и данные. Если панель просит восстановить OMB, используйте командный откат ниже.
 
 ## Команды развёртывания, обновления и отката
 

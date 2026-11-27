@@ -598,3 +598,26 @@ func TestUpdateLocalDebFlagValidation(t *testing.T) {
 		t.Fatal("expected error for invalid package filename")
 	}
 }
+
+func TestUpdateGuardsDeploymentLockAndPending(t *testing.T) {
+	app := &App{RootDir: t.TempDir(), Lang: "en", Euid: func() int { return 0 }}
+	lock, err := app.acquireUpdateLock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Update(context.Background(), UpdateOptions{DebPath: "/missing.deb"}); err == nil || !strings.Contains(err.Error(), "another OMB deployment") {
+		t.Fatalf("concurrent update error = %v", err)
+	}
+	if err := lock.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(app.stateDir(), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(app.stateDir(), "PENDING"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Update(context.Background(), UpdateOptions{DebPath: "/missing.deb"}); err == nil || !strings.Contains(err.Error(), "update is pending") {
+		t.Fatalf("pending update error = %v", err)
+	}
+}

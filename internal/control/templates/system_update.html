@@ -1,0 +1,51 @@
+{{define "system-update-dialog"}}
+<dialog class="user-dialog omb-update-dialog" id="omb-update-dialog" aria-labelledby="omb-update-title"
+  data-version="{{.Info.Release.Version}}"
+  data-idle="{{t "Из подписанного архива."}}"
+  data-checking="{{t "Загружаем и проверяем архив…"}}"
+  data-ready="{{t "Архив проверен. Можно начать установку."}}"
+  data-installing="{{t "Выполняется обновление OMB…"}}"
+  data-installed="{{t "Обновление установлено."}}"
+  data-failed="{{t "Установка завершилась ошибкой."}}"
+  data-rolled-back="{{t "Предыдущая версия восстановлена."}}"
+  data-recovery-required="{{t "Требуется восстановление OMB."}}"
+  data-rejected="{{t "Архив отклонён."}}"
+  data-invalid-archive="{{t "Выберите архив обновления в формате .tar.gz."}}"
+  data-verification-failed="{{t "Не удалось подтвердить подпись или совместимость архива."}}"
+  data-too-large="{{t "Архив превышает допустимый размер."}}"
+  data-unavailable="{{t "Нет связи со службой обновления."}}"
+  data-reconnect="{{t "Ждём восстановления связи с сервером…"}}"
+  data-backup="{{t "Создаём резервную копию…"}}"
+  data-apply="{{t "Устанавливаем пакет и применяем миграции…"}}"
+  data-verify="{{t "Проверяем службы и PXE-меню…"}}"
+  data-rollback="{{t "Возвращаем предыдущую версию…"}}"
+  data-open-update="{{t "Открыть обновление…"}}">
+  <div class="user-dialog-head">
+    <div>
+      <h2 id="omb-update-title" tabindex="-1">{{t "Офлайн-обновление"}}</h2>
+      <p class="hint">{{t "Версия"}} <span class="mono">{{.Info.Release.DisplayVersion}}</span> · {{t .Info.Release.ChannelLabelKey}}</p>
+    </div>
+    <form method="dialog"><button type="submit" class="btn">{{t "Закрыть"}}</button></form>
+  </div>
+  <p id="omb-update-status" class="omb-update-status" role="status" hidden></p>
+  <form id="omb-update-form" method="post" action="/system/update/upload">
+    <input type="hidden" name="csrf" value="{{.Info.CSRF}}">
+    <label for="omb-update-file">{{t "Архив обновления"}}</label>
+    <input type="file" id="omb-update-file" name="release" accept=".tar.gz" aria-describedby="omb-update-file-help" required autofocus>
+    <p id="omb-update-file-help" class="hint">{{t "Выберите подписанный архив выпуска (.tar.gz)."}} {{t "Максимум 1 ГиБ."}}</p>
+    <div class="user-dialog-actions">
+      <button type="submit" class="btn btn-primary" id="omb-update-upload" disabled>{{t "Загрузить и проверить"}}</button>
+    </div>
+  </form>
+  <div id="omb-update-confirm" hidden>
+    <p class="mono" id="omb-update-transition"></p>
+    <p class="hint">{{t "Перед установкой сервер сделает резервную копию. Во время перезапуска панель может быть недоступна."}}</p>
+    <div class="user-dialog-actions">
+      <button type="button" class="btn" id="omb-update-replace">{{t "Выбрать другой файл"}}</button>
+      <button type="button" class="btn btn-primary" id="omb-update-install">{{t "Установить"}}</button>
+    </div>
+  </div>
+  <p id="omb-update-background" class="hint" hidden>{{t "Установка продолжится в фоне, даже если закрыть панель."}}</p>
+  <p id="omb-update-recovery" hidden><a href="/wiki/offline-updates-and-recovery">{{t "Руководство по восстановлению"}}</a></p>
+</dialog>
+{{end}}

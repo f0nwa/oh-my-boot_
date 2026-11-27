@@ -194,6 +194,12 @@ FORBIDDEN_PREFIXES = (
 ALLOWED_EXACT = {
     "usr/bin/omb",
     "usr/bin/omb-setup",
+    "usr/bin/omb-update",
+    "usr/lib/systemd/system/omb-update.service",
+    "usr/lib/systemd/system/omb-update.socket",
+    "usr/lib/omb/offline-update/offline-deploy.sh",
+    "usr/lib/omb/offline-update/offline-install-lib.sh",
+    "usr/lib/omb/offline-update/offline-deb.py",
     "usr/share/omb/release.json",
     "usr/share/doc/omb/copyright",
 }
@@ -625,10 +631,9 @@ restore_snapshot() {
     fi
 }
 
-upgrade() {
+prepare_upgrade() {
     local repo=$1 key=$2
-    local pkg_meta pkg_path pkg_sha new_version to target_channel
-    local old_version old_sha from prior_channel kind field1 suffix
+    local pkg_meta pkg_path old_sha kind field1
     assert_no_pending "$state"
     check_address
     [[ -z $(dpkg --audit) ]] || fail 'The host package database needs attention before the update.'
@@ -645,6 +650,9 @@ upgrade() {
     old_sha=$(cat "$state/PACKAGE_SHA256")
     from=$(cat "$state/COMMIT")
     prior_channel=$(installed_channel)
+    [[ ${OMB_UPDATE_EXPECT_CURRENT_VERSION:-$old_version} == "$old_version" &&
+       ${OMB_UPDATE_EXPECT_CURRENT_COMMIT:-$from} == "$from" ]] ||
+        fail 'The installed release changed after verification. Upload and check the archive again.'
 
     dpkg --compare-versions "$new_version" gt "$old_version" || fail 'The new package version must be greater.'
     check_channel_switch
@@ -671,6 +679,30 @@ upgrade() {
             DATABASES) scope_databases=$field1 ;;
         esac
     done < "$work/scope"
+}
+
+check_update_target() (
+    # shellcheck source=/dev/null
+    source /etc/os-release
+    [[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 26.04 && $(dpkg --print-architecture) == amd64 ]] ||
+        fail 'Web updates require Ubuntu 26.04 amd64.'
+)
+
+check_update() {
+    prepare_upgrade "$1" "$2"
+    check_update_target
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$old_version" "$new_version" "$target_channel" "$to" "$scope_services" "$from"
+}
+
+update_progress() {
+    if [[ ${OMB_UPDATE_PROGRESS:-} == 1 ]]; then
+        printf 'OMB_UPDATE_PHASE=%s\n' "$1"
+    fi
+}
+
+upgrade() {
+    local suffix
+    prepare_upgrade "$1" "$2"
 
     printf 'Verified signed update %s (%s) -> %s (%s) (services: %s; databases: %s).\n' \
         "$old_version" "$prior_channel" "$new_version" "$target_channel" "$scope_services" "$scope_databases"
@@ -681,6 +713,7 @@ upgrade() {
     fi
     health
 
+    update_progress backup
     if [[ ! -d "$backups" ]]; then install -d -m 0700 "$backups"; fi
     check_backup_space
     backup=$(mktemp -d "$backups/offline.XXXXXXXX")
@@ -723,12 +756,14 @@ upgrade() {
     verify_restored_data || fail 'Restored data differs from the backup source.'
     : > "$backup/READY"
 
+    update_progress apply
     install_packages '' "$work/new.deb"
     installed_package_matches "$new_version" "$to" "$work/new.deb" || fail 'The updated package failed verification.'
     systemctl daemon-reload
 
     apply_pending_migrations /usr/share/omb/migrations "$work/pending-migrations"
 
+    update_progress verify
     start_services
     health
     if has_database omb_control; then
@@ -755,7 +790,10 @@ cleanup() {
     trap - EXIT
     if $upgrade_paused; then
         if [[ -f "$state/PENDING" ]]; then
-            if ! restore_snapshot; then
+            update_progress rollback
+            if restore_snapshot; then
+                update_progress rolled_back
+            else
                 echo "Automatic rollback failed. Recovery data and PENDING were kept: $backup" >&2
             fi
         else
@@ -769,6 +807,7 @@ cleanup() {
 usage() {
     cat >&2 <<'TEXT'
 offline-deploy.sh install APT_REPO PUBLIC_KEY [MANAGEMENT_IP [PXE_INTERFACE|none]]
+offline-deploy.sh check-update APT_REPO PUBLIC_KEY MANAGEMENT_IP
 offline-deploy.sh update [--allow-channel-switch] APT_REPO PUBLIC_KEY MANAGEMENT_IP
 offline-deploy.sh rollback MANAGEMENT_IP
 TEXT
@@ -795,13 +834,13 @@ main() {
     fi
     set -- "$command" ${pos_args[@]+"${pos_args[@]}"}
     case "$command:$#" in
-        install:3|install:4|install:5|update:4|rollback:2) ;;
+        install:3|install:4|install:5|check-update:4|update:4|rollback:2) ;;
         *) usage ;;
     esac
     shift
     [[ $(id -u) == 0 ]] || fail 'This command needs sudo.'
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-    exec 9>"$lock_file"
+    exec 9>>"$lock_file"
     flock -n 9 || fail 'Another OMB deployment operation is running.'
     work=$(mktemp -d /var/tmp/omb-deploy.XXXXXXXX)
     upgrade_paused=false
@@ -819,6 +858,10 @@ main() {
                 check_address
                 fresh_install "$1" "$2" "$3" "${4:-none}"
             fi
+            ;;
+        check-update)
+            address=$3
+            check_update "$1" "$2"
             ;;
         update)
             address=$3

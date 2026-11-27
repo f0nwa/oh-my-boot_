@@ -19,6 +19,7 @@ import (
 	"omb/internal/drivers"
 	"omb/internal/images"
 	"omb/internal/ueficausb"
+	"omb/internal/update"
 )
 
 type Storage interface {
@@ -232,6 +233,7 @@ type Server struct {
 	navBadgesCache    navBadgeCache
 	urlDownloads      *URLDownloadManager
 	urlDownloadClient func(insecureTLS bool, timeout time.Duration) *http.Client
+	updateClient      *http.Client
 }
 
 type requestContext struct {
@@ -255,6 +257,7 @@ func (s *Server) releaseInfo() ReleaseInfo {
 	})
 	return s.releaseCached
 }
+
 type ctxKey struct{}
 
 func (s *Server) Handler() http.Handler {
@@ -417,6 +420,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /system", s.protect("view", s.systemPage))
 	mux.HandleFunc("POST /system/time", s.protect("network", withPageErrors(s.systemPage, s.systemTimeUpdate)))
 	mux.HandleFunc("GET /api/system/metrics", s.protect("view", s.systemMetricsAPI))
+	mux.HandleFunc("GET /api/system/update", s.protect("admin", s.systemUpdateStatus))
+	mux.HandleFunc(updateUploadRoute, s.protect("admin", s.systemUpdateUpload))
+	mux.HandleFunc(updateInstallRoute, s.protect("admin", s.systemUpdateInstall))
 	mux.HandleFunc("POST /answers/{id}/inspect", s.protect("images", withPageErrors(s.answersPage, s.windowsAnswerInspect)))
 	mux.HandleFunc("GET /answers/editor", s.protect("view", s.answerEditorNew))
 	mux.HandleFunc("GET /answers/{id}/edit", s.protect("view", s.answerEditorEdit))
@@ -518,14 +524,20 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 		}
 		if r.Method == http.MethodPost {
 			var err error
-			if r.Pattern == "POST /images/upload/{id}" {
-				if r.ContentLength <= 0 || r.ContentLength > images.MaxISOBytes {
-					http.Error(w, translate(normalizeLanguage(user.Language), "Недопустимый размер ISO"), http.StatusBadRequest)
+			headerCSRF := r.Pattern == "POST /images/upload/{id}" || r.Pattern == updateUploadRoute || r.Pattern == updateInstallRoute
+			if r.Pattern == updateUploadRoute || r.Pattern == updateInstallRoute {
+				var limit int64 = updateIDBodyLimit
+				if r.Pattern == updateUploadRoute {
+					limit = update.MaxArchiveBytes
+				}
+				if r.ContentLength > limit {
+					writeUpdateResponse(w, update.Status{State: "rejected", Reason: "too_large"}, http.StatusRequestEntityTooLarge)
 					return
 				}
-				if !CheckCSRF(cookie.Value, r.Header.Get("X-CSRF-Token")) {
-					_ = s.Store.Audit(r.Context(), user.ID, "denied:"+action, "csrf", "")
-					http.Error(w, translate(normalizeLanguage(user.Language), "Недействительный токен формы"), http.StatusForbidden)
+				r.Body = http.MaxBytesReader(w, r.Body, limit)
+			} else if r.Pattern == "POST /images/upload/{id}" {
+				if r.ContentLength <= 0 || r.ContentLength > images.MaxISOBytes {
+					http.Error(w, translate(normalizeLanguage(user.Language), "Недопустимый размер ISO"), http.StatusBadRequest)
 					return
 				}
 				r.Body = http.MaxBytesReader(w, r.Body, images.MaxISOBytes)
@@ -587,11 +599,13 @@ func (s *Server) protect(action string, next func(http.ResponseWriter, *http.Req
 				r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 				err = r.ParseForm()
 			}
-			csrf := r.FormValue("csrf")
-			if csrf == "" {
-				csrf = r.Header.Get("X-CSRF-Token")
+			csrf := r.Header.Get("X-CSRF-Token")
+			if !headerCSRF {
+				if value := r.FormValue("csrf"); value != "" {
+					csrf = value
+				}
 			}
-			if r.Pattern != "POST /images/upload/{id}" && (err != nil || !CheckCSRF(cookie.Value, csrf)) {
+			if err != nil || !CheckCSRF(cookie.Value, csrf) {
 				_ = s.Store.Audit(r.Context(), user.ID, "denied:"+action, "csrf", "")
 				msg := translate(normalizeLanguage(user.Language), "Недействительный токен формы")
 				if strings.Contains(r.Header.Get("Accept"), "application/json") || r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
@@ -1270,6 +1284,10 @@ func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.loadSystemTime(r.Context(), &data)
+	if data.Info.User.Role == "admin" {
+		_, code := s.currentUpdate(r.Context())
+		data.SystemUpdateEnabled = code == http.StatusOK
+	}
 	render(w, "system", data)
 }
 

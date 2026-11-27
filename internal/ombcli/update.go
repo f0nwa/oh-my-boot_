@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"omb/internal/setup"
@@ -290,6 +291,22 @@ func (a *App) ResolveReleaseTag(ctx context.Context, repo, channel, explicitVers
 	return "", fmt.Errorf("no dev release (v*-dev.*) found in %s", repo)
 }
 
+func (a *App) acquireUpdateLock() (*os.File, error) {
+	path := a.resolve("/run/lock/omb-offline-deploy.lock")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, fmt.Errorf("create deployment lock directory: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("open deployment lock: %w", err)
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("%s: %w", a.t("идёт другая операция развёртывания OMB", "another OMB deployment operation is running"), err)
+	}
+	return file, nil
+}
+
 // Update downloads (or reads a local --deb), verifies, backs up, installs, migrates, and verifies an OMB update.
 func (a *App) Update(ctx context.Context, opts UpdateOptions) error {
 	if err := a.requireRoot(); err != nil {
@@ -309,6 +326,18 @@ func (a *App) Update(ctx context.Context, opts UpdateOptions) error {
 			"флаг --deb нельзя сочетать с --version или --repo",
 			"--deb cannot be combined with --version or --repo",
 		))
+	}
+
+	lock, err := a.acquireUpdateLock()
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if _, err := os.Lstat(filepath.Join(a.stateDir(), "PENDING")); !os.IsNotExist(err) {
+		if err != nil {
+			return fmt.Errorf("check deployment state: %w", err)
+		}
+		return fmt.Errorf("%s", a.t("Есть незавершённое обновление OMB. Сначала выполните rollback.", "An OMB update is pending. Run rollback first."))
 	}
 
 	currentChannel := a.CurrentChannel()

@@ -12,6 +12,7 @@ BINARIES=(
     omb-images
     omb-imagesctl
     omb-setup
+    omb-update
     omb-winiso-prepare
 )
 
@@ -46,6 +47,7 @@ Options:
   --assets-dir PATH       Directory with ipxeboot.tar.gz, ipxe-shimx64.efi, wimboot.
                           In --remote mode, defaults to /usr/share/omb/assets on the remote host.
   --out PATH              Destination directory for the built signed apt-repo (must not exist yet).
+  --update-archive PATH   Create a verified web update .tar.gz (requires --sign-key).
   --remote USER@HOST      Build the .deb and apt-repo on an Ubuntu host via SSH (for macOS hosts without dpkg-deb).
   --apply MANAGEMENT_IP   After building, run offline-deploy.sh update on the target host and verify services.
   --allow-channel-switch  Pass --allow-channel-switch to offline-deploy.sh update (requires --apply).
@@ -150,7 +152,7 @@ stage_repo_payload() {
         chmod 0755 "$payload/bin/$bin"
     done
 
-    cp "$repo"/deploy/systemd/omb-*.service "$payload/deploy/systemd/"
+    cp "$repo"/deploy/systemd/omb-*.service "$repo/deploy/systemd/omb-update.socket" "$payload/deploy/systemd/"
     cp "$repo"/deploy/boot-assets/windows-profiles/omb-setup.cmd.in \
        "$repo"/deploy/boot-assets/windows-profiles/winpeshl.ini \
        "$payload/deploy/boot-assets/windows-profiles/"
@@ -167,7 +169,8 @@ stage_repo_payload() {
         fi
     done
 
-    cp "$repo/scripts/prepare-ubuntu-source.sh" "$repo/scripts/fetch-ipxe.sh" "$payload/scripts/"
+    cp "$repo/scripts/prepare-ubuntu-source.sh" "$repo/scripts/fetch-ipxe.sh" \
+       "$repo/scripts/offline-deploy.sh" "$repo/scripts/offline-install-lib.sh" "$repo/scripts/offline-deb.py" "$payload/scripts/"
     chmod 0755 "$payload/scripts/prepare-ubuntu-source.sh" "$payload/scripts/fetch-ipxe.sh"
 
     stage_sysdebs "$sysdebs_dir" "$payload/debs"
@@ -198,7 +201,7 @@ main() {
     local repo
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
-    local version='' channel='' sign_key='' sysdebs_dir='' assets_dir='' out_dir='' remote='' apply_ip=''
+    local version='' channel='' sign_key='' sysdebs_dir='' assets_dir='' out_dir='' archive='' remote='' apply_ip=''
     local allow_channel_switch=false allow_dirty=false
 
     while (( $# > 0 )); do
@@ -209,6 +212,7 @@ main() {
             --sysdebs-dir) [[ $# -ge 2 ]] || fail "--sysdebs-dir requires a value"; sysdebs_dir=$2; shift 2 ;;
             --assets-dir) [[ $# -ge 2 ]] || fail "--assets-dir requires a value"; assets_dir=$2; shift 2 ;;
             --out) [[ $# -ge 2 ]] || fail "--out requires a value"; out_dir=$2; shift 2 ;;
+            --update-archive) [[ $# -ge 2 ]] || fail "--update-archive requires a value"; archive=$2; shift 2 ;;
             --remote) [[ $# -ge 2 ]] || fail "--remote requires a value"; remote=$2; shift 2 ;;
             --apply) [[ $# -ge 2 ]] || fail "--apply requires a management IP"; apply_ip=$2; shift 2 ;;
             --allow-channel-switch) allow_channel_switch=true; shift ;;
@@ -218,7 +222,12 @@ main() {
         esac
     done
 
-    [[ -n "$out_dir" || -n "$apply_ip" ]] || fail "Specify at least --out PATH or --apply MANAGEMENT_IP."
+    [[ -n "$out_dir" || -n "$apply_ip" || -n "$archive" ]] ||
+        fail "Specify --out PATH, --update-archive PATH or --apply MANAGEMENT_IP."
+    if [[ -n "$archive" ]]; then
+        [[ -n "$sign_key" ]] || fail "--update-archive requires --sign-key."
+        [[ ! -e "$archive" && ! -L "$archive" ]] || fail "Archive already exists: $archive"
+    fi
     if $allow_channel_switch && [[ -z "$apply_ip" ]]; then
         fail "--allow-channel-switch requires --apply MANAGEMENT_IP."
     fi
@@ -292,6 +301,9 @@ main() {
             --unattend-upstream "$repo/internal/unattend/UPSTREAM.md" \
             --sign-key "$effective_key"
         python3 "$repo/scripts/offline-deb.py" verify-repo "$target_repo" --public-key "$work/pub.pem" --print-package
+        if [[ -n "$archive" ]]; then
+            python3 "$repo/scripts/offline-deb.py" pack-update "$target_repo" "$archive" --public-key "$work/pub.pem"
+        fi
 
         if [[ -n "$out_dir" ]]; then
             local sums_file
@@ -327,8 +339,10 @@ main() {
     local apply_arg=${apply_ip:-none}
     local switch_arg=none
     if $allow_channel_switch; then switch_arg='--allow-channel-switch'; fi
+    local archive_arg=no
+    if [[ -n "$archive" ]]; then archive_arg=yes; fi
 
-    ssh "$remote" "bash -euo pipefail -s -- '$remote_work' '$version' '$channel' '$commit' '$assets_mode' '$apply_arg' '$switch_arg'" <<'REMOTE'
+    ssh "$remote" "bash -euo pipefail -s -- '$remote_work' '$version' '$channel' '$commit' '$assets_mode' '$apply_arg' '$switch_arg' '$archive_arg'" <<'REMOTE'
 w=$1
 ver=$2
 ch=$3
@@ -336,6 +350,7 @@ commit=$4
 assets_mode=$5
 apply_arg=$6
 switch_arg=$7
+archive_arg=$8
 
 chmod 0600 "$w/sign.pem"
 if [[ "$assets_mode" == remote ]]; then
@@ -356,6 +371,9 @@ python3 "$w/scripts/offline-deb.py" build "$w/payload" "$w/apt-repo" \
 
 rm -f "$w/sign.pem"
 python3 "$w/scripts/offline-deb.py" verify-repo "$w/apt-repo" --public-key "$w/pub.pem" --print-package
+if [[ "$archive_arg" == yes ]]; then
+    python3 "$w/scripts/offline-deb.py" pack-update "$w/apt-repo" "$w/update.tar.gz" --public-key "$w/pub.pem"
+fi
 
 if [[ "$apply_arg" != none ]]; then
     if [[ "$switch_arg" != none ]]; then
@@ -381,6 +399,11 @@ if [[ "$apply_arg" != none ]]; then
     echo "CURRENT_DEB: OK ($cur_sha)"
 fi
 REMOTE
+
+    if [[ -n "$archive" ]]; then
+        scp -q "$remote:$remote_work/update.tar.gz" "$work/update.tar.gz"
+        (set -o noclobber; cat "$work/update.tar.gz" > "$archive")
+    fi
 
     if [[ -n "$out_dir" ]]; then
         mkdir -p "$out_dir"

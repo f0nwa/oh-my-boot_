@@ -12,6 +12,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 
@@ -30,6 +31,7 @@ BINARIES = (
     "omb-images",
     "omb-imagesctl",
     "omb-setup",
+    "omb-update",
     "omb-winiso-prepare",
 )
 UNITS = (
@@ -38,6 +40,8 @@ UNITS = (
     "omb-control.service",
     "omb-dnsmasq.service",
     "omb-images.service",
+    "omb-update.service",
+    "omb-update.socket",
     "omb-winiso@.service",
 )
 BOOT_ASSETS = ("ipxeboot.tar.gz", "ipxe-shimx64.efi", "wimboot")
@@ -241,6 +245,9 @@ class OfflineDebTestCase(unittest.TestCase):
             ("deploy/sql/control.sql", "CREATE TABLE schema_migrations (id TEXT PRIMARY KEY);\n"),
             ("scripts/prepare-ubuntu-source.sh", "#!/bin/sh\nexit 0\n"),
             ("scripts/fetch-ipxe.sh", "#!/bin/sh\nexit 0\n"),
+            ("scripts/offline-deploy.sh", "#!/bin/sh\nexit 0\n"),
+            ("scripts/offline-install-lib.sh", "#!/bin/sh\nexit 0\n"),
+            ("scripts/offline-deb.py", "#!/usr/bin/env python3\n"),
         ):
             path = payload / rel
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -313,6 +320,23 @@ class OfflineDebTestCase(unittest.TestCase):
                 "--sign-key", str(self.private_key),
             )
             self.assertEqual(build.returncode, 0, msg=build.stderr)
+
+            archive_path = root / "omb-update.tar.gz"
+            archive = self.run_cli("pack-update", str(repo), str(archive_path), "--public-key", str(self.public_key))
+            self.assertEqual(archive.returncode, 0, msg=archive.stderr)
+            with tarfile.open(archive_path, "r:gz") as packed:
+                self.assertEqual(set(packed.getnames()), {
+                    "apt-repo/" + filename.name for filename in repo.iterdir()
+                })
+                for item in packed:
+                    self.assertTrue(item.isfile())
+                    self.assertEqual(packed.extractfile(item).read(), (root / item.name).read_bytes())
+            (repo / "Packages.gz").write_bytes(b"tampered")
+            rejected = self.run_cli("pack-update", str(repo), str(root / "bad.tar.gz"), "--public-key", str(self.public_key))
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertFalse((root / "bad.tar.gz").exists())
+            with tarfile.open(archive_path, "r:gz") as packed:
+                (repo / "Packages.gz").write_bytes(packed.extractfile("apt-repo/Packages.gz").read())
 
             verify = self.run_cli(
                 "verify-repo", str(repo),

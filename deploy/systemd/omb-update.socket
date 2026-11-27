@@ -1,0 +1,14 @@
+[Unit]
+Description=Oh My Boot offline update socket
+ConditionPathExists=/etc/omb/release-public.pem
+ConditionPathExists=/etc/omb/update.env
+
+[Socket]
+ListenStream=/run/omb-update.sock
+SocketUser=root
+SocketGroup=omb-control
+SocketMode=0660
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

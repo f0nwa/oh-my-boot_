@@ -329,6 +329,7 @@ type pageData struct {
 	TOTPThisBrowser       bool
 	SystemTime            *systemTimeView
 	SystemTimeError       string
+	SystemUpdateEnabled   bool
 	NowTime               time.Time
 	BootStatus            string
 	AgentStatus           string

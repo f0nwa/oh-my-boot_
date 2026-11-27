@@ -1,7 +1,10 @@
 package boot
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -219,37 +222,45 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 			}
 			w.Header().Set("Cache-Control", "no-store")
 		}
+		var file *os.File
 		candidate := filepath.Join(root, filepath.FromSlash(name))
 		resolved, err := filepath.EvalSymlinks(candidate)
 		if err != nil {
-			notFound()
-			return
-		}
-		rel, err := filepath.Rel(root, resolved)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			http.NotFound(w, r)
-			return
-		}
-		// Generic asset aliases must not bypass the NoCloud path validator or
-		// subnet policy by resolving into its private namespace.
-		resolvedName := filepath.ToSlash(rel)
-		if resolvedName == "ubuntu-sources" || strings.HasPrefix(resolvedName, "ubuntu-sources/") {
-			notFound()
-			return
-		}
-		if (resolvedName == "ubuntu-autoinstall" || strings.HasPrefix(resolvedName, "ubuntu-autoinstall/")) && (!autoinstall || resolvedName != name) {
-			notFound()
-			return
-		}
-		var file *os.File
-		if autoinstall {
-			file, err = openPublicAutoinstallAsset(root, name)
+			if os.IsNotExist(err) {
+				if id, digest, ok := parseVersionedWindowsAnswerAsset(name); ok {
+					file, err = openLegacyWindowsAnswerFallback(root, id, digest)
+				}
+			}
+			if file == nil {
+				notFound()
+				return
+			}
 		} else {
-			file, err = openResolvedAsset(root, rel)
-		}
-		if err != nil {
-			notFound()
-			return
+			rel, err := filepath.Rel(root, resolved)
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				http.NotFound(w, r)
+				return
+			}
+			// Generic asset aliases must not bypass the NoCloud path validator or
+			// subnet policy by resolving into its private namespace.
+			resolvedName := filepath.ToSlash(rel)
+			if resolvedName == "ubuntu-sources" || strings.HasPrefix(resolvedName, "ubuntu-sources/") {
+				notFound()
+				return
+			}
+			if (resolvedName == "ubuntu-autoinstall" || strings.HasPrefix(resolvedName, "ubuntu-autoinstall/")) && (!autoinstall || resolvedName != name) {
+				notFound()
+				return
+			}
+			if autoinstall {
+				file, err = openPublicAutoinstallAsset(root, name)
+			} else {
+				file, err = openResolvedAsset(root, rel)
+			}
+			if err != nil {
+				notFound()
+				return
+			}
 		}
 		defer file.Close()
 		info, err := file.Stat()
@@ -315,17 +326,56 @@ func NewDynamicHandlerWithTransfers(assetDir string, publisher *Publisher, recor
 	}), nil
 }
 
-func validWindowsAnswerAsset(name string) bool {
+func parseVersionedWindowsAnswerAsset(name string) (id, digest string, ok bool) {
 	parts := strings.Split(name, "/")
 	if len(parts) == 4 && parts[0] == "windows-answers" && parts[3] == "omb-answer.xml" {
-		id, err := strconv.ParseUint(parts[1], 10, 63)
-		return err == nil && id > 0 && strconv.FormatUint(id, 10) == parts[1] && validSHA256(parts[2])
+		parsedID, err := strconv.ParseUint(parts[1], 10, 63)
+		if err == nil && parsedID > 0 && strconv.FormatUint(parsedID, 10) == parts[1] && validSHA256(parts[2]) {
+			return parts[1], parts[2], true
+		}
 	}
+	return "", "", false
+}
+
+func validWindowsAnswerAsset(name string) bool {
+	if _, _, ok := parseVersionedWindowsAnswerAsset(name); ok {
+		return true
+	}
+	parts := strings.Split(name, "/")
 	if len(parts) == 3 && parts[0] == "windows-answers" && parts[2] == "omb-answer.xml" {
 		id, err := strconv.ParseUint(parts[1], 10, 63)
 		return err == nil && id > 0 && strconv.FormatUint(id, 10) == parts[1]
 	}
 	return false
+}
+
+// openLegacyWindowsAnswerFallback serves a pre-v0.2.7 unversioned
+// windows-answers/<id>/omb-answer.xml when the versioned path is absent,
+// only if its SHA-256 exactly matches the requested digest.
+func openLegacyWindowsAnswerFallback(root, id, digest string) (*os.File, error) {
+	file, err := openResolvedAsset(root, path.Join("windows-answers", id, "omb-answer.xml"))
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 1<<20 {
+		file.Close()
+		return nil, os.ErrNotExist
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, io.LimitReader(file, (1<<20)+1)); err != nil {
+		file.Close()
+		return nil, err
+	}
+	if hex.EncodeToString(h.Sum(nil)) != digest {
+		file.Close()
+		return nil, os.ErrNotExist
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return file, nil
 }
 
 func privateWinPEScript(name string) bool {

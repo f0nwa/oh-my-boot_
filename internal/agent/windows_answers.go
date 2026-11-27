@@ -57,12 +57,20 @@ func (m *WindowsISOManager) PrepareAnswer(_ context.Context, req WindowsAnswerRe
 	} else if !os.IsNotExist(err) {
 		return err
 	}
+	if err := stageVersionedAnswer(parent, req.SHA256, req.XML); err != nil {
+		return err
+	}
+	return m.checkAnswerAssets(check)
+}
+
+func stageVersionedAnswer(parent, digest string, xml []byte) error {
+	final := filepath.Join(parent, digest)
 	stage, err := os.MkdirTemp(parent, ".answer-")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(stage)
-	if err := os.WriteFile(filepath.Join(stage, "omb-answer.xml"), req.XML, 0640); err != nil {
+	if err := os.WriteFile(filepath.Join(stage, "omb-answer.xml"), xml, 0640); err != nil {
 		return err
 	}
 	if err := os.Chmod(stage, 0750); err != nil {
@@ -71,7 +79,7 @@ func (m *WindowsISOManager) PrepareAnswer(_ context.Context, req WindowsAnswerRe
 	if err := os.Rename(stage, final); err != nil {
 		return err
 	}
-	return m.checkAnswerAssets(check)
+	return nil
 }
 
 func (m *WindowsISOManager) CheckAnswer(_ context.Context, req WindowsAnswerCheck) error {
@@ -127,6 +135,15 @@ func (m *WindowsISOManager) checkAnswerAssets(req WindowsAnswerCheck) error {
 	sum := sha256.Sum256(xml)
 	if hex.EncodeToString(sum[:]) != req.SHA256 {
 		return fmt.Errorf("answer asset hash differs")
+	}
+	parent := filepath.Join(m.AnswerRoot, strconv.FormatInt(req.ID, 10))
+	if final == parent {
+		// Materialize the versioned <id>/<sha256>/omb-answer.xml copy for
+		// pre-v0.2.7 answers so menu republishes serve them at the versioned URL
+		// while keeping the legacy <id>/omb-answer.xml intact for rollbacks.
+		if err := stageVersionedAnswer(parent, req.SHA256, xml); err != nil {
+			return err
+		}
 	}
 	return nil
 }

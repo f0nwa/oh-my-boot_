@@ -1,6 +1,8 @@
 package boot
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -180,6 +182,71 @@ func TestWindowsAnswerAssetsAreLimitedToPXESubnet(t *testing.T) {
 	h.ServeHTTP(res, req)
 	if res.Code != http.StatusNotFound {
 		t.Fatalf("legacy omb-setup.cmd in windows-answers was still served: %d", res.Code)
+	}
+}
+
+func TestWindowsAnswerVersionedURLFallsBackToLegacyFileWhenHashMatches(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "windows-answers", "3")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	legacyBody := []byte(`<unattend xmlns="urn:schemas-microsoft-com:unattend"/>`)
+	legacySum := sha256.Sum256(legacyBody)
+	legacySHA := hex.EncodeToString(legacySum[:])
+	if err := os.WriteFile(filepath.Join(dir, "omb-answer.xml"), legacyBody, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	h, err := NewHandler(root, []byte("#!ipxe\n"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Versioned URL falls back to legacy file when SHA-256 matches.
+	req := httptest.NewRequest(http.MethodGet, "/assets/windows-answers/3/"+legacySHA+"/omb-answer.xml", nil)
+	req.RemoteAddr = "10.30.0.7:1234"
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK || res.Body.String() != string(legacyBody) || res.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("legacy fallback failed: status=%d cache=%q body=%q", res.Code, res.Header().Get("Cache-Control"), res.Body.String())
+	}
+
+	// Mismatched SHA-256 must NOT serve the legacy file.
+	wrongSHA := strings.Repeat("b", 64)
+	req = httptest.NewRequest(http.MethodGet, "/assets/windows-answers/3/"+wrongSHA+"/omb-answer.xml", nil)
+	req.RemoteAddr = "10.30.0.7:1234"
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("mismatched SHA-256 served legacy file: status=%d", res.Code)
+	}
+
+	// Access policy is still enforced on fallback.
+	req = httptest.NewRequest(http.MethodGet, "/assets/windows-answers/3/"+legacySHA+"/omb-answer.xml", nil)
+	req.RemoteAddr = "192.168.10.55:1234"
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("external client allowed on legacy fallback: status=%d", res.Code)
+	}
+
+	// When a versioned file exists, it is served directly instead of legacy.
+	v2Body := []byte(`<unattend xmlns="urn:schemas-microsoft-com:unattend"><v2/></unattend>`)
+	v2Sum := sha256.Sum256(v2Body)
+	v2SHA := hex.EncodeToString(v2Sum[:])
+	if err := os.MkdirAll(filepath.Join(dir, v2SHA), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, v2SHA, "omb-answer.xml"), v2Body, 0644); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/assets/windows-answers/3/"+v2SHA+"/omb-answer.xml", nil)
+	req.RemoteAddr = "10.30.0.7:1234"
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK || res.Body.String() != string(v2Body) {
+		t.Fatalf("versioned file not served: status=%d body=%q", res.Code, res.Body.String())
 	}
 }
 

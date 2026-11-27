@@ -55,6 +55,46 @@ func TestWindowsAnswerAssetsAreImmutableAndUnbound(t *testing.T) {
 	}
 }
 
+func TestCheckAnswerMaterializesVersionedAssetFromLegacyFile(t *testing.T) {
+	answers := t.TempDir()
+	xml := []byte(`<unattend xmlns="urn:schemas-microsoft-com:unattend"><settings pass="oobeSystem"/></unattend>`)
+	sum := sha256.Sum256(xml)
+	digest := hex.EncodeToString(sum[:])
+
+	legacyDir := filepath.Join(answers, "3")
+	if err := os.MkdirAll(legacyDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	legacyPath := filepath.Join(legacyDir, "omb-answer.xml")
+	if err := os.WriteFile(legacyPath, xml, 0640); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &WindowsISOManager{AnswerRoot: answers}
+	wrong := strings.Repeat("a", 64)
+	if err := m.CheckAnswer(context.Background(), WindowsAnswerCheck{ID: 3, SHA256: wrong}); err == nil {
+		t.Fatal("expected error for mismatched SHA-256 on legacy answer")
+	}
+	if _, err := os.Stat(filepath.Join(legacyDir, wrong)); !os.IsNotExist(err) {
+		t.Fatalf("mismatched CheckAnswer created versioned dir: %v", err)
+	}
+
+	if err := m.CheckAnswer(context.Background(), WindowsAnswerCheck{ID: 3, SHA256: digest}); err != nil {
+		t.Fatalf("CheckAnswer on legacy file failed: %v", err)
+	}
+	versionedPath := filepath.Join(legacyDir, digest, "omb-answer.xml")
+	got, err := os.ReadFile(versionedPath)
+	if err != nil {
+		t.Fatalf("expected materialized versioned answer at %s: %v", versionedPath, err)
+	}
+	if string(got) != string(xml) {
+		t.Fatalf("versioned answer content mismatch: got %q", got)
+	}
+	if _, err := os.Stat(legacyPath); err != nil {
+		t.Fatalf("legacy answer should remain for rollback compatibility: %v", err)
+	}
+}
+
 func TestWindowsAnswerRejectsSymlinkTarget(t *testing.T) {
 	answers := t.TempDir()
 	xml := []byte(`<unattend xmlns="urn:schemas-microsoft-com:unattend"/>`)

@@ -129,8 +129,8 @@ func TestImagesPageStorageOutageVariantB(t *testing.T) {
 	if !strings.Contains(recovered, `<span class="dot dot-ok"></span>В библиотеке`) || !strings.Contains(recovered, `action="/images/iso/inspect"`) {
 		t.Fatalf("recovered image must restore status and actions: %s", recovered)
 	}
-	if !strings.Contains(bodyOK, `show=attention">Требуют внимания <span class="mono">0</span>`) {
-		t.Fatalf("attention counter must return to 0 after recovery: %s", bodyOK)
+	if strings.Contains(bodyOK, `show=attention`) {
+		t.Fatalf("attention filter chip must be hidden when count is 0 after recovery: %s", bodyOK)
 	}
 }
 

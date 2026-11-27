@@ -351,6 +351,7 @@ tr.row-changed td:last-child{font-weight:600;color:var(--text)}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 14px}
 .toolbar .search{margin:0}.toolbar .search input{width:240px}
 .filters{display:flex;flex-wrap:wrap;gap:6px}
+.filters:empty{display:none}
 .filters a{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--text-2)}
 .filters a:hover{color:var(--text);background:var(--chip)}
 .filters a.active{background:var(--chip);border-color:var(--line-strong);color:var(--text)}

@@ -201,6 +201,7 @@ ALLOWED_EXACT = {
     "usr/lib/omb/offline-update/offline-install-lib.sh",
     "usr/lib/omb/offline-update/offline-deb.py",
     "usr/share/omb/release.json",
+    "usr/share/omb/release-public.pem",
     "usr/share/doc/omb/copyright",
 }
 ALLOWED_PREFIXES = (

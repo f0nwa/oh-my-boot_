@@ -351,6 +351,7 @@ def stage_package_tree(
     license_path: Path,
     migrations: list[dict],
     repo: str = DEFAULT_SOURCE_REPO,
+    release_public_key: Path | None = None,
 ) -> None:
     bin_dir = payload / "bin"
     if not bin_dir.is_dir() or bin_dir.is_symlink():
@@ -433,6 +434,15 @@ def stage_package_tree(
         encoding="utf-8",
     )
 
+    if release_public_key is not None:
+        key_path = require_regular_file(release_public_key, str(release_public_key))
+        pem_text = key_path.read_text(encoding="utf-8")
+        if "-----BEGIN PUBLIC KEY-----" not in pem_text or "-----END PUBLIC KEY-----" not in pem_text:
+            raise ValueError(f"release public key must be a PEM public key: {release_public_key}")
+        if "PRIVATE KEY" in pem_text:
+            raise ValueError(f"refusing to embed private key in package: {release_public_key}")
+        stage_file(key_path, package, "usr/share/omb/release-public.pem")
+
 
 def build_package(
     package: Path,
@@ -444,8 +454,11 @@ def build_package(
     license_path: Path,
     migrations: list[dict],
     repo: str = DEFAULT_SOURCE_REPO,
+    release_public_key: Path | None = None,
 ) -> tuple[dict, Path]:
-    stage_package_tree(package, payload, version, channel, commit, license_path, migrations, repo)
+    stage_package_tree(
+        package, payload, version, channel, commit, license_path, migrations, repo, release_public_key
+    )
 
     control = package / "DEBIAN"
     control.mkdir()
@@ -532,6 +545,7 @@ def build_repo(args: argparse.Namespace) -> None:
             args.license,
             migrations,
             repo,
+            args.release_public_key,
         )
 
         combined_index = base_index_text + "\n\n" + package_record(pkg_deb)
@@ -681,6 +695,12 @@ def main() -> None:
         "--unattend-upstream",
         type=Path,
         default=default_unattend if default_unattend.is_file() else None,
+    )
+    build_cmd.add_argument(
+        "--release-public-key",
+        type=Path,
+        default=None,
+        help="optional PEM public key to bundle at /usr/share/omb/release-public.pem",
     )
 
     verify_cmd = sub.add_parser("verify-repo", help="verify a signed OMB APT repository")

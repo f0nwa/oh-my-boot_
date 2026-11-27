@@ -112,12 +112,15 @@ jobs:
           mkdir -p dist-release "$WORK_DIR/ubuntu24.04/sysdebs"
           KEY="$WORK_DIR/signing.pem"
           SIGNED_ARCHIVES=false
+          PUBLIC_KEY_ARGS=()
           if [[ -n "$OMB_RELEASE_SIGNING_KEY" ]]; then
             BRANCH=main
             if [[ "$RELEASE_CHANNEL" == dev ]]; then BRANCH=dev; fi
             git fetch --no-tags origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
             git merge-base --is-ancestor HEAD "refs/remotes/origin/$BRANCH"
             (umask 077; printf '%s\n' "$OMB_RELEASE_SIGNING_KEY" > "$KEY")
+            openssl pkey -in "$KEY" -pubout -out dist-release/omb-release-public.pem
+            PUBLIC_KEY_ARGS=(--release-public-key dist-release/omb-release-public.pem)
             SIGNED_ARCHIVES=true
           else
             echo "::warning::No release signing key. This development release contains the .deb only."
@@ -145,6 +148,7 @@ jobs:
             bash scripts/build-release.sh \
               --target-ubuntu "$ubuntu" --version "$DEB_VERSION" --channel "$RELEASE_CHANNEL" \
               --sysdebs-dir "$target/sysdebs" --assets-dir "$WORK_DIR/assets" --sign-key "$KEY" \
+              ${PUBLIC_KEY_ARGS[@]+"${PUBLIC_KEY_ARGS[@]}"} \
               --out "$target/apt-repo" "${archive_args[@]}"
           }
 
@@ -186,6 +190,13 @@ jobs:
               exit 1
             fi
           done
+          PUBKEY="dist-release/omb-release-public.pem"
+          if [[ -f "$PUBKEY" ]]; then
+            ASSETS+=("$PUBKEY")
+          elif [[ "${{ steps.meta.outputs.channel }}" == stable ]]; then
+            echo "::error::Missing required release public key: $PUBKEY"
+            exit 1
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
           else

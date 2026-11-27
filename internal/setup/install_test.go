@@ -265,7 +265,7 @@ func TestExecuteDeferredPXE(t *testing.T) {
 		"/usr/bin/omb-imagesctl add-path -name Local -kind local -root /var/lib/omb-images/iso",
 		"/usr/bin/omb-controlctl create-admin -username admin -language en",
 		"systemctl daemon-reload",
-		"systemctl enable --now omb-boot.service omb-agent.service omb-images.service omb-control.service",
+		"systemctl enable --now omb-boot.service omb-agent.service omb-images.service omb-control.service omb-update.socket",
 	}
 
 	lastIdx := -1
@@ -309,6 +309,7 @@ func TestExecuteDeferredPXE(t *testing.T) {
 	assertFileContains(t, filepath.Join(root, "etc/omb/control.env"), "OMB_CONTROL_INTERFACES=ens19")
 	assertFileContains(t, filepath.Join(root, "etc/omb/control.env"), "OMB_CONTROL_BOOT_BASE_URL=http://192.0.2.10:8080")
 	assertFileContains(t, filepath.Join(root, "etc/omb/images.env"), `OMB_IMAGES_DATABASE_URL="host=/var/run/postgresql dbname=omb_images user=omb-images"`)
+	assertFileContains(t, filepath.Join(root, "etc/omb/update.env"), "OMB_UPDATE_MANAGEMENT_IP=192.0.2.10")
 	assertFileExists(t, filepath.Join(root, "etc/omb/secrets.key"))
 	assertFileContains(t, filepath.Join(root, "var/lib/omb-deployment/control.crt"), "dummy-pem")
 	assertFileContains(t, filepath.Join(root, "var/lib/omb-deployment/smb.conf.distribution"), "workgroup = WORKGROUP")

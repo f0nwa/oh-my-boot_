@@ -425,8 +425,18 @@ func TestUpdateLocalDebWithAutoSHA256Sums(t *testing.T) {
 	if err := os.WriteFile(releasePath, []byte(fmt.Sprintf(`{"channel":"stable","commit":%q,"version":"0.2.5"}`, newCommit)), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	bundledPubKey := filepath.Join(root, "usr", "share", "omb", "release-public.pem")
+	if err := os.WriteFile(bundledPubKey, []byte("-----BEGIN PUBLIC KEY-----\nTEST\n-----END PUBLIC KEY-----\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "etc", "omb"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "etc", "omb", "control.env"), []byte("OMB_CONTROL_LISTEN=192.0.2.15:8443\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
-	var sawAptInstall, sawDaemonReload bool
+	var sawAptInstall, sawDaemonReload, sawUpdateSocket bool
 	runner := &mockRunner{
 		fn: func(_ context.Context, spec setup.CmdSpec) ([]byte, error) {
 			joined := strings.Join(spec.Args, " ")
@@ -440,6 +450,9 @@ func TestUpdateLocalDebWithAutoSHA256Sums(t *testing.T) {
 				return nil, nil
 			case spec.Name == "systemctl" && joined == "daemon-reload":
 				sawDaemonReload = true
+				return nil, nil
+			case spec.Name == "systemctl" && joined == "enable --now omb-update.socket":
+				sawUpdateSocket = true
 				return nil, nil
 			}
 			return nil, nil
@@ -469,6 +482,15 @@ func TestUpdateLocalDebWithAutoSHA256Sums(t *testing.T) {
 	}
 	if !sawDaemonReload {
 		t.Error("expected systemctl daemon-reload to be invoked")
+	}
+	if !sawUpdateSocket {
+		t.Error("expected systemctl enable --now omb-update.socket to be invoked")
+	}
+	if raw, err := os.ReadFile(filepath.Join(root, "etc", "omb", "update.env")); err != nil || string(raw) != "OMB_UPDATE_MANAGEMENT_IP=192.0.2.15\n" {
+		t.Errorf("unexpected update.env: %q (err=%v)", string(raw), err)
+	}
+	if raw, err := os.ReadFile(filepath.Join(root, "etc", "omb", "release-public.pem")); err != nil || !strings.Contains(string(raw), "BEGIN PUBLIC KEY") {
+		t.Errorf("unexpected release-public.pem: %q (err=%v)", string(raw), err)
 	}
 	if !strings.Contains(out.String(), "SHA-256 пакета подтверждён по SHA256SUMS") {
 		t.Errorf("expected SHA256SUMS confirmation in output, got:\n%s", out.String())

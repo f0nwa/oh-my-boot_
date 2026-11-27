@@ -607,10 +607,11 @@ SH
 
 # A web update may add or replace its own executable, units and deploy tools.
 make_pkg_tree "$work/new-with-updater"
-mkdir -p "$work/new-with-updater/usr/lib/omb/offline-update"
+mkdir -p "$work/new-with-updater/usr/lib/omb/offline-update" "$work/new-with-updater/usr/share/omb"
 for file in usr/bin/omb-update usr/lib/systemd/system/omb-update.service \
     usr/lib/systemd/system/omb-update.socket usr/lib/omb/offline-update/offline-deploy.sh \
-    usr/lib/omb/offline-update/offline-install-lib.sh usr/lib/omb/offline-update/offline-deb.py; do
+    usr/lib/omb/offline-update/offline-install-lib.sh usr/lib/omb/offline-update/offline-deb.py \
+    usr/share/omb/release-public.pem; do
     printf 'updater-v1' > "$work/new-with-updater/$file"
 done
 test "$(compute_update_scope "$work/old-boot" "$work/new-with-updater" "$work/no-pending")" = $'SERVICES\tcontrol\nDATABASES\tnone'

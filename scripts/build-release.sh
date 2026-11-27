@@ -42,6 +42,7 @@ Options:
   --version VER           Debian version (e.g. 0.2.0 or 0.2.0~dev.19). Default: inferred from Git tag on HEAD.
   --channel stable|dev    Release channel. Default: inferred from tag/version.
   --sign-key PATH         OpenSSL private key (required for stable; optional temporary key for dev + --apply).
+  --release-public-key P  Embed PEM public key at /usr/share/omb/release-public.pem inside the .deb package.
   --target-ubuntu VER     Ubuntu target: 24.04 (updates only) or 26.04 (default).
   --sysdebs-dir PATH      Directory with system .deb files and Packages.gz for the target Ubuntu.
                           The cache is auto-detected only for Ubuntu 26.04.
@@ -202,7 +203,7 @@ main() {
     local repo
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
-    local version='' channel='' sign_key='' sysdebs_dir='' assets_dir='' out_dir='' archive='' remote='' apply_ip=''
+    local version='' channel='' sign_key='' release_public_key='' sysdebs_dir='' assets_dir='' out_dir='' archive='' remote='' apply_ip=''
     local target_ubuntu=26.04
     local allow_channel_switch=false allow_dirty=false
 
@@ -212,6 +213,7 @@ main() {
             --channel) [[ $# -ge 2 ]] || fail "--channel requires a value"; channel=$2; shift 2 ;;
             --target-ubuntu) [[ $# -ge 2 ]] || fail "--target-ubuntu requires a value"; target_ubuntu=$2; shift 2 ;;
             --sign-key) [[ $# -ge 2 ]] || fail "--sign-key requires a value"; sign_key=$2; shift 2 ;;
+            --release-public-key) [[ $# -ge 2 ]] || fail "--release-public-key requires a value"; release_public_key=$2; shift 2 ;;
             --sysdebs-dir) [[ $# -ge 2 ]] || fail "--sysdebs-dir requires a value"; sysdebs_dir=$2; shift 2 ;;
             --assets-dir) [[ $# -ge 2 ]] || fail "--assets-dir requires a value"; assets_dir=$2; shift 2 ;;
             --out) [[ $# -ge 2 ]] || fail "--out requires a value"; out_dir=$2; shift 2 ;;
@@ -257,6 +259,9 @@ main() {
     if [[ -n "$sign_key" && ! -f "$sign_key" ]]; then
         fail "Signing key not found: $sign_key"
     fi
+    if [[ -n "$release_public_key" && ! -f "$release_public_key" ]]; then
+        fail "Release public key not found: $release_public_key"
+    fi
     if [[ -n "$out_dir" && -e "$out_dir" ]]; then
         fail "Output directory already exists: $out_dir"
     fi
@@ -300,6 +305,10 @@ main() {
     if [[ -z "$remote" ]]; then
         command -v dpkg-deb >/dev/null 2>&1 || fail "dpkg-deb not found locally. Use --remote USER@UBUNTU_HOST on macOS."
         local target_repo=${out_dir:-"$work/apt-repo"}
+        local pubkey_args=()
+        if [[ -n "$release_public_key" ]]; then
+            pubkey_args=(--release-public-key "$release_public_key")
+        fi
         python3 "$repo/scripts/offline-deb.py" build "$work/payload" "$target_repo" \
             --version "$version" \
             --channel "$channel" \
@@ -308,7 +317,8 @@ main() {
             --license "$repo/LICENSE" \
             --go-mod "$repo/go.mod" \
             --unattend-upstream "$repo/internal/unattend/UPSTREAM.md" \
-            --sign-key "$effective_key"
+            --sign-key "$effective_key" \
+            ${pubkey_args[@]+"${pubkey_args[@]}"}
         python3 "$repo/scripts/offline-deb.py" verify-repo "$target_repo" --public-key "$work/pub.pem" --print-package
         if [[ -n "$archive" ]]; then
             python3 "$repo/scripts/offline-deb.py" pack-update "$target_repo" "$archive" --public-key "$work/pub.pem"
@@ -342,6 +352,11 @@ main() {
     scp -q "$repo/LICENSE" "$repo/go.mod" "$repo/internal/unattend/UPSTREAM.md" "$remote:$remote_work/meta/"
     scp -q "$effective_key" "$remote:$remote_work/sign.pem"
     scp -q "$work/pub.pem" "$remote:$remote_work/pub.pem"
+    local bundle_pubkey=no
+    if [[ -n "$release_public_key" ]]; then
+        scp -q "$release_public_key" "$remote:$remote_work/meta/release-public.pem"
+        bundle_pubkey=yes
+    fi
 
     local assets_mode=remote
     if [[ -n "$assets_dir" ]]; then assets_mode=local; fi
@@ -351,7 +366,7 @@ main() {
     local archive_arg=no
     if [[ -n "$archive" ]]; then archive_arg=yes; fi
 
-    ssh "$remote" "bash -euo pipefail -s -- '$remote_work' '$version' '$channel' '$commit' '$assets_mode' '$apply_arg' '$switch_arg' '$archive_arg' '$target_ubuntu'" <<'REMOTE'
+    ssh "$remote" "bash -euo pipefail -s -- '$remote_work' '$version' '$channel' '$commit' '$assets_mode' '$apply_arg' '$switch_arg' '$archive_arg' '$target_ubuntu' '$bundle_pubkey'" <<'REMOTE'
 w=$1
 ver=$2
 ch=$3
@@ -361,6 +376,7 @@ apply_arg=$6
 switch_arg=$7
 archive_arg=$8
 target_ubuntu=$9
+bundle_pubkey=${10}
 
 chmod 0600 "$w/sign.pem"
 if [[ "$assets_mode" == remote ]]; then
@@ -370,6 +386,10 @@ if [[ "$assets_mode" == remote ]]; then
     done
 fi
 
+pubkey_args=()
+if [[ "$bundle_pubkey" == yes ]]; then
+    pubkey_args=(--release-public-key "$w/meta/release-public.pem")
+fi
 python3 "$w/scripts/offline-deb.py" build "$w/payload" "$w/apt-repo" \
     --version "$ver" \
     --channel "$ch" \
@@ -378,7 +398,8 @@ python3 "$w/scripts/offline-deb.py" build "$w/payload" "$w/apt-repo" \
     --license "$w/meta/LICENSE" \
     --go-mod "$w/meta/go.mod" \
     --unattend-upstream "$w/meta/UPSTREAM.md" \
-    --sign-key "$w/sign.pem"
+    --sign-key "$w/sign.pem" \
+    ${pubkey_args[@]+"${pubkey_args[@]}"}
 
 rm -f "$w/sign.pem"
 python3 "$w/scripts/offline-deb.py" verify-repo "$w/apt-repo" --public-key "$w/pub.pem" --print-package

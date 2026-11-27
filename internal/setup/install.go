@@ -499,6 +499,19 @@ func (in *Installer) Execute(ctx context.Context, opts Options) error {
 	if err := writeFileAtomic(in.resolve("/etc/omb/images.env"), []byte(imagesEnv), 0o600); err != nil {
 		return fmt.Errorf("write images.env: %w", err)
 	}
+	updateEnv := fmt.Sprintf("OMB_UPDATE_MANAGEMENT_IP=%s\n", opts.ManagementIP)
+	if err := writeFileAtomic(in.resolve("/etc/omb/update.env"), []byte(updateEnv), 0o600); err != nil {
+		return fmt.Errorf("write update.env: %w", err)
+	}
+	etcPubKey := in.resolve("/etc/omb/release-public.pem")
+	if _, err := os.Stat(etcPubKey); os.IsNotExist(err) {
+		bundledPubKey := in.resolve("/usr/share/omb/release-public.pem")
+		if info, err := os.Stat(bundledPubKey); err == nil && info.Mode().IsRegular() {
+			if err := copyFile(bundledPubKey, etcPubKey, 0o644); err != nil {
+				return fmt.Errorf("install default release-public.pem: %w", err)
+			}
+		}
+	}
 
 	// 7. Generate secrets.key, self-signed TLS certificate, and omb-iso Samba password.
 	in.progress("secrets", "Generating TLS certificate and keys")
@@ -613,7 +626,7 @@ func (in *Installer) Execute(ctx context.Context, opts Options) error {
 		return fmt.Errorf("systemctl daemon-reload: %w", err)
 	}
 	if _, err := in.run(ctx, "systemctl", "enable", "--now",
-		"omb-boot.service", "omb-agent.service", "omb-images.service", "omb-control.service"); err != nil {
+		"omb-boot.service", "omb-agent.service", "omb-images.service", "omb-control.service", "omb-update.socket"); err != nil {
 		return fmt.Errorf("enable and start OMB services: %w", err)
 	}
 	if err := in.checkHealth(ctx, opts.ManagementIP, bootURL); err != nil {

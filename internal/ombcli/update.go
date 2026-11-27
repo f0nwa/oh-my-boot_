@@ -615,6 +615,7 @@ func (a *App) Update(ctx context.Context, opts UpdateOptions) error {
 	if _, err := a.run(ctx, "systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("systemctl daemon-reload: %w", err)
 	}
+	a.configureWebUpdate(ctx)
 	if _, err := a.run(ctx, "systemctl", "start",
 		"omb-boot.service", "omb-agent.service", "omb-images.service", "omb-control.service"); err != nil {
 		return fmt.Errorf("start OMB services: %w", err)
@@ -746,6 +747,33 @@ func (a *App) applyPendingMigrations(ctx context.Context) (int, error) {
 		}
 	}
 	return len(pending), nil
+}
+
+func (a *App) configureWebUpdate(ctx context.Context) {
+	updateEnvPath := a.resolve("/etc/omb/update.env")
+	if _, err := os.Stat(updateEnvPath); os.IsNotExist(err) {
+		if envMap, err := ParseEnvFile(a.resolve(DefaultControlEnvPath)); err == nil {
+			if listen := strings.TrimSpace(envMap["OMB_CONTROL_LISTEN"]); listen != "" {
+				if host, _, err := net.SplitHostPort(listen); err == nil && host != "" {
+					if ip := net.ParseIP(host); ip != nil && ip.To4() != nil {
+						_ = writeFileAtomic(updateEnvPath, []byte("OMB_UPDATE_MANAGEMENT_IP="+host+"\n"), 0o600)
+					}
+				}
+			}
+		}
+	}
+
+	etcPubKey := a.resolve("/etc/omb/release-public.pem")
+	if _, err := os.Stat(etcPubKey); os.IsNotExist(err) {
+		bundledPubKey := a.resolve("/usr/share/omb/release-public.pem")
+		if info, err := os.Stat(bundledPubKey); err == nil && info.Mode().IsRegular() {
+			_ = copyFileAtomic(bundledPubKey, etcPubKey, 0o644)
+		}
+	}
+
+	if _, err := os.Stat(updateEnvPath); err == nil {
+		_, _ = a.run(ctx, "systemctl", "enable", "--now", "omb-update.socket")
+	}
 }
 
 func (a *App) checkUpdateHealth(ctx context.Context) error {

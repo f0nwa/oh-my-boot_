@@ -427,6 +427,41 @@ class OfflineDebTestCase(unittest.TestCase):
             deb = "omb_0.2.8_amd64.deb"
             self.assertEqual((repos["24.04"] / deb).read_bytes(), (repos["26.04"] / deb).read_bytes())
 
+    def test_build_embeds_release_public_key_and_rejects_private_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload, license_file = self.make_payload(root)
+            repo = root / "apt-repo"
+            result = self.run_cli(
+                "build", str(payload), str(repo),
+                "--version", "0.2.8",
+                "--channel", "stable",
+                "--commit", COMMIT_SHA,
+                "--license", str(license_file),
+                "--sign-key", str(self.private_key),
+                "--release-public-key", str(self.public_key),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            deb = repo / "omb_0.2.8_amd64.deb"
+            extracted = root / "extracted"
+            subprocess.run(["dpkg-deb", "-x", str(deb), str(extracted)], env=self.base_env, check=True)
+            bundled = extracted / "usr/share/omb/release-public.pem"
+            self.assertTrue(bundled.is_file())
+            self.assertEqual(bundled.read_bytes(), self.public_key.read_bytes())
+
+            bad_repo = root / "apt-repo-bad"
+            rejected = self.run_cli(
+                "build", str(payload), str(bad_repo),
+                "--version", "0.2.8",
+                "--channel", "stable",
+                "--commit", COMMIT_SHA,
+                "--license", str(license_file),
+                "--sign-key", str(self.private_key),
+                "--release-public-key", str(self.private_key),
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("PEM public key", rejected.stderr)
+
     def test_build_with_ordered_cumulative_migrations(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

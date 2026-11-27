@@ -85,7 +85,7 @@ func TestSystemPageRendersReleaseCardRUAndEN(t *testing.T) {
 		Release: rel,
 	}
 	bodyRU := libraryGet(t, sRU, "/system")
-	for _, want := range []string{`id="server-release-card"`, "Выпуск OMB", "v0.2.0-dev.1", "dev (разработка)", "b7f1cab", "omb 0.2.0~dev.1"} {
+	for _, want := range []string{`id="server-release-card"`, "Выпуск OMB", "v0.2.0-dev.1", "<dt>Канал</dt>", "dev (разработка)", "Все выпуски"} {
 		if !strings.Contains(bodyRU, want) {
 			t.Fatalf("RU /system missing %q", want)
 		}
@@ -96,9 +96,26 @@ func TestSystemPageRendersReleaseCardRUAndEN(t *testing.T) {
 		Release: &ReleaseInfo{Version: "0.2.0", DisplayVersion: "v0.2.0", Channel: ChannelStable, Commit: "b7f1cab", Package: "omb 0.2.0"},
 	}
 	bodyEN := libraryGet(t, sEN, "/system")
-	for _, want := range []string{`id="server-release-card"`, "OMB release", "v0.2.0", "stable (stable)", "b7f1cab", "omb 0.2.0"} {
+	for _, want := range []string{`id="server-release-card"`, "OMB release", "v0.2.0", "<dt>Channel</dt>", "stable (stable)", "All releases"} {
 		if !strings.Contains(bodyEN, want) {
 			t.Fatalf("EN /system missing %q", want)
+		}
+	}
+	for _, test := range []struct {
+		body, version string
+	}{
+		{bodyRU, "v0.2.0-dev.1"},
+		{bodyEN, "v0.2.0"},
+	} {
+		_, rest, _ := strings.Cut(test.body, `id="server-release-card"`)
+		card, _, _ := strings.Cut(rest, "</section>")
+		if count := strings.Count(card, test.version); count != 1 {
+			t.Errorf("release card shows version %s %d times", test.version, count)
+		}
+		for _, unwanted := range []string{"<dt>Коммит</dt>", "<dt>Пакет</dt>", "<dt>Commit</dt>", "<dt>Package</dt>", "sudo omb update"} {
+			if strings.Contains(card, unwanted) {
+				t.Errorf("release card still contains %q", unwanted)
+			}
 		}
 	}
 }
@@ -151,13 +168,15 @@ func TestTopbarAndSystemCardRenderGitHubLinks(t *testing.T) {
 		`aria-label="Репозиторий OMB на GitHub (откроется в новой вкладке)"`,
 		`class="release-repo-link" href="https://github.com/acme/omb"`,
 		`>acme/omb</a>`,
-		`href="https://github.com/acme/omb/releases/tag/v0.2.5-dev.4"`,
 		`href="https://github.com/acme/omb/releases"`,
-		"Открыть на GitHub", "Все выпуски", "sudo omb update --deb",
+		"Все выпуски",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("/system missing %q", want)
 		}
+	}
+	if strings.Contains(body, "Открыть на GitHub") || strings.Contains(body, `href="https://github.com/acme/omb/releases/tag/v0.2.5-dev.4"`) {
+		t.Fatal("/system should link to all releases without a separate GitHub release button")
 	}
 
 	sEN := &Server{

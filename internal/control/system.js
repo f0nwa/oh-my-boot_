@@ -291,9 +291,6 @@
     if (out.state === "rejected" && rejectionReasons.includes(out.reason)) text = label(out.reason);
     if (out.state === "installing" && out.phase) text = label(out.phase) || text;
     if (reconnecting) text = label("reconnect");
-    if (out.state === "installed" && out.release && out.release.target) {
-      text += " " + displayVersion(out.release.target);
-    }
     return text;
   }
 
@@ -307,7 +304,8 @@
     const recover = state.state === "recovery_required";
     const release = state.release || {};
     const message = changeMessage(state, reconnecting);
-    if (cardStatus.textContent !== message) cardStatus.textContent = message;
+    cardStatus.hidden = state.state === "idle" || state.state === "installed";
+    if (!cardStatus.hidden && cardStatus.textContent !== message) cardStatus.textContent = message;
     if (status.textContent !== message) status.textContent = message;
     status.dataset.tone = ["installed", "ready"].includes(state.state) ? "ok"
       : ["rejected", "failed", "rolled_back", "recovery_required", "unavailable"].includes(state.state) ? "error"

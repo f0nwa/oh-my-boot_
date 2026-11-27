@@ -60,7 +60,7 @@ func TestSystemUpdateRoutesAndDialog(t *testing.T) {
 	})}
 	s := &Server{Store: authOnlyStore{user: User{ID: 1, Username: "test", Role: "admin", Enabled: true, Language: langEN}}, updateClient: client}
 	page := libraryGet(t, s, "/system")
-	for _, marker := range []string{`id="omb-update-dialog"`, `id="omb-update-upload" disabled`, "Upload and verify", "Offline update"} {
+	for _, marker := range []string{`id="omb-update-dialog"`, `id="omb-update-upload" disabled`, `id="omb-update-card-status" hidden`, "Upload and verify", "Offline update"} {
 		if !strings.Contains(page, marker) {
 			t.Errorf("system page missing %s", marker)
 		}

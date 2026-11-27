@@ -23,7 +23,7 @@
   <div class="user-dialog-head">
     <div>
       <h2 id="omb-update-title" tabindex="-1">{{t "Офлайн-обновление"}}</h2>
-      <p class="hint">{{t "Версия"}} <span class="mono">{{.Info.Release.DisplayVersion}}</span> · {{t .Info.Release.ChannelLabelKey}}</p>
+      <p class="hint">{{t "Версия"}} <span class="mono" id="omb-update-version">{{.Info.Release.DisplayVersion}}</span> · {{t .Info.Release.ChannelLabelKey}}</p>
     </div>
     <form method="dialog"><button type="submit" class="btn">{{t "Закрыть"}}</button></form>
   </div>

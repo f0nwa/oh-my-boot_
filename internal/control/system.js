@@ -277,7 +277,8 @@
   let pending = false;
   let polling = false;
   let choosing = false;
-  let reloading = false;
+  let reloadPending = false;
+  let observedInstall = "";
   let generation = 0;
   const rejectionReasons = ["invalid_archive", "verification_failed", "too_large"];
   const maxArchiveBytes = 1024 ** 3;
@@ -299,7 +300,10 @@
   }
 
   function render(reconnecting = false) {
-    const active = state.state === "checking" || state.state === "installing";
+    const installing = state.state === "installing";
+    const active = state.state === "checking" || installing;
+    if (dialog.open && installing) observedInstall = state.id || "";
+    const completed = state.state === "installed" && observedInstall !== "" && state.id === observedInstall;
     const ready = state.state === "ready" && !choosing;
     const recover = state.state === "recovery_required";
     const release = state.release || {};
@@ -310,13 +314,14 @@
     status.dataset.tone = ["installed", "ready"].includes(state.state) ? "ok"
       : ["rejected", "failed", "rolled_back", "recovery_required", "unavailable"].includes(state.state) ? "error"
       : "";
-    status.hidden = state.state === "idle" || choosing && state.state === "ready";
+    status.hidden = state.state === "idle" || state.state === "installed" && !completed ||
+      choosing && state.state === "ready";
     trigger.textContent = active || ready || recover ? label("open-update") : openLabel;
-    form.hidden = active || ready || recover;
+    form.hidden = active || ready || recover || completed;
     upload.disabled = pending || file.files.length === 0;
     confirm.hidden = !ready;
     install.disabled = pending || !ready;
-    byID("background").hidden = state.state !== "installing";
+    byID("background").hidden = !installing;
     byID("recovery").hidden = !recover;
     if (ready && release.current && release.target) {
       byID("transition").textContent = displayVersion(release.current) + " → " + displayVersion(release.target) +
@@ -339,7 +344,7 @@
   }
 
   async function refresh() {
-    if (pending || polling || document.hidden || reloading) return;
+    if (pending || polling || document.hidden || reloadPending) return;
     polling = true;
     const expected = generation;
     try {
@@ -353,9 +358,13 @@
       const version = next.release && next.release.target;
       if (state.state === "installing" && next.state === "installed" && next.id === state.id &&
           version && dialog.dataset.version && version !== dialog.dataset.version) {
-        reloading = true;
-        window.location.reload();
-        return;
+        reloadPending = true;
+        if (!dialog.open || observedInstall !== next.id) {
+          window.location.reload();
+          return;
+        }
+        // Leave the result visible until the user closes the dialog.
+        byID("version").textContent = displayVersion(version);
       }
       state = next;
       render();
@@ -389,8 +398,14 @@
 
   trigger.addEventListener("click", () => {
     dialog.showModal();
+    render();
     if (form.hidden) byID("title").focus();
     refresh();
+  });
+  dialog.addEventListener("close", () => {
+    observedInstall = "";
+    if (reloadPending) window.location.reload();
+    else render();
   });
   file.addEventListener("change", () => {
     file.setCustomValidity("");

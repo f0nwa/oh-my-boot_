@@ -462,13 +462,36 @@ target_id=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     mkdir -p "$fake_repo"
     touch "$fake_repo/omb_0.2.0~dev.1_amd64.deb"
     python3() {
-        [[ "$*" == *"verify-repo $fake_repo --public-key /dev/null --print-package" ]] || return 1
+        [[ "$*" == *"verify-repo $fake_repo --public-key /dev/null --target-ubuntu $expected_target --print-package" ]] || return 1
         printf '%s\t%s\t%s\t%s\t%s\n' omb_0.2.0~dev.1_amd64.deb "$sha1" 0.2.0~dev.1 "$prior_id" dev
     }
+    expected_target=26.04
     res=$(resolve_repo_package "$fake_repo" /dev/null)
     expected=$(printf '%s\t%s\t%s\t%s\t%s' "$fake_repo/omb_0.2.0~dev.1_amd64.deb" "$sha1" 0.2.0~dev.1 "$prior_id" dev)
     test "$res" = "$expected"
+    expected_target=24.04
+    test "$(resolve_repo_package "$fake_repo" /dev/null 24.04)" = "$expected"
 )
+
+# The host, not the archive or a request argument, supplies the Ubuntu target.
+for version in 24.04 26.04; do
+    printf 'ID=ubuntu\nVERSION_ID=%s\n' "$version" > "$work/os-release"
+    test "$(detect_update_target "$work/os-release" amd64)" = "$version"
+done
+if (detect_update_target "$work/os-release" arm64) >/dev/null 2>&1; then
+    echo "Accepted an unsupported architecture" >&2
+    exit 1
+fi
+printf 'ID=ubuntu\nVERSION_ID=22.04\n' > "$work/os-release"
+if (detect_update_target "$work/os-release" amd64) >/dev/null 2>&1; then
+    echo "Accepted an unsupported Ubuntu version" >&2
+    exit 1
+fi
+printf 'ID=debian\nVERSION_ID=24.04\n' > "$work/os-release"
+if (detect_update_target "$work/os-release" amd64) >/dev/null 2>&1; then
+    echo "Accepted a non-Ubuntu target" >&2
+    exit 1
+fi
 
 # 14. Release channel checks.
 (

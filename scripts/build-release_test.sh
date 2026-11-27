@@ -58,6 +58,13 @@ if (bash "$repo/scripts/build-release.sh" --version 0.2.0~dev.99 --channel dev -
 fi
 grep -Fq -- "--allow-channel-switch" "$work/err4"
 
+# The automatic dependency cache belongs to Ubuntu 26.04.
+if (bash "$repo/scripts/build-release.sh" --version 0.2.0~dev.99 --target-ubuntu 24.04 --allow-dirty --out "$work/out-noble") >"$work/err-noble" 2>&1; then
+    echo "Allowed a 24.04 build without an explicit package cache" >&2
+    exit 1
+fi
+grep -Fq -- "Ubuntu 24.04 requires --sysdebs-dir" "$work/err-noble"
+
 # 7. Clean Packages.gz filter strips old omb_* stanzas cleanly
 mkdir -p "$work/sysdebs"
 python3 - "$work/sysdebs" <<'PY'

@@ -15,8 +15,8 @@ deb_tool="$script_dir/offline-deb.py"
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 
 resolve_repo_package() {
-    local repo=$1 key=$2 line fname digest version commit channel
-    line=$(python3 "$deb_tool" verify-repo "$repo" --public-key "$key" --print-package) ||
+    local repo=$1 key=$2 ubuntu=${3:-26.04} line fname digest version commit channel
+    line=$(python3 "$deb_tool" verify-repo "$repo" --public-key "$key" --target-ubuntu "$ubuntu" --print-package) ||
         fail 'Repository verification failed.'
     IFS=$'\t' read -r fname digest version commit channel <<< "$line"
     [[ -n "$fname" && "$digest" =~ ^[0-9a-f]{64}$ && -n "$version" &&
@@ -633,12 +633,13 @@ restore_snapshot() {
 
 prepare_upgrade() {
     local repo=$1 key=$2
-    local pkg_meta pkg_path old_sha kind field1
+    local pkg_meta pkg_path ubuntu old_sha kind field1
     assert_no_pending "$state"
     check_address
     [[ -z $(dpkg --audit) ]] || fail 'The host package database needs attention before the update.'
 
-    pkg_meta=$(resolve_repo_package "$repo" "$key")
+    ubuntu=$(detect_update_target)
+    pkg_meta=$(resolve_repo_package "$repo" "$key" "$ubuntu")
     IFS=$'\t' read -r pkg_path pkg_sha new_version to target_channel <<< "$pkg_meta"
     stage_deb "$pkg_path" "$pkg_sha" "$work/new.deb"
     [[ $(package_identity "$work/new.deb" "$to") == "$new_version" ]] || fail 'The package does not match the repository metadata.'
@@ -681,16 +682,19 @@ prepare_upgrade() {
     done < "$work/scope"
 }
 
-check_update_target() (
+detect_update_target() (
+    local os_release=${1:-/etc/os-release} architecture=${2:-}
+    local ID VERSION_ID
     # shellcheck source=/dev/null
-    source /etc/os-release
-    [[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 26.04 && $(dpkg --print-architecture) == amd64 ]] ||
-        fail 'Web updates require Ubuntu 26.04 amd64.'
+    source "$os_release" || fail 'Cannot read host OS release.'
+    if [[ -z "$architecture" ]]; then architecture=$(dpkg --print-architecture); fi
+    [[ ${ID:-} == ubuntu && ( ${VERSION_ID:-} == 24.04 || ${VERSION_ID:-} == 26.04 ) && "$architecture" == amd64 ]] ||
+        fail 'OMB package updates require Ubuntu 24.04 or 26.04 amd64.'
+    printf '%s\n' "$VERSION_ID"
 )
 
 check_update() {
     prepare_upgrade "$1" "$2"
-    check_update_target
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$old_version" "$new_version" "$target_channel" "$to" "$scope_services" "$from"
 }
 

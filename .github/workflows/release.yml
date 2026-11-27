@@ -18,7 +18,7 @@ jobs:
   release:
     name: Build & Publish .deb Release
     runs-on: ubuntu-24.04
-    environment: omb-release
+    environment: ${{ contains(inputs.tag || github.ref_name, '-dev.') && 'omb-dev-release' || 'omb-release' }}
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       deb_version: ${{ steps.meta.outputs.deb_version }}
@@ -75,13 +75,22 @@ jobs:
           go vet ./...
           go test -count=1 ./...
           python3 scripts/offline-deb_test.py
+          bash scripts/offline-deploy_test.sh
+          bash scripts/build-release_test.sh
           bash scripts/install_test.sh
 
-      - name: Build .deb and SHA256SUMS
+      - name: Build package and signed update archives
         env:
           OMB_RELEASE_SIGNING_KEY: ${{ secrets.OMB_RELEASE_SIGNING_KEY }}
           RELEASE_CHANNEL: ${{ steps.meta.outputs.channel }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          DEB_VERSION: ${{ steps.meta.outputs.deb_version }}
         run: |
+          set -euo pipefail
+          if [[ "$RELEASE_CHANNEL" == stable && -z "$OMB_RELEASE_SIGNING_KEY" ]]; then
+            echo "::error::Set OMB_RELEASE_SIGNING_KEY in the omb-release environment to publish the stable package and both signed update archives."
+            exit 1
+          fi
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends dpkg-dev
 
@@ -100,37 +109,54 @@ jobs:
           SUMS
           (cd "$WORK_DIR/assets" && sha256sum -c expected.sha256)
 
-          # The update archive upgrades an existing OMB package. System dependencies
-          # are installed separately and are not updated by offline-deploy.sh update.
-          mkdir -p "$WORK_DIR/sysdebs"
-          (cd "$WORK_DIR/sysdebs" && apt-get download base-files && dpkg-scanpackages -m . | gzip -9n > Packages.gz)
-
-          mkdir -p dist-release
+          mkdir -p dist-release "$WORK_DIR/ubuntu24.04/sysdebs"
           KEY="$WORK_DIR/signing.pem"
-          ARCHIVE_ARGS=()
+          SIGNED_ARCHIVES=false
           if [[ -n "$OMB_RELEASE_SIGNING_KEY" ]]; then
             BRANCH=main
             if [[ "$RELEASE_CHANNEL" == dev ]]; then BRANCH=dev; fi
             git fetch --no-tags origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
             git merge-base --is-ancestor HEAD "refs/remotes/origin/$BRANCH"
             (umask 077; printf '%s\n' "$OMB_RELEASE_SIGNING_KEY" > "$KEY")
-            TAG="${{ steps.meta.outputs.tag }}"
-            ARCHIVE_ARGS=(--update-archive "dist-release/omb-update-${TAG#v}-amd64.tar.gz")
+            SIGNED_ARCHIVES=true
           else
+            echo "::warning::No release signing key. This development release contains the .deb only."
             openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$KEY" 2>/dev/null
           fi
           unset OMB_RELEASE_SIGNING_KEY
-          bash scripts/build-release.sh \
-            --version "${{ steps.meta.outputs.deb_version }}" \
-            --channel "${{ steps.meta.outputs.channel }}" \
-            --sysdebs-dir "$WORK_DIR/sysdebs" \
-            --assets-dir "$WORK_DIR/assets" \
-            --sign-key "$KEY" \
-            --out "$WORK_DIR/apt-repo" "${ARCHIVE_ARGS[@]}"
+
+          # Update archives replace the OMB package on provisioned servers.
+          # The signed repository index still needs a package from its target Ubuntu.
+          (cd "$WORK_DIR/ubuntu24.04/sysdebs" && apt-get download base-files)
+          if $SIGNED_ARCHIVES; then
+            mkdir -p "$WORK_DIR/ubuntu26.04/sysdebs"
+            docker run --rm --platform linux/amd64 \
+              --volume "$WORK_DIR/ubuntu26.04/sysdebs:/out" --workdir /out \
+              ubuntu:26.04 bash -ec 'apt-get update -qq && apt-get download base-files'
+          fi
+
+          build_for_ubuntu() {
+            local ubuntu=$1 target="$WORK_DIR/ubuntu$1"
+            local archive_args=()
+            (cd "$target/sysdebs" && dpkg-scanpackages -m . | gzip -9n > Packages.gz)
+            if $SIGNED_ARCHIVES; then
+              archive_args=(--update-archive "dist-release/omb-update-${RELEASE_TAG#v}-ubuntu$ubuntu-amd64.tar.gz")
+            fi
+            bash scripts/build-release.sh \
+              --target-ubuntu "$ubuntu" --version "$DEB_VERSION" --channel "$RELEASE_CHANNEL" \
+              --sysdebs-dir "$target/sysdebs" --assets-dir "$WORK_DIR/assets" --sign-key "$KEY" \
+              --out "$target/apt-repo" "${archive_args[@]}"
+          }
+
+          build_for_ubuntu 24.04
+          DEB="omb_${DEB_VERSION}_amd64.deb"
+          if $SIGNED_ARCHIVES; then
+            build_for_ubuntu 26.04
+            cmp "$WORK_DIR/ubuntu24.04/apt-repo/$DEB" "$WORK_DIR/ubuntu26.04/apt-repo/$DEB"
+          fi
           rm -f "$KEY"
 
-          cp "$WORK_DIR/apt-repo/omb_${{ steps.meta.outputs.deb_version }}_amd64.deb" dist-release/
-          cp "$WORK_DIR/SHA256SUMS" dist-release/
+          cp "$WORK_DIR/ubuntu24.04/apt-repo/$DEB" "$WORK_DIR/ubuntu24.04/SHA256SUMS" dist-release/
           (cd dist-release && sha256sum -c SHA256SUMS)
           ls -lh dist-release/
 
@@ -143,7 +169,7 @@ jobs:
             dist-release/SHA256SUMS
           retention-days: 1
 
-      - name: Publish GitHub Release (.deb)
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -151,8 +177,15 @@ jobs:
           DEB="dist-release/omb_${{ steps.meta.outputs.deb_version }}_amd64.deb"
           SUMS="dist-release/SHA256SUMS"
           ASSETS=("$DEB" "$SUMS")
-          ARCHIVE="dist-release/omb-update-${TAG#v}-amd64.tar.gz"
-          if [[ -f "$ARCHIVE" ]]; then ASSETS+=("$ARCHIVE"); fi
+          for ubuntu in 24.04 26.04; do
+            ARCHIVE="dist-release/omb-update-${TAG#v}-ubuntu$ubuntu-amd64.tar.gz"
+            if [[ -f "$ARCHIVE" ]]; then
+              ASSETS+=("$ARCHIVE")
+            elif [[ "${{ steps.meta.outputs.channel }}" == stable ]]; then
+              echo "::error::Missing required stable update archive: $ARCHIVE"
+              exit 1
+            fi
+          done
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
           else

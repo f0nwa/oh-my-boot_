@@ -389,6 +389,44 @@ class OfflineDebTestCase(unittest.TestCase):
             for sql_name in ("boot.sql", "images.sql", "control.sql"):
                 self.assertTrue((extracted / "usr/share/omb/bootstrap" / sql_name).is_file())
 
+    def test_web_update_archive_is_bound_to_its_ubuntu_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload, license_file = self.make_payload(root)
+            common = (
+                "--version", "0.2.8", "--channel", "stable", "--commit", COMMIT_SHA,
+                "--license", str(license_file), "--sign-key", str(self.private_key),
+            )
+            repos = {}
+            for version in ("24.04", "26.04"):
+                repo = root / version
+                repos[version] = repo
+                result = self.run_cli("build", str(payload), str(repo), *common, "--target-ubuntu", version)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+                args = ("--public-key", str(self.public_key))
+                result = self.run_cli("verify-repo", str(repo), *args, "--target-ubuntu", version)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["target"], {
+                    "os": "ubuntu", "version_id": version, "architecture": "amd64",
+                })
+                other = "26.04" if version == "24.04" else "24.04"
+                wrong = self.run_cli("verify-repo", str(repo), *args, "--target-ubuntu", other)
+                self.assertNotEqual(wrong.returncode, 0)
+                self.assertIn(f"expected Ubuntu {other}", wrong.stderr)
+
+                archive = root / f"omb-update-0.2.8-ubuntu{version}-amd64.tar.gz"
+                packed = self.run_cli("pack-update", str(repo), str(archive), *args)
+                self.assertEqual(packed.returncode, 0, packed.stderr)
+                with tarfile.open(archive, "r:gz") as contents:
+                    self.assertEqual(
+                        json.load(contents.extractfile("apt-repo/repo-manifest.json"))["target"]["version_id"],
+                        version,
+                    )
+
+            deb = "omb_0.2.8_amd64.deb"
+            self.assertEqual((repos["24.04"] / deb).read_bytes(), (repos["26.04"] / deb).read_bytes())
+
     def test_build_with_ordered_cumulative_migrations(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

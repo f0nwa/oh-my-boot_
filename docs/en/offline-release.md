@@ -70,9 +70,11 @@ bash scripts/build-release.sh \
 
 ## Update from the dashboard
 
-On the release machine, add `--sign-key /path/to/release-private.pem` and `--update-archive ./omb-update-0.2.8-amd64.tar.gz` to `scripts/build-release.sh`. GitHub Actions publishes this archive when the `OMB_RELEASE_SIGNING_KEY` secret is configured in the `omb-release` environment. The tag must point to a commit in its release channel branch. Use a local build or a separate trusted build host for releases signed with a persistent key. The `--remote` option transfers the key to that build host for the duration of the build. The archive can be up to 1 GiB compressed and 2 GiB unpacked.
+Dashboard updates for an existing packaged OMB installation support Ubuntu 24.04 and 26.04 amd64. In the stable release assets, choose the archive for your OS, for example `omb-update-0.2.8-ubuntu24.04-amd64.tar.gz` for the Ubuntu 24.04 OVA. The signed manifest states the Ubuntu version, which the server checks before installation.
 
-Install the first release that supports dashboard updates from the console using the trusted `offline-deploy.sh` from the new release. For a packaged OMB installation on Ubuntu 26.04 amd64, copy the trusted public key and enable the socket once:
+To build an archive, pass `--target-ubuntu 24.04`, `--sysdebs-dir /path/to/noble-debs`, `--sign-key /path/to/release-private.pem`, and `--update-archive ./omb-update-0.2.8-ubuntu24.04-amd64.tar.gz` to `scripts/build-release.sh`. For Ubuntu 26.04, use its package repository and replace the target in the arguments. GitHub Actions publishes both stable archives when the `OMB_RELEASE_SIGNING_KEY` secret is configured in the `omb-release` environment. The tag must point to a commit in its release channel branch. Use a local build or a separate trusted build host for releases signed with a persistent key. The `--remote` option transfers the key to that build host for the duration of the build. The archive can be up to 1 GiB compressed and 2 GiB unpacked.
+
+If your installed release lacks dashboard update support for your Ubuntu version, first install a compatible release from a trusted package with `sudo omb update --deb ./omb_<version>_amd64.deb`. This command caches the installed package for rollback. Then install the trusted public key and enable the socket once:
 
 ```sh
 sudo install -m 0644 trusted-release-public.pem /etc/omb/release-public.pem

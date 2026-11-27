@@ -23,7 +23,10 @@ DEPENDENCIES = (
     "ca-certificates, cifs-utils, curl, dnsmasq-base, nfs-common, "
     "openssl, postgresql, python3, samba, wimtools"
 )
-TARGET = {"os": "ubuntu", "version_id": "26.04", "architecture": "amd64"}
+TARGETS = {
+    version: {"os": "ubuntu", "version_id": version, "architecture": "amd64"}
+    for version in ("24.04", "26.04")
+}
 CHANNELS = ("stable", "dev")
 REPO_MANIFEST = "repo-manifest.json"
 REPO_SIGNATURE = "repo-manifest.sig"
@@ -552,7 +555,7 @@ def build_repo(args: argparse.Namespace) -> None:
 
         repo_manifest = {
             "format": 2,
-            "target": TARGET,
+            "target": TARGETS[args.target_ubuntu],
             "package": pkg_meta,
             "packages_index": {
                 "filename": "Packages.gz",
@@ -586,7 +589,7 @@ def check_repo_file(repo_dir: Path, filename: str, expected_size: int, expected_
         raise ValueError(f"checksum or size mismatch in repository: {filename}")
 
 
-def verify_repo(repo_dir: Path, public_key: Path) -> dict:
+def verify_repo(repo_dir: Path, public_key: Path, expected_ubuntu: str | None = None) -> dict:
     repo_dir = Path(repo_dir)
     manifest_path = repo_dir / REPO_MANIFEST
     sig_path = repo_dir / REPO_SIGNATURE
@@ -599,8 +602,11 @@ def verify_repo(repo_dir: Path, public_key: Path) -> dict:
     openssl_signature("-verify", raw, public_key, sig_path.read_bytes())
     data = json.loads(raw)
 
-    if data.get("format") != 2 or data.get("target") != TARGET:
+    target = data.get("target")
+    if data.get("format") != 2 or target not in TARGETS.values():
         raise ValueError("unsupported repository manifest format or target")
+    if expected_ubuntu is not None and target != TARGETS[expected_ubuntu]:
+        raise ValueError(f"repository targets Ubuntu {target['version_id']}; expected Ubuntu {expected_ubuntu}")
 
     packages_index = data["packages_index"]
     if packages_index.get("filename") != "Packages.gz":
@@ -661,6 +667,7 @@ def main() -> None:
     build_cmd.add_argument("repository", type=Path)
     build_cmd.add_argument("--version", required=True)
     build_cmd.add_argument("--channel", choices=CHANNELS, required=True)
+    build_cmd.add_argument("--target-ubuntu", choices=TARGETS, default="26.04")
     build_cmd.add_argument("--commit", required=True)
     build_cmd.add_argument("--license", type=Path, required=True)
     build_cmd.add_argument("--sign-key", type=Path, required=True)
@@ -679,6 +686,7 @@ def main() -> None:
     verify_cmd = sub.add_parser("verify-repo", help="verify a signed OMB APT repository")
     verify_cmd.add_argument("repository", type=Path)
     verify_cmd.add_argument("--public-key", type=Path, required=True)
+    verify_cmd.add_argument("--target-ubuntu", choices=TARGETS)
     verify_cmd.add_argument(
         "--print-package",
         action="store_true",
@@ -705,7 +713,7 @@ def main() -> None:
         return
 
     try:
-        data = verify_repo(args.repository, args.public_key)
+        data = verify_repo(args.repository, args.public_key, args.target_ubuntu)
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
         cli.exit(1, f"OMB repository verification failed: {error}\n")
 

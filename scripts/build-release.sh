@@ -42,8 +42,9 @@ Options:
   --version VER           Debian version (e.g. 0.2.0 or 0.2.0~dev.19). Default: inferred from Git tag on HEAD.
   --channel stable|dev    Release channel. Default: inferred from tag/version.
   --sign-key PATH         OpenSSL private key (required for stable; optional temporary key for dev + --apply).
-  --sysdebs-dir PATH      Directory with Ubuntu 26.04 system .deb files and Packages.gz.
-                          Default: auto-detected from dist/omb-deb-*/apt-repo-final.
+  --target-ubuntu VER     Ubuntu target: 24.04 (updates only) or 26.04 (default).
+  --sysdebs-dir PATH      Directory with system .deb files and Packages.gz for the target Ubuntu.
+                          The cache is auto-detected only for Ubuntu 26.04.
   --assets-dir PATH       Directory with ipxeboot.tar.gz, ipxe-shimx64.efi, wimboot.
                           In --remote mode, defaults to /usr/share/omb/assets on the remote host.
   --out PATH              Destination directory for the built signed apt-repo (must not exist yet).
@@ -202,12 +203,14 @@ main() {
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
     local version='' channel='' sign_key='' sysdebs_dir='' assets_dir='' out_dir='' archive='' remote='' apply_ip=''
+    local target_ubuntu=26.04
     local allow_channel_switch=false allow_dirty=false
 
     while (( $# > 0 )); do
         case "$1" in
             --version) [[ $# -ge 2 ]] || fail "--version requires a value"; version=$2; shift 2 ;;
             --channel) [[ $# -ge 2 ]] || fail "--channel requires a value"; channel=$2; shift 2 ;;
+            --target-ubuntu) [[ $# -ge 2 ]] || fail "--target-ubuntu requires a value"; target_ubuntu=$2; shift 2 ;;
             --sign-key) [[ $# -ge 2 ]] || fail "--sign-key requires a value"; sign_key=$2; shift 2 ;;
             --sysdebs-dir) [[ $# -ge 2 ]] || fail "--sysdebs-dir requires a value"; sysdebs_dir=$2; shift 2 ;;
             --assets-dir) [[ $# -ge 2 ]] || fail "--assets-dir requires a value"; assets_dir=$2; shift 2 ;;
@@ -224,6 +227,11 @@ main() {
 
     [[ -n "$out_dir" || -n "$apply_ip" || -n "$archive" ]] ||
         fail "Specify --out PATH, --update-archive PATH or --apply MANAGEMENT_IP."
+    [[ "$target_ubuntu" == 24.04 || "$target_ubuntu" == 26.04 ]] ||
+        fail "--target-ubuntu must be 24.04 or 26.04."
+    if [[ "$target_ubuntu" == 24.04 && -z "$sysdebs_dir" ]]; then
+        fail "Ubuntu 24.04 requires --sysdebs-dir for its package cache."
+    fi
     if [[ -n "$archive" ]]; then
         [[ -n "$sign_key" ]] || fail "--update-archive requires --sign-key."
         [[ ! -e "$archive" && ! -L "$archive" ]] || fail "Archive already exists: $archive"
@@ -295,6 +303,7 @@ main() {
         python3 "$repo/scripts/offline-deb.py" build "$work/payload" "$target_repo" \
             --version "$version" \
             --channel "$channel" \
+            --target-ubuntu "$target_ubuntu" \
             --commit "$commit" \
             --license "$repo/LICENSE" \
             --go-mod "$repo/go.mod" \
@@ -342,7 +351,7 @@ main() {
     local archive_arg=no
     if [[ -n "$archive" ]]; then archive_arg=yes; fi
 
-    ssh "$remote" "bash -euo pipefail -s -- '$remote_work' '$version' '$channel' '$commit' '$assets_mode' '$apply_arg' '$switch_arg' '$archive_arg'" <<'REMOTE'
+    ssh "$remote" "bash -euo pipefail -s -- '$remote_work' '$version' '$channel' '$commit' '$assets_mode' '$apply_arg' '$switch_arg' '$archive_arg' '$target_ubuntu'" <<'REMOTE'
 w=$1
 ver=$2
 ch=$3
@@ -351,6 +360,7 @@ assets_mode=$5
 apply_arg=$6
 switch_arg=$7
 archive_arg=$8
+target_ubuntu=$9
 
 chmod 0600 "$w/sign.pem"
 if [[ "$assets_mode" == remote ]]; then
@@ -363,6 +373,7 @@ fi
 python3 "$w/scripts/offline-deb.py" build "$w/payload" "$w/apt-repo" \
     --version "$ver" \
     --channel "$ch" \
+    --target-ubuntu "$target_ubuntu" \
     --commit "$commit" \
     --license "$w/meta/LICENSE" \
     --go-mod "$w/meta/go.mod" \
